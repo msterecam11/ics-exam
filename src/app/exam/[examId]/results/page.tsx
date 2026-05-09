@@ -49,7 +49,7 @@ async function downloadReceipt({
       resultUrl,
       status,
       score,
-    })
+    }) as any
   ).toBlob()
 
   const url = URL.createObjectURL(blob)
