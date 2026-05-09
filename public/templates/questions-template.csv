@@ -1,0 +1,7 @@
+type,text,score,ai_guide,opt1,opt2,opt3,opt4,opt5,opt6
+mcq_single,What is the capital of France?,10,,Paris:10,London:0,Berlin:5,Rome:0,,
+mcq_single,Which gas do plants absorb during photosynthesis?,10,,Carbon Dioxide:10,Oxygen:0,Nitrogen:0,Hydrogen:0,,
+mcq_multi,Select all mammals:,4,,Whale:1,Dolphin:1,Eagle:0,Salmon:0,Bat:1,
+open_ended,Explain the Bernoulli principle and its role in generating lift.,15,A correct answer should mention that faster airflow over the wing creates lower pressure on top than below causing upward lift. Award full marks if both pressure difference and airflow speed are mentioned.,,,,,,
+ordering,Arrange the pre-flight checklist steps in the correct order:,8,,Check fuel level,Inspect control surfaces,Check oil level,Start engine,Taxi to runway,
+matching,Match each country to its capital city:,6,,France:Paris,Germany:Berlin,Japan:Tokyo,Brazil:Brasilia,,
