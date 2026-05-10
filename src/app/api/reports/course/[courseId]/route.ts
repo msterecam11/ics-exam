@@ -235,27 +235,39 @@ Return ONLY valid JSON (no markdown, no extra text) with this exact structure:
   }
 }`
 
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.3,
-    max_tokens: 1400,
-  })
-
-  const raw = completion.choices[0]?.message?.content ?? ""
   let narrative: any = null
-
   try {
-    narrative = JSON.parse(raw)
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/)
-    if (match) {
-      try { narrative = JSON.parse(match[0]) } catch { narrative = null }
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    let lastErr: any
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const completion = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.3,
+          max_tokens: 1400,
+        })
+        const raw = (completion.choices[0]?.message?.content ?? "")
+          .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+        const match = raw.match(/\{[\s\S]*\}/)
+        const cleaned = match ? match[0] : raw
+        try { narrative = JSON.parse(cleaned) } catch { narrative = null }
+        if (narrative) break
+      } catch (err: any) {
+        lastErr = err
+        const isRate = err?.status === 429 || err?.message?.includes("rate")
+        if (!isRate) break
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)))
+      }
     }
+    if (!narrative) {
+      console.error("Course AI failed:", lastErr)
+      return NextResponse.json({ error: "AI service temporarily unavailable. Please try again." }, { status: 503 })
+    }
+  } catch (err) {
+    console.error("Course AI unexpected error:", err)
+    return NextResponse.json({ error: "AI service temporarily unavailable. Please try again." }, { status: 503 })
   }
-
-  if (!narrative) return NextResponse.json({ error: "AI parsing failed" }, { status: 500 })
 
   // Cache — use the first real exam ID from this course to satisfy the FK constraint on exam_id.
   // DELETE existing entry first (avoids unique constraint conflicts), then INSERT fresh.

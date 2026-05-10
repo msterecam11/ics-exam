@@ -7,7 +7,7 @@ import ScoreBar from "@/components/reports/ScoreBar"
 import { Button } from "@/components/ui/button"
 import {
   Loader2, BrainCircuit, RefreshCw, AlertCircle,
-  ArrowLeft, Download, CheckCircle2, XCircle,
+  ArrowLeft, Printer, CheckCircle2, XCircle,
   MinusCircle, Trophy, Target, TrendingUp, Medal, Lightbulb
 } from "lucide-react"
 import { toast } from "sonner"
@@ -110,7 +110,6 @@ export default function CandidateReportPage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generatingAI, setGeneratingAI] = useState(false)
-  const [downloading, setDownloading] = useState(false)
 
   // ── Terminology state ──
   const [showModal, setShowModal] = useState(true)
@@ -134,31 +133,16 @@ export default function CandidateReportPage() {
     toast.success("Expert report generated")
   }
 
-  async function downloadPDF() {
-    setDownloading(true)
-    toast.info("Generating PDF… this takes a few seconds")
-    try {
-      const res = await fetch(
-        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}`
-      )
-      if (!res.ok) throw new Error(await res.text())
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      const cd = res.headers.get("Content-Disposition") ?? ""
-      const match = cd.match(/filename="(.+)"/)
-      a.href = url
-      a.download = match?.[1] ?? "report.pdf"
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success("PDF downloaded!")
-    } catch (err) {
-      console.error("PDF error:", err)
-      toast.error("PDF generation failed — try again")
-    } finally {
-      setDownloading(false)
+  function downloadPDF() {
+    const win = window.open(
+      `/print/candidate/${candidateId}?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}&autoprint=1`,
+      "_blank"
+    )
+    if (!win) {
+      toast.error("Pop-up blocked — please allow pop-ups for this site")
+      return
     }
+    toast.info("Print dialog will open automatically — choose 'Save as PDF'")
   }
 
   if (loading) {
@@ -281,10 +265,10 @@ export default function CandidateReportPage() {
               Regenerate Expert
             </Button>
           )}
-          <Button size="sm" onClick={downloadPDF} disabled={downloading}
+          <Button size="sm" onClick={downloadPDF}
             className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {downloading ? "Generating PDF…" : "Download PDF"}
+            <Printer className="h-4 w-4" />
+            Save as PDF
           </Button>
         </div>
       </div>

@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Download, Loader2, Eye } from "lucide-react"
+import { Printer, Eye } from "lucide-react"
 import { toast } from "sonner"
 
 interface Props {
@@ -11,30 +10,13 @@ interface Props {
 }
 
 export default function CourseReportButton({ courseId }: Props) {
-  const [downloading, setDownloading] = useState(false)
-
-  async function downloadPDF() {
-    setDownloading(true)
-    toast.info("Generating PDF… this takes a few seconds")
-    try {
-      const res = await fetch(`/api/reports/course/${courseId}/pdf`)
-      if (!res.ok) throw new Error(await res.text())
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      const cd = res.headers.get("Content-Disposition") ?? ""
-      const match = cd.match(/filename="(.+)"/)
-      a.href = url
-      a.download = match?.[1] ?? "course-report.pdf"
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success("Course report downloaded!")
-    } catch {
-      toast.error("PDF generation failed — try again")
-    } finally {
-      setDownloading(false)
+  function openPrint() {
+    const win = window.open(`/print/course/${courseId}?autoprint=1`, "_blank")
+    if (!win) {
+      toast.error("Pop-up blocked — please allow pop-ups for this site")
+      return
     }
+    toast.info("Print dialog will open automatically — choose 'Save as PDF'")
   }
 
   return (
@@ -49,16 +31,11 @@ export default function CourseReportButton({ courseId }: Props) {
       <Button
         size="sm"
         variant="outline"
-        onClick={downloadPDF}
-        disabled={downloading}
+        onClick={openPrint}
         className="gap-2 border-[#1B4F8A] text-[#1B4F8A] hover:bg-blue-50"
       >
-        {downloading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Download className="h-4 w-4" />
-        )}
-        {downloading ? "Generating…" : "Download PDF"}
+        <Printer className="h-4 w-4" />
+        Save as PDF
       </Button>
     </div>
   )
