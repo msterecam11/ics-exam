@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import Groq from "groq-sdk"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY ?? "placeholder" })
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
