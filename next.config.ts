@@ -32,6 +32,10 @@ const csp = [
 ].join("; ")
 
 const nextConfig: NextConfig = {
+  // Keep Puppeteer + Chromium out of the bundle — they rely on binary files
+  // that cannot be relocated by the bundler (Turbopack/webpack)
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+
   async headers() {
     return [
       {
