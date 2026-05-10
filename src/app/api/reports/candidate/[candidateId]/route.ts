@@ -170,12 +170,13 @@ Be specific, professional, constructive, and base all insights strictly on the s
         model      : "llama-3.3-70b-versatile",
         messages   : [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens : 800,
+        max_tokens : 1400,
       })
     )
     const raw     = completion.choices[0]?.message?.content?.trim() ?? ""
     const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-    narrativeObj  = JSON.parse(cleaned)
+    const match   = cleaned.match(/\{[\s\S]*\}/)
+    narrativeObj  = JSON.parse(match ? match[0] : cleaned)
   } catch {
     return NextResponse.json({ error: "AI service temporarily unavailable. Please try again in a moment." }, { status: 503 })
   }
