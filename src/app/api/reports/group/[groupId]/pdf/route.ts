@@ -45,7 +45,7 @@ export async function GET(
     if (allCookies.length > 0) {
       await page.setCookie(
         ...allCookies.map((c) => ({
-          name: c.name,
+          name: c.name.replace(/^__Secure-/, ""), // strip prefix — HTTP localhost doesn't support Secure cookies
           value: c.value,
           domain: "localhost",
           path: "/",
