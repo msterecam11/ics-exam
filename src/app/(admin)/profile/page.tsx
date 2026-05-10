@@ -9,7 +9,24 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { useSession, signOut } from "next-auth/react"
-import { Loader2, User, Lock, LogOut } from "lucide-react"
+import { Loader2, User, Lock, LogOut, CheckCircle2, XCircle } from "lucide-react"
+
+// ── Password strength ─────────────────────────────────────────────────────────
+const rules = [
+  { label: "At least 8 characters",          test: (p: string) => p.length >= 8 },
+  { label: "One uppercase letter (A–Z)",      test: (p: string) => /[A-Z]/.test(p) },
+  { label: "One lowercase letter (a–z)",      test: (p: string) => /[a-z]/.test(p) },
+  { label: "One number (0–9)",                test: (p: string) => /[0-9]/.test(p) },
+  { label: "One special character (!@#$...)", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+]
+
+function getStrength(password: string) {
+  const passed = rules.filter((r) => r.test(password)).length
+  if (passed <= 2) return { level: "Weak",   color: "bg-red-500",    width: "w-1/4" }
+  if (passed <= 3) return { level: "Fair",   color: "bg-amber-400",  width: "w-2/4" }
+  if (passed <= 4) return { level: "Good",   color: "bg-blue-500",   width: "w-3/4" }
+  return           { level: "Strong", color: "bg-green-500",  width: "w-full" }
+}
 
 export default function ProfilePage() {
   const { data: session, update } = useSession()
@@ -54,7 +71,8 @@ export default function ProfilePage() {
   async function handleChangePassword() {
     if (!currentPassword) { toast.error("Enter your current password"); return }
     if (!newPassword) { toast.error("Enter a new password"); return }
-    if (newPassword.length < 8) { toast.error("New password must be at least 8 characters"); return }
+    const failedRules = rules.filter((r) => !r.test(newPassword))
+    if (failedRules.length > 0) { toast.error(`Password too weak: ${failedRules[0].label}`); return }
     if (newPassword !== confirmPassword) { toast.error("Passwords do not match"); return }
 
     setSavingPassword(true)
@@ -167,6 +185,40 @@ export default function ProfilePage() {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Min. 8 characters"
             />
+
+            {/* Strength bar */}
+            {newPassword.length > 0 && (() => {
+              const s = getStrength(newPassword)
+              return (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Password strength</span>
+                    <span className={`font-semibold ${
+                      s.level === "Weak"   ? "text-red-500"   :
+                      s.level === "Fair"   ? "text-amber-500" :
+                      s.level === "Good"   ? "text-blue-500"  : "text-green-500"
+                    }`}>{s.level}</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-300 ${s.color} ${s.width}`} />
+                  </div>
+                  <ul className="space-y-1 pt-1">
+                    {rules.map((r) => {
+                      const ok = r.test(newPassword)
+                      return (
+                        <li key={r.label} className={`flex items-center gap-1.5 text-xs ${ok ? "text-green-600" : "text-muted-foreground"}`}>
+                          {ok
+                            ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                            : <XCircle      className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          }
+                          {r.label}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })()}
           </div>
 
           <div className="space-y-2">
