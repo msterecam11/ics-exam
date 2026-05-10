@@ -54,6 +54,7 @@ export async function GET(
           value: c.value,
           domain: url.hostname,
           path: "/",
+          secure: url.protocol === "https:",
         }))
       )
     }
