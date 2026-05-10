@@ -90,12 +90,16 @@ function PageFooter({ page, total, light = false }: { page: number; total: numbe
 
 interface Props {
   params: Promise<{ candidateId: string }>
-  searchParams: Promise<{ entity?: string; content?: string }>
+  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string }>
 }
 
 export default async function PrintCandidatePage({ params, searchParams }: Props) {
-  const session = await auth()
-  if (!session) redirect("/auth/login")
+  const { pdf_secret } = await searchParams
+  const validSecret = process.env.NEXTAUTH_SECRET && pdf_secret === process.env.NEXTAUTH_SECRET
+  if (!validSecret) {
+    const session = await auth()
+    if (!session) redirect("/auth/login")
+  }
 
   const { candidateId } = await params
   const { entity = "Group", content = "Course" } = await searchParams

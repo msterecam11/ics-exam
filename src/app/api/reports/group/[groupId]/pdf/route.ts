@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { cookies } from "next/headers"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
 
@@ -27,32 +26,15 @@ export async function GET(
   const url = new URL(req.url)
   const entity = url.searchParams.get("entity") ?? "Group"
   const content = url.searchParams.get("content") ?? "Course"
-  // Use http://localhost directly — avoids SSL errors when Puppeteer runs
-  // inside the same container (Render sets https on the public URL but the
-  // internal server only speaks plain HTTP on PORT).
   const port = process.env.PORT ?? "3000"
-  const printUrl = `http://localhost:${port}/print/group/${groupId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
-
-  const cookieStore = await cookies()
-  const allCookies = cookieStore.getAll()
+  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+  const printUrl = `http://localhost:${port}/print/group/${groupId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}`
 
   const browser = await getBrowser()
 
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 794, height: 1122, deviceScaleFactor: 1 })
-
-    if (allCookies.length > 0) {
-      await page.setCookie(
-        ...allCookies.map((c) => ({
-          name: c.name.replace(/^__Secure-/, ""), // strip prefix — HTTP localhost doesn't support Secure cookies
-          value: c.value,
-          domain: "localhost",
-          path: "/",
-          secure: false,
-        }))
-      )
-    }
 
     await page.goto(printUrl, { waitUntil: "load", timeout: 60000 })
     await page.waitForSelector("#report-root", { timeout: 20000 })

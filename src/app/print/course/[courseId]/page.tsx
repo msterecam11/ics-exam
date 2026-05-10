@@ -211,10 +211,14 @@ export default async function PrintCoursePage({
   searchParams,
 }: {
   params: Promise<{ courseId: string }>
-  searchParams: Promise<{ entity?: string; content?: string }>
+  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string }>
 }) {
-  const session = await auth()
-  if (!session) redirect("/auth/login")
+  const { pdf_secret } = await searchParams
+  const validSecret = process.env.NEXTAUTH_SECRET && pdf_secret === process.env.NEXTAUTH_SECRET
+  if (!validSecret) {
+    const session = await auth()
+    if (!session) redirect("/auth/login")
+  }
 
   const { courseId } = await params
   const { entity = "Group", content = "Course" } = await searchParams

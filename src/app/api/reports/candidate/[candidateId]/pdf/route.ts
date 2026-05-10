@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { cookies } from "next/headers"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
 
@@ -33,12 +32,8 @@ export async function GET(
   const entity = url.searchParams.get("entity") ?? "Group"
   const content = url.searchParams.get("content") ?? "Course"
   const port = process.env.PORT ?? "3000"
-  // Navigate via localhost directly — avoids SSL errors on Render where the
-  // public URL is https but the internal server speaks plain HTTP on PORT.
-  const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
-
-  const cookieStore = await cookies()
-  const allCookies = cookieStore.getAll()
+  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+  const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}`
 
   const browser = await getBrowser()
 
@@ -47,19 +42,6 @@ export async function GET(
 
     // 794px = A4 width at 96 DPI — matches the report's design width exactly
     await page.setViewport({ width: 794, height: 1122, deviceScaleFactor: 1 })
-
-    // Pass auth cookies so the print page can auth-check
-    if (allCookies.length > 0) {
-      await page.setCookie(
-        ...allCookies.map((c) => ({
-          name: c.name.replace(/^__Secure-/, ""), // strip prefix — HTTP localhost doesn't support Secure cookies
-          value: c.value,
-          domain: "localhost",
-          path: "/",
-          secure: false,
-        }))
-      )
-    }
 
     // Use "load" (not "networkidle0") — dev-mode WebSockets keep connections
     // open permanently and networkidle0 would time out every time.
