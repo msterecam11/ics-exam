@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Printer, Download, Loader2, ExternalLink } from "lucide-react"
+import { toast } from "sonner"
 import QRCode from "@/components/shared/QRCode"
 import Image from "next/image"
 
@@ -47,6 +48,9 @@ export default function InvitationView({ exam, examUrl }: Props) {
       a.download = `${exam.title.replace(/\s+/g, "-")}-invitation.pdf`
       a.click()
       URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("PDF generation failed:", err)
+      toast.error("Failed to generate PDF. Please try again.")
     } finally {
       setDownloadingPdf(false)
     }

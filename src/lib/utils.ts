@@ -5,7 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDuration(minutes: number): string {
+export function formatDuration(minutes: number | null | undefined): string {
+  if (!minutes || isNaN(minutes)) return "—"
   if (minutes < 60) return `${minutes}m`
   const h = Math.floor(minutes / 60)
   const m = minutes % 60

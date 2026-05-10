@@ -6,6 +6,10 @@ import Providers from "@/components/Providers"
 export const metadata: Metadata = {
   title: "ICS Aviation — Exam Platform",
   description: "Integrated Consulting Services — Online Examination System",
+  icons: {
+    icon: "/icon/icon-dark-blue.png",
+    apple: "/icon/icon-dark-blue.png",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
