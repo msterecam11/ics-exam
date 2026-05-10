@@ -3,15 +3,21 @@ import {
   Document, Page, View, Text, Image, Link, Font, StyleSheet,
 } from "@react-pdf/renderer"
 
-// Register Plus Jakarta Sans
-Font.register({
-  family: "PlusJakartaSans",
-  fonts: [
-    { src: "/fonts/PlusJakartaSans-Light.ttf",   fontWeight: 300 },
-    { src: "/fonts/PlusJakartaSans-Regular.ttf",  fontWeight: 400 },
-    { src: "/fonts/PlusJakartaSans-Bold.ttf",     fontWeight: 700 },
-  ],
-})
+// Register fonts lazily with absolute URLs (required by @react-pdf/renderer)
+let fontsRegistered = false
+function ensureFonts() {
+  if (fontsRegistered) return
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  Font.register({
+    family: "PlusJakartaSans",
+    fonts: [
+      { src: `${origin}/fonts/PlusJakartaSans-Light.ttf`,   fontWeight: 300 },
+      { src: `${origin}/fonts/PlusJakartaSans-Regular.ttf`, fontWeight: 400 },
+      { src: `${origin}/fonts/PlusJakartaSans-Bold.ttf`,    fontWeight: 700 },
+    ],
+  })
+  fontsRegistered = true
+}
 
 const BLUE  = "#1B4F8A"
 const LIGHT = "#F1F5FB"
@@ -66,6 +72,7 @@ export function InvitationPDF({
   examTitle, description, courseName, groupName,
   password, duration, passingScore, examUrl, date,
 }: InvitationPDFProps) {
+  ensureFonts()
   const origin = typeof window !== "undefined" ? window.location.origin : ""
 
   return (

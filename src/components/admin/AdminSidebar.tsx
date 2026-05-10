@@ -25,13 +25,14 @@ const navItems = [
 
 interface Props {
   user: { name?: string | null; email?: string | null; role?: string }
+  inSheet?: boolean
 }
 
-export default function AdminSidebar({ user }: Props) {
+export default function AdminSidebar({ user, inSheet = false }: Props) {
   const pathname = usePathname()
 
   return (
-    <aside className="hidden md:flex flex-col w-64 bg-[#1B4F8A] text-white shrink-0">
+    <aside className={`${inSheet ? "flex" : "hidden md:flex"} flex-col w-64 bg-[#1B4F8A] text-white shrink-0`}>
       {/* Logo */}
       <div className="flex items-center justify-center px-6 py-6 border-b border-white/10">
         <Image
