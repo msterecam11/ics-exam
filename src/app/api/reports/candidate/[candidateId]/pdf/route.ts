@@ -30,12 +30,12 @@ export async function GET(
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const url = new URL(req.url)
-  const baseUrl = `${url.protocol}//${url.host}`
-
   const entity = url.searchParams.get("entity") ?? "Group"
   const content = url.searchParams.get("content") ?? "Course"
-  // Navigate to the dedicated print page — no admin layout, clean HTML
-  const printUrl = `${baseUrl}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
+  const port = process.env.PORT ?? "3000"
+  // Navigate via localhost directly — avoids SSL errors on Render where the
+  // public URL is https but the internal server speaks plain HTTP on PORT.
+  const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
 
   const cookieStore = await cookies()
   const allCookies = cookieStore.getAll()
@@ -54,9 +54,9 @@ export async function GET(
         ...allCookies.map((c) => ({
           name: c.name,
           value: c.value,
-          domain: url.hostname,
+          domain: "localhost",
           path: "/",
-          secure: url.protocol === "https:",
+          secure: false,
         }))
       )
     }

@@ -30,10 +30,10 @@ export async function GET(
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const url = new URL(req.url)
-  const baseUrl = `${url.protocol}//${url.host}`
   const entity = url.searchParams.get("entity") ?? "Group"
   const content = url.searchParams.get("content") ?? "Course"
-  const printUrl = `${baseUrl}/print/course/${courseId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
+  const port = process.env.PORT ?? "3000"
+  const printUrl = `http://localhost:${port}/print/course/${courseId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}`
 
   const cookieStore = await cookies()
   const allCookies = cookieStore.getAll()
@@ -52,9 +52,9 @@ export async function GET(
         ...allCookies.map((c) => ({
           name: c.name,
           value: c.value,
-          domain: url.hostname,
+          domain: "localhost",
           path: "/",
-          secure: url.protocol === "https:",
+          secure: false,
         }))
       )
     }
