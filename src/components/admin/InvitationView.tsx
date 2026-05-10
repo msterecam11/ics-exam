@@ -1,10 +1,10 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Printer, Download } from "lucide-react"
+import { Printer, Download, Loader2, ExternalLink } from "lucide-react"
 import QRCode from "@/components/shared/QRCode"
 import Image from "next/image"
 
@@ -15,9 +15,41 @@ interface Props {
 
 export default function InvitationView({ exam, examUrl }: Props) {
   const printRef = useRef<HTMLDivElement>(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   function handlePrint() {
     window.print()
+  }
+
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true)
+    try {
+      const [{ pdf }, { InvitationPDF }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("@/components/pdf/InvitationPDF"),
+      ])
+      const blob = await pdf(
+        (await import("react")).default.createElement(InvitationPDF, {
+          examTitle   : exam.title,
+          description : exam.description ?? "",
+          courseName  : exam.courses?.name ?? "",
+          groupName   : exam.courses?.groups?.name ?? "",
+          password    : exam.password ?? "",
+          duration    : exam.duration_minutes ?? 0,
+          passingScore: exam.passing_score ?? 0,
+          examUrl,
+          date        : new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
+        }) as any
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a   = document.createElement("a")
+      a.href    = url
+      a.download = `${exam.title.replace(/\s+/g, "-")}-invitation.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   return (
@@ -25,11 +57,15 @@ export default function InvitationView({ exam, examUrl }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">Exam Invitation</h2>
-          <p className="text-muted-foreground text-sm">Print or share this with candidates</p>
+          <p className="text-muted-foreground text-sm">Print or download this invitation for candidates</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
+          </Button>
+          <Button onClick={handleDownloadPdf} disabled={downloadingPdf} className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
+            {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Download PDF
           </Button>
         </div>
       </div>
@@ -107,9 +143,14 @@ export default function InvitationView({ exam, examUrl }: Props) {
                 <div className="bg-white border-2 border-[#1B4F8A] rounded-2xl p-4">
                   <QRCode url={examUrl} size={180} />
                 </div>
-                <p className="text-xs text-muted-foreground text-center max-w-[140px] break-all">
-                  {examUrl.replace("https://", "")}
-                </p>
+                <a
+                  href={examUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-medium text-[#1B4F8A] hover:underline border border-[#1B4F8A] rounded-lg px-3 py-1.5"
+                >
+                  <ExternalLink className="h-3 w-3" /> Open Exam Link
+                </a>
               </div>
             </div>
 
