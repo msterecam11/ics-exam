@@ -15,8 +15,8 @@ const connectSrc = ["'self'", supabaseHost && `https://${supabaseHost}`, supabas
 // In development, React (Turbopack) requires 'unsafe-eval' for hot reload & debugging.
 // In production it is never needed and is intentionally omitted.
 const scriptSrc = isDev
-  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com"
-  : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com"
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://challenges.cloudflare.com"
+  : "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com"
 
 const csp = [
   "default-src 'self'",
