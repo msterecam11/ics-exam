@@ -133,16 +133,32 @@ export default function CandidateReportPage() {
     toast.success("Expert report generated")
   }
 
-  function downloadPDF() {
-    const win = window.open(
-      `/print/candidate/${candidateId}?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}&autoprint=1`,
-      "_blank"
-    )
-    if (!win) {
-      toast.error("Pop-up blocked — please allow pop-ups for this site")
-      return
+  async function downloadPDF() {
+    toast.info("Generating PDF — this may take a few seconds…")
+    try {
+      const res = await fetch(
+        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}`
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? "PDF generation failed. Please try again.")
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const cd = res.headers.get("Content-Disposition") ?? ""
+      const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)
+      a.download = match ? decodeURIComponent(match[1]) : "Candidate-Report.pdf"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success("PDF downloaded successfully")
+    } catch {
+      toast.error("Failed to download PDF. Please try again.")
     }
-    toast.info("Print dialog will open automatically — choose 'Save as PDF'")
   }
 
   if (loading) {

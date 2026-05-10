@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Printer, Eye } from "lucide-react"
+import { Download, Eye, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Props {
@@ -10,13 +11,35 @@ interface Props {
 }
 
 export default function GroupReportButton({ groupId }: Props) {
-  function openPrint() {
-    const win = window.open(`/print/group/${groupId}?autoprint=1`, "_blank")
-    if (!win) {
-      toast.error("Pop-up blocked — please allow pop-ups for this site")
-      return
+  const [downloading, setDownloading] = useState(false)
+
+  async function downloadPDF() {
+    setDownloading(true)
+    toast.info("Generating PDF — this may take a few seconds…")
+    try {
+      const res = await fetch(`/api/reports/group/${groupId}/pdf`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? "PDF generation failed. Please try again.")
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const cd = res.headers.get("Content-Disposition") ?? ""
+      const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)
+      a.download = match ? decodeURIComponent(match[1]) : "Group-Report.pdf"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success("PDF downloaded successfully")
+    } catch {
+      toast.error("Failed to download PDF. Please try again.")
+    } finally {
+      setDownloading(false)
     }
-    toast.info("Print dialog will open automatically — choose 'Save as PDF'")
   }
 
   return (
@@ -31,11 +54,16 @@ export default function GroupReportButton({ groupId }: Props) {
       <Button
         size="sm"
         variant="outline"
-        onClick={openPrint}
+        onClick={downloadPDF}
+        disabled={downloading}
         className="gap-2 border-[#1B4F8A] text-[#1B4F8A] hover:bg-blue-50"
       >
-        <Printer className="h-4 w-4" />
-        Save as PDF
+        {downloading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
+        {downloading ? "Generating…" : "Download PDF"}
       </Button>
     </div>
   )
