@@ -9,10 +9,9 @@ export async function getBrowser() {
   if (process.env.NODE_ENV === "production") {
     const chromium = await import("@sparticuz/chromium")
     return puppeteer.default.launch({
-      args            : chromium.default.args,
-      defaultViewport : chromium.default.defaultViewport,
-      executablePath  : await chromium.default.executablePath(),
-      headless        : true,
+      args          : chromium.default.args,
+      executablePath: await chromium.default.executablePath(),
+      headless      : true,
     })
   }
 
