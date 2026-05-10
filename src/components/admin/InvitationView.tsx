@@ -46,8 +46,10 @@ export default function InvitationView({ exam, examUrl }: Props) {
       const a   = document.createElement("a")
       a.href    = url
       a.download = `${exam.title.replace(/\s+/g, "-")}-invitation.pdf`
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err) {
       console.error("PDF generation failed:", err)
       toast.error(`PDF failed: ${err instanceof Error ? err.message : String(err)}`)
