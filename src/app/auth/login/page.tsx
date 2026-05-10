@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Script from "next/script"
 import { Input } from "@/components/ui/input"
@@ -20,13 +20,22 @@ declare global {
 }
 
 export default function LoginPage() {
-  const router = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
   const [email,           setEmail]           = useState("")
   const [password,        setPassword]        = useState("")
   const [error,           setError]           = useState("")
+  const [info,            setInfo]            = useState("")
   const [loading,         setLoading]         = useState(false)
   const [turnstileToken,  setTurnstileToken]  = useState<string | null>(null)
   const [turnstileReady,  setTurnstileReady]  = useState(false)
+
+  // Show friendly message if redirected due to inactivity
+  useEffect(() => {
+    if (searchParams.get("reason") === "inactivity") {
+      setInfo("You were signed out due to 30 minutes of inactivity. Please sign in again.")
+    }
+  }, [searchParams])
 
   // Register the global callback that Turnstile calls when verified
   useEffect(() => {
@@ -117,6 +126,12 @@ export default function LoginPage() {
                 <h1 className="text-2xl font-bold text-[#1B4F8A]">Admin Portal</h1>
                 <p className="text-muted-foreground text-sm mt-1">Sign in to manage exams</p>
               </div>
+
+              {info && (
+                <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-800">
+                  <AlertDescription>{info}</AlertDescription>
+                </Alert>
+              )}
 
               {error && (
                 <Alert variant="destructive" className="mb-4">

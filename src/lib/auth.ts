@@ -138,4 +138,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   pages: { signIn: "/auth/login" },
+
+  // Absolute session lifetime — forces re-login after 8 hours regardless of activity
+  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
 })
