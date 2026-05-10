@@ -1,3 +1,5 @@
+export const maxDuration = 60 // Vercel: extend timeout to 60s for Puppeteer
+
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"

@@ -7,6 +7,20 @@ import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
+// Retry with exponential backoff — handles Groq rate limits gracefully
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      const isRateLimit = err?.status === 429 || err?.message?.includes("rate")
+      if (attempt === retries || !isRateLimit) throw err
+      await new Promise((r) => setTimeout(r, delayMs * Math.pow(2, attempt)))
+    }
+  }
+  throw new Error("Max retries exceeded")
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ candidateId: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -147,21 +161,21 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 
 Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.3,
-    max_tokens: 800,
-  })
-
-  const raw = completion.choices[0]?.message?.content?.trim() ?? ""
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-
   let narrativeObj: any
   try {
-    narrativeObj = JSON.parse(cleaned)
+    const completion = await withRetry(() =>
+      groq.chat.completions.create({
+        model      : "llama-3.3-70b-versatile",
+        messages   : [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens : 800,
+      })
+    )
+    const raw     = completion.choices[0]?.message?.content?.trim() ?? ""
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+    narrativeObj  = JSON.parse(cleaned)
   } catch {
-    return NextResponse.json({ error: "AI returned invalid response" }, { status: 500 })
+    return NextResponse.json({ error: "AI service temporarily unavailable. Please try again in a moment." }, { status: 503 })
   }
 
   const narrativeStr = JSON.stringify(narrativeObj)
