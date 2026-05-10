@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { cookies } from "next/headers"
-import puppeteer from "puppeteer"
+import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
 
 export async function GET(
@@ -31,10 +31,7 @@ export async function GET(
   const cookieStore = await cookies()
   const allCookies = cookieStore.getAll()
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  })
+  const browser = await getBrowser()
 
   try {
     const page = await browser.newPage()
