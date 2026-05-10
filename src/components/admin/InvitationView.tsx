@@ -1,11 +1,10 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Printer, Download, Loader2, ExternalLink } from "lucide-react"
-import { toast } from "sonner"
+import { Printer, Download, ExternalLink } from "lucide-react"
 import QRCode from "@/components/shared/QRCode"
 import Image from "next/image"
 
@@ -16,47 +15,11 @@ interface Props {
 
 export default function InvitationView({ exam, examUrl }: Props) {
   const printRef = useRef<HTMLDivElement>(null)
-  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   function handlePrint() {
     window.print()
   }
 
-  async function handleDownloadPdf() {
-    setDownloadingPdf(true)
-    try {
-      const [{ pdf }, { InvitationPDF }] = await Promise.all([
-        import("@react-pdf/renderer"),
-        import("@/components/pdf/InvitationPDF"),
-      ])
-      const blob = await pdf(
-        (await import("react")).default.createElement(InvitationPDF, {
-          examTitle   : exam.title,
-          description : exam.description ?? "",
-          courseName  : exam.courses?.name ?? "",
-          groupName   : exam.courses?.groups?.name ?? "",
-          password    : exam.password ?? "",
-          duration    : exam.duration_minutes ?? 0,
-          passingScore: exam.passing_score ?? 0,
-          examUrl,
-          date        : new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
-        }) as any
-      ).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a   = document.createElement("a")
-      a.href    = url
-      a.download = `${exam.title.replace(/\s+/g, "-")}-invitation.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (err) {
-      console.error("PDF generation failed:", err)
-      toast.error(`PDF failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setDownloadingPdf(false)
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -69,10 +32,13 @@ export default function InvitationView({ exam, examUrl }: Props) {
           <Button variant="outline" onClick={handlePrint} className="gap-2">
             <Printer className="h-4 w-4" /> Print
           </Button>
-          <Button onClick={handleDownloadPdf} disabled={downloadingPdf} className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-            {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <a
+            href={`/api/exams/${exam.id}/invitation/pdf`}
+            className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-[#1B4F8A] hover:bg-[#163f6e] text-white"
+          >
+            <Download className="h-4 w-4" />
             Download PDF
-          </Button>
+          </a>
         </div>
       </div>
 
