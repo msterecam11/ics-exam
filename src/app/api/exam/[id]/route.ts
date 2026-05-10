@@ -34,7 +34,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const { data: exam } = await db
     .from("exams")
-    .select("id, title, description, status, language, courses(name, groups(name))")
+    .select("id, title, description, status, language, duration_minutes, passing_score, courses(name, groups(name))")
     .eq("id", id)
     .single()
 

@@ -50,7 +50,7 @@ export default function InvitationView({ exam, examUrl }: Props) {
       URL.revokeObjectURL(url)
     } catch (err) {
       console.error("PDF generation failed:", err)
-      toast.error("Failed to generate PDF. Please try again.")
+      toast.error(`PDF failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setDownloadingPdf(false)
     }
