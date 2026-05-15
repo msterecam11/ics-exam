@@ -67,7 +67,7 @@ export default function ExamLandingPage({ params }: { params: Promise<{ examId: 
     )
   }
 
-  if (notFound || (examInfo && examInfo.status === "closed")) {
+  if (notFound || (examInfo && examInfo.status !== "active")) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1B4F8A] to-[#4B7EC8] flex items-center justify-center p-4">
         <Card className="w-full max-w-md text-center">

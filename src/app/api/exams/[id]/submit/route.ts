@@ -104,18 +104,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       answerJson = rawAnswer
       const submittedPairs: { left_id: string; right_id: string }[] = rawAnswer?.pairs ?? []
       const correctPairs = question.matching_pairs ?? []
-      let correct = 0
-      correctPairs.forEach((pair: any) => {
-        const found = submittedPairs.find(
-          (p) => p.left_id === pair.id && p.right_id === pair.id
-        )
-        if (found) correct++
-      })
-      // Match by left_item position → right_item
+      // A pair is correct when left_id === right_id (candidate picked the right side of the same pair)
       const pairMap = new Map(correctPairs.map((p: any) => [p.id, p.right_item]))
       let correctCount = 0
       submittedPairs.forEach((p) => {
-        const expectedRight = pairMap.get(p.left_id)
+        const expectedRight  = pairMap.get(p.left_id)
         const submittedRight = correctPairs.find((cp: any) => cp.id === p.right_id)?.right_item
         if (expectedRight && expectedRight === submittedRight) correctCount++
       })

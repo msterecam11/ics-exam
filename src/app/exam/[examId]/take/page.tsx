@@ -71,21 +71,37 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
     if (auto) toast.info("Time's up! Submitting your exam...")
 
     const id = examIdRef.current
-    const res = await fetch(`/api/exams/${id}/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidate_id: candidateIdRef.current, answers }),
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30_000) // 30 s timeout
 
-    setSubmitting(false)
+    try {
+      const res = await fetch(`/api/exams/${id}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: candidateIdRef.current, answers }),
+        signal: controller.signal,
+      })
 
-    if (res.ok) {
-      const result = await res.json()
-      sessionStorage.setItem(`result_${id}`, JSON.stringify(result))
-      router.push(`/exam/${id}/results?candidate=${candidateIdRef.current}`)
-    } else {
+      clearTimeout(timeout)
+      setSubmitting(false)
+
+      if (res.ok) {
+        const result = await res.json()
+        sessionStorage.setItem(`result_${id}`, JSON.stringify(result))
+        router.push(`/exam/${id}/results?candidate=${candidateIdRef.current}`)
+      } else {
+        submitted.current = false
+        toast.error("Submission failed. Please try again.")
+      }
+    } catch (err: any) {
+      clearTimeout(timeout)
+      setSubmitting(false)
       submitted.current = false
-      toast.error("Submission failed. Please try again.")
+      if (err?.name === "AbortError") {
+        toast.error("Submission timed out. Please check your connection and try again.")
+      } else {
+        toast.error("Submission failed. Please try again.")
+      }
     }
   }, [answers, router])
 
