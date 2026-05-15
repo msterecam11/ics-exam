@@ -8,7 +8,7 @@ import AdminResultsView from "@/components/admin/AdminResultsView"
 async function getData(id: string) {
   const [{ data: exam }, { data: candidates }] = await Promise.all([
     db.from("exams").select("*, courses(name, groups(name))").eq("id", id).single(),
-    db.from("candidates").select("*").eq("exam_id", id).order("submitted_at", { ascending: false }),
+    db.from("candidates").select("*, tab_switches, fullscreen_exits, right_click_attempts, copy_paste_attempts").eq("exam_id", id).order("submitted_at", { ascending: false }),
   ])
   return { exam, candidates }
 }

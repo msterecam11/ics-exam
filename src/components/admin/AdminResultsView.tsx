@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText } from "lucide-react"
+import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText, ShieldAlert } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -131,6 +131,7 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                     <TableHead>Score</TableHead>
                     <TableHead>Result</TableHead>
                     <TableHead>Released</TableHead>
+                    <TableHead>Security</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -172,6 +173,17 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                           ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">Yes</Badge>
                           : <Badge variant="outline" className="text-xs">No</Badge>
                         }
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const switches = (c.tab_switches as any[])?.length ?? 0
+                          const exits = c.fullscreen_exits ?? 0
+                          const total = switches + exits
+                          if (!c.submitted_at) return <span className="text-xs text-muted-foreground">—</span>
+                          if (total === 0) return <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs gap-1"><ShieldAlert className="h-3 w-3" />Clean</Badge>
+                          if (total <= 2) return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs gap-1"><ShieldAlert className="h-3 w-3" />{switches}t {exits}f</Badge>
+                          return <Badge className="bg-red-100 text-red-700 border-0 text-xs gap-1"><ShieldAlert className="h-3 w-3" />{switches}t {exits}f</Badge>
+                        })()}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
