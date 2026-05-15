@@ -7,7 +7,7 @@ import React from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, Clock, Loader2, Trophy, Lock, Download, QrCode } from "lucide-react"
+import { CheckCircle2, XCircle, Clock, Loader2, Trophy, Lock, Download, QrCode, FileText } from "lucide-react"
 import { Suspense } from "react"
 import QRCode from "qrcode"
 import type { ReceiptStatus } from "@/components/ReceiptPDF"
@@ -316,36 +316,34 @@ function ResultContent({ examId }: { examId: string }) {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          {
-            label : "Correct",
-            value : answers?.filter((a: any) => a.score_achieved > 0).length ?? 0,
-            icon  : CheckCircle2,
-            color : "text-emerald-600",
-          },
-          {
-            label : "Incorrect",
-            value : answers?.filter((a: any) => a.score_achieved === 0).length ?? 0,
-            icon  : XCircle,
-            color : "text-red-500",
-          },
-          {
-            label : "Total",
-            value : answers?.length ?? 0,
-            icon  : Clock,
-            color : "text-[#1B4F8A]",
-          },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <Card key={label}>
-            <CardContent className="py-4 text-center">
-              <Icon className={`h-5 w-5 mx-auto mb-1 ${color}`} />
-              <p className={`text-2xl font-bold ${color}`}>{value}</p>
-              <p className="text-xs text-muted-foreground">{label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {(() => {
+        const timeSpent = (() => {
+          if (!candidate.started_at || !candidate.submitted_at) return "—"
+          const secs = Math.round((new Date(candidate.submitted_at).getTime() - new Date(candidate.started_at).getTime()) / 1000)
+          if (secs < 60) return `${secs}s`
+          const m = Math.floor(secs / 60), s = secs % 60
+          return s > 0 ? `${m}m ${s}s` : `${m}m`
+        })()
+        const stats = [
+          { label: "Correct",   value: String(answers?.filter((a: any) => (a.score_achieved ?? 0) > 0).length ?? 0), icon: CheckCircle2, color: "text-emerald-600" },
+          { label: "Incorrect", value: String(answers?.filter((a: any) => (a.score_achieved ?? 0) === 0).length ?? 0), icon: XCircle,      color: "text-red-500" },
+          { label: "Time Spent",value: timeSpent, icon: Clock, color: "text-[#1B4F8A]" },
+          { label: "Questions", value: String(answers?.length ?? 0), icon: FileText, color: "text-purple-600" },
+        ]
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {stats.map(({ label, value, icon: Icon, color }) => (
+              <Card key={label}>
+                <CardContent className="py-4 text-center">
+                  <Icon className={`h-5 w-5 mx-auto mb-1 ${color}`} />
+                  <p className={`text-2xl font-bold ${color}`}>{value}</p>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Answer review */}
       <div>

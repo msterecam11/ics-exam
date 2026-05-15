@@ -48,6 +48,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       total_score : candidate.total_score,
       passed      : candidate.passed,
       submitted_at: candidate.submitted_at,
+      started_at  : candidate.started_at,
       exams       : {
         title        : (candidate.exams as any)?.title        ?? null,
         passing_score: (candidate.exams as any)?.passing_score ?? null,
