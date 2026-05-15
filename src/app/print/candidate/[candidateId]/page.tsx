@@ -5,7 +5,7 @@ import Image from "next/image"
 import ScoreBar from "@/components/reports/ScoreBar"
 import {
   BrainCircuit, CheckCircle2, XCircle, MinusCircle,
-  Trophy, Target, TrendingUp, Medal, Lightbulb,
+  Trophy, Target, TrendingUp, Medal, Lightbulb, ShieldAlert,
 } from "lucide-react"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 
@@ -581,65 +581,67 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
         {hasSecurity && (() => {
           const sec = narrative.security_analysis
           const riskColors: Record<string, { bg: string; text: string; border: string; label: string }> = {
-            clean:  { bg: "#d1fae5", text: "#065f46", border: "#a7f3d0", label: "Clean" },
-            medium: { bg: "#fef3c7", text: "#92400e", border: "#fde68a", label: "Medium Risk" },
-            high:   { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5", label: "High Risk" },
+            clean:  { bg: "#d1fae5", text: "#065f46", border: "#a7f3d0", label: "✓ Clean" },
+            medium: { bg: "#fef3c7", text: "#92400e", border: "#fde68a", label: "⚠ Medium Risk" },
+            high:   { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5", label: "⚠ High Risk" },
           }
           const rc = riskColors[sec.risk_level ?? "clean"] ?? riskColors.clean
-          const events = [
-            { label: "Tab Switches",         value: sec.tab_switches ?? 0 },
-            { label: "Fullscreen Exits",     value: sec.fullscreen_exits ?? 0 },
-            { label: "Right-click Attempts", value: sec.right_click_attempts ?? 0 },
-            { label: "Copy/Cut Attempts",    value: sec.copy_paste_attempts ?? 0 },
-          ]
           const totalAway = sec.total_away_seconds ?? 0
           const awayFmt = totalAway < 60
             ? `${totalAway}s`
             : `${Math.floor(totalAway / 60)}m ${totalAway % 60}s`
+          const chips = [
+            { label: "Tab Switches",         val: sec.tab_switches ?? 0,         color: (sec.tab_switches ?? 0) > 2 ? "bg-red-50 text-red-700" : (sec.tab_switches ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" },
+            { label: "Fullscreen Exits",     val: sec.fullscreen_exits ?? 0,     color: (sec.fullscreen_exits ?? 0) > 2 ? "bg-red-50 text-red-700" : (sec.fullscreen_exits ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" },
+            { label: "Right-click Attempts", val: sec.right_click_attempts ?? 0, color: (sec.right_click_attempts ?? 0) > 5 ? "bg-red-50 text-red-700" : (sec.right_click_attempts ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" },
+            { label: "Copy/Cut Attempts",    val: sec.copy_paste_attempts ?? 0,  color: (sec.copy_paste_attempts ?? 0) > 3 ? "bg-red-50 text-red-700" : (sec.copy_paste_attempts ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700" },
+            ...(totalAway > 0 ? [{ label: "Time Away", val: awayFmt, color: "bg-slate-100 text-slate-700" }] : []),
+          ]
           return (
             <Page>
               <PageHeader title="Security Analysis" subtitle={exam?.title} today={today} />
-              <div className="px-12 py-7 space-y-6">
+              <div className="px-12 py-7 space-y-5">
 
-                {/* Risk badge + event counts */}
-                <div className="avoid-break">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Exam Integrity Overview</p>
-                    <span className="px-3 py-1 rounded-full text-xs font-bold"
-                      style={{ background: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
-                      ⚠ {rc.label}
+                {/* Title row — matches section page style */}
+                <div className="flex items-start justify-between gap-4 pb-4 border-b-2 border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] bg-blue-50 px-2 py-0.5 rounded-full">
+                      Integrity Report
                     </span>
+                    <h2 className="text-xl font-bold text-slate-800 mt-2">Exam Integrity Overview</h2>
                   </div>
-                  <div className="grid grid-cols-4 gap-3">
-                    {events.map(({ label, value }) => (
-                      <div key={label} className="border border-slate-100 rounded-xl p-4 text-center bg-slate-50/60">
-                        <p className="text-2xl font-extrabold text-slate-700">{value}</p>
-                        <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{label}</p>
-                      </div>
-                    ))}
+                  <div className="px-4 py-2 rounded-xl shrink-0 text-center"
+                    style={{ background: rc.bg, border: `1.5px solid ${rc.border}` }}>
+                    <span className="text-sm font-extrabold" style={{ color: rc.text }}>{rc.label}</span>
                   </div>
-                  {totalAway > 0 && (
-                    <p className="text-xs text-slate-400 mt-3 text-center">
-                      Total time away from exam window: <strong style={{ color: "#334155" }}>{awayFmt}</strong>
-                    </p>
-                  )}
                 </div>
 
-                {/* AI Behavioral Assessment */}
-                <div className="avoid-break rounded-xl overflow-hidden border border-red-100">
-                  <div className="px-5 py-3 flex items-center gap-2" style={{ background: "#b91c1c" }}>
-                    <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.9)" }}>
-                      AI Behavioral Assessment
-                    </p>
-                  </div>
-                  <div className="px-5 py-4" style={{ background: "rgba(254,242,242,0.6)" }}>
-                    <p className="text-sm leading-relaxed" style={{ color: "#7f1d1d" }}>{sec.behavioral_assessment}</p>
+                {/* Event chips — same style as section stat chips */}
+                <div className="flex gap-2 flex-wrap avoid-break">
+                  {chips.map(({ label, val, color }) => (
+                    <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
+                      <p className="text-xs font-bold">{val}</p>
+                      <p className="text-[9px] uppercase tracking-wide opacity-70">{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* AI Behavioral Assessment — same style as Expert Section Analysis */}
+                <div className="avoid-break space-y-3">
+                  <div className="rounded-xl overflow-hidden border border-blue-100">
+                    <div className="bg-[#1B4F8A] px-4 py-2 flex items-center gap-2">
+                      <ShieldAlert className="h-3.5 w-3.5 text-white/70" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">AI Behavioral Assessment</p>
+                    </div>
+                    <div className="bg-blue-50/60 px-4 py-4">
+                      <p className="text-sm text-blue-900 leading-relaxed">{sec.behavioral_assessment}</p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Disclaimer */}
-                <div className="avoid-break border border-slate-100 rounded-xl p-4 text-center" style={{ background: "rgba(248,250,252,0.4)" }}>
-                  <p className="text-[10px] leading-relaxed max-w-lg mx-auto" style={{ color: "#94a3b8" }}>
+                <div className="avoid-break border border-slate-100 rounded-xl p-4 bg-slate-50/40 text-center">
+                  <p className="text-[10px] text-slate-400 leading-relaxed max-w-lg mx-auto">
                     This assessment is AI-generated based on behavioral signals recorded during the exam. It is intended as an investigative aid only and should not be used as the sole basis for any disciplinary action. All findings should be reviewed in context by a qualified supervisor.
                   </p>
                 </div>
