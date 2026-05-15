@@ -141,7 +141,7 @@ export default function CandidateReportPage() {
   async function downloadPDF() {
     toast.info("Generating PDF — this may take a few seconds…")
     try {
-      const hasSec = !!(data?.narrative?.security_analysis)
+      const hasSec = includeSecurity && !!(data?.narrative?.security_analysis)
       const res = await fetch(
         `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}${hasSec ? "&security=1" : ""}`
       )
