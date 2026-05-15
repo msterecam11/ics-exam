@@ -225,18 +225,32 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
     return () => document.removeEventListener("contextmenu", onContextMenu)
   }, [loading, logSecurity])
 
-  // Disable copy / cut / paste
+  // Disable copy / cut / paste (desktop + mobile keyboard shortcuts)
   useEffect(() => {
     if (loading) return
     function onCopy(e: ClipboardEvent) {
       e.preventDefault()
       logSecurity("copy_paste")
     }
+    function onPaste(e: ClipboardEvent) {
+      e.preventDefault()
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      const blocked = (e.ctrlKey || e.metaKey) && ["c", "v", "x", "a"].includes(e.key.toLowerCase())
+      if (blocked) {
+        e.preventDefault()
+        if (e.key.toLowerCase() !== "v") logSecurity("copy_paste")
+      }
+    }
     document.addEventListener("copy", onCopy)
     document.addEventListener("cut", onCopy)
+    document.addEventListener("paste", onPaste)
+    document.addEventListener("keydown", onKeyDown)
     return () => {
       document.removeEventListener("copy", onCopy)
       document.removeEventListener("cut", onCopy)
+      document.removeEventListener("paste", onPaste)
+      document.removeEventListener("keydown", onKeyDown)
     }
   }, [loading, logSecurity])
 
@@ -319,7 +333,7 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
         </div>
       </header>
 
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 select-none" style={{ WebkitUserSelect: "none", userSelect: "none" }}>
         {question && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -346,7 +360,9 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
                   <MatchingQuestion question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} />
                 )}
                 {question.type === "open_ended" && (
-                  <OpenEndedQuestion question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} />
+                  <div style={{ userSelect: "text", WebkitUserSelect: "text" }}>
+                    <OpenEndedQuestion question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} />
+                  </div>
                 )}
               </CardContent>
             </Card>
