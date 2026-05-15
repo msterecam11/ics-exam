@@ -56,8 +56,10 @@ async function downloadReceipt({
   const a   = document.createElement("a")
   a.href     = url
   a.download = `ICS-Receipt-${candidateName.replace(/\s+/g, "-")}.pdf`
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
 // ── Pending screen ────────────────────────────────────────────────────────────
@@ -99,6 +101,9 @@ function PendingScreen({
         resultUrl,
         status        : "pending",
       })
+    } catch (err) {
+      console.error("Receipt failed:", err)
+      alert(`Receipt failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setDownloading(false)
     }
@@ -219,6 +224,9 @@ function ScoreReceiptButton({
         status        : candidate.passed ? "passed" : "failed",
         score         : candidate.total_score ?? undefined,
       })
+    } catch (err) {
+      console.error("Receipt failed:", err)
+      alert(`Receipt failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setDownloading(false)
     }
