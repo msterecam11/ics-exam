@@ -15,9 +15,8 @@ export default function OpenEndedQuestion({ question, value, onChange }: Props) 
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Badge className="bg-purple-100 text-purple-700 border-0 gap-1 text-xs">
-          <Sparkles className="h-3 w-3" /> AI-scored
+          <Sparkles className="h-3 w-3" /> Expert-scored
         </Badge>
-        <span className="text-xs text-muted-foreground">Your response will be evaluated by AI</span>
       </div>
       <Textarea
         placeholder="Write your answer here..."

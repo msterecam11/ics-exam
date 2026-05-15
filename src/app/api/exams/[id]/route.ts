@@ -36,11 +36,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params
   const body = await req.json()
-  const { title, description, duration_minutes, passing_score, show_results, language, status } = body
+  const { title, description, duration_minutes, passing_score, show_results, language, status, password } = body
 
   const { data, error } = await db
     .from("exams")
-    .update({ title, description, duration_minutes, passing_score, show_results, language, status })
+    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...(password ? { password } : {}) })
     .eq("id", id)
     .select()
     .single()

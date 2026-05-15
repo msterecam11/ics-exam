@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, XCircle, Clock, Loader2, Trophy, Lock, Download, QrCode, FileText } from "lucide-react"
+import AnswerReview from "./AnswerReview"
 import { Suspense } from "react"
 import QRCode from "qrcode"
 import type { ReceiptStatus } from "@/components/ReceiptPDF"
@@ -345,52 +346,7 @@ function ResultContent({ examId }: { examId: string }) {
         )
       })()}
 
-      {/* Answer review */}
-      <div>
-        <h3 className="font-semibold text-base mb-3">Answer Review</h3>
-        <div className="space-y-3">
-          {answers?.map((answer: any, i: number) => {
-            const q       = answer.questions
-            const correct = (answer.score_achieved ?? 0) >= q.score
-            const partial = (answer.score_achieved ?? 0) > 0 && !correct
-
-            return (
-              <Card
-                key={answer.id}
-                className={`border-l-4 ${correct ? "border-l-emerald-400" : partial ? "border-l-amber-400" : "border-l-red-400"}`}
-              >
-                <CardContent className="py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs text-muted-foreground font-medium">Q{i + 1}</span>
-                        <Badge variant="outline" className="text-xs">{q.type.replace("_", " ")}</Badge>
-                      </div>
-                      <p className="text-sm font-medium">{q.text}</p>
-
-                      {q.type === "open_ended" && (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-xs text-muted-foreground">Your answer:</p>
-                          <p className="text-sm bg-slate-50 p-2 rounded">{answer.answer_text || "(no answer)"}</p>
-                          {answer.ai_justification && (
-                            <p className="text-xs text-purple-600 italic">AI: {answer.ai_justification}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`font-bold text-sm ${correct ? "text-emerald-600" : partial ? "text-amber-600" : "text-red-500"}`}>
-                        {answer.score_achieved ?? 0}/{q.score}
-                      </p>
-                      <p className="text-xs text-muted-foreground">pts</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      </div>
+      <AnswerReview answers={answers ?? []} />
     </div>
   )
 }
