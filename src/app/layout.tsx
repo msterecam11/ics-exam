@@ -4,8 +4,8 @@ import { Toaster } from "@/components/ui/sonner"
 import Providers from "@/components/Providers"
 
 export const metadata: Metadata = {
-  title: "ICS Aviation — Exam Platform",
-  description: "Integrated Consulting Services — Online Examination System",
+  title: "ICS Hub",
+  description: "Integrated Consulting Services — Training & Assessment Platform",
   icons: {
     icon: "/icon/icon-dark-blue.png",
     apple: "/icon/icon-dark-blue.png",

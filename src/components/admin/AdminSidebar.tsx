@@ -9,8 +9,8 @@ import {
   BookOpen,
   FileText,
   BarChart3,
-  Settings,
   ChevronRight,
+  LayoutGrid,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -67,6 +67,17 @@ export default function AdminSidebar({ user, inSheet = false }: Props) {
           )
         })}
       </nav>
+
+      {/* Back to Hub */}
+      <div className="px-3 pb-2">
+        <Link
+          href="/hub"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+        >
+          <LayoutGrid className="h-4 w-4 shrink-0" />
+          <span>Back to Hub</span>
+        </Link>
+      </div>
 
       {/* User info */}
       <div className="px-4 py-4 border-t border-white/10">

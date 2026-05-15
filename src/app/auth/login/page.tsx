@@ -101,7 +101,7 @@ function LoginForm() {
       }
       setTurnstileToken(null)
     } else {
-      router.push("/dashboard")
+      router.push("/hub")
     }
   }
 
@@ -131,8 +131,8 @@ function LoginForm() {
           <Card className="shadow-2xl border-0">
             <CardContent className="pt-8 pb-8 px-8">
               <div className="text-center mb-6">
-                <h1 className="text-2xl font-bold text-[#1B4F8A]">Admin Portal</h1>
-                <p className="text-muted-foreground text-sm mt-1">Sign in to manage exams</p>
+                <h1 className="text-2xl font-bold text-[#1B4F8A]">ICS Hub</h1>
+                <p className="text-muted-foreground text-sm mt-1">Sign in to access the platform</p>
               </div>
 
               {info && (
