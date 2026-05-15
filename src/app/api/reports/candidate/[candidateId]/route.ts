@@ -184,6 +184,9 @@ Be specific, professional, constructive, and base all insights strictly on the s
   }
 
   // ── Security AI analysis (optional) ───────────────────────────────────────
+  // Always clear it first so re-generating without checkbox removes old data
+  delete narrativeObj.security_analysis
+
   if (includeSecurity) {
     const tabSwitches: { timestamp: string; duration: number | null }[] = (candidate as any).tab_switches ?? []
     const fullscreenExits: number = (candidate as any).fullscreen_exits ?? 0

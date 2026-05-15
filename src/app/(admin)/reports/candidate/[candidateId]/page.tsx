@@ -204,7 +204,7 @@ export default function CandidateReportPage() {
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!narrative
-  const hasSecurity = !!narrative?.security_analysis
+  const hasSecurity = includeSecurity && !!narrative?.security_analysis
   const totalPages = 2 + sectionsWithData.length + (hasAI ? 1 : 0) + (hasSecurity ? 1 : 0)
 
   return (
