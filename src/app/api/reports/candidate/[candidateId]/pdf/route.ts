@@ -29,11 +29,12 @@ export async function GET(
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const url = new URL(req.url)
-  const entity = url.searchParams.get("entity") ?? "Group"
-  const content = url.searchParams.get("content") ?? "Course"
-  const port = process.env.PORT ?? "3000"
+  const entity  = url.searchParams.get("entity")   ?? "Group"
+  const content = url.searchParams.get("content")  ?? "Course"
+  const security = url.searchParams.get("security") ?? ""
+  const port   = process.env.PORT ?? "3000"
   const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}`
+  const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}${security === "1" ? "&security=1" : ""}`
 
   const browser = await getBrowser()
 
