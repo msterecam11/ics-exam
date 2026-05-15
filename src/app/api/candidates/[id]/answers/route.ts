@@ -36,7 +36,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     .from("candidate_answers")
     .select("*, questions(*, choices(*), matching_pairs(*), ordering_items(*))")
     .eq("candidate_id", id)
-    .order("questions.order_index")
+
+  const sorted = (answers ?? []).sort(
+    (a: any, b: any) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0)
+  )
 
   return NextResponse.json({
     visible  : true,
@@ -50,6 +53,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         passing_score: (candidate.exams as any)?.passing_score ?? null,
       },
     },
-    answers,
+    answers: sorted,
   })
 }
