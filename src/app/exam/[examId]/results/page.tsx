@@ -173,18 +173,13 @@ function PendingScreen({
           )}
 
           {/* Download button */}
-          <Button
-            onClick={handleDownload}
-            disabled={downloading || !qrDataUrl}
-            className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2 w-full max-w-xs"
+          <a
+            href={`/api/candidates/${candidateId}/receipt/pdf`}
+            className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-[#1B4F8A] hover:bg-[#163f6e] text-white w-full max-w-xs"
           >
-            {downloading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {downloading ? "Generating receipt…" : "Download PDF Receipt"}
-          </Button>
+            <Download className="h-4 w-4" />
+            Download PDF Receipt
+          </a>
 
           <p className="text-[11px] text-muted-foreground max-w-xs">
             The receipt includes the QR code and serves as proof of submission.
@@ -233,19 +228,13 @@ function ScoreReceiptButton({
   }
 
   return (
-    <Button
-      onClick={handleDownload}
-      disabled={downloading}
-      variant="outline"
-      className="gap-2 border-[#1B4F8A]/30 text-[#1B4F8A] hover:bg-[#1B4F8A]/5"
+    <a
+      href={`/api/candidates/${candidateId}/receipt/pdf`}
+      className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-[#1B4F8A]/30 text-[#1B4F8A] hover:bg-[#1B4F8A]/5"
     >
-      {downloading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Download className="h-4 w-4" />
-      )}
-      {downloading ? "Generating…" : "Download Receipt"}
-    </Button>
+      <Download className="h-4 w-4" />
+      Download Receipt
+    </a>
   )
 }
 
