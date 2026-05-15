@@ -93,6 +93,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
   if (!allowed) return res429(retryAfterSeconds)
 
   const { candidateId } = await params
+  const body = await req.json().catch(() => ({}))
+  const includeSecurity = !!body.includeSecurity
 
   const { data: candidate } = await db
     .from("candidates")
@@ -179,6 +181,73 @@ Be specific, professional, constructive, and base all insights strictly on the s
     narrativeObj  = JSON.parse(match ? match[0] : cleaned)
   } catch {
     return NextResponse.json({ error: "AI service temporarily unavailable. Please try again in a moment." }, { status: 503 })
+  }
+
+  // ── Security AI analysis (optional) ───────────────────────────────────────
+  if (includeSecurity) {
+    const tabSwitches: { timestamp: string; duration: number | null }[] = (candidate as any).tab_switches ?? []
+    const fullscreenExits: number = (candidate as any).fullscreen_exits ?? 0
+    const rightClicks: number = (candidate as any).right_click_attempts ?? 0
+    const copyPaste: number = (candidate as any).copy_paste_attempts ?? 0
+    const totalAway = tabSwitches.reduce((s, sw) => s + (sw.duration ?? 0), 0)
+    const totalEvents = tabSwitches.length + fullscreenExits
+    const riskLevel = totalEvents === 0 ? "clean" : totalEvents <= 2 ? "medium" : "high"
+
+    const switchLines = tabSwitches.map((sw, i) =>
+      `  Switch ${i + 1}: at ${new Date(sw.timestamp).toLocaleTimeString("en-GB")}, away for ${sw.duration ?? 0}s`
+    ).join("\n")
+
+    const secPrompt = `You are a forensic exam integrity analyst at ICS Aviation. Analyze the following behavioral data recorded during a candidate's exam and provide a professional assessment.
+
+Candidate: ${candidate.full_name}
+Exam: ${examTitle}
+Score: ${candidate.total_score?.toFixed(1)}% (${candidate.passed ? "PASSED" : "FAILED"})
+
+Section Performance:
+${sectionLines || "No section breakdown available"}
+
+Behavioral Events Recorded:
+- Tab switches (left exam window): ${tabSwitches.length}
+- Total time away from exam: ${totalAway}s
+${switchLines ? `Tab switch details:\n${switchLines}` : ""}
+- Fullscreen exits: ${fullscreenExits}
+- Right-click attempts: ${rightClicks}
+- Copy/cut attempts: ${copyPaste}
+
+Based on this data, write a professional 3-4 sentence behavioral assessment that:
+1. Describes the pattern of behavior objectively
+2. Correlates the timing/frequency of events with section performance where relevant
+3. Predicts what the candidate was likely doing during those away periods, based on the evidence
+4. States the overall integrity risk level
+
+Return ONLY valid JSON:
+{
+  "risk_level": "${riskLevel}",
+  "tab_switches": ${tabSwitches.length},
+  "fullscreen_exits": ${fullscreenExits},
+  "right_click_attempts": ${rightClicks},
+  "copy_paste_attempts": ${copyPaste},
+  "total_away_seconds": ${totalAway},
+  "behavioral_assessment": "Your 3-4 sentence assessment here"
+}`
+
+    try {
+      const secCompletion = await withRetry(() =>
+        groq.chat.completions.create({
+          model      : "llama-3.3-70b-versatile",
+          messages   : [{ role: "user", content: secPrompt }],
+          temperature: 0.4,
+          max_tokens : 500,
+        })
+      )
+      const secRaw     = secCompletion.choices[0]?.message?.content?.trim() ?? ""
+      const secCleaned = secRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+      const secMatch   = secCleaned.match(/\{[\s\S]*\}/)
+      narrativeObj.security_analysis = JSON.parse(secMatch ? secMatch[0] : secCleaned)
+    } catch {
+      // Security analysis failed — don't block the full report, just skip it
+      console.error("[Security AI] Failed to generate security analysis")
+    }
   }
 
   const narrativeStr = JSON.stringify(narrativeObj)

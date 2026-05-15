@@ -2,13 +2,13 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Users, Building2, BookOpen, Navigation } from "lucide-react"
+import { Users, Building2, BookOpen, Navigation, ShieldAlert } from "lucide-react"
 
 export type EntityTerm = "Group" | "Organization"
 export type ContentTerm = "Course" | "Path"
 
 interface Props {
-  onConfirm: (entity: EntityTerm, content: ContentTerm) => void
+  onConfirm: (entity: EntityTerm, content: ContentTerm, includeSecurity: boolean) => void
 }
 
 function OptionCard({
@@ -40,6 +40,7 @@ function OptionCard({
 export default function TerminologyModal({ onConfirm }: Props) {
   const [entity, setEntity] = useState<EntityTerm>("Group")
   const [content, setContent] = useState<ContentTerm>("Course")
+  const [includeSecurity, setIncludeSecurity] = useState(false)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -95,9 +96,41 @@ export default function TerminologyModal({ onConfirm }: Props) {
           </div>
         </div>
 
+        {/* Security Analysis toggle */}
+        <div className="mb-6">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+            Report Options
+          </p>
+          <button
+            onClick={() => setIncludeSecurity(v => !v)}
+            className={`flex items-start gap-3 p-4 rounded-xl border-2 text-left w-full transition-all duration-150 ${
+              includeSecurity
+                ? "border-red-400 bg-red-50"
+                : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <div className={`mt-0.5 shrink-0 ${includeSecurity ? "text-red-500" : "text-slate-400"}`}>
+              <ShieldAlert className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <p className={`text-sm font-semibold ${includeSecurity ? "text-red-700" : "text-slate-500"}`}>
+                Include Security Analysis
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                Adds an AI-generated behavioral assessment based on tab switches, fullscreen exits, and interaction events
+              </p>
+            </div>
+            <div className={`mt-1 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
+              includeSecurity ? "bg-red-500 border-red-500" : "border-slate-300"
+            }`}>
+              {includeSecurity && <span className="text-white text-[10px] font-bold leading-none">✓</span>}
+            </div>
+          </button>
+        </div>
+
         {/* Confirm */}
         <Button
-          onClick={() => onConfirm(entity, content)}
+          onClick={() => onConfirm(entity, content, includeSecurity)}
           className="w-full bg-[#1B4F8A] hover:bg-[#163f6e] text-white"
           size="lg"
         >

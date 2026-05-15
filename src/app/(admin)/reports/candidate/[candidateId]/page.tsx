@@ -115,6 +115,7 @@ export default function CandidateReportPage() {
   const [showModal, setShowModal] = useState(true)
   const [entityTerm, setEntityTerm] = useState<EntityTerm>("Group")
   const [contentTerm, setContentTerm] = useState<ContentTerm>("Course")
+  const [includeSecurity, setIncludeSecurity] = useState(false)
   const t = makeT(entityTerm, contentTerm)
 
   useEffect(() => {
@@ -125,7 +126,11 @@ export default function CandidateReportPage() {
 
   async function generateNarrative() {
     setGeneratingAI(true)
-    const res = await fetch(`/api/reports/candidate/${candidateId}`, { method: "POST" })
+    const res = await fetch(`/api/reports/candidate/${candidateId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ includeSecurity }),
+    })
     setGeneratingAI(false)
     if (!res.ok) { toast.error("Failed to generate expert report"); return }
     const result = await res.json()
@@ -136,8 +141,9 @@ export default function CandidateReportPage() {
   async function downloadPDF() {
     toast.info("Generating PDF — this may take a few seconds…")
     try {
+      const hasSec = !!(data?.narrative?.security_analysis)
       const res = await fetch(
-        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}`
+        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}${hasSec ? "&security=1" : ""}`
       )
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -198,16 +204,18 @@ export default function CandidateReportPage() {
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!narrative
-  const totalPages = 2 + sectionsWithData.length + (hasAI ? 1 : 0)
+  const hasSecurity = !!narrative?.security_analysis
+  const totalPages = 2 + sectionsWithData.length + (hasAI ? 1 : 0) + (hasSecurity ? 1 : 0)
 
   return (
     <>
       {/* ── Terminology Modal ── */}
       {showModal && (
         <TerminologyModal
-          onConfirm={(e, c) => {
+          onConfirm={(e, c, sec) => {
             setEntityTerm(e)
             setContentTerm(c)
+            setIncludeSecurity(sec)
             setShowModal(false)
           }}
         />
@@ -709,6 +717,88 @@ export default function CandidateReportPage() {
               <PageFooter page={totalPages} total={totalPages} />
             </Page>
           )}
+
+          {/* ══ SECURITY PAGE ══ */}
+          {hasSecurity && (() => {
+            const sec = narrative.security_analysis
+            const riskColors: Record<string, { bg: string; text: string; border: string; label: string }> = {
+              clean:  { bg: "#d1fae5", text: "#065f46", border: "#a7f3d0", label: "Clean" },
+              medium: { bg: "#fef3c7", text: "#92400e", border: "#fde68a", label: "Medium Risk" },
+              high:   { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5", label: "High Risk" },
+            }
+            const rc = riskColors[sec.risk_level ?? "clean"] ?? riskColors.clean
+            const events = [
+              { label: "Tab Switches",       value: sec.tab_switches ?? 0 },
+              { label: "Fullscreen Exits",   value: sec.fullscreen_exits ?? 0 },
+              { label: "Right-click Attempts", value: sec.right_click_attempts ?? 0 },
+              { label: "Copy/Cut Attempts",  value: sec.copy_paste_attempts ?? 0 },
+            ]
+            const totalAway = sec.total_away_seconds ?? 0
+            const awayFmt = totalAway < 60
+              ? `${totalAway}s`
+              : `${Math.floor(totalAway / 60)}m ${totalAway % 60}s`
+            return (
+              <div className="page-break">
+                <div className="flex items-center justify-between px-12 pt-8 pb-5 border-b border-[#1B4F8A] border-b-2">
+                  <img src="/logo/logo-dark-blue.png" alt="ICS Aviation" width={110} height={30} style={{ objectFit: "contain" }} />
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">Security Analysis</p>
+                    <p className="text-[10px] mt-0.5 text-slate-400">{exam?.title}</p>
+                    <p className="text-[10px] mt-0.5 text-slate-400">{today}</p>
+                  </div>
+                </div>
+                <div className="px-12 py-7 space-y-6">
+                  {/* Risk badge + event counts */}
+                  <div className="avoid-break">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Exam Integrity Overview</p>
+                      <span className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
+                        ⚠ {rc.label}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3">
+                      {events.map(({ label, value }) => (
+                        <div key={label} className="border border-slate-100 rounded-xl p-4 text-center bg-slate-50/60">
+                          <p className="text-2xl font-extrabold text-slate-700">{value}</p>
+                          <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {totalAway > 0 && (
+                      <p className="text-xs text-slate-400 mt-3 text-center">
+                        Total time away from exam window: <strong className="text-slate-600">{awayFmt}</strong>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* AI Behavioral Assessment */}
+                  <div className="avoid-break rounded-xl overflow-hidden border border-red-100">
+                    <div className="bg-red-700 px-5 py-3 flex items-center gap-2">
+                      <svg className="h-4 w-4 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/90">AI Behavioral Assessment</p>
+                    </div>
+                    <div className="bg-red-50/60 px-5 py-4">
+                      <p className="text-sm text-red-900 leading-relaxed">{sec.behavioral_assessment}</p>
+                    </div>
+                  </div>
+
+                  {/* Disclaimer */}
+                  <div className="avoid-break border border-slate-100 rounded-xl p-4 bg-slate-50/40 text-center">
+                    <p className="text-[10px] text-slate-400 leading-relaxed max-w-lg mx-auto">
+                      This assessment is AI-generated based on behavioral signals recorded during the exam. It is intended as an investigative aid only and should not be used as the sole basis for any disciplinary action. All findings should be reviewed in context by a qualified supervisor.
+                    </p>
+                  </div>
+                </div>
+                <div className="px-12 py-4 border-t border-slate-100 flex items-center justify-between mt-8">
+                  <p className="text-[9px] uppercase tracking-widest text-slate-300">ICS Aviation · Integrated Consulting Services · Confidential</p>
+                  <p className="text-[9px] text-slate-300">Page {totalPages} of {totalPages}</p>
+                </div>
+              </div>
+            )
+          })()}
 
         </div>
       </div>
