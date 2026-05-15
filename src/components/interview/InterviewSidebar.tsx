@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ClipboardList,
   Users,
+  UserCheck,
   Settings,
   ChevronRight,
   LayoutGrid,
@@ -15,10 +16,11 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 
 const adminNav = [
-  { href: "/interview",          label: "Dashboard",  icon: LayoutDashboard },
-  { href: "/interview/configs",  label: "Configs",    icon: ClipboardList   },
-  { href: "/interview/groups",   label: "Groups",     icon: Users           },
-  { href: "/interview/settings", label: "Settings",   icon: Settings        },
+  { href: "/interview",           label: "Dashboard",  icon: LayoutDashboard },
+  { href: "/interview/configs",   label: "Configs",    icon: ClipboardList   },
+  { href: "/interview/groups",    label: "Groups",     icon: Users           },
+  { href: "/interview/assessors", label: "Assessors",  icon: UserCheck       },
+  { href: "/interview/settings",  label: "Settings",   icon: Settings        },
 ]
 
 const assessorNav = [
