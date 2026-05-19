@@ -110,7 +110,7 @@ export async function POST(_: Request, { params }: Params) {
         ? content
         : JSON.stringify(content)
     if (!str?.trim()) return
-    await db.from("interview_report_cache").delete().match({ section, group_id: groupId, candidate_id: candidateId })
+    await db.from("interview_report_cache").delete().match({ section, candidate_id: candidateId })
     const { error } = await db
       .from("interview_report_cache")
       .insert({ section, content: str, group_id: groupId, candidate_id: candidateId })
