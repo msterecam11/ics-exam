@@ -10,29 +10,78 @@ export async function GET(_: Request, { params }: Params) {
 
   const { groupId } = await params
 
-  const { data, error } = await db
+  // ── 1. Core group ──────────────────────────────────────────────────────────
+  const { data: group, error: groupErr } = await db
     .from("assessment_groups")
-    .select(`
-      id, name, location, scheduled_date, status, config_snapshot, locked, created_at,
-      assessment_configs (
-        id, name, description, assessor_weights, verdict_thresholds,
-        pillars (
-          id, name, weight, order_index, applicable_track_ids,
-          competencies ( id, name, weight, order_index )
-        )
-      ),
-      interview_candidates ( id, full_name, position, track_id, years_experience, notes, created_at,
-        role_tracks ( id, name )
-      ),
-      group_assessors ( assessor_id,
-        admin_users ( id, name, email, role )
-      )
-    `)
+    .select("id, name, location, scheduled_date, status, config_snapshot, locked, created_at, config_id")
     .eq("id", groupId)
     .single()
 
-  if (error || !data) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json(data)
+  if (groupErr || !group) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  // ── 2. Config with nested pillars / competencies (flat joins are fine here) ─
+  const { data: config } = await db
+    .from("assessment_configs")
+    .select(`
+      id, name, description, assessor_weights, verdict_thresholds,
+      pillars (
+        id, name, weight, order_index, applicable_track_ids,
+        competencies ( id, name, description, weight, order_index )
+      )
+    `)
+    .eq("id", group.config_id)
+    .single()
+
+  // ── 3. Candidates (with track name resolved separately to avoid nested join issues) ─
+  const { data: candidates } = await db
+    .from("interview_candidates")
+    .select("id, full_name, position, track_id, years_experience, notes, created_at")
+    .eq("group_id", groupId)
+    .order("created_at")
+
+  // Resolve track names
+  const trackIds = [...new Set((candidates ?? []).map(c => c.track_id).filter(Boolean))] as string[]
+  let tracksMap: Record<string, { id: string; name: string }> = {}
+  if (trackIds.length > 0) {
+    const { data: tracks } = await db
+      .from("role_tracks")
+      .select("id, name")
+      .in("id", trackIds)
+    for (const t of tracks ?? []) tracksMap[t.id] = t
+  }
+  const candidatesWithTracks = (candidates ?? []).map(c => ({
+    ...c,
+    role_tracks: c.track_id ? (tracksMap[c.track_id] ?? null) : null,
+  }))
+
+  // ── 4. Assessors — fetch IDs then users separately (avoids nested join) ────
+  const { data: gaRows } = await db
+    .from("group_assessors")
+    .select("assessor_id, pillar_weights, candidate_ids")
+    .eq("group_id", groupId)
+
+  const assessorIds = (gaRows ?? []).map(ga => ga.assessor_id)
+  let assessorMap: Record<string, any> = {}
+  if (assessorIds.length > 0) {
+    const { data: assessorUsers } = await db
+      .from("admin_users")
+      .select("id, name, email, role")
+      .in("id", assessorIds)
+    for (const a of assessorUsers ?? []) assessorMap[a.id] = a
+  }
+  const group_assessors = (gaRows ?? []).map(ga => ({
+    assessor_id:    ga.assessor_id,
+    pillar_weights: ga.pillar_weights ?? {},
+    candidate_ids:  ga.candidate_ids  ?? null,
+    admin_users:    assessorMap[ga.assessor_id] ?? null,
+  }))
+
+  return NextResponse.json({
+    ...group,
+    assessment_configs: config ?? null,
+    interview_candidates: candidatesWithTracks,
+    group_assessors,
+  })
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -70,13 +119,38 @@ export async function DELETE(_: Request, { params }: Params) {
 
   const { groupId } = await params
 
-  // Only allow deleting draft groups
-  const { data: group } = await db.from("assessment_groups").select("status").eq("id", groupId).single()
+  // Verify group exists
+  const { data: group } = await db.from("assessment_groups").select("id").eq("id", groupId).single()
   if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  if (group.status !== "draft")
-    return NextResponse.json({ error: "Only draft groups can be deleted" }, { status: 409 })
 
+  // ── Cascade delete ────────────────────────────────────────────────────────
+  // 1. Get all candidate IDs in this group
+  const { data: candidates } = await db
+    .from("interview_candidates")
+    .select("id")
+    .eq("group_id", groupId)
+  const candidateIds = (candidates ?? []).map((c: any) => c.id)
+
+  // 2. Delete scores (linked to candidate_id)
+  if (candidateIds.length > 0) {
+    await db.from("scores").delete().in("candidate_id", candidateIds)
+  }
+
+  // 3. Delete candidate qualitative assessments
+  await db.from("candidate_assessments").delete().eq("group_id", groupId)
+
+  // 4. Delete candidates
+  await db.from("interview_candidates").delete().eq("group_id", groupId)
+
+  // 5. Delete assessor assignments
+  await db.from("group_assessors").delete().eq("group_id", groupId)
+
+  // 6. Delete AI report cache
+  await db.from("interview_report_cache").delete().eq("group_id", groupId)
+
+  // 7. Delete the group itself
   const { error } = await db.from("assessment_groups").delete().eq("id", groupId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
   return NextResponse.json({ ok: true })
 }

@@ -11,6 +11,7 @@ import {
   Settings,
   ChevronRight,
   LayoutGrid,
+  BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -20,11 +21,12 @@ const adminNav = [
   { href: "/interview/configs",   label: "Configs",    icon: ClipboardList   },
   { href: "/interview/groups",    label: "Groups",     icon: Users           },
   { href: "/interview/assessors", label: "Assessors",  icon: UserCheck       },
+  { href: "/interview/reports",   label: "Reports",    icon: BarChart3       },
   { href: "/interview/settings",  label: "Settings",   icon: Settings        },
 ]
 
 const assessorNav = [
-  { href: "/interview/score", label: "My Scoring", icon: ClipboardList },
+  { href: "/interview", label: "My Groups", icon: ClipboardList },
 ]
 
 interface Props {
@@ -58,7 +60,7 @@ export default function InterviewSidebar({ user, inSheet = false }: Props) {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/interview/score" && pathname.startsWith(href + "/"))
+          const active = pathname === href || (href !== "/interview" && pathname.startsWith(href + "/"))
           return (
             <Link
               key={href}

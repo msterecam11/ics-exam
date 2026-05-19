@@ -11,19 +11,10 @@ export async function POST(_: Request, { params }: Params) {
 
   const { groupId } = await params
 
-  // Load full group + config for snapshot
+  // Load group + config (flat, no nested joins)
   const { data: group } = await db
     .from("assessment_groups")
-    .select(`
-      id, status, config_id,
-      assessment_configs (
-        id, name, assessor_weights, verdict_thresholds,
-        pillars (
-          id, name, weight, order_index, applicable_track_ids,
-          competencies ( id, name, weight, order_index )
-        )
-      )
-    `)
+    .select("id, status, config_id")
     .eq("id", groupId)
     .single()
 
@@ -31,21 +22,67 @@ export async function POST(_: Request, { params }: Params) {
   if (group.status !== "draft")
     return NextResponse.json({ error: "Only draft groups can be activated" }, { status: 409 })
 
-  const config = group.assessment_configs as any
+  // Load the assessor × pillar weight matrix for this group
+  const { data: gaRows } = await db
+    .from("group_assessors")
+    .select("assessor_id, pillar_weights")
+    .eq("group_id", groupId)
+
+  // Build assessor_weights map: { assessorId: { pillarId: weight } }
+  const assessor_weights: Record<string, Record<string, number>> = {}
+  for (const ga of gaRows ?? []) {
+    assessor_weights[ga.assessor_id] = ga.pillar_weights ?? {}
+  }
+
+  // Load config separately to avoid nested join issues
+  const { data: config } = await db
+    .from("assessment_configs")
+    .select(`
+      id, name, assessor_weights, verdict_thresholds,
+      insight_thresholds, rater_divergence_threshold,
+      pillars (
+        id, name, weight, order_index, applicable_track_ids, knockout_threshold,
+        competencies ( id, name, description, weight, order_index )
+      )
+    `)
+    .eq("id", group.config_id)
+    .single()
+
   if (!config) return NextResponse.json({ error: "No config attached" }, { status: 400 })
 
-  // Build config snapshot
+  // Normalise verdict_thresholds — config stores it as array [{key,label,min,max}],
+  // but scoring engine needs object { strong_yes, yes, marginal }
+  const rawVT = config.verdict_thresholds as any
+  const verdict_thresholds_normalised = Array.isArray(rawVT)
+    ? Object.fromEntries(rawVT.map((t: any) => [t.key, t.min]))
+    : rawVT
+
+  // Build frozen snapshot — all score calculations + reports use this, never the live config
   const snapshot = {
-    id:                 config.id,
-    name:               config.name,
-    assessor_weights:   config.assessor_weights,
-    verdict_thresholds: config.verdict_thresholds,
-    pillars:            (config.pillars ?? [])
-      .sort((a: any, b: any) => a.order_index - b.order_index)
-      .map((p: any) => ({
-        ...p,
-        competencies: (p.competencies ?? [])
-          .sort((a: any, b: any) => a.order_index - b.order_index),
+    id:                        config.id,
+    name:                      config.name,
+    assessor_weights,          // built from group_assessors.pillar_weights
+    verdict_thresholds:        verdict_thresholds_normalised,
+    insight_thresholds:        config.insight_thresholds,
+    rater_divergence_threshold: config.rater_divergence_threshold,
+    pillars: ((config.pillars as any[]) ?? [])
+      .sort((a, b) => a.order_index - b.order_index)
+      .map(p => ({
+        id:                   p.id,
+        name:                 p.name,
+        weight:               p.weight,
+        order_index:          p.order_index,
+        applicable_track_ids: p.applicable_track_ids,
+        knockout_threshold:   p.knockout_threshold ?? null,
+        competencies: ((p.competencies as any[]) ?? [])
+          .sort((a: any, b: any) => a.order_index - b.order_index)
+          .map((c: any) => ({
+            id:          c.id,
+            name:        c.name,
+            description: c.description ?? null,
+            weight:      c.weight,
+            order_index: c.order_index,
+          })),
       })),
   }
 

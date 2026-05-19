@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import InterviewSidebar from "@/components/interview/InterviewSidebar"
 import InterviewHeader from "@/components/interview/InterviewHeader"
+import AssessorGuard from "@/components/interview/AssessorGuard"
 
 export default async function InterviewLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -13,6 +14,7 @@ export default async function InterviewLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
+      <AssessorGuard role={session.user.role} />
       <InterviewSidebar user={session.user} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <InterviewHeader user={session.user} />

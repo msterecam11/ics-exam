@@ -12,6 +12,9 @@ export default async function AdminLayout({
   const session = await auth()
   if (!session) redirect("/auth/login")
 
+  // Assessors have no access to the exam admin panel
+  if (session.user.role === "assessor") redirect("/interview")
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <InactivityGuard />

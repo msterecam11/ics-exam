@@ -87,12 +87,24 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
   ]
 }`
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.2,
-    max_tokens: 2000,
-  })
+  let completion: Awaited<ReturnType<typeof groq.chat.completions.create>>
+  try {
+    completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2000,
+    })
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.message?.includes("rate") || err?.message?.includes("quota")
+    if (isQuota) {
+      return NextResponse.json(
+        { error: "AI quota reached. Please wait a few minutes and try again." },
+        { status: 429 }
+      )
+    }
+    return NextResponse.json({ error: "AI service unavailable. Please try again." }, { status: 503 })
+  }
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? ""
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()

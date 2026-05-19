@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
-import { signIn } from "next-auth/react"
+import { signIn, getSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Script from "next/script"
@@ -101,7 +101,13 @@ function LoginForm() {
       }
       setTurnstileToken(null)
     } else {
-      router.push("/hub")
+      // Route by role — assessors go directly to their panel
+      const session = await getSession()
+      if (session?.user?.role === "assessor") {
+        router.push("/interview")
+      } else {
+        router.push("/hub")
+      }
     }
   }
 

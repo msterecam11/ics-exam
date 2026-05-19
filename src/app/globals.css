@@ -124,6 +124,39 @@
   font-family: "Cairo", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* ── Report Print Styles ─────────────────────────────────────────────────── */
+@media print {
+  /* Hide everything not needed in print */
+  nav, aside, header,
+  .print\:hidden { display: none !important; }
+
+  /* Show print-only elements */
+  .print\:block  { display: block  !important; }
+  .print\:flex   { display: flex   !important; }
+
+  /* Reset page layout */
+  body { background: white !important; font-size: 11px; }
+
+  /* Cards look clean without shadows */
+  .rounded-xl, .rounded-2xl { border-radius: 6px !important; }
+  [class*="shadow"] { box-shadow: none !important; }
+
+  /* Page breaks between major sections */
+  .page-break-before { page-break-before: always; }
+  .page-break-after  { page-break-after:  always; }
+  .page-break-avoid  { page-break-inside: avoid; }
+
+  /* Ensure background colours print (charts, badges, heatmap cells) */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Max width for print */
+  .max-w-5xl, .max-w-4xl { max-width: 100% !important; margin: 0 !important; }
+
+  /* Reduce spacing */
+  .space-y-6 > * + * { margin-top: 16px !important; }
+  .space-y-4 > * + * { margin-top: 12px !important; }
+}
+
 /* Exam timer pulse animation */
 @keyframes timer-warning {
   0%, 100% { opacity: 1; }

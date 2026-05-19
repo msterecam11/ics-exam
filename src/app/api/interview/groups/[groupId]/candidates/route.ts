@@ -11,7 +11,7 @@ export async function POST(req: Request, { params }: Params) {
 
   const { groupId } = await params
   const body = await req.json().catch(() => ({}))
-  const { full_name, position, track_id, years_experience, notes } = body
+  const { full_name, employment_id, position, track_id, years_experience, notes } = body
 
   if (!full_name?.trim()) return NextResponse.json({ error: "full_name required" }, { status: 400 })
 
@@ -25,6 +25,7 @@ export async function POST(req: Request, { params }: Params) {
     .insert({
       group_id: groupId,
       full_name: full_name.trim(),
+      employment_id: employment_id?.trim() ?? null,
       position: position?.trim() ?? null,
       track_id: track_id ?? null,
       years_experience: years_experience ?? null,
@@ -47,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id, ...rest } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-  const allowed = ["full_name", "position", "track_id", "years_experience", "notes"]
+  const allowed = ["full_name", "employment_id", "position", "track_id", "years_experience", "notes"]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in rest) updates[key] = rest[key]

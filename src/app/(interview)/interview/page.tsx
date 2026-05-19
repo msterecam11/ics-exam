@@ -15,6 +15,23 @@ const STATUS_STYLES: Record<string, string> = {
   published: "bg-purple-100 text-purple-700",
 }
 
+// Mirror of scoring page filter: candidate has ≥1 pillar this assessor can score
+function computeVisibleCount(
+  candidates: { id: string; track_id: string | null }[],
+  snapshotPillars: { id: string; applicable_track_ids: string[] }[],
+  pillarWeights: Record<string, number>,
+): number {
+  const hasWeightMap = Object.keys(pillarWeights).length > 0
+  return candidates.filter(c =>
+    snapshotPillars.some(p => {
+      const trackIds: string[] = Array.isArray(p.applicable_track_ids) ? p.applicable_track_ids : []
+      const trackOk = trackIds.length === 0 || (c.track_id ? trackIds.includes(c.track_id) : true)
+      const weightOk = !hasWeightMap || (pillarWeights[p.id] ?? 0) > 0
+      return trackOk && weightOk
+    })
+  ).length
+}
+
 async function getStats(userId: string, role: string) {
   const isAssessor = role === "assessor"
 
@@ -35,12 +52,30 @@ async function getStats(userId: string, role: string) {
   if (isAssessor) {
     const groupIds = ((groupsRes as any).data ?? []).map((a: any) => a.group_id)
     if (groupIds.length > 0) {
-      const { data } = await db
-        .from("assessment_groups")
-        .select("id, name, status, scheduled_date, created_at, assessment_configs(name), interview_candidates(id)")
-        .in("id", groupIds)
-        .order("created_at", { ascending: false })
-      recentGroups = data ?? []
+      // Fetch groups (with snapshot + candidates) and assessor matrix row in parallel
+      const [groupsData, assessorRows] = await Promise.all([
+        db.from("assessment_groups")
+          .select("id, name, status, scheduled_date, created_at, config_snapshot, assessment_configs(name), interview_candidates(id, track_id)")
+          .in("id", groupIds)
+          .order("created_at", { ascending: false }),
+        db.from("group_assessors")
+          .select("group_id, pillar_weights")
+          .in("group_id", groupIds)
+          .eq("assessor_id", userId),
+      ])
+
+      // Build lookup: group_id → pillar_weights
+      const metaMap: Record<string, Record<string, number>> = {}
+      for (const ga of (assessorRows.data ?? [])) {
+        metaMap[ga.group_id] = ga.pillar_weights ?? {}
+      }
+
+      recentGroups = (groupsData.data ?? []).map(g => {
+        const pillars       = (g.config_snapshot as any)?.pillars ?? []
+        const rawCandidates = (g.interview_candidates ?? []) as { id: string; track_id: string | null }[]
+        const visibleCount  = computeVisibleCount(rawCandidates, pillars, metaMap[g.id] ?? {})
+        return { ...g, _visibleCount: visibleCount }
+      })
     }
   } else {
     recentGroups = (groupsRes as any).data ?? []
@@ -154,7 +189,9 @@ export default async function InterviewDashboard() {
               <div className="flex items-center gap-3 shrink-0">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="h-3 w-3" />
-                  {(g.interview_candidates as any[])?.length ?? 0}
+                  {isAssessor
+                    ? (g._visibleCount ?? 0)
+                    : ((g.interview_candidates as any[])?.length ?? 0)}
                 </div>
                 <Badge className={cn("text-xs border-0 capitalize", STATUS_STYLES[g.status] ?? "bg-slate-100 text-slate-600")}>
                   {g.status}
