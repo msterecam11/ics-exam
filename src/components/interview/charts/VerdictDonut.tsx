@@ -51,7 +51,7 @@ export default function VerdictDonut({ distribution, height = 280 }: VerdictDonu
             {data.map((d, i) => <Cell key={i} fill={d.color} />)}
           </Pie>
           <Tooltip
-            formatter={(v: number, name: string) => [`${v} candidates (${Math.round((v / total) * 100)}%)`, name]}
+            formatter={(v: any, name: any) => [`${v} candidates (${Math.round((v / total) * 100)}%)`, name]}
             contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />

@@ -53,12 +53,12 @@ export default function DivergenceBar({ items, threshold, height = 240 }: Diverg
             dataKey="spread"
             position="right"
             style={{ fontSize: 10, fill: "#475569", fontWeight: 700 }}
-            formatter={(v: number) => v.toFixed(2)}
+            formatter={(v: any) => v?.toFixed(2)}
           />
         </Bar>
         <Tooltip
-          formatter={(v: number, _: string, props: any) => [
-            `${v.toFixed(2)} spread${v >= threshold ? " ⚠ Flagged" : ""}`,
+          formatter={(v: any, _: any, props: any) => [
+            `${v?.toFixed(2)} spread${v >= threshold ? " ⚠ Flagged" : ""}`,
             `${props.payload.name} (${props.payload.pillar})`,
           ]}
           contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}

@@ -93,7 +93,7 @@ export default function PillarRadarChart({ pillars, showAverage = true, height =
             dot={{ fill: "#1B4F8A", r: 4 }}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [`${value.toFixed(2)} / 5.00`, name]}
+            formatter={(value: any, name: any) => [`${value?.toFixed(2)} / 5.00`, name]}
             contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
           />
           {showAverage && <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />}

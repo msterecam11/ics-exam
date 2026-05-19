@@ -63,17 +63,17 @@ export default function PillarBarChart({ pillars, threshold, height = 260, group
         {grouped ? (
           grouped.map(g => (
             <Bar key={g.label} dataKey={g.label} fill={g.color} radius={[0, 4, 4, 0]} barSize={10}>
-              <LabelList dataKey={g.label} position="right" style={{ fontSize: 9, fill: "#64748b", fontWeight: 600 }} formatter={(v: number) => v.toFixed(2)} />
+              <LabelList dataKey={g.label} position="right" style={{ fontSize: 9, fill: "#64748b", fontWeight: 600 }} formatter={(v: any) => v?.toFixed(2)} />
             </Bar>
           ))
         ) : (
           <Bar dataKey="avg" radius={[0, 6, 6, 0]} barSize={22}>
             {data.map((d, i) => <Cell key={i} fill={barColor(d.label)} />)}
-            <LabelList dataKey="avg" position="right" style={{ fontSize: 11, fill: "#475569", fontWeight: 700 }} formatter={(v: number) => v.toFixed(2)} />
+            <LabelList dataKey="avg" position="right" style={{ fontSize: 11, fill: "#475569", fontWeight: 700 }} formatter={(v: any) => v?.toFixed(2)} />
           </Bar>
         )}
         <Tooltip
-          formatter={(v: number, name: string) => [`${v.toFixed(2)} / 5.00`, name === "avg" ? "Score" : name]}
+          formatter={(v: any, name: any) => [`${v?.toFixed(2)} / 5.00`, name === "avg" ? "Score" : name]}
           contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
         />
       </BarChart>

@@ -648,17 +648,17 @@ export default function TrackReportCanvas({
                       </tr>
                     </thead>
                     <tbody>
-                      {pillarCompTable.map(({ pillar, rows }) => (
+                      {pillarCompTable.map(({ pillar, rows }: { pillar: any; rows: any[] }) => (
                         <React.Fragment key={pillar.id}>
                           <tr>
                             <td colSpan={sortedReports.length + 2} className="py-1.5 pl-4 bg-[#1B4F8A]">
                               <span className="text-[9px] font-extrabold uppercase tracking-widest text-white/90">{pillar.name}</span>
                             </td>
                           </tr>
-                          {rows.map(({ competency, scores, avg }) => (
+                          {rows.map(({ competency, scores, avg }: { competency: any; scores: any[]; avg: number }) => (
                             <tr key={competency.id} className="border-b border-slate-50 last:border-0">
                               <td className="py-1.5 pl-4 pr-3 text-[10px] font-medium text-slate-600">{competency.name}</td>
-                              {scores.map((s, si) => {
+                              {scores.map((s: any, si: number) => {
                                 const cc = s ? sc(s) : null
                                 return (
                                   <td key={si} className="py-1.5 px-2 text-center">

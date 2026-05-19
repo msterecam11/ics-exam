@@ -38,7 +38,7 @@ export default function RadarOverlay({ pillars, candidates, height = 340 }: Rada
           />
         ))}
         <Tooltip
-          formatter={(v: number, name: string) => [`${v.toFixed(2)} / 5.00`, name]}
+          formatter={(v: any, name: any) => [`${v?.toFixed(2)} / 5.00`, name]}
           contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
         />
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
