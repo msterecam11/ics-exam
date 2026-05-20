@@ -194,15 +194,12 @@ function scoreColor(score: number, strongYesMin = 4.0, yesMin = 3.0) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = "#f87171", readyLabel = "Ready" }: {
-  avgScore: number; readyCount: number; conditionalCount: number; total: number
-  ringColor?: string; readyLabel?: string
+function CoverRing({ avgScore, ringColor = "#f87171", tierLabel = "" }: {
+  avgScore: number; ringColor?: string; tierLabel?: string
 }) {
-  const size = 200, sw = 14, r = (size - sw) / 2
-  const circ        = 2 * Math.PI * r
-  const offset      = circ * (1 - Math.min(avgScore / 5, 1))
-  const readyPct    = total > 0 ? Math.round((readyCount / total) * 100) : 0
-  const labelCol    = readyPct >= 50 ? "#34d399" : readyPct >= 25 ? "#fbbf24" : "#f87171"
+  const size   = 200, sw = 14, r = (size - sw) / 2
+  const circ   = 2 * Math.PI * r
+  const offset = circ * (1 - Math.min(avgScore / 5, 1))
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -210,11 +207,15 @@ function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = 
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={ringColor}
           strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-4">
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4">
         <span className="text-4xl font-extrabold text-white leading-none">{avgScore.toFixed(2)}</span>
-        <span className="text-[11px] text-white/50 font-semibold tracking-widest">/ 5.00 AVG</span>
-        <span className="font-black tracking-wider uppercase mt-1 text-center leading-tight text-[10px]"
-          style={{ color: labelCol }}>{readyPct}% {readyLabel}</span>
+        <span className="text-[10px] text-white/50 font-semibold tracking-widest">/ 5.00 AVG</span>
+        {tierLabel && (
+          <span className="text-[10px] font-black uppercase tracking-wider mt-0.5 px-2.5 py-0.5 rounded-full"
+            style={{ background: ringColor + "35", color: ringColor }}>
+            {tierLabel}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -402,23 +403,27 @@ export default function GroupReportCanvas({
   const candidateChunks: any[][] = []
   for (let i = 0; i < candidates.length; i += 2) candidateChunks.push(candidates.slice(i, i + 2))
 
-  // Top-tier label from config (e.g. "Exceptional") — used in banner badge
-  const topTierLabel = (() => {
+  // Avg score tier — drives ring, banner badge, and score box label
+  const avgTier      = getVerdictTierConfig(avgScore, snapshot)
+  const avgTierLabel = avgTier.label  || "—"
+  const avgTierColor = avgTier.color  || "#64748b"
+
+  // Config tiers sorted high→low — drives KPI distribution grid and cover chips
+  const VERDICT_KEYS  = ["strong_yes", "yes", "marginal", "no"] as const
+  const TIER_DEFAULTS = ["#10b981","#3b82f6","#f59e0b","#ef4444"]
+  const configTiers = (() => {
     const raw = snapshot?.verdict_thresholds
-    if (Array.isArray(raw) && raw.length > 0) {
-      const sorted = [...raw].filter((t: any) => typeof t.min === "number").sort((a: any, b: any) => b.min - a.min)
-      return sorted[0]?.label ?? "Ready"
-    }
-    return "Ready"
+    if (Array.isArray(raw) && raw.length > 0)
+      return [...raw].filter((t: any) => typeof t.min === "number").sort((a: any, b: any) => b.min - a.min)
+    return null
   })()
 
-  // Badge color based on top-tier readiness % so "0 Exceptional" shows red, not green
-  const positivePct     = candidates.length > 0 ? Math.round(((readyCount + conditionalCount) / candidates.length) * 100) : 0
-  const readinessColor  = readyPct >= 50 ? "#059669" : readyPct >= 25 ? "#d97706" : "#dc2626"
-  const readinessBg     = readyPct >= 50 ? "#d1fae5" : readyPct >= 25 ? "#fef3c7" : "#fee2e2"
-  const readinessBorder = readyPct >= 50 ? "#a7f3d0" : readyPct >= 25 ? "#fde68a" : "#fca5a5"
+  // Banner badge — tier of the average score
+  const readinessColor  = avgTierColor
+  const readinessBg     = avgTierColor + "20"
+  const readinessBorder = avgTierColor + "60"
 
-  const bannerProps = { groupName: group.name, today, readiness: `${readyCount} ${topTierLabel}`, readinessBg, readinessBorder, readinessColor }
+  const bannerProps = { groupName: group.name, today, readiness: avgTierLabel, readinessBg, readinessBorder, readinessColor }
   const totalPages  = 5 + candidateChunks.length
 
   return (
@@ -460,7 +465,7 @@ export default function GroupReportCanvas({
                 <p className="text-white/30 text-xs mt-1">{[scheduledDate, group.location].filter(Boolean).join(" · ")}</p>
               )}
             </div>
-            <CoverRing avgScore={avgScore} readyCount={readyCount} conditionalCount={conditionalCount} total={candidates.length} ringColor={getVerdictTierConfig(avgScore, snapshot).color || "#f87171"} readyLabel={topTierLabel} />
+            <CoverRing avgScore={avgScore} ringColor={avgTierColor} tierLabel={avgTierLabel} />
             <div className="flex items-center gap-8">
               {[
                 { label: "Candidates", value: candidates.length },
@@ -476,14 +481,22 @@ export default function GroupReportCanvas({
                 </div>
               ))}
             </div>
+            {/* Tier distribution — all config tiers with counts (including zeros) */}
             <div className="flex items-center gap-3 flex-wrap justify-center">
-              {(["strong_yes", "yes", "marginal", "no"] as const).map(v => {
-                const count = group_stats.verdict_distribution[v] ?? 0
-                if (count === 0) return null
+              {(configTiers ?? VERDICT_KEYS.map((v, i) => ({
+                  label: verdictLabels[v] ?? v,
+                  color: verdictColors[v] ?? TIER_DEFAULTS[i],
+                  _key:  v,
+                } as any))
+              ).map((t: any, i: number) => {
+                const key   = configTiers ? VERDICT_KEYS[Math.min(i, 3)] : t._key
+                const count = (group_stats.verdict_distribution as any)[key] ?? 0
+                const color = t.color || TIER_DEFAULTS[i] || "#64748b"
                 return (
-                  <div key={v} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15">
-                    <div className="w-2 h-2 rounded-full" style={{ background: verdictColors[v] ?? VERDICT_STYLE[v].dot }} />
-                    <span className="text-white/80 text-xs font-semibold">{verdictLabels[v]}</span>
+                  <div key={i} className="flex items-center gap-2 px-4 py-2 rounded-full border"
+                    style={{ background: "rgba(255,255,255,0.08)", borderColor: color + "60" }}>
+                    <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                    <span className="text-white/70 text-xs font-semibold">{t.label}</span>
                     <span className="text-white font-bold text-sm">{count}</span>
                   </div>
                 )
@@ -528,25 +541,39 @@ export default function GroupReportCanvas({
                     <div className="rounded-2xl px-8 py-4 text-center border-2" style={{ background: avgCol.bg, borderColor: avgCol.border }}>
                       <p className="text-4xl font-black tabular-nums" style={{ color: avgCol.text }}>{avgScore.toFixed(2)}</p>
                       <p className="text-[10px] font-semibold mt-0.5" style={{ color: avgCol.text }}>/ 5.00 AVG</p>
-                      <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: readinessColor }}>{readyPct}% {topTierLabel}</p>
+                      <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: avgTierColor }}>{avgTierLabel}</p>
                     </div>
                   </div>
                 )
               })()}
             </div>
-            <div className="grid grid-cols-4 gap-3 avoid-break">
-              {[
-                { label: "Total Candidates",    value: candidates.length,  color: "text-[#1B4F8A]",  bg: "bg-[#1B4F8A]/5 border-[#1B4F8A]/20" },
-                { label: "Ready",              value: readyCount,         color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200"   },
-                { label: "Conditionally Ready",value: conditionalCount,   color: "text-amber-600",   bg: "bg-amber-50 border-amber-200"       },
-                { label: "Dev. Required",      value: devRequiredCount,   color: "text-red-600",     bg: "bg-red-50 border-red-200"           },
-              ].map(kpi => (
-                <div key={kpi.label} className={cn("rounded-xl border p-3 text-center", kpi.bg)}>
-                  <p className={cn("text-2xl font-black", kpi.color)}>{kpi.value}</p>
-                  <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5 leading-tight">{kpi.label}</p>
+            {/* Tier distribution KPI grid — driven by config */}
+            {(() => {
+              const tiers = configTiers
+                ? configTiers.map((t: any, i: number) => ({
+                    label: t.label,
+                    value: group_stats.verdict_distribution[VERDICT_KEYS[Math.min(i, 3)]] ?? 0,
+                    color: t.color || TIER_DEFAULTS[i] || "#64748b",
+                  }))
+                : [
+                    { label: verdictLabels.strong_yes ?? "Exceptional",    value: group_stats.verdict_distribution.strong_yes ?? 0, color: verdictColors.strong_yes ?? "#10b981" },
+                    { label: verdictLabels.yes        ?? "Proficient",     value: group_stats.verdict_distribution.yes        ?? 0, color: verdictColors.yes        ?? "#3b82f6" },
+                    { label: verdictLabels.marginal   ?? "Acceptable",     value: group_stats.verdict_distribution.marginal   ?? 0, color: verdictColors.marginal   ?? "#f59e0b" },
+                    { label: verdictLabels.no         ?? "Needs Work",     value: group_stats.verdict_distribution.no         ?? 0, color: verdictColors.no         ?? "#ef4444" },
+                  ]
+              const allKpis = [{ label: "Total Candidates", value: candidates.length, color: "#1B4F8A" }, ...tiers]
+              return (
+                <div className="grid gap-3 avoid-break" style={{ gridTemplateColumns: `repeat(${allKpis.length}, 1fr)` }}>
+                  {allKpis.map((kpi, i) => (
+                    <div key={i} className="rounded-xl border p-3 text-center"
+                      style={{ background: kpi.color + "15", borderColor: kpi.color + "40" }}>
+                      <p className="text-2xl font-black" style={{ color: kpi.color }}>{kpi.value}</p>
+                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5 leading-tight">{kpi.label}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })()}
             <div className="avoid-break">
               <SectionTitle>Pillar Performance</SectionTitle>
               <div className="space-y-2.5">
@@ -606,19 +633,33 @@ export default function GroupReportCanvas({
           <PageHeader title="Assessment Snapshot" subtitle={group.name} today={today} />
           <div className="px-12 py-6 space-y-6">
             <PageBanner {...bannerProps} title="Assessment Snapshot" icon={<BarChart3 className="h-5 w-5 text-white" />} />
-            <div className="grid grid-cols-4 gap-3 avoid-break">
-              {[
-                { label: "Ready",              value: readyCount,         color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200"   },
-                { label: "Conditionally Ready",value: conditionalCount,   color: "text-amber-600",   bg: "bg-amber-50 border-amber-200"       },
-                { label: "Dev. Required",      value: devRequiredCount,   color: "text-red-600",     bg: "bg-red-50 border-red-200"           },
-                { label: "Group Average",      value: avgScore.toFixed(2),color: "text-[#1B4F8A]",  bg: "bg-[#1B4F8A]/5 border-[#1B4F8A]/20"},
-              ].map(kpi => (
-                <div key={kpi.label} className={cn("rounded-xl border p-3 text-center", kpi.bg)}>
-                  <p className={cn("text-xl font-black", kpi.color)}>{kpi.value}</p>
-                  <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5 leading-tight">{kpi.label}</p>
+            {/* Assessment Snapshot KPI strip — config tiers + group avg */}
+            {(() => {
+              const tiers = configTiers
+                ? configTiers.map((t: any, i: number) => ({
+                    label: t.label,
+                    value: String(group_stats.verdict_distribution[VERDICT_KEYS[Math.min(i, 3)]] ?? 0),
+                    color: t.color || TIER_DEFAULTS[i] || "#64748b",
+                  }))
+                : [
+                    { label: verdictLabels.strong_yes ?? "Exceptional", value: String(group_stats.verdict_distribution.strong_yes ?? 0), color: verdictColors.strong_yes ?? "#10b981" },
+                    { label: verdictLabels.yes        ?? "Proficient",  value: String(group_stats.verdict_distribution.yes        ?? 0), color: verdictColors.yes        ?? "#3b82f6" },
+                    { label: verdictLabels.marginal   ?? "Acceptable",  value: String(group_stats.verdict_distribution.marginal   ?? 0), color: verdictColors.marginal   ?? "#f59e0b" },
+                    { label: verdictLabels.no         ?? "Needs Work",  value: String(group_stats.verdict_distribution.no         ?? 0), color: verdictColors.no         ?? "#ef4444" },
+                  ]
+              const allKpis = [...tiers, { label: "Group Average", value: avgScore.toFixed(2), color: "#1B4F8A" }]
+              return (
+                <div className="grid gap-3 avoid-break" style={{ gridTemplateColumns: `repeat(${allKpis.length}, 1fr)` }}>
+                  {allKpis.map((kpi, i) => (
+                    <div key={i} className="rounded-xl border p-3 text-center"
+                      style={{ background: kpi.color + "15", borderColor: kpi.color + "40" }}>
+                      <p className="text-xl font-black" style={{ color: kpi.color }}>{kpi.value}</p>
+                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5 leading-tight">{kpi.label}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })()}
             <div className="grid grid-cols-2 gap-6 avoid-break">
               <div>
                 <SectionTitle>Verdict Distribution</SectionTitle>
