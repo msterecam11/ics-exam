@@ -87,16 +87,15 @@ function scoreColor(score: number, strongYesMin = 4.0, yesMin = 3.0) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = "#f87171" }: {
+function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = "#f87171", readyLabel = "Ready" }: {
   avgScore: number; readyCount: number; conditionalCount: number; total: number
-  ringColor?: string
+  ringColor?: string; readyLabel?: string
 }) {
   const size        = 200, sw = 14, r = (size - sw) / 2
   const circ        = 2 * Math.PI * r
   const offset      = circ * (1 - Math.min(avgScore / 5, 1))
   const readyPct    = total > 0 ? Math.round((readyCount / total) * 100) : 0
-  const positivePct = total > 0 ? Math.round(((readyCount + conditionalCount) / total) * 100) : 0
-  const labelCol    = positivePct >= 70 ? "#34d399" : positivePct >= 40 ? "#fbbf24" : "#f87171"
+  const labelCol    = readyPct >= 50 ? "#34d399" : readyPct >= 25 ? "#fbbf24" : "#f87171"
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -107,7 +106,7 @@ function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = 
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-4">
         <span className="text-4xl font-extrabold text-white leading-none">{avgScore.toFixed(2)}</span>
         <span className="text-[11px] text-white/50 font-semibold tracking-widest">/ 5.00 AVG</span>
-        <span className="font-black tracking-wider uppercase mt-1 text-[11px]" style={{ color: labelCol }}>{readyPct}% READY</span>
+        <span className="font-black tracking-wider uppercase mt-1 text-[11px]" style={{ color: labelCol }}>{readyPct}% {readyLabel}</span>
       </div>
     </div>
   )
@@ -322,13 +321,23 @@ export default function TrackReportCanvas({
     }),
   }))
 
-  // Color reflects combined positive outcomes (Ready + Conditionally Ready)
-  const positivePct     = candidates.length > 0 ? Math.round(((readyCount + conditionalCount) / candidates.length) * 100) : 0
-  const readinessColor  = positivePct >= 70 ? "#059669" : positivePct >= 40 ? "#d97706" : "#dc2626"
-  const readinessBg     = positivePct >= 70 ? "#d1fae5" : positivePct >= 40 ? "#fef3c7" : "#fee2e2"
-  const readinessBorder = positivePct >= 70 ? "#a7f3d0" : positivePct >= 40 ? "#fde68a" : "#fca5a5"
+  // Top-tier label from config (e.g. "Exceptional") — used in banner badge
+  const topTierLabel = (() => {
+    const raw = snapshot?.verdict_thresholds
+    if (Array.isArray(raw) && raw.length > 0) {
+      const sorted = [...raw].filter((t: any) => typeof t.min === "number").sort((a: any, b: any) => b.min - a.min)
+      return sorted[0]?.label ?? "Ready"
+    }
+    return "Ready"
+  })()
 
-  const bannerProps = { trackName: track.name, groupName: group.name, today, readiness: `${readyCount} Ready`, readinessBg, readinessBorder, readinessColor }
+  // Badge color based on top-tier readiness % so "0 Exceptional" shows red, not green
+  const positivePct     = candidates.length > 0 ? Math.round(((readyCount + conditionalCount) / candidates.length) * 100) : 0
+  const readinessColor  = readyPct >= 50 ? "#059669" : readyPct >= 25 ? "#d97706" : "#dc2626"
+  const readinessBg     = readyPct >= 50 ? "#d1fae5" : readyPct >= 25 ? "#fef3c7" : "#fee2e2"
+  const readinessBorder = readyPct >= 50 ? "#a7f3d0" : readyPct >= 25 ? "#fde68a" : "#fca5a5"
+
+  const bannerProps = { trackName: track.name, groupName: group.name, today, readiness: `${readyCount} ${topTierLabel}`, readinessBg, readinessBorder, readinessColor }
   const candidateChunks: any[][] = []
   for (let i = 0; i < candidates.length; i += 2) candidateChunks.push(candidates.slice(i, i + 2))
   const totalPages = 4 + candidateChunks.length
@@ -369,7 +378,7 @@ export default function TrackReportCanvas({
               <p className="text-white/30 text-xs mt-1">{snapshot.name}</p>
               {scheduledDate && <p className="text-white/25 text-xs mt-1">{scheduledDate}</p>}
             </div>
-            <CoverRing avgScore={avgScore} readyCount={readyCount} conditionalCount={conditionalCount} total={candidates.length} ringColor={getVerdictTierConfig(avgScore, snapshot).color || "#f87171"} />
+            <CoverRing avgScore={avgScore} readyCount={readyCount} conditionalCount={conditionalCount} total={candidates.length} ringColor={getVerdictTierConfig(avgScore, snapshot).color || "#f87171"} readyLabel={topTierLabel} />
             <div className="flex items-center gap-8">
               {[
                 { label: "Candidates", value: candidates.length },
@@ -423,7 +432,7 @@ export default function TrackReportCanvas({
                   <div className="rounded-2xl px-8 py-4 text-center border-2 shrink-0" style={{ background: avgCol.bg, borderColor: avgCol.border }}>
                     <p className="text-4xl font-black tabular-nums" style={{ color: avgCol.text }}>{avgScore.toFixed(2)}</p>
                     <p className="text-[10px] font-semibold mt-0.5" style={{ color: avgCol.text }}>/ 5.00 ROLE AVG</p>
-                    <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: readinessColor }}>{readyPct}% Ready</p>
+                    <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: readinessColor }}>{readyPct}% {topTierLabel}</p>
                   </div>
                 )
               })()}
