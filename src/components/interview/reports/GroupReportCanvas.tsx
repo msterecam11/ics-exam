@@ -8,7 +8,7 @@ import {
   LayoutDashboard, BarChart3, TableProperties, Trophy,
 } from "lucide-react"
 import type { CandidateReportData, GroupStatsData } from "@/lib/interview-scoring"
-import { buildVerdictLabels, normaliseVerdictThresholds } from "@/lib/interview-scoring"
+import { buildVerdictLabels, normaliseVerdictThresholds, buildVerdictColorMap } from "@/lib/interview-scoring"
 
 // ─── Inline SVG Charts (SSR-safe, no Recharts) ───────────────────────────────
 
@@ -342,6 +342,7 @@ export default function GroupReportCanvas({
 
   const candidateMap  = Object.fromEntries(candidates.map((c: any) => [c.id, c]))
   const verdictLabels = buildVerdictLabels(snapshot?.verdict_thresholds)
+  const verdictColors = buildVerdictColorMap(snapshot?.verdict_thresholds)
   const hasExpert     = Object.keys(aiCache).length > 0
   const today         = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
@@ -458,7 +459,7 @@ export default function GroupReportCanvas({
                 if (count === 0) return null
                 return (
                   <div key={v} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15">
-                    <div className="w-2 h-2 rounded-full" style={{ background: VERDICT_STYLE[v].dot }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: verdictColors[v] ?? VERDICT_STYLE[v].dot }} />
                     <span className="text-white/80 text-xs font-semibold">{verdictLabels[v]}</span>
                     <span className="text-white font-bold text-sm">{count}</span>
                   </div>
@@ -852,12 +853,12 @@ export default function GroupReportCanvas({
                 {(["strong_yes", "yes", "marginal", "no"] as const).map(v => {
                   const count = group_stats.verdict_distribution[v] ?? 0
                   if (count === 0) return null
-                  const vs = VERDICT_STYLE[v]
+                  const cfg = verdictColors[v] ?? VERDICT_STYLE[v].color
                   return (
-                    <div key={v} className="flex items-center gap-2 px-3 py-1.5 rounded-xl border-2" style={{ background: vs.bg, borderColor: vs.border }}>
-                      <div className="w-2 h-2 rounded-full" style={{ background: vs.dot }} />
-                      <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: vs.color }}>{verdictLabels[v]}</span>
-                      <span className="text-sm font-black tabular-nums ml-0.5" style={{ color: vs.color }}>{count}</span>
+                    <div key={v} className="flex items-center gap-2 px-3 py-1.5 rounded-xl border-2" style={{ background: cfg + "20", borderColor: cfg + "60" }}>
+                      <div className="w-2 h-2 rounded-full" style={{ background: cfg }} />
+                      <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: cfg }}>{verdictLabels[v]}</span>
+                      <span className="text-sm font-black tabular-nums ml-0.5" style={{ color: cfg }}>{count}</span>
                     </div>
                   )
                 })}

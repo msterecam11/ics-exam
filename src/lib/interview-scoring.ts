@@ -33,11 +33,8 @@ export interface ConfigSnapshot {
   assessor_weights: Record<string, Record<string, number>> // { assessorId: { pillarId: weight } }
   // Stored as either object { strong_yes, yes, marginal } or array [{ key, label, min, max }]
   verdict_thresholds: any
-  insight_thresholds: {
-    top_strength: { min: number; max: number }
-    watch_list:   { min: number; max: number }
-    development:  { min: number; max: number }
-  }
+  // Supports both legacy object format and new array format [{ key, label, min, max }]
+  insight_thresholds: any
   rater_divergence_threshold: number
   pillars: SnapshotPillar[]
 }
@@ -109,6 +106,9 @@ export interface PillarResult {
   competency_results: CompetencyResult[]
   pillar_score: number          // weighted avg of competency weighted_avgs
   insight_label: InsightLabel
+  insight_display_label: string // custom label from config insight_thresholds
+  insight_color: string         // custom color from config insight_thresholds
+  insight_icon: string          // custom icon name from config insight_thresholds
 }
 
 export interface CandidateReportData {
@@ -227,27 +227,177 @@ function computePillarResult(
       )
     : 0
 
-  const insight_label = assignInsightLabel(pillarScore, snapshot)
+  const insight_label  = assignInsightLabel(pillarScore, snapshot)
+  const insightTier    = getInsightTierConfig(pillarScore, snapshot)
 
   return {
     pillar,
     competency_results,
-    pillar_score: pillarScore,
+    pillar_score:         pillarScore,
     insight_label,
+    insight_display_label: insightTier.label,
+    insight_color:         insightTier.color,
+    insight_icon:          insightTier.icon,
   }
 }
 
 /**
- * Assign insight label to a score.
+ * Assign insight label (internal key) to a pillar score.
+ * Supports both legacy object format and new array format.
  */
 export function assignInsightLabel(score: number, snapshot: ConfigSnapshot): InsightLabel {
   const t = snapshot.insight_thresholds
-  // Guard: must be a non-null object with the expected keys (not null, array, or empty {})
-  if (!t || Array.isArray(t) || !t.top_strength || !t.watch_list || !t.development) return "none"
+
+  // ── New array format: [{ key, label, min, max }] ─────────────────────────
+  if (Array.isArray(t) && t.length > 0) {
+    const match = t.find((tier: any) =>
+      typeof tier.min === "number" && typeof tier.max === "number" &&
+      score >= tier.min && score <= tier.max
+    )
+    if (!match) return "none"
+    const keyMap: Record<string, InsightLabel> = {
+      top_strength:     "top_strength",
+      watch_list:       "watch_list",
+      development_area: "development",
+      development:      "development",
+    }
+    return keyMap[match.key] ?? "none"
+  }
+
+  // ── Legacy object format: { top_strength: {min,max}, ... } ───────────────
+  if (!t || !t.top_strength || !t.watch_list || !t.development) return "none"
   if (score >= t.top_strength.min && score <= t.top_strength.max) return "top_strength"
   if (score >= t.watch_list.min   && score <= t.watch_list.max)   return "watch_list"
   if (score >= t.development.min  && score <= t.development.max)  return "development"
   return "none"
+}
+
+/**
+ * Get the configured display label for a candidate's overall score.
+ * Finds whichever Verdict Threshold tier the score falls into → returns its label.
+ * This is range-based, so it always reflects the config exactly.
+ */
+export function getVerdictDisplayLabel(score: number, snapshot: ConfigSnapshot): string {
+  const raw = snapshot.verdict_thresholds
+  if (Array.isArray(raw) && raw.length > 0) {
+    const sorted = [...raw]
+      .filter((t: any) => typeof t.min === "number" && t.label)
+      .sort((a: any, b: any) => b.min - a.min)
+    const match = sorted.find((t: any) => score >= t.min)
+    return match?.label ?? sorted[sorted.length - 1]?.label ?? "—"
+  }
+  // Legacy: capitalise the internal verdict key
+  const verdict = determineVerdict(score, snapshot)
+  return verdict.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+}
+
+/**
+ * Get the configured display label for a pillar score.
+ * Finds whichever Insight Threshold tier the score falls into → returns its label.
+ */
+export function getInsightDisplayLabel(score: number, snapshot: ConfigSnapshot): string {
+  const t = snapshot.insight_thresholds
+  if (Array.isArray(t) && t.length > 0) {
+    const match = t.find((tier: any) =>
+      typeof tier.min === "number" && typeof tier.max === "number" &&
+      score >= tier.min && score <= tier.max
+    )
+    return match?.label ?? "—"
+  }
+  // Legacy object format
+  if (t && !Array.isArray(t)) {
+    if (t.top_strength && score >= t.top_strength.min && score <= t.top_strength.max) return "Top Strength"
+    if (t.watch_list   && score >= t.watch_list.min   && score <= t.watch_list.max)   return "Watch List"
+    if (t.development  && score >= t.development.min  && score <= t.development.max)  return "Development"
+  }
+  return "—"
+}
+
+// ── Default color + icon by tier position (fallback when config has no values) ─
+const TIER_COLOR_DEFAULTS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444"]
+const TIER_ICON_DEFAULTS  = ["TrendingUp", "CheckCircle", "AlertTriangle", "XCircle"]
+
+/**
+ * Full tier config (label + color + icon) for a candidate's overall score.
+ * Reads directly from the Verdict Threshold array in the snapshot.
+ */
+export function getVerdictTierConfig(
+  score: number,
+  snapshot: ConfigSnapshot,
+): { label: string; color: string; icon: string } {
+  const raw = snapshot.verdict_thresholds
+  if (Array.isArray(raw) && raw.length > 0) {
+    const sorted = [...raw]
+      .filter((t: any) => typeof t.min === "number")
+      .sort((a: any, b: any) => b.min - a.min)
+    const idx   = sorted.findIndex((t: any) => score >= t.min)
+    const match = idx >= 0 ? sorted[idx] : null
+    const di    = Math.min(idx >= 0 ? idx : sorted.length - 1, TIER_COLOR_DEFAULTS.length - 1)
+    return {
+      label: match?.label ?? sorted[sorted.length - 1]?.label ?? "—",
+      color: match?.color ?? TIER_COLOR_DEFAULTS[di],
+      icon:  match?.icon  ?? TIER_ICON_DEFAULTS[di],
+    }
+  }
+  const verdict = determineVerdict(score, snapshot)
+  const legacyMap: Record<string, { label: string; color: string; icon: string }> = {
+    strong_yes: { label: "Strong Yes", color: "#10b981", icon: "TrendingUp"    },
+    yes:        { label: "Yes",        color: "#3b82f6", icon: "CheckCircle"   },
+    marginal:   { label: "Marginal",   color: "#f59e0b", icon: "AlertTriangle" },
+    no:         { label: "No",         color: "#ef4444", icon: "XCircle"       },
+  }
+  return legacyMap[verdict] ?? legacyMap.no
+}
+
+/**
+ * Full tier config (label + color + icon) for a pillar score.
+ * Reads directly from the Insight Threshold array in the snapshot.
+ */
+export function getInsightTierConfig(
+  score: number,
+  snapshot: ConfigSnapshot,
+): { label: string; color: string; icon: string } {
+  const t = snapshot.insight_thresholds
+  if (Array.isArray(t) && t.length > 0) {
+    const sorted = [...t]
+      .filter((tier: any) => typeof tier.min === "number")
+      .sort((a: any, b: any) => b.min - a.min)
+    const idx = sorted.findIndex((tier: any) =>
+      typeof tier.max === "number" && score >= tier.min && score <= tier.max
+    )
+    const match = idx >= 0 ? sorted[idx] : null
+    const di    = Math.min(idx >= 0 ? idx : sorted.length - 1, TIER_COLOR_DEFAULTS.length - 1)
+    return {
+      label: match?.label ?? "—",
+      color: match?.color ?? TIER_COLOR_DEFAULTS[di],
+      icon:  match?.icon  ?? TIER_ICON_DEFAULTS[di],
+    }
+  }
+  return { label: "—", color: "#64748b", icon: "BarChart2" }
+}
+
+/**
+ * Build a color map keyed by internal Verdict for use in charts/donut/badges.
+ * Maps tier position: tier 1 → strong_yes color, tier 2 → yes color, etc.
+ */
+export function buildVerdictColorMap(raw: any): Record<Verdict, string> {
+  const VERDICT_ORDER: Verdict[] = ["strong_yes", "yes", "marginal"]
+  const map: Record<Verdict, string> = {
+    strong_yes: TIER_COLOR_DEFAULTS[0],
+    yes:        TIER_COLOR_DEFAULTS[1],
+    marginal:   TIER_COLOR_DEFAULTS[2],
+    no:         TIER_COLOR_DEFAULTS[3],
+  }
+  if (Array.isArray(raw) && raw.length > 0) {
+    const sorted = [...raw]
+      .filter((t: any) => typeof t.min === "number")
+      .sort((a: any, b: any) => b.min - a.min)
+    sorted.forEach((t: any, i: number) => {
+      const v = VERDICT_ORDER[i]
+      if (v && t.color) map[v] = t.color
+    })
+  }
+  return map
 }
 
 /**

@@ -7,14 +7,27 @@ import Link from "next/link"
 import {
   Loader2, FileDown, ArrowLeft, AlertTriangle,
   BrainCircuit, Sparkles, RefreshCw, BookOpen,
-  LayoutDashboard, TableProperties, BarChart3, MessageSquareText, TrendingUp,
+  LayoutDashboard, TableProperties, BarChart3, MessageSquareText,
+  TrendingUp, TrendingDown, Star, Trophy, Target, Zap,
+  CheckCircle, ShieldAlert, XCircle, Flame, Award, BarChart2, Lightbulb,
+  ThumbsUp, ThumbsDown,
 } from "lucide-react"
+
+// ── Icon resolver ─────────────────────────────────────────────────────────────
+const LUCIDE_ICON_MAP: Record<string, any> = {
+  TrendingUp, TrendingDown, Star, Trophy, Target, Zap,
+  CheckCircle, AlertTriangle, ShieldAlert, XCircle, Flame,
+  Award, BarChart2, Lightbulb, ThumbsUp, ThumbsDown,
+}
+function resolveIcon(name?: string): any {
+  return LUCIDE_ICON_MAP[name ?? ""] ?? BarChart2
+}
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import dynamic from "next/dynamic"
-import type { CandidateReportData, InsightLabel, VerdictLabelMap } from "@/lib/interview-scoring"
-import { buildVerdictLabels } from "@/lib/interview-scoring"
+import type { CandidateReportData, InsightLabel } from "@/lib/interview-scoring"
+import { getVerdictTierConfig, getInsightTierConfig, buildVerdictColorMap } from "@/lib/interview-scoring"
 import { downloadPdf } from "@/lib/downloadPdf"
 
 const PillarRadarChart = dynamic(() => import("@/components/interview/charts/PillarRadarChart"), { ssr: false })
@@ -28,9 +41,13 @@ const VERDICT_STYLE: Record<string, { color: string; bg: string; border: string;
   no:         { color: "#dc2626", bg: "#fee2e2", border: "#fca5a5", dot: "#ef4444" },
 }
 
-function verdictConfig(verdict: string, labels: VerdictLabelMap) {
-  const s = VERDICT_STYLE[verdict] ?? VERDICT_STYLE.no
-  return { ...s, label: (labels[verdict as keyof VerdictLabelMap] ?? verdict).toUpperCase() }
+function verdictConfig(verdict: string, displayLabel: string, configColor?: string) {
+  const s      = VERDICT_STYLE[verdict] ?? VERDICT_STYLE.no
+  const color  = configColor ?? s.color
+  const dot    = configColor ?? s.dot
+  const bg     = configColor ? configColor + "20" : s.bg
+  const border = configColor ? configColor + "60" : s.border
+  return { color, dot, bg, border, label: displayLabel.toUpperCase() }
 }
 
 const INSIGHT_CONFIG: Record<InsightLabel, { badge: string; label: string }> = {
@@ -42,7 +59,11 @@ const INSIGHT_CONFIG: Record<InsightLabel, { badge: string; label: string }> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function scoreColor(score: number) {
+function scoreColor(score: number, snapshot?: any) {
+  if (snapshot) {
+    const hex = getVerdictTierConfig(score, snapshot).color
+    return { text: hex, bg: hex + "20", border: hex + "40" }
+  }
   if (score >= 4) return { text: "#059669", bg: "#d1fae5", border: "#a7f3d0" }
   if (score >= 3) return { text: "#d97706", bg: "#fef3c7", border: "#fde68a" }
   return { text: "#dc2626", bg: "#fee2e2", border: "#fca5a5" }
@@ -50,8 +71,8 @@ function scoreColor(score: number) {
 
 // ─── Score Ring ───────────────────────────────────────────────────────────────
 
-function CoverRing({ score, verdict, labels }: { score: number; verdict: string; labels: VerdictLabelMap }) {
-  const vc   = verdictConfig(verdict, labels)
+function CoverRing({ score, verdict, verdictTier }: { score: number; verdict: string; verdictTier: { label: string; color: string } }) {
+  const vc   = verdictConfig(verdict, verdictTier.label, verdictTier.color)
   const size = 200, sw = 14, r = (size - sw) / 2
   const circ   = 2 * Math.PI * r
   const offset = circ * (1 - Math.min(score / 5, 1))
@@ -389,8 +410,9 @@ export default function CandidateReportPage() {
     report:                 CandidateReportData
   }
 
-  const verdictLabels = buildVerdictLabels(snapshot.verdict_thresholds)
-  const vc      = verdictConfig(report.verdict, verdictLabels)
+  const verdictTier = getVerdictTierConfig(report.overall_score, snapshot)
+  const vc          = verdictConfig(report.verdict, verdictTier.label, verdictTier.color)
+  const sc          = (score: number) => scoreColor(score, snapshot)
   const today   = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
   // Shared banner props — reused on every content page
@@ -559,7 +581,7 @@ export default function CandidateReportPage() {
               </div>
 
               {/* Score ring */}
-              <CoverRing score={report.overall_score} verdict={report.verdict} labels={verdictLabels} />
+              <CoverRing score={report.overall_score} verdict={report.verdict} verdictTier={verdictTier} />
 
               {/* Group info */}
               <div className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 space-y-1.5 text-center">
@@ -627,14 +649,18 @@ export default function CandidateReportPage() {
                 <SectionTitle>Pillar Performance</SectionTitle>
                 <div className="space-y-2.5">
                   {report.pillar_results.map(pr => {
-                    const pc  = scoreColor(pr.pillar_score)
-                    const is  = INSIGHT_CONFIG[pr.insight_label]
+                    const pc  = sc(pr.pillar_score)
                     return (
                       <div key={pr.pillar.id}>
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-slate-700">{pr.pillar.name}</span>
-                            {is.label && <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-full", is.badge)}>{is.label}</span>}
+                            {pr.insight_display_label && (
+                              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ background: (pr.insight_color ?? "#64748b") + "20", color: pr.insight_color ?? "#64748b" }}>
+                                {pr.insight_display_label}
+                              </span>
+                            )}
                           </div>
                           <span className="text-sm font-black tabular-nums" style={{ color: pc.text }}>{pr.pillar_score.toFixed(2)}</span>
                         </div>
@@ -653,7 +679,7 @@ export default function CandidateReportPage() {
                   <SectionTitle>Top Strengths</SectionTitle>
                   <div className="space-y-2">
                     {topStrengths.map(cr => {
-                      const cc = scoreColor(cr.weighted_avg)
+                      const cc = sc(cr.weighted_avg)
                       return (
                         <div key={cr.competency.id} className="flex items-center justify-between rounded-lg px-3 py-2 border" style={{ background: cc.bg, borderColor: cc.border }}>
                           <p className="text-xs font-semibold text-slate-700">{cr.competency.name}</p>
@@ -667,7 +693,7 @@ export default function CandidateReportPage() {
                   <SectionTitle>Key Concerns</SectionTitle>
                   <div className="space-y-2">
                     {topConcerns.map(cr => {
-                      const cc = scoreColor(cr.weighted_avg)
+                      const cc = sc(cr.weighted_avg)
                       return (
                         <div key={cr.competency.id} className="flex items-center justify-between rounded-lg px-3 py-2 border" style={{ background: cc.bg, borderColor: cc.border }}>
                           <p className="text-xs font-semibold text-slate-700">{cr.competency.name}</p>
@@ -717,16 +743,18 @@ export default function CandidateReportPage() {
                   <SectionTitle>Pillar Scores</SectionTitle>
                   <div className="space-y-2.5 pt-1">
                     {report.pillar_results.map(pr => {
-                      const pc  = scoreColor(pr.pillar_score)
-                      const is  = INSIGHT_CONFIG[pr.insight_label]
+                      const pc  = sc(pr.pillar_score)
                       const pct = (pr.pillar_score / 5) * 100
                       return (
                         <div key={pr.pillar.id}>
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold text-slate-700">{pr.pillar.name}</span>
-                              {is.label && (
-                                <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-full", is.badge)}>{is.label}</span>
+                              {pr.insight_display_label && (
+                                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ background: (pr.insight_color ?? "#64748b") + "20", color: pr.insight_color ?? "#64748b" }}>
+                                  {pr.insight_display_label}
+                                </span>
                               )}
                             </div>
                             <span className="text-sm font-black tabular-nums" style={{ color: pc.text }}>{pr.pillar_score.toFixed(2)}</span>
@@ -751,7 +779,7 @@ export default function CandidateReportPage() {
                   : "grid-cols-5"
                 )}>
                   {heatmapCells.map((cell, i) => {
-                    const cc = scoreColor(cell.score)
+                    const cc = sc(cell.score)
                     return (
                       <div key={i} className="rounded-lg border px-3 py-2" style={{ borderColor: cc.border, background: cc.bg }}>
                         <p className="text-[8px] font-bold uppercase tracking-wider mb-0.5" style={{ color: cc.text, opacity: 0.6 }}>
@@ -775,16 +803,29 @@ export default function CandidateReportPage() {
             <div className="px-12 py-6 space-y-6">
               <PageBanner {...bannerProps} title="Assessor Score Matrix" icon={<TableProperties className="h-5 w-5 text-white" />} />
 
-              {/* Legend */}
-              <div className="flex items-center gap-4 text-[10px]">
+              {/* Legend — config-driven */}
+              <div className="flex items-center gap-4 text-[10px] flex-wrap">
                 <span className="text-slate-400">Score colour scale:</span>
-                {[
-                  { label: "≥ 4.0 — Strong",    color: "#059669", bg: "#d1fae5" },
-                  { label: "≥ 3.0 — Acceptable", color: "#d97706", bg: "#fef3c7" },
-                  { label: "< 3.0 — Needs Work", color: "#dc2626", bg: "#fee2e2" },
-                ].map(l => (
-                  <span key={l.label} className="flex items-center gap-1.5 font-semibold"
-                    style={{ color: l.color }}>
+                {(() => {
+                  const raw = snapshot?.verdict_thresholds
+                  const TIER_DEFAULTS = ["#10b981","#3b82f6","#f59e0b","#ef4444"]
+                  if (Array.isArray(raw) && raw.length > 0) {
+                    const sorted = [...raw]
+                      .filter((t: any) => typeof t.min === "number")
+                      .sort((a: any, b: any) => b.min - a.min)
+                    return sorted.map((t: any, i: number) => ({
+                      label: `≥ ${t.min} — ${t.label}`,
+                      color: t.color || TIER_DEFAULTS[i] || "#64748b",
+                      bg:   (t.color || TIER_DEFAULTS[i] || "#64748b") + "20",
+                    }))
+                  }
+                  return [
+                    { label: "≥ 4.0 — Strong",    color: "#059669", bg: "#d1fae5" },
+                    { label: "≥ 3.0 — Acceptable", color: "#d97706", bg: "#fef3c7" },
+                    { label: "< 3.0 — Needs Work", color: "#dc2626", bg: "#fee2e2" },
+                  ]
+                })().map(l => (
+                  <span key={l.label} className="flex items-center gap-1.5 font-semibold" style={{ color: l.color }}>
                     <span className="inline-block w-3 h-3 rounded-sm" style={{ background: l.bg, border: `1px solid ${l.color}` }} />
                     {l.label}
                   </span>
@@ -793,7 +834,7 @@ export default function CandidateReportPage() {
 
               {/* One section per pillar */}
               {report.pillar_results.map((pr) => {
-                const pc = scoreColor(pr.pillar_score)
+                const pc = sc(pr.pillar_score)
 
                 // ── Determine which assessors are ACTIVE for this pillar ─────────────
                 // Use live group_assessors.pillar_weights (not frozen snapshot).
@@ -860,7 +901,7 @@ export default function CandidateReportPage() {
                         </thead>
                         <tbody>
                           {pr.competency_results.map((cr, ci) => {
-                            const cc = scoreColor(cr.weighted_avg)
+                            const cc = sc(cr.weighted_avg)
                             // "has a score" = at least one ACTIVE assessor submitted
                             const hasAnyScore = pillarAssessors.some(a => cr.assessor_scores[a.id] !== undefined)
                             return (
@@ -876,7 +917,7 @@ export default function CandidateReportPage() {
                                 </td>
                                 {pillarAssessors.map(a => {
                                   const s  = cr.assessor_scores[a.id]
-                                  const ac = s !== undefined ? scoreColor(s) : null
+                                  const ac = s !== undefined ? sc(s) : null
                                   return (
                                     <td key={a.id} className="py-2.5 px-3 text-center">
                                       {s !== undefined ? (
@@ -916,7 +957,7 @@ export default function CandidateReportPage() {
                               const avg = aScores.length > 0
                                 ? aScores.reduce((s, v) => s + v, 0) / aScores.length
                                 : null
-                              const ac  = avg !== null ? scoreColor(avg) : null
+                              const ac  = avg !== null ? sc(avg) : null
                               return (
                                 <td key={a.id} className="py-2.5 px-3 text-center">
                                   {avg !== null ? (
@@ -947,8 +988,7 @@ export default function CandidateReportPage() {
 
           {/* ══ PAGES 5+ — PILLAR DEEP DIVE ══ */}
           {report.pillar_results.map((pr, pi) => {
-            const is = INSIGHT_CONFIG[pr.insight_label]
-            const pc = scoreColor(pr.pillar_score)
+            const pc = sc(pr.pillar_score)
             const pillarAiStory    = aiCache[`pillar_story_${pr.pillar.id}`]
             const pillarAiVariance = aiCache[`pillar_variance_${pr.pillar.id}`]
 
@@ -960,7 +1000,12 @@ export default function CandidateReportPage() {
 
                   {/* Pillar meta strip — score + insight badge */}
                   <div className="avoid-break flex items-center gap-3 py-2.5 px-4 rounded-xl border border-slate-100 bg-slate-50/60">
-                    {is.label && <span className={cn("text-[9px] font-bold px-2 py-1 rounded-full", is.badge)}>{is.label}</span>}
+                    {pr.insight_display_label && (
+                      <span className="text-[9px] font-bold px-2 py-1 rounded-full"
+                        style={{ background: (pr.insight_color ?? "#64748b") + "20", color: pr.insight_color ?? "#64748b" }}>
+                        {pr.insight_display_label}
+                      </span>
+                    )}
                     <span className="text-[10px] text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full">Weight: {pr.pillar.weight}%</span>
                     <div className="flex-1" />
                     <span className="text-2xl font-black tabular-nums" style={{ color: pc.text }}>{pr.pillar_score.toFixed(2)}</span>
@@ -972,7 +1017,7 @@ export default function CandidateReportPage() {
                     <SectionTitle>Competency Breakdown</SectionTitle>
                     <div className="space-y-2">
                       {pr.competency_results.map(cr => {
-                        const cc  = scoreColor(cr.weighted_avg)
+                        const cc  = sc(cr.weighted_avg)
                         const pct = (cr.weighted_avg / 5) * 100
                         return (
                           <div key={cr.competency.id}>
@@ -1032,7 +1077,7 @@ export default function CandidateReportPage() {
                                 ? rephrased
                                 : Array.isArray(rephrased) ? rephrased.join(" ")
                                 : rawEv
-                              const sc = score !== undefined ? scoreColor(score) : null
+                              const cc2 = score !== undefined ? sc(score) : null
 
                               return (
                                 <tr key={`${cr.competency.id}-${a.id}`}
@@ -1059,9 +1104,9 @@ export default function CandidateReportPage() {
                                   </td>
                                   {/* Score */}
                                   <td className="py-2.5 px-2 text-center">
-                                    {score !== undefined && sc ? (
+                                    {score !== undefined && cc2 ? (
                                       <span className="inline-block text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded"
-                                        style={{ color: sc.text, background: sc.bg }}>
+                                        style={{ color: cc2.text, background: cc2.bg }}>
                                         {score.toFixed(1)}
                                       </span>
                                     ) : (
@@ -1198,7 +1243,7 @@ export default function CandidateReportPage() {
                       pr.competency_results
                         .filter(cr => cr.weighted_avg < 3.5)
                         .map(cr => {
-                          const cc      = scoreColor(cr.weighted_avg)
+                          const cc      = sc(cr.weighted_avg)
                           const insight = devAreaInsights[cr.competency.id]
                           return (
                             <div key={cr.competency.id} className="rounded-xl border overflow-hidden"

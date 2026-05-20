@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Trophy, GitCompare, Target,
 } from "lucide-react"
 import type { CandidateReportData, GroupStatsData } from "@/lib/interview-scoring"
-import { normaliseVerdictThresholds } from "@/lib/interview-scoring"
+import { normaliseVerdictThresholds, buildVerdictLabels, buildVerdictColorMap } from "@/lib/interview-scoring"
 
 // ─── Inline SVG Chart (SSR-safe, no Recharts) ────────────────────────────────
 
@@ -76,12 +76,6 @@ const VERDICT_BADGE: Record<string, string> = {
   no:         "bg-red-100 text-red-600 border-red-200",
 }
 
-const READINESS_LABEL: Record<string, string> = {
-  strong_yes: "Ready",
-  yes:        "Conditionally Ready",
-  marginal:   "Conditionally Ready",
-  no:         "Dev. Required",
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -249,7 +243,9 @@ export default function TrackReportCanvas({
   aiCache, generating, onGenerate,
 }: TrackReportCanvasProps) {
 
-  const candidateMap = Object.fromEntries(candidates.map((c: any) => [c.id, c]))
+  const candidateMap  = Object.fromEntries(candidates.map((c: any) => [c.id, c]))
+  const verdictLabels = buildVerdictLabels(snapshot?.verdict_thresholds)
+  const verdictColors = buildVerdictColorMap(snapshot?.verdict_thresholds)
   const hasExpert    = Object.keys(aiCache).length > 0
   const today        = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
@@ -392,8 +388,8 @@ export default function TrackReportCanvas({
                 if (count === 0) return null
                 return (
                   <div key={v} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15">
-                    <div className="w-2 h-2 rounded-full" style={{ background: VERDICT_STYLE[v].dot }} />
-                    <span className="text-white/80 text-xs font-semibold">{READINESS_LABEL[v]}</span>
+                    <div className="w-2 h-2 rounded-full" style={{ background: verdictColors[v] ?? VERDICT_STYLE[v].dot }} />
+                    <span className="text-white/80 text-xs font-semibold">{verdictLabels[v]}</span>
                     <span className="text-white font-bold text-sm">{count}</span>
                   </div>
                 )
@@ -529,7 +525,7 @@ export default function TrackReportCanvas({
                   {track_stats.candidate_ranking.map((row, idx) => {
                     const c      = candidateMap[row.candidate_id]
                     const vbadge = VERDICT_BADGE[row.verdict] ?? VERDICT_BADGE.no
-                    const vlabel = READINESS_LABEL[row.verdict] ?? row.verdict
+                    const vlabel = verdictLabels[row.verdict] ?? row.verdict
                     const col    = sc(row.overall_score)
                     return (
                       <tr key={row.candidate_id} className={cn("border-b border-slate-50 last:border-0", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}>
@@ -589,12 +585,12 @@ export default function TrackReportCanvas({
               {(["strong_yes", "yes", "marginal", "no"] as const).map(v => {
                 const count = track_stats.verdict_distribution[v] ?? 0
                 if (count === 0) return null
-                const vs = VERDICT_STYLE[v]
+                const cfg = verdictColors[v] ?? VERDICT_STYLE[v].color
                 return (
-                  <div key={v} className="flex items-center gap-2 px-4 py-2 rounded-xl border-2" style={{ background: vs.bg, borderColor: vs.border }}>
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: vs.dot }} />
-                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: vs.color }}>{READINESS_LABEL[v]}</span>
-                    <span className="text-lg font-black tabular-nums ml-1" style={{ color: vs.color }}>{count}</span>
+                  <div key={v} className="flex items-center gap-2 px-4 py-2 rounded-xl border-2" style={{ background: cfg + "20", borderColor: cfg + "60" }}>
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: cfg }} />
+                    <span className="text-xs font-black uppercase tracking-wider" style={{ color: cfg }}>{verdictLabels[v]}</span>
+                    <span className="text-lg font-black tabular-nums ml-1" style={{ color: cfg }}>{count}</span>
                   </div>
                 )
               })}
@@ -699,7 +695,7 @@ export default function TrackReportCanvas({
                 const report = reports.find(r => r.candidate_id === candidate.id)
                 if (!report) return null
                 const vbadge = VERDICT_BADGE[report.verdict] ?? VERDICT_BADGE.no
-                const vlabel = READINESS_LABEL[report.verdict] ?? report.verdict
+                const vlabel = verdictLabels[report.verdict] ?? report.verdict
                 const col    = sc(report.overall_score)
                 const rank   = track_stats.candidate_ranking.find(r => r.candidate_id === candidate.id)?.rank
                 const pillarDeltas = report.pillar_results

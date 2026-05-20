@@ -79,19 +79,15 @@ export async function POST(_: Request, { params }: Params) {
     } as any
   }
 
-  // Normalise verdict_thresholds — config stores it as array [{key,label,min,max}],
-  // but scoring engine needs object { strong_yes, yes, marginal }
-  const rawVT2 = (config as any).verdict_thresholds
-  const verdict_thresholds_normalised2 = Array.isArray(rawVT2)
-    ? Object.fromEntries(rawVT2.map((t: any) => [t.key, t.min]))
-    : rawVT2
+  // Store verdict_thresholds as-is (array [{key,label,min,max}]).
+  // The scoring engine handles both array and legacy object formats.
 
   // Rebuild the snapshot from the CURRENT live config
   const snapshot = {
     id:                         config!.id,
     name:                       config!.name,
     assessor_weights,
-    verdict_thresholds:         verdict_thresholds_normalised2,
+    verdict_thresholds:         (config as any).verdict_thresholds ?? [],
     insight_thresholds:         (config as any).insight_thresholds ?? null,
     rater_divergence_threshold: (config as any).rater_divergence_threshold ?? null,
     pillars: ((config!.pillars as any[]) ?? [])

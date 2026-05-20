@@ -1,13 +1,16 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Plus, Trash2, ChevronDown, ChevronUp, ArrowLeft,
-  Loader2, Save, Layers, ListChecks, Info, TrendingUp, AlertTriangle, ShieldAlert,
+  Loader2, Save, Layers, ListChecks, Info, TrendingUp, TrendingDown,
+  AlertTriangle, ShieldAlert, Star, Trophy, Target, Zap,
+  CheckCircle, XCircle, Flame, Award, BarChart2, Lightbulb,
+  ThumbsUp, ThumbsDown,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -28,15 +31,124 @@ type Pillar = {
   knockout_threshold: number | null
   competencies: Competency[]
 }
-type InsightThreshold = { key: string; label: string; min: number; max: number }
+type InsightThreshold = { key: string; label: string; min: number; max: number; color?: string; icon?: string }
+type VerdictThreshold = { key: string; label: string; min: number; max: number; color?: string; icon?: string }
 type Track  = { id: string; name: string }
 type Config = {
   id: string; name: string; description: string | null
   assessor_weights: Record<string, Record<string, number>>
-  verdict_thresholds: { key: string; label: string; min: number; max: number }[]
+  verdict_thresholds: VerdictThreshold[]
   insight_thresholds: InsightThreshold[]
   rater_divergence_threshold: number | null
   pillars: Pillar[]
+}
+
+// ── Color palette ─────────────────────────────────────────────────────────────
+const COLOR_PALETTE = [
+  "#10b981", "#3b82f6", "#f59e0b", "#ef4444",
+  "#8b5cf6", "#06b6d4", "#f97316", "#ec4899",
+  "#1B4F8A", "#059669", "#dc2626", "#64748b",
+]
+
+// ── Icon set ──────────────────────────────────────────────────────────────────
+const ICON_SET = [
+  { name: "TrendingUp",    Icon: TrendingUp    },
+  { name: "TrendingDown",  Icon: TrendingDown  },
+  { name: "Star",          Icon: Star          },
+  { name: "Trophy",        Icon: Trophy        },
+  { name: "Target",        Icon: Target        },
+  { name: "Zap",           Icon: Zap           },
+  { name: "CheckCircle",   Icon: CheckCircle   },
+  { name: "AlertTriangle", Icon: AlertTriangle },
+  { name: "ShieldAlert",   Icon: ShieldAlert   },
+  { name: "XCircle",       Icon: XCircle       },
+  { name: "Flame",         Icon: Flame         },
+  { name: "Award",         Icon: Award         },
+  { name: "BarChart2",     Icon: BarChart2     },
+  { name: "Lightbulb",     Icon: Lightbulb     },
+  { name: "ThumbsUp",      Icon: ThumbsUp      },
+  { name: "ThumbsDown",    Icon: ThumbsDown    },
+]
+function getIconComponent(name?: string) {
+  return ICON_SET.find(i => i.name === name)?.Icon ?? BarChart2
+}
+
+// ── Default color + icon by tier position ─────────────────────────────────────
+const TIER_DEFAULTS = [
+  { color: "#10b981", icon: "TrendingUp"    },
+  { color: "#3b82f6", icon: "CheckCircle"   },
+  { color: "#f59e0b", icon: "AlertTriangle" },
+  { color: "#ef4444", icon: "XCircle"       },
+]
+function tierDefault(idx: number) {
+  return TIER_DEFAULTS[idx] ?? TIER_DEFAULTS[TIER_DEFAULTS.length - 1]
+}
+
+// ── ColorPicker ───────────────────────────────────────────────────────────────
+function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const effective = value || "#64748b"
+  return (
+    <div className="relative">
+      <button
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="w-7 h-7 rounded-md border-2 border-white ring-1 ring-slate-200 shadow-sm hover:scale-110 transition-transform"
+        style={{ background: effective }}
+        title="Choose colour"
+      />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 top-9 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5">
+            {COLOR_PALETTE.map(c => (
+              <button
+                key={c}
+                onClick={() => { onChange(c); setOpen(false) }}
+                className={`w-6 h-6 rounded-md border-2 transition-transform hover:scale-110 ${effective === c ? "border-slate-700 scale-110" : "border-transparent"}`}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── IconPicker ────────────────────────────────────────────────────────────────
+function IconPicker({ value, color, onChange }: { value?: string; color?: string; onChange: (name: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const IconComp = getIconComponent(value)
+  const hex = color || "#64748b"
+  return (
+    <div className="relative">
+      <button
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
+        className="w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all hover:scale-105"
+        style={{ background: hex + "20", borderColor: hex + "60" }}
+        title="Choose icon"
+      >
+        <IconComp className="h-3.5 w-3.5" style={{ color: hex }} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 top-10 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5 w-[140px]">
+            {ICON_SET.map(({ name, Icon }) => (
+              <button
+                key={name}
+                onClick={() => { onChange(name); setOpen(false) }}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-110 ${value === name ? "bg-slate-100 ring-2 ring-slate-400" : "hover:bg-slate-50"}`}
+                title={name}
+              >
+                <Icon className="h-3.5 w-3.5 text-slate-600" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 // Insight type definitions (icon + colour per semantic key)
@@ -438,9 +550,10 @@ export default function ConfigEditorPage() {
 
   function addVerdict() {
     if (!config) return
+    const def = tierDefault(config.verdict_thresholds.length)
     const next: Config["verdict_thresholds"] = [
       ...config.verdict_thresholds,
-      { key: `tier_${Date.now()}`, label: "New Tier", min: 1, max: 1.99 },
+      { key: `tier_${Date.now()}`, label: "New Tier", min: 1, max: 1.99, color: def.color, icon: def.icon },
     ]
     setConfig(c => c ? { ...c, verdict_thresholds: next } : c)
     saveVerdicts(next)
@@ -486,9 +599,10 @@ export default function ConfigEditorPage() {
     const existing  = config.insight_thresholds ?? []
     const usedKeys  = new Set(existing.map(t => t.key))
     const nextType  = INSIGHT_TYPES.find(t => !usedKeys.has(t.key)) ?? INSIGHT_TYPES[0]
+    const def       = tierDefault(existing.length)
     const next: Config["insight_thresholds"] = [
       ...existing,
-      { key: nextType.key, label: "New Insight", min: 1, max: 2.5 },
+      { key: nextType.key, label: "New Insight", min: 1, max: 2.5, color: def.color, icon: def.icon },
     ]
     setConfig(c => c ? { ...c, insight_thresholds: next } : c)
     saveInsights(next)
@@ -603,7 +717,9 @@ export default function ConfigEditorPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Column labels */}
-          <div className="grid grid-cols-[1fr_56px_80px_56px_80px_32px] gap-2 px-1">
+          <div className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 px-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Col</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Icon</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Label</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Min</p>
             <div />
@@ -611,41 +727,55 @@ export default function ConfigEditorPage() {
             <div /><div />
           </div>
 
-          {config.verdict_thresholds.map((t, i) => (
-            <div key={t.key ?? i} className="grid grid-cols-[1fr_56px_80px_56px_80px_32px] gap-2 items-center">
-              <input
-                className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-[#1B4F8A] w-full"
-                value={t.label}
-                onChange={e => updateVerdict(i, "label", e.target.value)}
-                onBlur={() => saveVerdicts(config.verdict_thresholds)}
-                placeholder="Tier name…"
-              />
-              <span className="text-xs text-slate-400 text-center">Min</span>
-              <input
-                type="number" step="0.01"
-                className="text-sm text-center border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-[#1B4F8A] w-full"
-                value={t.min}
-                onChange={e => updateVerdict(i, "min", parseFloat(e.target.value))}
-                onBlur={() => saveVerdicts(config.verdict_thresholds)}
-              />
-              <span className="text-xs text-slate-400 text-center">Max</span>
-              <input
-                type="number" step="0.01"
-                className="text-sm text-center border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-[#1B4F8A] w-full"
-                value={t.max}
-                onChange={e => updateVerdict(i, "max", parseFloat(e.target.value))}
-                onBlur={() => saveVerdicts(config.verdict_thresholds)}
-              />
-              <button
-                onClick={() => removeVerdict(i)}
-                disabled={config.verdict_thresholds.length <= 1}
-                className="flex items-center justify-center text-slate-300 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                title={config.verdict_thresholds.length <= 1 ? "At least one tier required" : "Remove tier"}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+          {config.verdict_thresholds.map((t, i) => {
+            const def   = tierDefault(i)
+            const color = t.color || def.color
+            const icon  = t.icon  || def.icon
+            return (
+              <div key={t.key ?? i} className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 items-center">
+                <ColorPicker
+                  value={color}
+                  onChange={c => { updateVerdict(i, "color", c); saveVerdicts(config.verdict_thresholds.map((x, idx) => idx === i ? { ...x, color: c } : x)) }}
+                />
+                <IconPicker
+                  value={icon}
+                  color={color}
+                  onChange={name => { updateVerdict(i, "icon", name); saveVerdicts(config.verdict_thresholds.map((x, idx) => idx === i ? { ...x, icon: name } : x)) }}
+                />
+                <input
+                  className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-[#1B4F8A] w-full"
+                  value={t.label}
+                  onChange={e => updateVerdict(i, "label", e.target.value)}
+                  onBlur={() => saveVerdicts(config.verdict_thresholds)}
+                  placeholder="Tier name…"
+                />
+                <span className="text-xs text-slate-400 text-center">Min</span>
+                <input
+                  type="number" step="0.01"
+                  className="text-sm text-center border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-[#1B4F8A] w-full"
+                  value={t.min}
+                  onChange={e => updateVerdict(i, "min", parseFloat(e.target.value))}
+                  onBlur={() => saveVerdicts(config.verdict_thresholds)}
+                />
+                <span className="text-xs text-slate-400 text-center">Max</span>
+                <input
+                  type="number" step="0.01"
+                  className="text-sm text-center border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-[#1B4F8A] w-full"
+                  value={t.max}
+                  onChange={e => updateVerdict(i, "max", parseFloat(e.target.value))}
+                  onBlur={() => saveVerdicts(config.verdict_thresholds)}
+                />
+                <button
+                  onClick={() => removeVerdict(i)}
+                  disabled={config.verdict_thresholds.length <= 1}
+                  className="flex items-center justify-center text-slate-300 hover:text-red-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                  title={config.verdict_thresholds.length <= 1 ? "At least one tier required" : "Remove tier"}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
@@ -668,8 +798,9 @@ export default function ConfigEditorPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {/* Column headers */}
-          <div className="grid grid-cols-[32px_1fr_56px_80px_56px_80px_32px] gap-2 px-1">
-            <div />
+          <div className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 px-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Col</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Icon</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Insight Label</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">Min</p>
             <div />
@@ -678,18 +809,28 @@ export default function ConfigEditorPage() {
           </div>
 
           {(config.insight_thresholds ?? []).map((t, i) => {
-            const type = getInsightType(t.key)
-            const { Icon } = type
+            const def   = tierDefault(i)
+            const color = t.color || def.color
+            const icon  = t.icon  || def.icon
             return (
-              <div key={i} className="grid grid-cols-[32px_1fr_56px_80px_56px_80px_32px] gap-2 items-center">
-                {/* Clickable icon — cycles type */}
-                <button
-                  onClick={() => cycleInsightType(i)}
-                  title="Click to change type"
-                  className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all hover:scale-105 ${type.bgClass}`}
-                >
-                  <Icon className={`h-3.5 w-3.5 ${type.colorClass}`} />
-                </button>
+              <div key={i} className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 items-center">
+                <ColorPicker
+                  value={color}
+                  onChange={c => {
+                    const next = (config.insight_thresholds ?? []).map((x, idx) => idx === i ? { ...x, color: c } : x)
+                    setConfig(cv => cv ? { ...cv, insight_thresholds: next } : cv)
+                    saveInsights(next)
+                  }}
+                />
+                <IconPicker
+                  value={icon}
+                  color={color}
+                  onChange={name => {
+                    const next = (config.insight_thresholds ?? []).map((x, idx) => idx === i ? { ...x, icon: name } : x)
+                    setConfig(cv => cv ? { ...cv, insight_thresholds: next } : cv)
+                    saveInsights(next)
+                  }}
+                />
                 {/* Editable label */}
                 <input
                   className="text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-[#1B4F8A] w-full"

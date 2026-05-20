@@ -50,19 +50,15 @@ export async function POST(_: Request, { params }: Params) {
 
   if (!config) return NextResponse.json({ error: "No config attached" }, { status: 400 })
 
-  // Normalise verdict_thresholds — config stores it as array [{key,label,min,max}],
-  // but scoring engine needs object { strong_yes, yes, marginal }
-  const rawVT = config.verdict_thresholds as any
-  const verdict_thresholds_normalised = Array.isArray(rawVT)
-    ? Object.fromEntries(rawVT.map((t: any) => [t.key, t.min]))
-    : rawVT
+  // Store verdict_thresholds as-is (array [{key,label,min,max}]).
+  // The scoring engine handles both array and legacy object formats.
 
   // Build frozen snapshot — all score calculations + reports use this, never the live config
   const snapshot = {
     id:                        config.id,
     name:                      config.name,
     assessor_weights,          // built from group_assessors.pillar_weights
-    verdict_thresholds:        verdict_thresholds_normalised,
+    verdict_thresholds:        config.verdict_thresholds ?? [],
     insight_thresholds:        config.insight_thresholds,
     rater_divergence_threshold: config.rater_divergence_threshold,
     pillars: ((config.pillars as any[]) ?? [])
