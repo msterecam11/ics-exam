@@ -5,7 +5,7 @@ import Image from "next/image"
 import { cn } from "@/lib/utils"
 import {
   BrainCircuit, Sparkles, AlertTriangle,
-  LayoutDashboard, BarChart3, TableProperties, Trophy,
+  LayoutDashboard, BarChart3, TableProperties, Trophy, Users,
 } from "lucide-react"
 import type { CandidateReportData, GroupStatsData } from "@/lib/interview-scoring"
 import { buildVerdictLabels, normaliseVerdictThresholds, buildVerdictColorMap, getVerdictTierConfig } from "@/lib/interview-scoring"
@@ -424,7 +424,14 @@ export default function GroupReportCanvas({
   const readinessBorder = avgTierColor + "60"
 
   const bannerProps = { groupName: group.name, today, readiness: avgTierLabel, readinessBg, readinessBorder, readinessColor }
-  const totalPages  = 5 + candidateChunks.length
+
+  // Track page exists when the group has ≥1 distinct track
+  const trackCount      = Object.keys(group_stats.track_breakdown).length
+  const hasTrackPage    = trackCount > 0
+  const trackPageNum    = 4                             // always page 4
+  const rankingsPageNum = hasTrackPage ? 5 : 4
+  const summariesStart  = rankingsPageNum + 1
+  const totalPages      = summariesStart + candidateChunks.length
 
   return (
     <>
@@ -691,7 +698,147 @@ export default function GroupReportCanvas({
           <PageFooter page={3} total={totalPages} />
         </Page>
 
-        {/* ══ PAGE 4 — CANDIDATE RANKINGS ══ */}
+        {/* ══ PAGE 4 — ROLE TRACK ANALYSIS ══ */}
+        {hasTrackPage && (
+          <Page>
+            <PageHeader title="Role Track Analysis" subtitle={group.name} today={today} />
+            <div className="px-12 py-6 space-y-5">
+              <PageBanner {...bannerProps} title="Role Track Analysis" icon={<Users className="h-5 w-5 text-white" />} />
+
+              {Object.entries(group_stats.track_breakdown)
+                .sort(([, a], [, b]) => b.avg_score - a.avg_score)
+                .map(([trackId, track]) => {
+                  // Candidates & reports belonging to this track
+                  const trackCands = candidates.filter((c: any) =>
+                    (c.track_id ?? "unknown") === trackId
+                  )
+                  const trackReports = reports.filter(r =>
+                    trackCands.some((c: any) => c.id === r.candidate_id)
+                  )
+
+                  // Pillar averages for this track
+                  const pMap: Record<string, { name: string; total: number; n: number }> = {}
+                  for (const r of trackReports) {
+                    for (const pr of r.pillar_results) {
+                      if (!pMap[pr.pillar.id])
+                        pMap[pr.pillar.id] = { name: pr.pillar.name, total: 0, n: 0 }
+                      pMap[pr.pillar.id].total += pr.pillar_score
+                      pMap[pr.pillar.id].n++
+                    }
+                  }
+                  const trackPillars = Object.entries(pMap)
+                    .map(([id, v]) => ({ id, name: v.name, avg: v.n > 0 ? v.total / v.n : 0 }))
+                    .sort((a, b) => b.avg - a.avg)
+
+                  const tTier  = getVerdictTierConfig(track.avg_score, snapshot)
+                  const tColor = tTier.color || "#64748b"
+                  const avgCol = sc(track.avg_score)
+
+                  return (
+                    <div key={trackId} className="avoid-break border border-slate-100 rounded-2xl overflow-hidden">
+                      {/* Track header bar */}
+                      <div className="flex items-center gap-4 px-5 py-3.5 border-b border-slate-100"
+                        style={{ background: tColor + "0d" }}>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-extrabold text-base" style={{ color: tColor }}>{track.track_name}</h3>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {track.count} candidate{track.count !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        {/* Avg score badge */}
+                        <div className="rounded-xl px-5 py-2 text-center border-2 shrink-0"
+                          style={{ background: avgCol.bg, borderColor: avgCol.border }}>
+                          <p className="text-2xl font-black tabular-nums leading-none" style={{ color: avgCol.text }}>
+                            {track.avg_score.toFixed(2)}
+                          </p>
+                          <p className="text-[9px] font-black uppercase tracking-widest mt-0.5" style={{ color: tColor }}>
+                            {tTier.label || "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4 space-y-3">
+                        {/* Tier distribution chips */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {(configTiers ?? VERDICT_KEYS.map((v, i) => ({
+                              label: verdictLabels[v] ?? v,
+                              color: verdictColors[v] ?? TIER_DEFAULTS[i],
+                              _key: v,
+                            } as any))
+                          ).map((t: any, i: number) => {
+                            const key   = configTiers ? VERDICT_KEYS[Math.min(i, 3)] : t._key
+                            const cnt   = (track.verdicts as any)[key] ?? 0
+                            const color = t.color || TIER_DEFAULTS[i] || "#64748b"
+                            return (
+                              <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border"
+                                style={{ background: color + "15", borderColor: color + "40" }}>
+                                <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                                <span className="text-[10px] font-semibold text-slate-600">{t.label}</span>
+                                <span className="font-black text-sm" style={{ color }}>{cnt}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-5">
+                          {/* Pillar averages */}
+                          {trackPillars.length > 0 && (
+                            <div className="space-y-2">
+                              {trackPillars.map(tp => {
+                                const pc = sc(tp.avg)
+                                return (
+                                  <div key={tp.id} className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-500 w-28 shrink-0 truncate">{tp.name}</span>
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full transition-all"
+                                        style={{ width: `${(tp.avg / 5) * 100}%`, background: pc.text }} />
+                                    </div>
+                                    <span className="text-[10px] font-black tabular-nums w-7 text-right shrink-0"
+                                      style={{ color: pc.text }}>{tp.avg.toFixed(2)}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {/* Candidate list for this track */}
+                          <div className="space-y-1.5">
+                            {group_stats.candidate_ranking
+                              .filter(row => trackCands.some((c: any) => c.id === row.candidate_id))
+                              .map(row => {
+                                const c      = candidateMap[row.candidate_id]
+                                const col    = sc(row.overall_score)
+                                const vlabel = verdictLabels[row.verdict as keyof typeof verdictLabels] ?? row.verdict
+                                const vcolor = verdictColors[row.verdict] ?? VERDICT_STYLE[row.verdict]?.color ?? "#64748b"
+                                return (
+                                  <div key={row.candidate_id}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
+                                    style={{ background: col.bg + "66", borderColor: col.border }}>
+                                    <span className="text-[9px] text-slate-400 font-bold shrink-0">#{row.rank}</span>
+                                    <span className="flex-1 text-[11px] font-semibold text-slate-700 truncate">
+                                      {c?.full_name}
+                                    </span>
+                                    <span className="text-[11px] font-black tabular-nums shrink-0"
+                                      style={{ color: col.text }}>{row.overall_score.toFixed(2)}</span>
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0"
+                                      style={{ background: vcolor + "20", color: vcolor, borderColor: vcolor + "60" }}>
+                                      {vlabel}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+            <PageFooter page={trackPageNum} total={totalPages} />
+          </Page>
+        )}
+
+        {/* ══ PAGE 4/5 — CANDIDATE RANKINGS ══ */}
         <Page>
           <PageHeader title="Candidate Rankings" subtitle={group.name} today={today} />
           <div className="px-12 py-6 space-y-6">
@@ -807,10 +954,10 @@ export default function GroupReportCanvas({
               </div>
             )}
           </div>
-          <PageFooter page={4} total={totalPages} />
+          <PageFooter page={rankingsPageNum} total={totalPages} />
         </Page>
 
-        {/* ══ PAGES 5+ — CANDIDATE SUMMARIES (2 per page) ══ */}
+        {/* ══ PAGES 5/6+ — CANDIDATE SUMMARIES (2 per page) ══ */}
         {candidateChunks.map((chunk, ci) => (
           <Page key={`chunk-${ci}`}>
             <PageHeader title="Candidate Summaries" subtitle={group.name} today={today} />
@@ -914,7 +1061,7 @@ export default function GroupReportCanvas({
                 )
               })}
             </div>
-            <PageFooter page={5 + ci} total={totalPages} />
+            <PageFooter page={summariesStart + ci} total={totalPages} />
           </Page>
         ))}
 
