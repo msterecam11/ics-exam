@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Trophy, GitCompare, Target,
 } from "lucide-react"
 import type { CandidateReportData, GroupStatsData } from "@/lib/interview-scoring"
-import { normaliseVerdictThresholds, buildVerdictLabels, buildVerdictColorMap } from "@/lib/interview-scoring"
+import { normaliseVerdictThresholds, buildVerdictLabels, buildVerdictColorMap, getVerdictTierConfig } from "@/lib/interview-scoring"
 
 // ─── Inline SVG Chart (SSR-safe, no Recharts) ────────────────────────────────
 
@@ -253,8 +253,12 @@ export default function TrackReportCanvas({
   const _thresholds  = normaliseVerdictThresholds(snapshot?.verdict_thresholds ?? [])
   const strongYesMin = _thresholds.find(t => t.verdict === "strong_yes")?.min ?? 4.0
   const yesMin       = _thresholds.find(t => t.verdict === "yes")?.min       ?? 3.0
-  // Bound scoreColor using config thresholds
-  const sc = (s: number) => scoreColor(s, strongYesMin, yesMin)
+  // Full N-tier config-driven score colour — matches individual report
+  const sc = (s: number) => {
+    const t = getVerdictTierConfig(s, snapshot)
+    const color = t.color || scoreColor(s, strongYesMin, yesMin).text
+    return { text: color, bg: color + "20", border: color + "40" }
+  }
   const scheduledDate = group.scheduled_date
     ? new Date(group.scheduled_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null
@@ -492,13 +496,28 @@ export default function TrackReportCanvas({
           <PageHeader title="Candidate Rankings" subtitle={`${track.name} · ${group.name}`} today={today} />
           <div className="px-12 py-6 space-y-6">
             <PageBanner {...bannerProps} title="Candidate Rankings" icon={<Trophy className="h-5 w-5 text-white" />} />
-            <div className="flex items-center gap-4 text-[10px]">
+            {/* Legend — config-driven */}
+            <div className="flex items-center gap-4 text-[10px] flex-wrap">
               <span className="text-slate-400">Score colour scale:</span>
-              {[
-                { label: "≥ 4.0 Strong",     color: "#059669", bg: "#d1fae5" },
-                { label: "≥ 3.0 Acceptable",  color: "#d97706", bg: "#fef3c7" },
-                { label: "< 3.0 Needs Work",  color: "#dc2626", bg: "#fee2e2" },
-              ].map(l => (
+              {(() => {
+                const raw = snapshot?.verdict_thresholds
+                const TIER_DEFAULTS = ["#10b981","#3b82f6","#f59e0b","#ef4444"]
+                if (Array.isArray(raw) && raw.length > 0) {
+                  const sorted = [...raw]
+                    .filter((t: any) => typeof t.min === "number")
+                    .sort((a: any, b: any) => b.min - a.min)
+                  return sorted.map((t: any, i: number) => ({
+                    label: `≥ ${t.min} — ${t.label}`,
+                    color: t.color || TIER_DEFAULTS[i] || "#64748b",
+                    bg:   (t.color || TIER_DEFAULTS[i] || "#64748b") + "20",
+                  }))
+                }
+                return [
+                  { label: "≥ 4.0 — Strong",    color: "#059669", bg: "#d1fae5" },
+                  { label: "≥ 3.0 — Acceptable", color: "#d97706", bg: "#fef3c7" },
+                  { label: "< 3.0 — Needs Work", color: "#dc2626", bg: "#fee2e2" },
+                ]
+              })().map(l => (
                 <span key={l.label} className="flex items-center gap-1.5 font-semibold" style={{ color: l.color }}>
                   <span className="inline-block w-3 h-3 rounded-sm" style={{ background: l.bg, border: `1px solid ${l.color}` }} />
                   {l.label}
@@ -524,8 +543,8 @@ export default function TrackReportCanvas({
                 <tbody>
                   {track_stats.candidate_ranking.map((row, idx) => {
                     const c      = candidateMap[row.candidate_id]
-                    const vbadge = VERDICT_BADGE[row.verdict] ?? VERDICT_BADGE.no
                     const vlabel = verdictLabels[row.verdict] ?? row.verdict
+                    const vcolor = verdictColors[row.verdict] ?? VERDICT_STYLE[row.verdict]?.color ?? "#64748b"
                     const col    = sc(row.overall_score)
                     return (
                       <tr key={row.candidate_id} className={cn("border-b border-slate-50 last:border-0", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}>
@@ -556,7 +575,10 @@ export default function TrackReportCanvas({
                             style={{ color: col.text, background: col.bg }}>{row.overall_score.toFixed(2)}</span>
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full border", vbadge)}>{vlabel}</span>
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
+                            style={{ background: vcolor + "20", color: vcolor, borderColor: vcolor + "60" }}>
+                            {vlabel}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -694,8 +716,8 @@ export default function TrackReportCanvas({
               {chunk.map((candidate: any) => {
                 const report = reports.find(r => r.candidate_id === candidate.id)
                 if (!report) return null
-                const vbadge = VERDICT_BADGE[report.verdict] ?? VERDICT_BADGE.no
                 const vlabel = verdictLabels[report.verdict] ?? report.verdict
+                const vcolor = verdictColors[report.verdict] ?? VERDICT_STYLE[report.verdict]?.color ?? "#64748b"
                 const col    = sc(report.overall_score)
                 const rank   = track_stats.candidate_ranking.find(r => r.candidate_id === candidate.id)?.rank
                 const pillarDeltas = report.pillar_results
@@ -730,7 +752,10 @@ export default function TrackReportCanvas({
                           <p className="text-xl font-extrabold tabular-nums" style={{ color: col.text }}>{report.overall_score.toFixed(2)}</p>
                           <p className="text-[9px] text-slate-400 uppercase tracking-wider">Overall</p>
                         </div>
-                        <span className={cn("text-[9px] font-bold px-2.5 py-1 rounded-full border", vbadge)}>{vlabel}</span>
+                        <span className="text-[9px] font-bold px-2.5 py-1 rounded-full border"
+                          style={{ background: vcolor + "20", color: vcolor, borderColor: vcolor + "60" }}>
+                          {vlabel}
+                        </span>
                       </div>
                     </div>
                     <div className="px-4 py-3 grid grid-cols-2 gap-5">

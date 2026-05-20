@@ -8,7 +8,7 @@ import {
   LayoutDashboard, BarChart3, TableProperties, Trophy,
 } from "lucide-react"
 import type { CandidateReportData, GroupStatsData } from "@/lib/interview-scoring"
-import { buildVerdictLabels, normaliseVerdictThresholds, buildVerdictColorMap } from "@/lib/interview-scoring"
+import { buildVerdictLabels, normaliseVerdictThresholds, buildVerdictColorMap, getVerdictTierConfig } from "@/lib/interview-scoring"
 
 // ─── Inline SVG Charts (SSR-safe, no Recharts) ───────────────────────────────
 
@@ -43,16 +43,25 @@ function SVGPillarRadar({ pillars, size = 220 }: { pillars: { name: string; scor
   )
 }
 
-function SVGVerdictDonut({ distribution, size = 170 }: {
+const DONUT_DEFAULTS: Record<string, string> = {
+  strong_yes: "#10b981",
+  yes:        "#3b82f6",
+  marginal:   "#f59e0b",
+  no:         "#ef4444",
+}
+
+function SVGVerdictDonut({ distribution, verdictLabels, verdictColors, size = 170 }: {
   distribution: { strong_yes: number; yes: number; marginal: number; no: number }
+  verdictLabels: Record<string, string>
+  verdictColors: Record<string, string>
   size?: number
 }) {
-  const SEGS = [
-    { key: "strong_yes" as const, label: "Strong Yes", color: "#10b981" },
-    { key: "yes"        as const, label: "Yes",        color: "#3b82f6" },
-    { key: "marginal"   as const, label: "Marginal",   color: "#f59e0b" },
-    { key: "no"         as const, label: "No",         color: "#ef4444" },
-  ]
+  const KEYS = ["strong_yes", "yes", "marginal", "no"] as const
+  const SEGS = KEYS.map(key => ({
+    key,
+    label: verdictLabels[key] ?? key.replace("_", " "),
+    color: verdictColors[key] ?? DONUT_DEFAULTS[key],
+  }))
   const total = SEGS.reduce((s, sg) => s + (distribution[sg.key] ?? 0), 0)
   if (total === 0) return <p className="text-xs text-slate-400 text-center py-8">No data</p>
   const cx = size / 2, cy = size / 2, outerR = size * 0.40, innerR = size * 0.24
@@ -103,15 +112,17 @@ function SVGVerdictDonut({ distribution, size = 170 }: {
 
 // Candidate score ladder — replaces the broken 2-axis bubble chart
 // Works correctly for multi-track groups regardless of pillar differences
-function SVGReadinessLadder({ candidates }: {
+function SVGReadinessLadder({ candidates, verdictColors }: {
   candidates: { name: string; overall_score: number; verdict: string; track_name?: string }[]
+  verdictColors?: Record<string, string>
 }) {
-  const TIER: Record<string, { label: string; color: string; track: string }> = {
-    strong_yes: { label: "Ready",               color: "#059669", track: "#d1fae5" },
-    yes:        { label: "Conditionally Ready",  color: "#2563eb", track: "#dbeafe" },
-    marginal:   { label: "Conditionally Ready",  color: "#d97706", track: "#fef3c7" },
-    no:         { label: "Dev. Required",        color: "#dc2626", track: "#fee2e2" },
+  const TIER: Record<string, { color: string }> = {
+    strong_yes: { color: "#059669" },
+    yes:        { color: "#2563eb" },
+    marginal:   { color: "#d97706" },
+    no:         { color: "#dc2626" },
   }
+  const getColor = (verdict: string) => verdictColors?.[verdict] ?? TIER[verdict]?.color ?? "#64748b"
   const sorted  = [...candidates].sort((a, b) => b.overall_score - a.overall_score)
   const ROW_H   = 24
   const NAME_W  = 140
@@ -132,9 +143,9 @@ function SVGReadinessLadder({ candidates }: {
       ))}
 
       {sorted.map((c, i) => {
-        const y    = 4 + i * ROW_H
-        const t    = TIER[c.verdict] ?? TIER.no
-        const barW = Math.max(6, ((c.overall_score - 1) / 4) * BAR_MAX)
+        const y     = 4 + i * ROW_H
+        const color = getColor(c.verdict)
+        const barW  = Math.max(6, ((c.overall_score - 1) / 4) * BAR_MAX)
         const shortName = c.name.length > 20 ? c.name.slice(0, 19) + "…" : c.name
         return (
           <g key={i}>
@@ -144,10 +155,10 @@ function SVGReadinessLadder({ candidates }: {
             {/* Track bg */}
             <rect x={NAME_W} y={y + 5} width={BAR_MAX} height={ROW_H - 10} rx={3} fill="#f8fafc" />
             {/* Score bar */}
-            <rect x={NAME_W} y={y + 5} width={barW} height={ROW_H - 10} rx={3} fill={t.color} opacity="0.85" />
+            <rect x={NAME_W} y={y + 5} width={barW} height={ROW_H - 10} rx={3} fill={color} opacity="0.85" />
             {/* Score value */}
             <text x={NAME_W + barW + 5} y={y + ROW_H / 2} dominantBaseline="middle"
-              fontSize="9" fontWeight="700" fill={t.color} fontFamily="sans-serif">
+              fontSize="9" fontWeight="700" fill={color} fontFamily="sans-serif">
               {c.overall_score.toFixed(2)}
             </text>
           </g>
@@ -350,8 +361,12 @@ export default function GroupReportCanvas({
   const _thresholds  = normaliseVerdictThresholds(snapshot?.verdict_thresholds ?? [])
   const strongYesMin = _thresholds.find(t => t.verdict === "strong_yes")?.min ?? 4.0
   const yesMin       = _thresholds.find(t => t.verdict === "yes")?.min       ?? 3.0
-  // Bound scoreColor using config thresholds
-  const sc = (s: number) => scoreColor(s, strongYesMin, yesMin)
+  // Full N-tier config-driven score colour — matches individual report
+  const sc = (s: number) => {
+    const t = getVerdictTierConfig(s, snapshot)
+    const color = t.color || scoreColor(s, strongYesMin, yesMin).text
+    return { text: color, bg: color + "20", border: color + "40" }
+  }
   const scheduledDate = group.scheduled_date
     ? new Date(group.scheduled_date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null
@@ -594,7 +609,7 @@ export default function GroupReportCanvas({
             <div className="grid grid-cols-2 gap-6 avoid-break">
               <div>
                 <SectionTitle>Verdict Distribution</SectionTitle>
-                <SVGVerdictDonut distribution={group_stats.verdict_distribution} />
+                <SVGVerdictDonut distribution={group_stats.verdict_distribution} verdictLabels={verdictLabels} verdictColors={verdictColors} />
               </div>
               <div>
                 <SectionTitle>Cohort Pillar Profile</SectionTitle>
@@ -627,13 +642,28 @@ export default function GroupReportCanvas({
           <PageHeader title="Candidate Rankings" subtitle={group.name} today={today} />
           <div className="px-12 py-6 space-y-6">
             <PageBanner {...bannerProps} title="Candidate Rankings" icon={<Trophy className="h-5 w-5 text-white" />} />
-            <div className="flex items-center gap-4 text-[10px]">
+            {/* Legend — config-driven */}
+            <div className="flex items-center gap-4 text-[10px] flex-wrap">
               <span className="text-slate-400">Score colour scale:</span>
-              {[
-                { label: "≥ 4.0 — Strong",     color: "#059669", bg: "#d1fae5" },
-                { label: "≥ 3.0 — Acceptable",  color: "#d97706", bg: "#fef3c7" },
-                { label: "< 3.0 — Needs Work",  color: "#dc2626", bg: "#fee2e2" },
-              ].map(l => (
+              {(() => {
+                const raw = snapshot?.verdict_thresholds
+                const TIER_DEFAULTS = ["#10b981","#3b82f6","#f59e0b","#ef4444"]
+                if (Array.isArray(raw) && raw.length > 0) {
+                  const sorted = [...raw]
+                    .filter((t: any) => typeof t.min === "number")
+                    .sort((a: any, b: any) => b.min - a.min)
+                  return sorted.map((t: any, i: number) => ({
+                    label: `≥ ${t.min} — ${t.label}`,
+                    color: t.color || TIER_DEFAULTS[i] || "#64748b",
+                    bg:   (t.color || TIER_DEFAULTS[i] || "#64748b") + "20",
+                  }))
+                }
+                return [
+                  { label: "≥ 4.0 — Strong",    color: "#059669", bg: "#d1fae5" },
+                  { label: "≥ 3.0 — Acceptable", color: "#d97706", bg: "#fef3c7" },
+                  { label: "< 3.0 — Needs Work", color: "#dc2626", bg: "#fee2e2" },
+                ]
+              })().map(l => (
                 <span key={l.label} className="flex items-center gap-1.5 font-semibold" style={{ color: l.color }}>
                   <span className="inline-block w-3 h-3 rounded-sm" style={{ background: l.bg, border: `1px solid ${l.color}` }} />
                   {l.label}
@@ -654,10 +684,10 @@ export default function GroupReportCanvas({
                 </thead>
                 <tbody>
                   {group_stats.candidate_ranking.map((row, idx) => {
-                    const c = candidateMap[row.candidate_id]
-                    const col = sc(row.overall_score)
-                    const vbadge = VERDICT_BADGE[row.verdict] ?? VERDICT_BADGE.no
+                    const c      = candidateMap[row.candidate_id]
+                    const col    = sc(row.overall_score)
                     const vlabel = verdictLabels[row.verdict as keyof typeof verdictLabels] ?? row.verdict
+                    const vcolor = verdictColors[row.verdict] ?? VERDICT_STYLE[row.verdict]?.color ?? "#64748b"
                     const readiness =
                       row.verdict === "strong_yes" ? { label: "Ready",               bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-200" } :
                       row.verdict === "yes"        ? { label: "Conditionally Ready",  bg: "bg-blue-100",    text: "text-blue-700",    border: "border-blue-200"    } :
@@ -685,7 +715,10 @@ export default function GroupReportCanvas({
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full border", vbadge)}>{vlabel}</span>
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border"
+                            style={{ background: vcolor + "20", color: vcolor, borderColor: vcolor + "60" }}>
+                            {vlabel}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -703,19 +736,19 @@ export default function GroupReportCanvas({
             {ladderData.length >= 2 && (
               <div className="avoid-break">
                 <SectionTitle>Cohort Score Distribution</SectionTitle>
-                <SVGReadinessLadder candidates={ladderData} />
+                <SVGReadinessLadder candidates={ladderData} verdictColors={verdictColors} />
                 <div className="flex items-center gap-4 mt-3 flex-wrap">
-                  {[
-                    { label: "Ready",              color: "#059669" },
-                    { label: "Conditionally Ready", color: "#2563eb" },
-                    { label: "Conditionally Ready (Marginal)", color: "#d97706" },
-                    { label: "Dev. Required",      color: "#dc2626" },
-                  ].map(l => (
-                    <div key={l.label} className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-sm" style={{ background: l.color, opacity: 0.85 }} />
-                      <span className="text-[9px] text-slate-500">{l.label}</span>
-                    </div>
-                  ))}
+                  {(["strong_yes","yes","marginal","no"] as const).map(v => {
+                    const count = group_stats.verdict_distribution[v] ?? 0
+                    if (count === 0) return null
+                    const color = verdictColors[v] ?? VERDICT_STYLE[v]?.dot ?? "#64748b"
+                    return (
+                      <div key={v} className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-sm" style={{ background: color, opacity: 0.85 }} />
+                        <span className="text-[9px] text-slate-500">{verdictLabels[v]}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -732,8 +765,8 @@ export default function GroupReportCanvas({
               {chunk.map((candidate: any) => {
                 const report = reports.find(r => r.candidate_id === candidate.id)
                 if (!report) return null
-                const vbadge = VERDICT_BADGE[report.verdict] ?? VERDICT_BADGE.no
                 const vlabel = verdictLabels[report.verdict as keyof typeof verdictLabels] ?? report.verdict
+                const vcolor = verdictColors[report.verdict] ?? VERDICT_STYLE[report.verdict]?.color ?? "#64748b"
                 const col    = sc(report.overall_score)
                 const rank   = group_stats.candidate_ranking.find(r => r.candidate_id === candidate.id)?.rank
                 const qual   = report.qualitative ?? []
@@ -758,7 +791,10 @@ export default function GroupReportCanvas({
                           <p className="text-xl font-extrabold tabular-nums" style={{ color: col.text }}>{report.overall_score.toFixed(2)}</p>
                           <p className="text-[9px] text-slate-400 uppercase tracking-wider">Overall</p>
                         </div>
-                        <span className={cn("text-[9px] font-bold px-2.5 py-1 rounded-full border", vbadge)}>{vlabel}</span>
+                        <span className="text-[9px] font-bold px-2.5 py-1 rounded-full border"
+                          style={{ background: vcolor + "20", color: vcolor, borderColor: vcolor + "60" }}>
+                          {vlabel}
+                        </span>
                       </div>
                     </div>
                     <div className="px-4 py-3 space-y-3">
