@@ -194,14 +194,13 @@ function scoreColor(score: number, strongYesMin = 4.0, yesMin = 3.0) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function CoverRing({ avgScore, readyCount, conditionalCount, total, strongYesMin = 4.0, yesMin = 3.0 }: {
+function CoverRing({ avgScore, readyCount, conditionalCount, total, ringColor = "#f87171" }: {
   avgScore: number; readyCount: number; conditionalCount: number; total: number
-  strongYesMin?: number; yesMin?: number
+  ringColor?: string
 }) {
   const size = 200, sw = 14, r = (size - sw) / 2
   const circ        = 2 * Math.PI * r
   const offset      = circ * (1 - Math.min(avgScore / 5, 1))
-  const col         = avgScore >= strongYesMin ? "#34d399" : avgScore >= yesMin ? "#fbbf24" : "#f87171"
   const readyPct    = total > 0 ? Math.round((readyCount / total) * 100) : 0
   const positivePct = total > 0 ? Math.round(((readyCount + conditionalCount) / total) * 100) : 0
   const labelCol    = positivePct >= 70 ? "#34d399" : positivePct >= 40 ? "#fbbf24" : "#f87171"
@@ -209,7 +208,7 @@ function CoverRing({ avgScore, readyCount, conditionalCount, total, strongYesMin
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={sw} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col}
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={ringColor}
           strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-4">
@@ -452,7 +451,7 @@ export default function GroupReportCanvas({
                 <p className="text-white/30 text-xs mt-1">{[scheduledDate, group.location].filter(Boolean).join(" · ")}</p>
               )}
             </div>
-            <CoverRing avgScore={avgScore} readyCount={readyCount} conditionalCount={conditionalCount} total={candidates.length} strongYesMin={strongYesMin} yesMin={yesMin} />
+            <CoverRing avgScore={avgScore} readyCount={readyCount} conditionalCount={conditionalCount} total={candidates.length} ringColor={getVerdictTierConfig(avgScore, snapshot).color || "#f87171"} />
             <div className="flex items-center gap-8">
               {[
                 { label: "Candidates", value: candidates.length },
@@ -513,13 +512,18 @@ export default function GroupReportCanvas({
                   <p className="text-xs text-slate-400">Assessors: {assessors.map((a: any) => a.name).join(" · ")}</p>
                 )}
               </div>
-              <div className="flex flex-col items-center gap-1.5 shrink-0">
-                <div className="rounded-2xl px-8 py-4 text-center border-2" style={{ background: readinessBg, borderColor: readinessBorder }}>
-                  <p className="text-4xl font-black tabular-nums" style={{ color: readinessColor }}>{avgScore.toFixed(2)}</p>
-                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: readinessColor }}>/ 5.00 AVG</p>
-                  <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: readinessColor }}>{readyPct}% Ready</p>
-                </div>
-              </div>
+              {(() => {
+                const avgCol = sc(avgScore)
+                return (
+                  <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    <div className="rounded-2xl px-8 py-4 text-center border-2" style={{ background: avgCol.bg, borderColor: avgCol.border }}>
+                      <p className="text-4xl font-black tabular-nums" style={{ color: avgCol.text }}>{avgScore.toFixed(2)}</p>
+                      <p className="text-[10px] font-semibold mt-0.5" style={{ color: avgCol.text }}>/ 5.00 AVG</p>
+                      <p className="text-xs font-black uppercase tracking-widest mt-1" style={{ color: readinessColor }}>{readyPct}% Ready</p>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
             <div className="grid grid-cols-4 gap-3 avoid-break">
               {[
