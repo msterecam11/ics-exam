@@ -42,14 +42,15 @@ async function getAccessToken(): Promise<string> {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CalendarEventInput {
-  subject:       string
-  startUtc:      string   // ISO 8601 UTC
-  endUtc:        string   // ISO 8601 UTC
-  location?:     string
-  body?:         string
-  attendeeEmail?: string
-  attendeeName?:  string
-  isOnline?:     boolean
+  subject:            string
+  startUtc:           string   // ISO 8601 UTC
+  endUtc:             string   // ISO 8601 UTC
+  location?:          string
+  body?:              string
+  attendeeEmail?:     string
+  attendeeName?:      string
+  isOnline?:          boolean
+  internalAttendees?: string[] // optional internal cc — added as optional attendees
 }
 
 export interface CalendarEventResult {
@@ -79,12 +80,23 @@ export async function createCalendarEvent(
     body.location = { displayName: input.location }
   }
 
+  const attendees: any[] = []
+
   if (input.attendeeEmail) {
-    body.attendees = [{
+    attendees.push({
       emailAddress: { address: input.attendeeEmail, name: input.attendeeName ?? input.attendeeEmail },
       type: "required",
-    }]
+    })
   }
+
+  for (const email of input.internalAttendees ?? []) {
+    if (email) attendees.push({
+      emailAddress: { address: email, name: email },
+      type: "optional",
+    })
+  }
+
+  if (attendees.length > 0) body.attendees = attendees
 
   if (input.isOnline) {
     body.isOnlineMeeting      = true

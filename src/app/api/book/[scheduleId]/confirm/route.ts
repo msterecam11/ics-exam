@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   // Load schedule info
   const { data: schedule, error: sErr } = await db
     .from("schedules")
-    .select("id, name, location, interview_format, status, timezone")
+    .select("id, name, location, interview_format, status, timezone, internal_attendees")
     .eq("id", scheduleId)
     .eq("status", "active")
     .single()
@@ -125,9 +125,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       endUtc:        slotAvail.end_utc,
       location:      schedule.location ?? undefined,
       body:          eventBody,
-      attendeeEmail: candidate_email,
-      attendeeName:  candidate_name,
-      isOnline:      schedule.interview_format === "online",
+      attendeeEmail:      candidate_email,
+      attendeeName:       candidate_name,
+      isOnline:           schedule.interview_format === "online",
+      internalAttendees:  (schedule as any).internal_attendees ?? [],
     })
 
     ms_event_id  = event.eventId

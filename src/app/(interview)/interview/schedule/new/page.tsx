@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Clock, Users, Globe, Plus, Trash2, Eye } from "lucide-react"
+import { ArrowLeft, Loader2, Clock, Users, Globe, Plus, Trash2, Eye, X, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -106,6 +106,9 @@ export default function NewSchedulePage() {
   const [tracks, setTracks] = useState<any[]>([])
   const [candidateCount, setCandidateCount] = useState<number | null>(null)
 
+  const [internalAttendees, setInternalAttendees] = useState<string[]>([])
+  const [attendeeInput,     setAttendeeInput]     = useState("")
+
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -130,6 +133,14 @@ export default function NewSchedulePage() {
       .then(d => setCandidateCount(Array.isArray(d) ? d.length : null))
       .catch(() => setCandidateCount(null))
   }, [bookingMode, sourceType, groupId, trackId])
+
+  function addAttendee() {
+    const email = attendeeInput.trim().toLowerCase()
+    if (!email || !email.includes("@")) return
+    if (internalAttendees.includes(email)) { setAttendeeInput(""); return }
+    setInternalAttendees(prev => [...prev, email])
+    setAttendeeInput("")
+  }
 
   function addDay() { setDays(prev => [...prev, { startDate: "", endDate: "", start: "09:00", end: "17:00" }]) }
   function removeDay(i: number) { setDays(prev => prev.filter((_, idx) => idx !== i)) }
@@ -165,9 +176,10 @@ export default function NewSchedulePage() {
         show_role_selector: bookingMode === "free" ? showRoleSel : false,
         interview_format:  format,
         timezone,
-        slot_duration_min: durMin,
-        buffer_min:        bufMin,
-        capacity_per_slot: capSlot,
+        slot_duration_min:  durMin,
+        buffer_min:         bufMin,
+        capacity_per_slot:  capSlot,
+        internal_attendees: internalAttendees,
       }),
     })
     const schedule = await res.json()
@@ -360,8 +372,41 @@ export default function NewSchedulePage() {
         )}
       </Section>
 
-      {/* ⑤ Add Time Slots */}
-      <Section n="5" title="Add Time Slots">
+      {/* ⑤ Internal Attendees */}
+      <Section n="5" title="Internal Attendees">
+        <p className="text-xs text-slate-500 -mt-1">
+          These people will be added as <strong>optional attendees</strong> on every calendar invite sent for this schedule.
+          Useful for managers or interviewers who need visibility.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            placeholder="e.g. manager@ics-aviation.com"
+            value={attendeeInput}
+            onChange={e => setAttendeeInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addAttendee() } }}
+            className="flex-1 text-sm"
+          />
+          <Button type="button" variant="outline" size="sm" onClick={addAttendee} className="gap-1.5 shrink-0">
+            <UserPlus className="h-3.5 w-3.5" /> Add
+          </Button>
+        </div>
+        {internalAttendees.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {internalAttendees.map(email => (
+              <span key={email} className="flex items-center gap-1.5 bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 text-xs font-medium px-3 py-1 rounded-full">
+                {email}
+                <button onClick={() => setInternalAttendees(prev => prev.filter(e => e !== email))} className="hover:text-red-500 transition-colors">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {/* ⑥ Add Time Slots */}
+      <Section n="6" title="Add Time Slots">
         <div className="space-y-3">
           {days.map((day, i) => {
             const previews  = generateSlotPreviews(day.start, day.end, durMin, bufMin)

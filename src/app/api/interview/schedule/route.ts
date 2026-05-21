@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     slot_duration_min,
     buffer_min,
     capacity_per_slot,
+    internal_attendees,
   } = body
 
   if (!name?.trim()) {
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       slot_duration_min:  slot_duration_min  ?? 30,
       buffer_min:         buffer_min         ?? 0,
       capacity_per_slot:  capacity_per_slot  ?? 1,
+      internal_attendees: Array.isArray(internal_attendees) ? internal_attendees.filter(Boolean) : [],
       status:             "active",
       created_by:         session.user.id,
     })
