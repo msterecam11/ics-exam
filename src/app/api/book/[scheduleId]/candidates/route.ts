@@ -42,5 +42,18 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+
+  // Filter out candidates who already have a confirmed booking for this schedule
+  // so their name disappears from the dropdown once they've booked.
+  const { data: booked } = await db
+    .from("schedule_bookings")
+    .select("candidate_id")
+    .eq("schedule_id", scheduleId)
+    .eq("status", "confirmed")
+    .not("candidate_id", "is", null)
+
+  const bookedIds = new Set((booked ?? []).map((b: any) => b.candidate_id))
+  const available = (data ?? []).filter((c: any) => !bookedIds.has(c.id))
+
+  return NextResponse.json(available)
 }

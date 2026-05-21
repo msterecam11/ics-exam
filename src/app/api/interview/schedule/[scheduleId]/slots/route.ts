@@ -49,24 +49,34 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   const { slot_duration_min, buffer_min, capacity_per_slot, timezone } = schedule
 
-  // Convert admin's local time to UTC using timezone offset
-  // We use the Intl API to find the UTC offset for the given date+timezone
+  // Convert admin's local time (in `tz`) to UTC.
+  // Uses noon UTC as a stable reference to avoid day-boundary issues and
+  // is completely server-timezone-agnostic (no new Date("...local string")).
   function localToUtc(dateStr: string, timeStr: string, tz: string): Date {
-    // Build a Date in the target timezone by creating an ISO string and parsing
-    const localStr  = `${dateStr}T${timeStr}:00`
-    // Use Intl.DateTimeFormat to get the UTC offset for this timezone on this date
-    const localDate = new Date(localStr)
-    // Get what this timezone's time would be for localDate (treated as UTC)
+    const [year, month, day] = dateStr.split("-").map(Number)
+    const [hour, minute]     = timeStr.split(":").map(Number)
+
+    // Anchor at noon UTC on the given date — this stays on the same local
+    // calendar day for all UTC offsets we realistically support (±12 h).
+    const noonUtc = Date.UTC(year, month - 1, day, 12, 0)
+
+    // Ask Intl what time `tz` shows at that noon-UTC instant.
     const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone:    tz,
-      year:        "numeric", month:  "2-digit",  day:    "2-digit",
-      hour:        "2-digit", minute: "2-digit",  second: "2-digit",
-      hour12:      false,
-    }).formatToParts(localDate)
-    const get = (t: string) => parseInt(parts.find(p => p.type === t)!.value)
-    const tzDate = new Date(Date.UTC(get("year"), get("month")-1, get("day"), get("hour"), get("minute"), get("second")))
-    const offset = localDate.getTime() - tzDate.getTime()
-    return new Date(localDate.getTime() + offset)
+      timeZone: tz,
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date(noonUtc))
+
+    const get  = (t: string) => parseInt(parts.find(p => p.type === t)!.value)
+    const tzNoonMin = get("hour") * 60 + get("minute")
+
+    // diffMinutes = how many minutes local lags behind / leads UTC
+    // e.g. Dubai UTC+4: at noon UTC (720 min) local shows 16:00 (960 min)
+    //   → local leads UTC by 240 min → to convert local→UTC subtract 240 min
+    //   → diff = 720 − 960 = −240  → UTC = local + diff ✓
+    const diffMinutes = 12 * 60 - tzNoonMin
+
+    const midnightUtc = Date.UTC(year, month - 1, day, 0, 0)
+    return new Date(midnightUtc + (hour * 60 + minute + diffMinutes) * 60_000)
   }
 
   const startUtc = localToUtc(date, start_time, timezone)
