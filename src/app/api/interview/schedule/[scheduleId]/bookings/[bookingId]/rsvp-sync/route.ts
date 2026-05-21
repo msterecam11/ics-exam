@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { getAttendeeStatus } from "@/lib/ms-graph"
+import { getAttendeeStatus, deleteCalendarEvent } from "@/lib/ms-graph"
 
 type Ctx = { params: Promise<{ scheduleId: string; bookingId: string }> }
 
@@ -40,13 +40,25 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: `MS Graph error: ${e.message}` }, { status: 502 })
   }
 
-  // Update DB only if the status actually changed
-  if (rsvp_status !== booking.rsvp_status) {
+  const changed = rsvp_status !== booking.rsvp_status
+  const declined = rsvp_status === "declined"
+
+  if (changed || declined) {
+    const patch: Record<string, string> = { rsvp_status }
+
+    // If candidate declined → cancel the booking so the slot is freed
+    if (declined) patch.status = "cancelled"
+
     await db
       .from("schedule_bookings")
-      .update({ rsvp_status })
+      .update(patch)
       .eq("id", bookingId)
+
+    // Remove the calendar event so the slot is fully released
+    if (declined && booking.ms_event_id) {
+      await deleteCalendarEvent(booking.ms_event_id).catch(() => null)
+    }
   }
 
-  return NextResponse.json({ rsvp_status, changed: rsvp_status !== booking.rsvp_status })
+  return NextResponse.json({ rsvp_status, changed, auto_cancelled: declined })
 }
