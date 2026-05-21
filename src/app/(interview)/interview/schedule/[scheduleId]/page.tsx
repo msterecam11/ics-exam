@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import QRCardPrint from "@/components/interview/schedule/QRCardPrint"
-import { useQRCardPDF } from "@/components/interview/schedule/QRCardPDF"
+import { toPng } from "html-to-image"
+import jsPDF from "jspdf"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
@@ -130,7 +131,9 @@ export default function ScheduleDetailPage() {
   const [syncingAll, setSyncingAll] = useState(false)
 
   // QR card modal
-  const [showQrModal, setShowQrModal] = useState(false)
+  const [showQrModal,  setShowQrModal]  = useState(false)
+  const [downloading,  setDownloading]  = useState(false)
+  const qrCardRef = useRef<HTMLDivElement>(null)
 
   // Add slots form
   const [showAddDay,   setShowAddDay]   = useState(false)
@@ -169,7 +172,27 @@ export default function ScheduleDetailPage() {
   const firstSlot = slots.length > 0 ? slots.reduce((a: any, b: any) => a.start_utc < b.start_utc ? a : b) : null
   const lastSlot  = slots.length > 0 ? slots.reduce((a: any, b: any) => a.end_utc   > b.end_utc   ? a : b) : null
 
-  const { downloading, downloadPDF } = useQRCardPDF(schedule, firstSlot, lastSlot, schedule ? bookingUrl() : "")
+  async function downloadPDF() {
+    const el = qrCardRef.current
+    if (!el) return
+    setDownloading(true)
+    try {
+      // Capture card at 3× for sharp output
+      const png  = await toPng(el, { cacheBust: true, pixelRatio: 3 })
+      // PDF page sized EXACTLY to the card (no white borders)
+      const mmW  = Math.round((el.offsetWidth  * 25.4) / 96)
+      const mmH  = Math.round((el.offsetHeight * 25.4) / 96)
+      const doc  = new jsPDF({ unit: "mm", format: [mmW, mmH], orientation: "landscape" })
+      doc.addImage(png, "PNG", 0, 0, mmW, mmH)
+      doc.save(`${schedule?.name ?? "interview"}-qr-card.pdf`)
+      toast.success("PDF downloaded!")
+    } catch (err) {
+      console.error("PDF download error:", err)
+      toast.error("Download failed — please try again")
+    } finally {
+      setDownloading(false)
+    }
+  }
 
 
   async function saveEdit() {
@@ -804,7 +827,7 @@ export default function ScheduleDetailPage() {
                   ? <Loader2 className="h-4 w-4 animate-spin" />
                   : <Download className="h-4 w-4" />
                 }
-                {downloading ? "Generating PDF…" : "Download PDF"}
+                {downloading ? "Generating…" : "Download PDF"}
               </Button>
               <Button
                 variant="outline"
@@ -819,6 +842,7 @@ export default function ScheduleDetailPage() {
           {/* Card preview */}
           <div className="overflow-hidden rounded-xl shadow-2xl" style={{ maxWidth: "90vw", overflowX: "auto" }}>
             <QRCardPrint
+              ref={qrCardRef}
               schedule={schedule}
               firstSlot={firstSlot}
               lastSlot={lastSlot}
