@@ -15,8 +15,6 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import QRCardPrint from "@/components/interview/schedule/QRCardPrint"
-import { toPng } from "html-to-image"
-import jsPDF from "jspdf"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
@@ -131,9 +129,7 @@ export default function ScheduleDetailPage() {
   const [syncingAll, setSyncingAll] = useState(false)
 
   // QR card modal
-  const [showQrModal,  setShowQrModal]  = useState(false)
-  const [downloading,  setDownloading]  = useState(false)
-  const qrCardRef = useRef<HTMLDivElement>(null)
+  const [showQrModal, setShowQrModal] = useState(false)
 
   // Add slots form
   const [showAddDay,   setShowAddDay]   = useState(false)
@@ -172,27 +168,6 @@ export default function ScheduleDetailPage() {
   const firstSlot = slots.length > 0 ? slots.reduce((a: any, b: any) => a.start_utc < b.start_utc ? a : b) : null
   const lastSlot  = slots.length > 0 ? slots.reduce((a: any, b: any) => a.end_utc   > b.end_utc   ? a : b) : null
 
-  async function downloadPDF() {
-    const el = qrCardRef.current
-    if (!el) return
-    setDownloading(true)
-    try {
-      // Capture card at 3× for sharp output
-      const png  = await toPng(el, { cacheBust: true, pixelRatio: 3 })
-      // PDF page sized EXACTLY to the card (no white borders)
-      const mmW  = Math.round((el.offsetWidth  * 25.4) / 96)
-      const mmH  = Math.round((el.offsetHeight * 25.4) / 96)
-      const doc  = new jsPDF({ unit: "mm", format: [mmW, mmH], orientation: "landscape" })
-      doc.addImage(png, "PNG", 0, 0, mmW, mmH)
-      doc.save(`${schedule?.name ?? "interview"}-qr-card.pdf`)
-      toast.success("PDF downloaded!")
-    } catch (err) {
-      console.error("PDF download error:", err)
-      toast.error("Download failed — please try again")
-    } finally {
-      setDownloading(false)
-    }
-  }
 
 
   async function saveEdit() {
@@ -818,17 +793,12 @@ export default function ScheduleDetailPage() {
           <div className="flex gap-3 items-center self-stretch justify-between">
             <p className="text-white font-semibold text-sm">QR Invite Card</p>
             <div className="flex gap-2">
-              <Button
-                onClick={downloadPDF}
-                disabled={downloading}
-                className="gap-2 bg-white text-[#1B4F8A] hover:bg-blue-50 border border-white/20 shadow-lg"
+              <a
+                href={`/api/interview/schedule/${scheduleId}/qr-card`}
+                className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold bg-white text-[#1B4F8A] hover:bg-blue-50 shadow-lg"
               >
-                {downloading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Download className="h-4 w-4" />
-                }
-                {downloading ? "Generating…" : "Download PDF"}
-              </Button>
+                <Download className="h-4 w-4" /> Download PDF
+              </a>
               <Button
                 variant="outline"
                 onClick={() => setShowQrModal(false)}
@@ -840,9 +810,8 @@ export default function ScheduleDetailPage() {
           </div>
 
           {/* Card preview */}
-          <div className="overflow-hidden rounded-xl shadow-2xl" style={{ maxWidth: "90vw", overflowX: "auto" }}>
+          <div className="overflow-auto rounded-xl shadow-2xl" style={{ maxWidth: "90vw" }}>
             <QRCardPrint
-              ref={qrCardRef}
               schedule={schedule}
               firstSlot={firstSlot}
               lastSlot={lastSlot}

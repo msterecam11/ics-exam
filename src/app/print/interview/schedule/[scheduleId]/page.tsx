@@ -8,13 +8,18 @@ export default async function ScheduleQRCardPage({
   searchParams,
 }: {
   params:       Promise<{ scheduleId: string }>
-  searchParams: Promise<{ theme?: string }>
+  searchParams: Promise<{ pdf_secret?: string }>
 }) {
-  const session = await auth()
-  if (!session) redirect("/auth/login")
+  // Allow Puppeteer access via pdf_secret
+  const { pdf_secret } = await searchParams
+  const validSecret = pdf_secret && pdf_secret === encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+
+  if (!validSecret) {
+    const session = await auth()
+    if (!session) redirect("/auth/login")
+  }
 
   const { scheduleId } = await params
-  const { theme }      = await searchParams
 
   const { data: schedule, error } = await db
     .from("schedules")
@@ -30,7 +35,6 @@ export default async function ScheduleQRCardPage({
 
   if (error || !schedule) notFound()
 
-  // Get earliest slot date
   const { data: firstSlot } = await db
     .from("schedule_slots")
     .select("start_utc, end_utc")
@@ -47,17 +51,25 @@ export default async function ScheduleQRCardPage({
     .limit(1)
     .single()
 
-  const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics.aviation"
+  const appUrl     = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics.aviation"
   const bookingUrl = `${appUrl}/book/${scheduleId}`
-  const isDark     = theme !== "light"
 
   return (
-    <QRCardPrint
-      schedule={schedule}
-      firstSlot={firstSlot ?? null}
-      lastSlot={lastSlot ?? null}
-      bookingUrl={bookingUrl}
-      dark={isDark}
-    />
+    <>
+      <style>{`
+        @font-face { font-family:'PlusJakartaSans'; src:url('/fonts/PlusJakartaSans-Light.ttf') format('truetype'); font-weight:300; }
+        @font-face { font-family:'PlusJakartaSans'; src:url('/fonts/PlusJakartaSans-Regular.ttf') format('truetype'); font-weight:400; }
+        @font-face { font-family:'PlusJakartaSans'; src:url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype'); font-weight:700; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 24px; background: #f0f4f8; font-family: 'PlusJakartaSans','Segoe UI',Arial,sans-serif; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      `}</style>
+      <QRCardPrint
+        schedule={schedule}
+        firstSlot={firstSlot ?? null}
+        lastSlot={lastSlot ?? null}
+        bookingUrl={bookingUrl}
+      />
+    </>
   )
 }
