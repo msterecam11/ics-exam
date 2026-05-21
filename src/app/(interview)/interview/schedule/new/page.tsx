@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Clock, Users, Globe, Plus, Trash2, Eye, X, UserPlus } from "lucide-react"
+import { ArrowLeft, Loader2, Clock, Users, Globe, Plus, Trash2, Eye, X, UserPlus, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -109,11 +109,19 @@ export default function NewSchedulePage() {
   const [internalAttendees, setInternalAttendees] = useState<string[]>([])
   const [attendeeInput,     setAttendeeInput]     = useState("")
 
+  // Slot pool
+  const [pools,        setPools]        = useState<any[]>([])
+  const [usePool,      setUsePool]      = useState(false)
+  const [poolMode,     setPoolMode]     = useState<"existing"|"new">("existing")
+  const [selectedPool, setSelectedPool] = useState("")
+  const [newPoolName,  setNewPoolName]  = useState("")
+
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetch("/api/interview/groups").then(r => r.json()).then(d => setGroups(Array.isArray(d) ? d : []))
     fetch("/api/interview/role-tracks").then(r => r.json()).then(d => setTracks(Array.isArray(d) ? d : []))
+    fetch("/api/interview/slot-pools").then(r => r.json()).then(d => setPools(Array.isArray(d) ? d : []))
   }, [])
 
   // Preview candidate count
@@ -163,6 +171,21 @@ export default function NewSchedulePage() {
 
     setSaving(true)
 
+    // Resolve slot pool ID
+    let resolvedPoolId: string | null = null
+    if (usePool) {
+      if (poolMode === "new" && newPoolName.trim()) {
+        const pr = await fetch("/api/interview/slot-pools", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newPoolName.trim() }),
+        })
+        const pd = await pr.json()
+        if (pr.ok) resolvedPoolId = pd.id
+      } else if (poolMode === "existing" && selectedPool) {
+        resolvedPoolId = selectedPool
+      }
+    }
+
     // 1 — Create schedule
     const res = await fetch("/api/interview/schedule", {
       method:  "POST",
@@ -180,6 +203,7 @@ export default function NewSchedulePage() {
         buffer_min:         bufMin,
         capacity_per_slot:  capSlot,
         internal_attendees: internalAttendees,
+        slot_pool_id:       resolvedPoolId,
       }),
     })
     const schedule = await res.json()
@@ -405,8 +429,68 @@ export default function NewSchedulePage() {
         )}
       </Section>
 
-      {/* ⑥ Add Time Slots */}
-      <Section n="6" title="Add Time Slots">
+      {/* ⑥ Shared Interviewer Pool */}
+      <Section n="6" title="Shared Interviewer Availability">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" className="mt-0.5 accent-[#1B4F8A]" checked={usePool}
+            onChange={e => setUsePool(e.target.checked)} />
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Link with other schedules</p>
+            <p className="text-xs text-slate-400 leading-snug mt-0.5">
+              If the same interview team handles multiple schedules, linking them ensures a booked slot
+              in one schedule is automatically blocked in all others — no double-bookings.
+            </p>
+          </div>
+        </label>
+
+        {usePool && (
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              {(["existing", "new"] as const).map(m => (
+                <button key={m} onClick={() => setPoolMode(m)}
+                  className={cn("py-2 px-3 rounded-xl border-2 text-xs font-bold transition-all",
+                    poolMode === m ? "border-[#1B4F8A] bg-[#1B4F8A] text-white" : "border-slate-200 text-slate-600 hover:border-slate-300")}>
+                  {m === "existing" ? "📎 Join existing group" : "✨ Create new group"}
+                </button>
+              ))}
+            </div>
+
+            {poolMode === "existing" ? (
+              pools.length === 0 ? (
+                <p className="text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                  No groups yet — create one first via another schedule.
+                </p>
+              ) : (
+                <select value={selectedPool} onChange={e => setSelectedPool(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                  <option value="">Select a group…</option>
+                  {pools.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.schedule_count} schedule{p.schedule_count !== 1 ? "s" : ""})
+                    </option>
+                  ))}
+                </select>
+              )
+            ) : (
+              <div>
+                <Label className="text-xs font-semibold text-slate-600 mb-1 block">Group Name</Label>
+                <Input placeholder="e.g. May Batch — Interview Team" value={newPoolName}
+                  onChange={e => setNewPoolName(e.target.value)} />
+              </div>
+            )}
+
+            {(selectedPool || newPoolName) && (
+              <p className="text-xs text-[#1B4F8A] bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg flex items-center gap-2">
+                <Link2 className="h-3.5 w-3.5 shrink-0" />
+                Booked slots in this schedule will automatically block matching times in all linked schedules.
+              </p>
+            )}
+          </div>
+        )}
+      </Section>
+
+      {/* ⑦ Add Time Slots */}
+      <Section n="7" title="Add Time Slots">
         <div className="space-y-3">
           {days.map((day, i) => {
             const previews  = generateSlotPreviews(day.start, day.end, durMin, bufMin)

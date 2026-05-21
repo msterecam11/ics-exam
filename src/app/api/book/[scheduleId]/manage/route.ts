@@ -6,6 +6,7 @@ import {
   deleteCalendarEvent,
   sendConfirmationEmail,
 } from "@/lib/ms-graph"
+import { blockPoolSlots, unblockPoolSlots } from "@/lib/slot-pool"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -94,7 +95,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   // Load schedule
   const { data: schedule } = await db
     .from("schedules")
-    .select("id, name, location, timezone, interview_format, internal_attendees")
+    .select("id, name, location, timezone, interview_format, internal_attendees, slot_pool_id")
     .eq("id", scheduleId)
     .single()
 
@@ -108,7 +109,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     trackName = track?.name
   }
 
-  // Delete old calendar event
+  // Unblock pool slots from old booking, delete old calendar event
+  await unblockPoolSlots(booking.id).catch(() => null)
   if (booking.ms_event_id) {
     await deleteCalendarEvent(booking.ms_event_id).catch(() => null)
   }
@@ -150,6 +152,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     .from("schedule_bookings")
     .update({ slot_id: new_slot_id, ms_event_id, ms_teams_url })
     .eq("id", booking.id)
+
+  // Block new overlapping slots in sibling schedules
+  if ((schedule as any).slot_pool_id) {
+    await blockPoolSlots({
+      scheduleId,
+      slotPoolId: (schedule as any).slot_pool_id,
+      startUtc:   slotAvail.start_utc,
+      endUtc:     slotAvail.end_utc,
+      bookingId:  booking.id,
+    }).catch(() => null)
+  }
 
   // Send reschedule email (non-fatal)
   const appUrl   = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -210,10 +223,11 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     .update({ status: "cancelled" })
     .eq("id", booking.id)
 
-  // Delete calendar event
-  if (booking.ms_event_id) {
-    await deleteCalendarEvent(booking.ms_event_id).catch(() => null)
-  }
+  // Unblock pool slots + delete calendar event
+  await Promise.all([
+    unblockPoolSlots(booking.id).catch(() => null),
+    booking.ms_event_id ? deleteCalendarEvent(booking.ms_event_id).catch(() => null) : Promise.resolve(),
+  ])
 
   return NextResponse.json({ success: true })
 }

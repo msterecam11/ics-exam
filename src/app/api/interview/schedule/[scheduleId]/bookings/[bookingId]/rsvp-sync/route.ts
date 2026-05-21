@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getAttendeeStatus, deleteCalendarEvent } from "@/lib/ms-graph"
+import { unblockPoolSlots } from "@/lib/slot-pool"
 
 type Ctx = { params: Promise<{ scheduleId: string; bookingId: string }> }
 
@@ -54,9 +55,12 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
       .update(patch)
       .eq("id", bookingId)
 
-    // Remove the calendar event so the slot is fully released
-    if (declined && booking.ms_event_id) {
-      await deleteCalendarEvent(booking.ms_event_id).catch(() => null)
+    // Remove the calendar event and unblock pool slots
+    if (declined) {
+      await Promise.all([
+        unblockPoolSlots(bookingId).catch(() => null),
+        booking.ms_event_id ? deleteCalendarEvent(booking.ms_event_id).catch(() => null) : Promise.resolve(),
+      ])
     }
   }
 

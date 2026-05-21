@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     "name","description","location","status",
     "interview_format","timezone","slot_duration_min",
     "buffer_min","capacity_per_slot","show_role_selector",
-    "internal_attendees",
+    "internal_attendees","slot_pool_id",
   ]
   const patch = Object.fromEntries(
     Object.entries(body).filter(([k]) => allowed.includes(k))

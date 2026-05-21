@@ -7,7 +7,7 @@ import {
   ArrowLeft, Copy, QrCode, Pencil, Trash2, Lock, Unlock,
   Loader2, CheckCircle2, XCircle, ExternalLink, Users,
   CalendarDays, Clock, MapPin, Download, MoreHorizontal,
-  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X, UserPlus,
+  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X, UserPlus, Link2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -115,7 +115,14 @@ export default function ScheduleDetailPage() {
   const [editCapacity,          setEditCapacity]          = useState(1)
   const [editInternalAttendees, setEditInternalAttendees] = useState<string[]>([])
   const [attendeeInput,         setAttendeeInput]         = useState("")
-  const [savingEdit,            setSavingEdit]            = useState(false)
+
+  // Slot pool
+  const [pools,        setPools]        = useState<any[]>([])
+  const [editPoolId,   setEditPoolId]   = useState<string | null>(null)
+  const [newPoolName,  setNewPoolName]  = useState("")
+  const [poolMode,     setPoolMode]     = useState<"none"|"existing"|"new">("none")
+
+  const [savingEdit,   setSavingEdit]   = useState(false)
 
   // Delete
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -142,7 +149,10 @@ export default function ScheduleDetailPage() {
   const [newEnd,       setNewEnd]       = useState("17:00")
   const [addingSlots,  setAddingSlots]  = useState(false)
 
-  useEffect(() => { loadAll() }, [scheduleId])
+  useEffect(() => {
+    loadAll()
+    fetch("/api/interview/slot-pools").then(r => r.json()).then(d => setPools(Array.isArray(d) ? d : []))
+  }, [scheduleId])
 
   async function loadAll() {
     const [sch, bkn, slt] = await Promise.all([
@@ -162,6 +172,8 @@ export default function ScheduleDetailPage() {
     setEditBuffer(sch.buffer_min ?? 0)
     setEditCapacity(sch.capacity_per_slot ?? 1)
     setEditInternalAttendees(Array.isArray(sch.internal_attendees) ? sch.internal_attendees : [])
+    setEditPoolId(sch.slot_pool_id ?? null)
+    setPoolMode(sch.slot_pool_id ? "existing" : "none")
     setLoading(false)
   }
 
@@ -175,6 +187,20 @@ export default function ScheduleDetailPage() {
 
   async function saveEdit() {
     setSavingEdit(true)
+
+    // Resolve pool ID
+    let resolvedPoolId: string | null = editPoolId
+    if (poolMode === "new" && newPoolName.trim()) {
+      const pr = await fetch("/api/interview/slot-pools", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newPoolName.trim() }),
+      })
+      const pd = await pr.json()
+      if (pr.ok) { resolvedPoolId = pd.id; setEditPoolId(pd.id); setPools(prev => [pd, ...prev]) }
+    } else if (poolMode === "none") {
+      resolvedPoolId = null
+    }
+
     const res = await fetch(`/api/interview/schedule/${scheduleId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -187,6 +213,7 @@ export default function ScheduleDetailPage() {
         buffer_min:         editBuffer,
         capacity_per_slot:  editCapacity,
         internal_attendees: editInternalAttendees,
+        slot_pool_id:       resolvedPoolId,
       }),
     })
     const d = await res.json()
@@ -701,6 +728,22 @@ export default function ScheduleDetailPage() {
                 </div>
               ))}
             </div>
+            {/* Slot pool read-only display */}
+            {schedule.slot_pool_id && (() => {
+              const pool = pools.find((p: any) => p.id === schedule.slot_pool_id)
+              return pool ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 col-span-2 flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-[#1B4F8A] shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#1B4F8A]/70">Linked to Interviewer Group</p>
+                    <p className="text-sm font-semibold text-[#1B4F8A]">{pool.name}
+                      <span className="font-normal text-xs text-[#1B4F8A]/60 ml-1">· {pool.schedule_count} schedule{pool.schedule_count !== 1 ? "s" : ""}</span>
+                    </p>
+                  </div>
+                </div>
+              ) : null
+            })()}
+
             {/* Internal attendees read-only display */}
             {Array.isArray(schedule.internal_attendees) && schedule.internal_attendees.length > 0 && (
               <div className="bg-slate-50 rounded-xl px-4 py-3 col-span-2">
@@ -821,6 +864,39 @@ export default function ScheduleDetailPage() {
                         </span>
                       ))}
                     </div>
+                  )}
+                </div>
+
+                {/* Slot pool */}
+                <div className="space-y-2">
+                  <Label className="text-xs mb-1 block font-semibold text-slate-600">Shared Interviewer Availability</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["none","existing","new"] as const).map(m => (
+                      <button key={m} onClick={() => setPoolMode(m)}
+                        className={cn("py-1.5 px-2 rounded-lg border text-[10px] font-bold transition-all",
+                          poolMode === m ? "border-[#1B4F8A] bg-[#1B4F8A] text-white" : "border-slate-200 text-slate-600 hover:border-slate-300")}>
+                        {m === "none" ? "Not linked" : m === "existing" ? "Join group" : "New group"}
+                      </button>
+                    ))}
+                  </div>
+                  {poolMode === "existing" && (
+                    <select value={editPoolId ?? ""} onChange={e => setEditPoolId(e.target.value || null)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      <option value="">Select a group…</option>
+                      {pools.map((p: any) => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.schedule_count} schedule{p.schedule_count !== 1 ? "s" : ""})</option>
+                      ))}
+                    </select>
+                  )}
+                  {poolMode === "new" && (
+                    <Input placeholder="e.g. May Batch — Interview Team" value={newPoolName}
+                      onChange={e => setNewPoolName(e.target.value)} className="text-sm" />
+                  )}
+                  {poolMode !== "none" && (editPoolId || newPoolName) && (
+                    <p className="text-[10px] text-[#1B4F8A] bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                      <Link2 className="h-3 w-3 shrink-0" />
+                      Booked slots will auto-block matching times in all linked schedules.
+                    </p>
                   )}
                 </div>
 

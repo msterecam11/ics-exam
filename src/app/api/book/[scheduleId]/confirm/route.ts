@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { createCalendarEvent, buildBookingEventBody, sendConfirmationEmail } from "@/lib/ms-graph"
+import { blockPoolSlots } from "@/lib/slot-pool"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   // Load schedule info
   const { data: schedule, error: sErr } = await db
     .from("schedules")
-    .select("id, name, location, interview_format, status, timezone, internal_attendees")
+    .select("id, name, location, interview_format, status, timezone, internal_attendees, slot_pool_id")
     .eq("id", scheduleId)
     .eq("status", "active")
     .single()
@@ -144,6 +145,17 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   // Send confirmation email to candidate (non-fatal)
+  // Block overlapping slots in sibling schedules sharing the same slot pool
+  if ((schedule as any).slot_pool_id) {
+    await blockPoolSlots({
+      scheduleId,
+      slotPoolId: (schedule as any).slot_pool_id,
+      startUtc:   slotAvail.start_utc,
+      endUtc:     slotAvail.end_utc,
+      bookingId:  booking.id,
+    }).catch(e => console.error("Pool blocking error (non-fatal):", e))
+  }
+
   const appUrl     = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
   const manageUrl  = `${appUrl}/book/${scheduleId}/manage?code=${booking.confirmation_code}`
   const receiptUrl = `${appUrl}/api/book/${scheduleId}/receipt?code=${booking.confirmation_code}`
