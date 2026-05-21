@@ -42,6 +42,20 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={cn("text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border", s[status] ?? s.confirmed)}>{status.replace("_"," ")}</span>
 }
 
+function RsvpBadge({ rsvp }: { rsvp: string }) {
+  const cfg: Record<string, { cls: string; icon: string; label: string }> = {
+    pending:  { cls: "bg-amber-50 text-amber-600 border-amber-200",   icon: "⏳", label: "Pending"  },
+    accepted: { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: "✅", label: "Accepted" },
+    declined: { cls: "bg-red-50 text-red-600 border-red-200",         icon: "❌", label: "Declined" },
+  }
+  const c = cfg[rsvp] ?? cfg.pending
+  return (
+    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 w-fit mx-auto", c.cls)}>
+      {c.icon} {c.label}
+    </span>
+  )
+}
+
 export default function ScheduleDetailPage() {
   const params       = useParams()
   const searchParams = useSearchParams()
@@ -321,6 +335,7 @@ export default function ScheduleDetailPage() {
                     <th className="text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 py-2.5 px-3">Slot ({tz.split("/")[1]})</th>
                     <th className="text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 py-2.5 px-3">Track</th>
                     <th className="text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 py-2.5 px-3">Status</th>
+                    <th className="text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 py-2.5 px-3">RSVP</th>
                     <th className="text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 py-2.5 px-3">Teams</th>
                     <th className="py-2.5 px-3"></th>
                   </tr>
@@ -338,6 +353,7 @@ export default function ScheduleDetailPage() {
                       </td>
                       <td className="py-2.5 px-3 text-slate-500">{b.role_tracks?.name ?? "—"}</td>
                       <td className="py-2.5 px-3 text-center"><StatusBadge status={b.status} /></td>
+                      <td className="py-2.5 px-3 text-center"><RsvpBadge rsvp={b.rsvp_status ?? "pending"} /></td>
                       <td className="py-2.5 px-3 text-center">
                         {b.ms_teams_url
                           ? <a href={b.ms_teams_url} target="_blank" rel="noopener noreferrer" className="text-[#1B4F8A] hover:underline text-[10px] font-semibold">Open 📅</a>
