@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { createCalendarEvent, buildBookingEventBody } from "@/lib/ms-graph"
+import { createCalendarEvent, buildBookingEventBody, sendConfirmationEmail } from "@/lib/ms-graph"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -141,6 +141,24 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       .eq("id", booking.id)
   } catch (e) {
     console.error("MS Graph calendar event error (non-fatal):", e)
+  }
+
+  // Send confirmation email to candidate (non-fatal)
+  try {
+    await sendConfirmationEmail({
+      candidateName:  candidate_name,
+      candidateEmail: candidate_email,
+      scheduleName:   schedule.name,
+      startUtc:       slotAvail.start_utc,
+      endUtc:         slotAvail.end_utc,
+      timezone:       schedule.timezone,
+      confirmCode:    booking.confirmation_code,
+      location:       schedule.location ?? undefined,
+      teamsUrl:       ms_teams_url,
+      trackName,
+    })
+  } catch (e) {
+    console.error("Confirmation email error (non-fatal):", e)
   }
 
   return NextResponse.json({

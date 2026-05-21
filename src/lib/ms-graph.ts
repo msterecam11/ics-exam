@@ -221,6 +221,142 @@ export async function getAttendeeStatus(
   return map[graphResponse] ?? "pending"
 }
 
+// ─── Send Candidate Confirmation Email ───────────────────────────────────────
+
+export interface ConfirmationEmailInput {
+  candidateName:  string
+  candidateEmail: string
+  scheduleName:   string
+  startUtc:       string
+  endUtc:         string
+  timezone:       string
+  confirmCode:    string
+  location?:      string
+  teamsUrl?:      string | null
+  trackName?:     string
+}
+
+function fmtDateTime(utc: string, tz: string, opts: Intl.DateTimeFormatOptions): string {
+  return new Date(utc).toLocaleString("en-GB", { timeZone: tz, ...opts })
+}
+
+export async function sendConfirmationEmail(input: ConfirmationEmailInput): Promise<void> {
+  const token = await getAccessToken()
+
+  const tz      = input.timezone ?? "Asia/Dubai"
+  const tzShort = tz.split("/").pop()?.replace(/_/g, " ") ?? tz
+
+  const date  = fmtDateTime(input.startUtc, tz, { day: "numeric", month: "long", year: "numeric" })
+  const start = fmtDateTime(input.startUtc, tz, { hour: "2-digit", minute: "2-digit", hour12: false })
+  const end   = fmtDateTime(input.endUtc,   tz, { hour: "2-digit", minute: "2-digit", hour12: false })
+
+  const locationRow = input.location
+    ? `<tr>
+        <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📍 Location</td>
+        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.location}</td>
+       </tr>`
+    : ""
+
+  const teamsRow = input.teamsUrl
+    ? `<tr>
+        <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🔗 Teams Link</td>
+        <td style="padding:10px 16px;font-size:13px;border-bottom:1px solid #f1f5f9;">
+          <a href="${input.teamsUrl}" style="color:#1B4F8A;font-weight:600;">Join Interview</a>
+        </td>
+       </tr>`
+    : ""
+
+  const trackRow = input.trackName
+    ? `<tr>
+        <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🎯 Role / Track</td>
+        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.trackName}</td>
+       </tr>`
+    : ""
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Header -->
+    <div style="background:#1B4F8A;padding:28px 32px;text-align:center;">
+      <p style="color:rgba(255,255,255,0.7);font-size:11px;text-transform:uppercase;letter-spacing:3px;margin:0 0 6px;">ICS Aviation</p>
+      <h1 style="color:white;font-size:22px;font-weight:700;margin:0;">Interview Booking Confirmed</h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:28px 32px;">
+      <p style="color:#334155;font-size:15px;margin:0 0 20px;">
+        Hi <strong>${input.candidateName}</strong>,<br><br>
+        Your interview slot has been successfully booked. Please find the details below.
+      </p>
+
+      <!-- Details table -->
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+        <tr>
+          <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📅 Date</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${date}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🕐 Time</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${start} – ${end} (${tzShort})</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📋 Schedule</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.scheduleName}</td>
+        </tr>
+        ${trackRow}
+        ${locationRow}
+        ${teamsRow}
+      </table>
+
+      <!-- Confirmation code -->
+      <div style="background:#f1f5fb;border:1px solid #dbeafe;border-radius:12px;padding:16px 20px;text-align:center;margin-bottom:24px;">
+        <p style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 6px;">Your Confirmation Code</p>
+        <p style="color:#1B4F8A;font-size:24px;font-weight:800;font-family:monospace;letter-spacing:4px;margin:0;">${input.confirmCode}</p>
+        <p style="color:#94a3b8;font-size:11px;margin:6px 0 0;">Keep this code — you may need it to manage your booking</p>
+      </div>
+
+      <p style="color:#64748b;font-size:13px;line-height:1.7;margin:0;">
+        A calendar invite has been sent to your email. If you have any questions or need to reschedule, please contact us as soon as possible.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center;">
+      <p style="color:#94a3b8;font-size:11px;margin:0;">ICS Aviation — Integrated Consulting Services</p>
+      <p style="color:#94a3b8;font-size:11px;margin:4px 0 0;">Good luck with your interview! 🎯</p>
+    </div>
+  </div>
+</body>
+</html>`.trim()
+
+  const res = await fetch(`${GRAPH_BASE}/users/${USER_EMAIL}/sendMail`, {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject: `Interview Booking Confirmed — ${input.scheduleName}`,
+        body:    { contentType: "HTML", content: html },
+        toRecipients: [{
+          emailAddress: { address: input.candidateEmail, name: input.candidateName },
+        }],
+      },
+      saveToSentItems: true,
+    }),
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`MS Graph sendMail error: ${data.error?.message ?? res.status}`)
+  }
+}
+
 // ─── Build booking event body ─────────────────────────────────────────────────
 
 export function buildBookingEventBody(opts: {
