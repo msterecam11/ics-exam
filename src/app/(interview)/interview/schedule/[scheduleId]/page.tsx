@@ -7,7 +7,7 @@ import {
   ArrowLeft, Copy, QrCode, Pencil, Trash2, Lock, Unlock,
   Loader2, CheckCircle2, XCircle, ExternalLink, Users,
   CalendarDays, Clock, MapPin, Download, MoreHorizontal,
-  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X,
+  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X, UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -112,8 +112,10 @@ export default function ScheduleDetailPage() {
   const [editTimezone,  setEditTimezone]  = useState("")
   const [editDuration,  setEditDuration]  = useState(30)
   const [editBuffer,    setEditBuffer]    = useState(0)
-  const [editCapacity,  setEditCapacity]  = useState(1)
-  const [savingEdit,    setSavingEdit]    = useState(false)
+  const [editCapacity,          setEditCapacity]          = useState(1)
+  const [editInternalAttendees, setEditInternalAttendees] = useState<string[]>([])
+  const [attendeeInput,         setAttendeeInput]         = useState("")
+  const [savingEdit,            setSavingEdit]            = useState(false)
 
   // Delete
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -159,6 +161,7 @@ export default function ScheduleDetailPage() {
     setEditDuration(sch.slot_duration_min ?? 30)
     setEditBuffer(sch.buffer_min ?? 0)
     setEditCapacity(sch.capacity_per_slot ?? 1)
+    setEditInternalAttendees(Array.isArray(sch.internal_attendees) ? sch.internal_attendees : [])
     setLoading(false)
   }
 
@@ -175,14 +178,15 @@ export default function ScheduleDetailPage() {
     const res = await fetch(`/api/interview/schedule/${scheduleId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name:              editName,
-        location:          editLoc,
-        description:       editDesc,
-        interview_format:  editFormat,
-        timezone:          editTimezone,
-        slot_duration_min: editDuration,
-        buffer_min:        editBuffer,
-        capacity_per_slot: editCapacity,
+        name:               editName,
+        location:           editLoc,
+        description:        editDesc,
+        interview_format:   editFormat,
+        timezone:           editTimezone,
+        slot_duration_min:  editDuration,
+        buffer_min:         editBuffer,
+        capacity_per_slot:  editCapacity,
+        internal_attendees: editInternalAttendees,
       }),
     })
     const d = await res.json()
@@ -697,6 +701,18 @@ export default function ScheduleDetailPage() {
                 </div>
               ))}
             </div>
+            {/* Internal attendees read-only display */}
+            {Array.isArray(schedule.internal_attendees) && schedule.internal_attendees.length > 0 && (
+              <div className="bg-slate-50 rounded-xl px-4 py-3 col-span-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-2">Internal Attendees</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {schedule.internal_attendees.map((e: string) => (
+                    <span key={e} className="text-[10px] bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 px-2.5 py-0.5 rounded-full font-medium">{e}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {editing && (
               <div className="space-y-4 border-t border-slate-100 pt-4">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Edit Settings</p>
@@ -762,6 +778,50 @@ export default function ScheduleDetailPage() {
                       {[1,2,3,4,5,10].map(n => <option key={n} value={n}>{n === 1 ? "1 — One-on-one" : `${n} candidates`}</option>)}
                     </select>
                   </div>
+                </div>
+
+                {/* Internal Attendees */}
+                <div className="space-y-2">
+                  <Label className="text-xs mb-1 block font-semibold text-slate-600">Internal Attendees</Label>
+                  <p className="text-[10px] text-slate-400">Added as optional attendees on every calendar invite for this schedule.</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="e.g. manager@ics-aviation.com"
+                      value={attendeeInput}
+                      onChange={e => setAttendeeInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key !== "Enter") return
+                        e.preventDefault()
+                        const email = attendeeInput.trim().toLowerCase()
+                        if (!email || !email.includes("@") || editInternalAttendees.includes(email)) { setAttendeeInput(""); return }
+                        setEditInternalAttendees(prev => [...prev, email])
+                        setAttendeeInput("")
+                      }}
+                      className="flex-1 text-sm"
+                    />
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => {
+                      const email = attendeeInput.trim().toLowerCase()
+                      if (!email || !email.includes("@") || editInternalAttendees.includes(email)) { setAttendeeInput(""); return }
+                      setEditInternalAttendees(prev => [...prev, email])
+                      setAttendeeInput("")
+                    }}>
+                      <UserPlus className="h-3.5 w-3.5" /> Add
+                    </Button>
+                  </div>
+                  {editInternalAttendees.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {editInternalAttendees.map(email => (
+                        <span key={email} className="flex items-center gap-1.5 bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 text-xs font-medium px-3 py-1 rounded-full">
+                          {email}
+                          <button onClick={() => setEditInternalAttendees(prev => prev.filter(e => e !== email))}
+                            className="hover:text-red-500 transition-colors">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
