@@ -23,7 +23,7 @@ function fmtTime(utc: string, tz: string) {
 }
 
 const BLUE  = "#1B4F8A"
-const LIGHT = "#F1F5FB"
+const LIGHT = "#EEF3FA"
 
 const FORMAT_LABEL: Record<string, string> = {
   in_person: "In-Person",
@@ -36,7 +36,7 @@ export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl 
 
   useEffect(() => {
     QRCode.toDataURL(bookingUrl, {
-      width: 300, margin: 1,
+      width: 280, margin: 1,
       color: { dark: BLUE, light: "#ffffff" },
       errorCorrectionLevel: "H",
     }).then(setQr)
@@ -59,181 +59,171 @@ export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl 
   const fmtLabel  = FORMAT_LABEL[schedule.interview_format] ?? ""
   const today     = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
-  const R: React.CSSProperties = { display: "flex", flexDirection: "row" }
-  const C: React.CSSProperties = { display: "flex", flexDirection: "column" }
+  const meta = [groupName, trackName, fmtLabel, tzShort].filter(Boolean).join(" · ")
 
   return (
     <>
       <style>{`
-        @font-face {
-          font-family: 'PlusJakartaSans';
-          src: url('/fonts/PlusJakartaSans-Light.ttf') format('truetype');
-          font-weight: 300;
-        }
-        @font-face {
-          font-family: 'PlusJakartaSans';
-          src: url('/fonts/PlusJakartaSans-Regular.ttf') format('truetype');
-          font-weight: 400;
-        }
-        @font-face {
-          font-family: 'PlusJakartaSans';
-          src: url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype');
-          font-weight: 700;
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { margin: 0; padding: 0; background: #f8fafc; font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif; }
-        @page { size: 210mm 170mm; margin: 0; }
+        @font-face { font-family:'PJS'; src:url('/fonts/PlusJakartaSans-Light.ttf') format('truetype'); font-weight:300; }
+        @font-face { font-family:'PJS'; src:url('/fonts/PlusJakartaSans-Regular.ttf') format('truetype'); font-weight:400; }
+        @font-face { font-family:'PJS'; src:url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype'); font-weight:700; }
+        *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+        html,body { background:#f0f4f8; font-family:'PJS','Segoe UI',Arial,sans-serif; }
+        @page { size: 210mm 148mm; margin:0; }
         @media print {
-          .no-print { display: none !important; }
-          html, body { background: #ffffff !important; }
-          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .no-print { display:none !important; }
+          html,body { background:#ffffff !important; }
+          * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
         }
       `}</style>
 
       {/* Toolbar */}
-      <div className="no-print" style={{ position: "fixed", top: 16, right: 16, zIndex: 99, ...R, gap: 8 }}>
+      <div className="no-print" style={{ position:"fixed", top:16, right:16, zIndex:99, display:"flex", gap:8 }}>
         <button onClick={() => window.print()} style={{
-          background: BLUE, color: "#fff", border: "none", borderRadius: 10,
-          padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-          fontFamily: "'PlusJakartaSans', sans-serif",
+          background:BLUE, color:"#fff", border:"none", borderRadius:8,
+          padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer",
+          fontFamily:"'PJS',sans-serif",
         }}>⬇ Save as PDF</button>
         <button onClick={() => window.close()} style={{
-          background: "#f1f5f9", color: "#475569", border: "none",
-          borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", fontFamily: "'PlusJakartaSans', sans-serif",
+          background:"#e2e8f0", color:"#475569", border:"none",
+          borderRadius:8, padding:"8px 14px", fontSize:13, fontWeight:600,
+          cursor:"pointer", fontFamily:"'PJS',sans-serif",
         }}>✕ Close</button>
       </div>
 
-      {/* ══ CARD ══ */}
+      {/* ══ CARD — 210 × 148 mm ══ */}
       <div style={{
-        width: "210mm", minHeight: "170mm",
-        background: "#fff",
-        ...C,
-        fontFamily: "'PlusJakartaSans', 'Segoe UI', Arial, sans-serif",
-        overflow: "hidden",
+        width:"210mm", height:"148mm",
+        background:"#ffffff",
+        display:"flex", flexDirection:"column",
+        fontFamily:"'PJS','Segoe UI',Arial,sans-serif",
+        overflow:"hidden",
       }}>
 
         {/* ── HEADER ── */}
         <div style={{
           background: BLUE,
-          paddingLeft: 36, paddingRight: 36,
-          paddingTop: 22, paddingBottom: 22,
-          ...R, justifyContent: "space-between", alignItems: "center",
+          padding:"14px 28px",
+          display:"flex", alignItems:"center", justifyContent:"space-between",
           flexShrink: 0,
         }}>
           <img src="/logo/logo-white.png" alt="ICS Aviation"
-            style={{ width: 110, height: 30, objectFit: "contain" }} />
-          <div style={{ ...C, alignItems: "flex-end" }}>
-            <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 7, letterSpacing: 1.5, textTransform: "uppercase" }}>
+            style={{ height:26, objectFit:"contain" }} />
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end" }}>
+            <span style={{ color:"rgba(255,255,255,0.6)", fontSize:7, letterSpacing:"0.2em", textTransform:"uppercase" }}>
               Interview Scheduling
             </span>
-            <span style={{ color: "#fff", fontSize: 8, marginTop: 2 }}>{today}</span>
+            <span style={{ color:"#fff", fontSize:8, marginTop:2, fontWeight:600 }}>{today}</span>
           </div>
         </div>
 
         {/* ── BODY ── */}
-        <div style={{ padding: "24px 36px 28px", ...R, gap: 24, flex: 1 }}>
+        <div style={{
+          flex:1,
+          display:"flex", flexDirection:"row",
+          padding:"16px 28px 0 28px",
+          gap:20,
+          overflow:"hidden",
+        }}>
 
-          {/* LEFT COLUMN */}
-          <div style={{ flex: 1, ...C }}>
+          {/* LEFT */}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", gap:10, overflow:"hidden" }}>
 
-            {/* Group + track */}
-            <span style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 2 }}>
-              {[groupName, trackName].filter(Boolean).join(" — ") || "Interview Schedule"}
-            </span>
-            {fmtLabel && (
-              <span style={{ fontSize: 7, color: "#94A3B8", marginBottom: 0 }}>
-                {fmtLabel} · {tzShort}
-              </span>
-            )}
-
-            {/* Schedule name */}
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: BLUE, marginTop: 10, lineHeight: 1.2 }}>
-              {schedule.name}
-            </h1>
-            {schedule.description && (
-              <p style={{ fontSize: 8, color: "#64748B", marginTop: 4, lineHeight: 1.5 }}>
-                {schedule.description.length > 100
-                  ? schedule.description.slice(0, 97) + "…"
-                  : schedule.description}
+            {/* Label + name */}
+            <div>
+              <p style={{ fontSize:7, fontWeight:700, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.15em", marginBottom:4 }}>
+                Interview Schedule
               </p>
-            )}
+              <h1 style={{ fontSize:19, fontWeight:700, color:BLUE, lineHeight:1.15, marginBottom:3 }}>
+                {schedule.name}
+              </h1>
+              {meta && (
+                <p style={{ fontSize:8, color:"#64748B" }}>{meta}</p>
+              )}
+            </div>
 
             {/* Stat boxes */}
-            <div style={{ ...R, gap: 10, marginTop: 14 }}>
-              <div style={{ flex: 1, background: LIGHT, borderRadius: 10, padding: 10 }}>
-                <span style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1 }}>Date</span>
-                <p style={{ fontSize: 11, fontWeight: 700, color: BLUE, marginTop: 2, lineHeight: 1.2 }}>{date}</p>
+            <div style={{ display:"flex", flexDirection:"row", gap:8 }}>
+              <div style={{ flex:1, background:LIGHT, borderRadius:8, padding:"8px 10px" }}>
+                <p style={{ fontSize:6.5, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:700, marginBottom:3 }}>Date</p>
+                <p style={{ fontSize:10, fontWeight:700, color:BLUE, lineHeight:1.2 }}>{date}</p>
               </div>
-              <div style={{ flex: 1, background: LIGHT, borderRadius: 10, padding: 10 }}>
-                <span style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1 }}>Time Window</span>
-                <p style={{ fontSize: 11, fontWeight: 700, color: BLUE, marginTop: 2, lineHeight: 1.2 }}>{timeFrom} – {timeTo}</p>
+              <div style={{ flex:1, background:LIGHT, borderRadius:8, padding:"8px 10px" }}>
+                <p style={{ fontSize:6.5, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:700, marginBottom:3 }}>Time Window</p>
+                <p style={{ fontSize:10, fontWeight:700, color:BLUE, lineHeight:1.2 }}>{timeFrom} – {timeTo}</p>
               </div>
-              <div style={{ flex: 0, background: LIGHT, borderRadius: 10, padding: 10, minWidth: 60 }}>
-                <span style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1 }}>Slot</span>
-                <p style={{ fontSize: 18, fontWeight: 700, color: BLUE, marginTop: 2 }}>{dur}<span style={{ fontSize: 9, fontWeight: 400 }}> min</span></p>
+              <div style={{ background:LIGHT, borderRadius:8, padding:"8px 10px", minWidth:56, textAlign:"center" }}>
+                <p style={{ fontSize:6.5, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:700, marginBottom:3 }}>Slot</p>
+                <p style={{ fontSize:15, fontWeight:700, color:BLUE, lineHeight:1 }}>{dur}<span style={{ fontSize:8, fontWeight:400 }}>m</span></p>
               </div>
             </div>
 
-            {/* Booking link box — mirrors the "password box" */}
-            <div style={{
-              background: BLUE, borderRadius: 10, padding: 12, marginTop: 10,
-            }}>
-              <span style={{ fontSize: 7, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: 1.5 }}>
+            {/* Booking link box */}
+            <div style={{ background:BLUE, borderRadius:8, padding:"10px 12px" }}>
+              <p style={{ fontSize:6.5, color:"rgba(255,255,255,0.55)", textTransform:"uppercase", letterSpacing:"0.15em", fontWeight:700, marginBottom:4 }}>
                 Booking Link
-              </span>
-              <p style={{
-                fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: 1, marginTop: 4,
-                wordBreak: "break-all", lineHeight: 1.5,
-                fontFamily: "monospace",
-              }}>{shortUrl}</p>
-              <p style={{ fontSize: 7, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
-                Scan the QR or visit this link to book your slot
+              </p>
+              <p style={{ fontSize:8, fontWeight:700, color:"#fff", fontFamily:"monospace", wordBreak:"break-all", lineHeight:1.5 }}>
+                {shortUrl}
+              </p>
+              <p style={{ fontSize:7, color:"rgba(255,255,255,0.45)", marginTop:4 }}>
+                Scan the QR or visit this link to reserve your slot
               </p>
             </div>
 
             {/* Steps */}
-            <p style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1.2, marginTop: 14, marginBottom: 5 }}>
-              How to book
-            </p>
-            <p style={{ fontSize: 8, color: "#64748B", marginBottom: 3 }}>1. Scan the QR code or open the link above</p>
-            <p style={{ fontSize: 8, color: "#64748B", marginBottom: 3 }}>2. Choose your preferred interview time slot</p>
-            <p style={{ fontSize: 8, color: "#64748B" }}>3. Enter your details and confirm your booking</p>
+            <div>
+              <p style={{ fontSize:6.5, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.15em", fontWeight:700, marginBottom:5 }}>
+                How to Book
+              </p>
+              <p style={{ fontSize:7.5, color:"#64748B", marginBottom:3 }}>1. Scan the QR code or open the booking link above</p>
+              <p style={{ fontSize:7.5, color:"#64748B", marginBottom:3 }}>2. Select your preferred interview time slot</p>
+              <p style={{ fontSize:7.5, color:"#64748B" }}>3. Enter your details and confirm your booking</p>
+            </div>
           </div>
 
-          {/* RIGHT COLUMN */}
-          <div style={{ width: 170, ...C, alignItems: "center", gap: 10 }}>
+          {/* DIVIDER */}
+          <div style={{ width:1, background:"#E2E8F0", margin:"4px 0 16px" }} />
 
-            {/* QR code */}
+          {/* RIGHT */}
+          <div style={{
+            width:150,
+            display:"flex", flexDirection:"column",
+            alignItems:"center", justifyContent:"space-between",
+            paddingBottom:16,
+          }}>
+
+            {/* QR */}
             <div style={{
-              borderWidth: 2, borderStyle: "solid", borderColor: BLUE,
-              borderRadius: 12, padding: 10, background: "#fff",
+              border:`2px solid ${BLUE}`, borderRadius:10, padding:8,
+              background:"#fff",
             }}>
               {qr
-                ? <img src={qr} alt="QR" style={{ width: 140, height: 140, display: "block" }} />
-                : <div style={{ width: 140, height: 140, display: "flex", alignItems: "center",
-                    justifyContent: "center", color: "#94a3b8", fontSize: 10 }}>Loading…</div>
+                ? <img src={qr} alt="QR" style={{ width:118, height:118, display:"block" }} />
+                : <div style={{ width:118, height:118, display:"flex", alignItems:"center",
+                    justifyContent:"center", color:"#94a3b8", fontSize:9 }}>Loading…</div>
               }
             </div>
 
-            {/* Link button — mirrors InvitationPDF link btn */}
+            {/* CTA */}
+            <p style={{ fontSize:8.5, fontWeight:700, color:BLUE, textAlign:"center", lineHeight:1.3 }}>
+              Scan to book<br/>your slot
+            </p>
+
+            {/* Button */}
             <div style={{
-              borderWidth: 1, borderStyle: "solid", borderColor: BLUE,
-              borderRadius: 8, paddingLeft: 12, paddingRight: 12,
-              paddingTop: 6, paddingBottom: 6, marginTop: 2,
-              textAlign: "center",
+              border:`1px solid ${BLUE}`, borderRadius:6,
+              padding:"5px 10px", textAlign:"center", width:"100%",
             }}>
-              <span style={{ fontSize: 8, color: BLUE, fontWeight: 700 }}>
-                Click here to book your slot
-              </span>
+              <p style={{ fontSize:7.5, color:BLUE, fontWeight:700 }}>Click here to book</p>
             </div>
 
             {/* Schedule ID */}
-            <div style={{ marginTop: "auto", textAlign: "center" }}>
-              <span style={{ fontSize: 7, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1 }}>
+            <div style={{ textAlign:"center" }}>
+              <p style={{ fontSize:6.5, color:"#94A3B8", textTransform:"uppercase", letterSpacing:"0.12em", fontWeight:700, marginBottom:2 }}>
                 Schedule ID
-              </span>
-              <p style={{ fontSize: 9, color: BLUE, fontWeight: 700, fontFamily: "monospace", letterSpacing: 2 }}>
+              </p>
+              <p style={{ fontSize:9, color:BLUE, fontWeight:700, fontFamily:"monospace", letterSpacing:"0.1em" }}>
                 {schedId}
               </p>
             </div>
@@ -242,13 +232,14 @@ export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl 
 
         {/* ── FOOTER ── */}
         <div style={{
-          ...R, justifyContent: "space-between",
-          paddingTop: 14, paddingLeft: 36, paddingRight: 36, paddingBottom: 18,
-          borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "#E2E8F0",
-          marginTop: "auto",
+          display:"flex", flexDirection:"row", justifyContent:"space-between",
+          padding:"8px 28px 10px",
+          borderTop:"1px solid #E2E8F0",
+          marginTop:"auto",
+          flexShrink:0,
         }}>
-          <span style={{ fontSize: 7, color: "#94A3B8" }}>ICS Aviation — Integrated Consulting Services</span>
-          <span style={{ fontSize: 7, color: "#94A3B8" }}>Good luck! 🎯</span>
+          <span style={{ fontSize:7, color:"#94A3B8" }}>ICS Aviation — Integrated Consulting Services</span>
+          <span style={{ fontSize:7, color:"#94A3B8" }}>Good luck! 🎯</span>
         </div>
       </div>
     </>
