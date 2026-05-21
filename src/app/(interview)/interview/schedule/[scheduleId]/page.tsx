@@ -7,13 +7,15 @@ import {
   ArrowLeft, Copy, QrCode, Pencil, Trash2, Lock, Unlock,
   Loader2, CheckCircle2, XCircle, ExternalLink, Users,
   CalendarDays, Clock, MapPin, Download, MoreHorizontal,
-  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp,
+  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import QRCardPrint from "@/components/interview/schedule/QRCardPrint"
+import { toPng } from "html-to-image"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
@@ -127,6 +129,11 @@ export default function ScheduleDetailPage() {
   // RSVP sync from calendar
   const [syncingAll, setSyncingAll] = useState(false)
 
+  // QR card modal
+  const [showQrModal,   setShowQrModal]   = useState(false)
+  const [downloading,   setDownloading]   = useState(false)
+  const qrCardRef = useRef<HTMLDivElement>(null)
+
   // Add slots form
   const [showAddDay,   setShowAddDay]   = useState(false)
   const [addMode,      setAddMode]      = useState<"range"|"single">("range")
@@ -160,6 +167,23 @@ export default function ScheduleDetailPage() {
 
   function bookingUrl() { return `${window.location.origin}/book/${scheduleId}` }
   function copyLink() { navigator.clipboard.writeText(bookingUrl()); toast.success("Link copied!") }
+
+  async function downloadQrCard() {
+    if (!qrCardRef.current) return
+    setDownloading(true)
+    try {
+      const png = await toPng(qrCardRef.current, { cacheBust: true, pixelRatio: 2 })
+      const a = document.createElement("a")
+      a.href = png
+      a.download = `${schedule?.name ?? "interview"}-qr-card.png`
+      a.click()
+      toast.success("QR card downloaded!")
+    } catch {
+      toast.error("Download failed, please try again")
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   async function saveEdit() {
     setSavingEdit(true)
@@ -316,6 +340,7 @@ export default function ScheduleDetailPage() {
   }, {})
 
   return (
+    <>
     <div className="max-w-4xl mx-auto space-y-5">
 
       {/* Header */}
@@ -387,18 +412,10 @@ export default function ScheduleDetailPage() {
               </Button>
             </a>
           </div>
-          <div className="flex gap-2">
-            <a href={`/print/interview/schedule/${scheduleId}`} target="_blank" rel="noopener noreferrer" className="flex-1">
-              <Button variant="outline" className="w-full gap-2 border-[#1B4F8A]/30 text-[#1B4F8A] hover:bg-[#1B4F8A]/5">
-                <QrCode className="h-4 w-4" /> QR Card — Dark
-              </Button>
-            </a>
-            <a href={`/print/interview/schedule/${scheduleId}?theme=light`} target="_blank" rel="noopener noreferrer" className="flex-1">
-              <Button variant="outline" className="w-full gap-2">
-                <QrCode className="h-4 w-4" /> QR Card — Light
-              </Button>
-            </a>
-          </div>
+          <Button variant="outline" className="w-full gap-2 border-[#1B4F8A]/30 text-[#1B4F8A] hover:bg-[#1B4F8A]/5"
+            onClick={() => setShowQrModal(true)}>
+            <QrCode className="h-4 w-4" /> QR Invite Card
+          </Button>
         </div>
 
         {/* Stats */}
@@ -778,5 +795,53 @@ export default function ScheduleDetailPage() {
         )}
       </div>
     </div>
+
+    {/* ── QR Card Modal ── */}
+    {showQrModal && schedule && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-6"
+        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+        onClick={e => { if (e.target === e.currentTarget) setShowQrModal(false) }}
+      >
+        <div className="relative bg-transparent flex flex-col items-center gap-4 max-w-full">
+          {/* Top toolbar */}
+          <div className="flex gap-3 items-center self-stretch justify-between">
+            <p className="text-white font-semibold text-sm">QR Invite Card</p>
+            <div className="flex gap-2">
+              <Button
+                onClick={downloadQrCard}
+                disabled={downloading}
+                className="gap-2 bg-white text-[#1B4F8A] hover:bg-blue-50 border border-white/20 shadow-lg"
+              >
+                {downloading
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Download className="h-4 w-4" />
+                }
+                {downloading ? "Downloading…" : "Download PNG"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowQrModal(false)}
+                className="gap-2 border-white/30 text-white bg-white/10 hover:bg-white/20"
+              >
+                <X className="h-4 w-4" /> Close
+              </Button>
+            </div>
+          </div>
+
+          {/* Card preview */}
+          <div className="overflow-hidden rounded-xl shadow-2xl" style={{ maxWidth: "90vw", overflowX: "auto" }}>
+            <QRCardPrint
+              ref={qrCardRef}
+              schedule={schedule}
+              firstSlot={slots.length > 0 ? slots.reduce((a: any, b: any) => a.start_utc < b.start_utc ? a : b) : null}
+              lastSlot={slots.length > 0 ? slots.reduce((a: any, b: any) => a.end_utc > b.end_utc ? a : b) : null}
+              bookingUrl={bookingUrl()}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
