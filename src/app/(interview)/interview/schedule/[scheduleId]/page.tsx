@@ -16,6 +16,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import QRCardPrint from "@/components/interview/schedule/QRCardPrint"
 import { toPng } from "html-to-image"
+import jsPDF from "jspdf"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
@@ -172,12 +173,16 @@ export default function ScheduleDetailPage() {
     if (!qrCardRef.current) return
     setDownloading(true)
     try {
-      const png = await toPng(qrCardRef.current, { cacheBust: true, pixelRatio: 2 })
-      const a = document.createElement("a")
-      a.href = png
-      a.download = `${schedule?.name ?? "interview"}-qr-card.png`
-      a.click()
-      toast.success("QR card downloaded!")
+      const png      = await toPng(qrCardRef.current, { cacheBust: true, pixelRatio: 2 })
+      const cardW    = qrCardRef.current.offsetWidth
+      const cardH    = qrCardRef.current.offsetHeight
+      // Convert px to mm (96 dpi → mm)
+      const mmW      = (cardW * 25.4) / 96
+      const mmH      = (cardH * 25.4) / 96
+      const pdf      = new jsPDF({ orientation: "landscape", unit: "mm", format: [mmW, mmH] })
+      pdf.addImage(png, "PNG", 0, 0, mmW, mmH)
+      pdf.save(`${schedule?.name ?? "interview"}-qr-card.pdf`)
+      toast.success("QR card downloaded as PDF!")
     } catch {
       toast.error("Download failed, please try again")
     } finally {
@@ -817,7 +822,7 @@ export default function ScheduleDetailPage() {
                   ? <Loader2 className="h-4 w-4 animate-spin" />
                   : <Download className="h-4 w-4" />
                 }
-                {downloading ? "Downloading…" : "Download PNG"}
+                {downloading ? "Downloading…" : "Download PDF"}
               </Button>
               <Button
                 variant="outline"
