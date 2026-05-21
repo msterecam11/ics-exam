@@ -76,15 +76,15 @@ console.log(`✅ Calendar access confirmed!`)
 console.log(`   Calendar: ${calData.name}`)
 console.log(`   Owner:    ${calData.owner?.name} (${calData.owner?.address})`)
 
-// Step 3 — Test OnlineMeeting access by creating a test meeting
-console.log("\n⏳ Step 3: Testing OnlineMeetings access (creating test meeting)...")
+// Step 3 — Test Teams link via Calendar Event (what our booking code actually uses)
+console.log("\n⏳ Step 3: Testing Teams meeting via Calendar event (isOnlineMeeting: true)...")
 
 const now       = new Date()
-const startTime = new Date(now.getTime() + 60 * 60 * 1000).toISOString()  // 1 hour from now
-const endTime   = new Date(now.getTime() + 90 * 60 * 1000).toISOString()  // 1.5 hours from now
+const startTime = new Date(now.getTime() + 60 * 60 * 1000).toISOString()
+const endTime   = new Date(now.getTime() + 90 * 60 * 1000).toISOString()
 
-const meetRes = await fetch(
-  `https://graph.microsoft.com/v1.0/users/${USER_EMAIL}/onlineMeetings`,
+const evtRes = await fetch(
+  `https://graph.microsoft.com/v1.0/users/${USER_EMAIL}/events`,
   {
     method: "POST",
     headers: {
@@ -92,37 +92,40 @@ const meetRes = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      subject:   "ICS Test Meeting — DELETE ME",
-      startDateTime: startTime,
-      endDateTime:   endTime,
+      subject: "ICS Test Event — DELETE ME",
+      start:   { dateTime: startTime, timeZone: "UTC" },
+      end:     { dateTime: endTime,   timeZone: "UTC" },
+      isOnlineMeeting:       true,
+      onlineMeetingProvider: "teamsForBusiness",
     }),
   }
 )
 
-const meetData = await meetRes.json()
+const evtData = await evtRes.json()
 
-if (!meetRes.ok) {
-  console.warn("⚠️  OnlineMeetings not ready yet:")
-  console.warn("   HTTP Status :", meetRes.status)
-  console.warn("   Error code  :", meetData.error?.code)
-  console.warn("   Message     :", meetData.error?.message)
-  console.warn("")
-  console.warn("   👉 The Azure policy usually takes 30–60 min to propagate.")
-  console.warn("      Run this test again in 30 minutes.")
+if (!evtRes.ok) {
+  console.error("❌ Calendar event creation failed:")
+  console.error("   HTTP Status :", evtRes.status)
+  console.error("   Error code  :", evtData.error?.code)
+  console.error("   Message     :", evtData.error?.message)
 } else {
-  console.log("✅ OnlineMeetings access confirmed!")
-  console.log("   Meeting ID  :", meetData.id)
-  console.log("   Teams Link  :", meetData.joinWebUrl)
+  const teamsUrl = evtData.onlineMeeting?.joinUrl ?? null
+  if (teamsUrl) {
+    console.log("✅ Calendar event with Teams link created successfully!")
+    console.log("   Event ID   :", evtData.id)
+    console.log("   Teams Link :", teamsUrl)
+  } else {
+    console.warn("⚠️  Event created but NO Teams link was returned.")
+    console.warn("   Event ID   :", evtData.id)
+    console.warn("   This usually means the Teams policy is not applied yet.")
+  }
 
-  // Clean up — delete the test meeting
+  // Clean up — delete the test event
   await fetch(
-    `https://graph.microsoft.com/v1.0/users/${USER_EMAIL}/onlineMeetings/${meetData.id}`,
-    {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    }
+    `https://graph.microsoft.com/v1.0/users/${USER_EMAIL}/events/${evtData.id}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${tokenData.access_token}` } }
   )
-  console.log("   (test meeting deleted ✅)")
+  console.log("   (test event deleted ✅)")
 }
 
 console.log("\n─────────────────────────────────────────")
