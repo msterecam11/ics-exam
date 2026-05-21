@@ -10,6 +10,19 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
+// ── Defined outside component to prevent remounting on each render ────────────
+function Section({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+        <span className="w-6 h-6 rounded-full bg-[#1B4F8A] text-white text-xs font-bold flex items-center justify-center shrink-0">{n}</span>
+        <h2 className="font-bold text-slate-800">{title}</h2>
+      </div>
+      <div className="px-6 py-5 space-y-4">{children}</div>
+    </div>
+  )
+}
+
 const TIMEZONES = [
   { label: "Gulf Standard Time — UTC+4 (Dubai/Abu Dhabi)", value: "Asia/Dubai" },
   { label: "Arabia Standard Time — UTC+3 (Riyadh/KSA)", value: "Asia/Riyadh" },
@@ -151,16 +164,6 @@ export default function NewSchedulePage() {
     toast.success("Schedule created!")
     router.push(`/interview/schedule/${schedule.id}`)
   }
-
-  const Section = ({ n, title, children }: { n: string; title: string; children: React.ReactNode }) => (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-        <span className="w-6 h-6 rounded-full bg-[#1B4F8A] text-white text-xs font-bold flex items-center justify-center shrink-0">{n}</span>
-        <h2 className="font-bold text-slate-800">{title}</h2>
-      </div>
-      <div className="px-6 py-5 space-y-4">{children}</div>
-    </div>
-  )
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">

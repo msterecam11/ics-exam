@@ -73,12 +73,9 @@ export default function BookingPage() {
       setSlots(Array.isArray(slt) ? slt : [])
       setLoading(false)
 
-      // For system mode — load candidates
+      // For system mode — load candidates via public endpoint (no auth required)
       if (sch.booking_mode === "system") {
-        const p = new URLSearchParams({ source_type: sch.source_type })
-        if (sch.group_id)  p.set("group_id", sch.group_id)
-        if (sch.track_id)  p.set("track_id", sch.track_id)
-        fetch(`/api/interview/schedule/candidates?${p}`)
+        fetch(`/api/book/${scheduleId}/candidates`)
           .then(r => r.json())
           .then(d => setCandidates(Array.isArray(d) ? d : []))
       }
@@ -145,13 +142,13 @@ export default function BookingPage() {
     </div>
   )
 
-  const adminTz     = schedule.timezone ?? "Asia/Dubai"
-  const tzLabel     = userTz ? userTz.replace("_", " ").replace("/", " / ") : adminTz
-  const sameTimezone = userTz === adminTz
+  const adminTz      = schedule.timezone ?? "Asia/Dubai"
+  const sameTimezone = !userTz || userTz === adminTz
 
   const availableSlots  = slots.filter(s => s.availability === "available")
   const selectedSlotObj = slots.find(s => s.slot_id === selectedSlot)
-  const slotsByDate     = groupSlotsByDate(availableSlots, userTz || adminTz)
+  // Group/dates always in admin timezone (interview location time)
+  const slotsByDate     = groupSlotsByDate(availableSlots, adminTz)
 
   return (
     <div className="max-w-lg mx-auto px-4 py-8">
@@ -176,9 +173,9 @@ export default function BookingPage() {
       </div>
 
       {/* Timezone note */}
-      {userTz && !sameTimezone && (
+      {!sameTimezone && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-xs text-[#1B4F8A] text-center mb-4 font-medium">
-          🌍 Showing times in <strong>{tzLabel}</strong> (your local time)
+          🌍 Times shown in <strong>{adminTz.split("/")[1]?.replace("_"," ")}</strong> (interview location) · your local equivalent shown below each slot
         </div>
       )}
 
@@ -204,8 +201,10 @@ export default function BookingPage() {
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{date}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {daySlots.map((s: any) => {
-                        const myTime    = fmtTime(s.start_utc, userTz || adminTz)
+                        // Primary = admin timezone (where the interview happens)
                         const adminTime = fmtTime(s.start_utc, adminTz)
+                        // Secondary = candidate's local time (shown if different)
+                        const localTime = userTz ? fmtTime(s.start_utc, userTz) : null
                         const isSelected = selectedSlot === s.slot_id
                         return (
                           <button key={s.slot_id}
@@ -214,10 +213,10 @@ export default function BookingPage() {
                               isSelected
                                 ? "border-[#1B4F8A] bg-[#1B4F8A] text-white"
                                 : "border-slate-200 hover:border-[#1B4F8A]/40 bg-white hover:bg-[#1B4F8A]/5")}>
-                            <span className={cn("text-base font-black", isSelected ? "text-white" : "text-[#1B4F8A]")}>{myTime}</span>
-                            {!sameTimezone && (
+                            <span className={cn("text-base font-black", isSelected ? "text-white" : "text-[#1B4F8A]")}>{adminTime}</span>
+                            {!sameTimezone && localTime && (
                               <span className={cn("text-[10px] mt-0.5", isSelected ? "text-white/70" : "text-slate-400")}>
-                                {adminTime} {adminTz.split("/")[1]}
+                                {localTime} your time
                               </span>
                             )}
                           </button>
@@ -248,10 +247,12 @@ export default function BookingPage() {
               <div>
                 <p className="text-xs text-[#1B4F8A]/70 font-semibold uppercase tracking-wider">Your slot</p>
                 <p className="text-[#1B4F8A] font-black text-sm">
-                  {new Date(selectedSlotObj.start_utc).toLocaleDateString("en-GB", { timeZone: userTz || adminTz, weekday: "short", day: "numeric", month: "short" })}
+                  {new Date(selectedSlotObj.start_utc).toLocaleDateString("en-GB", { timeZone: adminTz, weekday: "short", day: "numeric", month: "short" })}
                   {" · "}
-                  {fmtTime(selectedSlotObj.start_utc, userTz || adminTz)}
-                  {!sameTimezone && <span className="text-[#1B4F8A]/60 text-xs ml-1">({fmtTime(selectedSlotObj.start_utc, adminTz)} UAE)</span>}
+                  {fmtTime(selectedSlotObj.start_utc, adminTz)}
+                  {!sameTimezone && userTz && (
+                    <span className="text-[#1B4F8A]/60 text-xs ml-1">({fmtTime(selectedSlotObj.start_utc, userTz)} your time)</span>
+                  )}
                 </p>
               </div>
               <button onClick={() => setStep("slot")} className="text-xs text-[#1B4F8A] font-semibold underline underline-offset-2">Change</button>
