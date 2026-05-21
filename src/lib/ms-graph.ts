@@ -158,6 +158,57 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
   }
 }
 
+// ─── Get Attendee RSVP Status ────────────────────────────────────────────────
+// Fetches the calendar event and returns the candidate's response status,
+// mapped from MS Graph values to our rsvp_status enum.
+//
+// MS Graph attendee response values:
+//   none / notResponded → "pending"
+//   tentativelyAccepted → "tentative"
+//   accepted            → "accepted"
+//   declined            → "declined"
+
+export type RsvpStatus = "pending" | "accepted" | "tentative" | "declined"
+
+export async function getAttendeeStatus(
+  eventId:        string,
+  attendeeEmail:  string
+): Promise<RsvpStatus> {
+  const token = await getAccessToken()
+
+  const res = await fetch(
+    `${GRAPH_BASE}/users/${USER_EMAIL}/events/${eventId}?$select=attendees`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`MS Graph getEvent error: ${err.error?.message ?? res.status}`)
+  }
+
+  const data = await res.json()
+  const attendees: any[] = data.attendees ?? []
+
+  // Find the matching attendee (case-insensitive email match)
+  const match = attendees.find(
+    (a: any) => a.emailAddress?.address?.toLowerCase() === attendeeEmail.toLowerCase()
+  )
+
+  const graphResponse: string = match?.status?.response ?? "none"
+
+  const map: Record<string, RsvpStatus> = {
+    none:               "pending",
+    notResponded:       "pending",
+    tentativelyAccepted:"tentative",
+    accepted:           "accepted",
+    declined:           "declined",
+  }
+
+  return map[graphResponse] ?? "pending"
+}
+
 // ─── Build booking event body ─────────────────────────────────────────────────
 
 export function buildBookingEventBody(opts: {

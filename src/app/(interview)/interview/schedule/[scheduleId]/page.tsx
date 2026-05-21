@@ -44,9 +44,10 @@ function StatusBadge({ status }: { status: string }) {
 
 function RsvpBadge({ rsvp }: { rsvp: string }) {
   const cfg: Record<string, { cls: string; icon: string; label: string }> = {
-    pending:  { cls: "bg-amber-50 text-amber-600 border-amber-200",   icon: "⏳", label: "Pending"  },
-    accepted: { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: "✅", label: "Accepted" },
-    declined: { cls: "bg-red-50 text-red-600 border-red-200",         icon: "❌", label: "Declined" },
+    pending:   { cls: "bg-amber-50 text-amber-600 border-amber-200",      icon: "⏳", label: "Pending"   },
+    accepted:  { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: "✅", label: "Accepted"  },
+    tentative: { cls: "bg-blue-50 text-blue-600 border-blue-200",          icon: "❓", label: "Tentative" },
+    declined:  { cls: "bg-red-50 text-red-600 border-red-200",             icon: "❌", label: "Declined"  },
   }
   const c = cfg[rsvp] ?? cfg.pending
   return (
@@ -84,7 +85,9 @@ export default function ScheduleDetailPage() {
   const [deletingSlot, setDeletingSlot] = useState<string | null>(null)
 
   // Booking cancel
-  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [cancellingId,  setCancellingId]  = useState<string | null>(null)
+  // RSVP sync from calendar
+  const [syncingRsvpId, setSyncingRsvpId] = useState<string | null>(null)
 
   useEffect(() => { loadAll() }, [scheduleId])
 
@@ -169,6 +172,28 @@ export default function ScheduleDetailPage() {
     setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: "cancelled" } : b))
     setCancellingId(null)
     toast.success("Booking cancelled")
+  }
+
+  async function syncRsvp(bookingId: string) {
+    setSyncingRsvpId(bookingId)
+    const res = await fetch(
+      `/api/interview/schedule/${scheduleId}/bookings/${bookingId}/rsvp-sync`,
+      { method: "POST" }
+    )
+    const data = await res.json()
+    setSyncingRsvpId(null)
+
+    if (!res.ok) {
+      // 422 = no calendar event linked yet
+      toast.error(data.error ?? "Sync failed")
+      return
+    }
+    if (data.changed) {
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, rsvp_status: data.rsvp_status } : b))
+      toast.success(`RSVP updated → ${data.rsvp_status}`)
+    } else {
+      toast.info("Already up to date")
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-[#1B4F8A]" /></div>
@@ -353,7 +378,23 @@ export default function ScheduleDetailPage() {
                       </td>
                       <td className="py-2.5 px-3 text-slate-500">{b.role_tracks?.name ?? "—"}</td>
                       <td className="py-2.5 px-3 text-center"><StatusBadge status={b.status} /></td>
-                      <td className="py-2.5 px-3 text-center"><RsvpBadge rsvp={b.rsvp_status ?? "pending"} /></td>
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <RsvpBadge rsvp={b.rsvp_status ?? "pending"} />
+                          {b.ms_event_id && (
+                            <button
+                              onClick={() => syncRsvp(b.id)}
+                              disabled={syncingRsvpId === b.id}
+                              title="Sync from calendar"
+                              className="text-[9px] text-slate-400 hover:text-[#1B4F8A] flex items-center gap-0.5 transition-colors disabled:opacity-40">
+                              {syncingRsvpId === b.id
+                                ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                : <span>↻</span>}
+                              sync
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-2.5 px-3 text-center">
                         {b.ms_teams_url
                           ? <a href={b.ms_teams_url} target="_blank" rel="noopener noreferrer" className="text-[#1B4F8A] hover:underline text-[10px] font-semibold">Open 📅</a>

@@ -14,8 +14,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!confirmation_code) {
     return NextResponse.json({ error: "Confirmation code is required" }, { status: 400 })
   }
-  if (!["accepted", "declined"].includes(rsvp_status)) {
-    return NextResponse.json({ error: "rsvp_status must be 'accepted' or 'declined'" }, { status: 400 })
+  if (!["accepted", "tentative", "declined"].includes(rsvp_status)) {
+    return NextResponse.json({ error: "rsvp_status must be 'accepted', 'tentative', or 'declined'" }, { status: 400 })
   }
 
   // Locate the booking — confirmation code is the security token
