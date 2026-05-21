@@ -81,10 +81,11 @@ export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl 
           font-weight: 700;
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { margin: 0; padding: 0; background: #fff; font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif; }
+        html, body { margin: 0; padding: 0; background: #f8fafc; font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif; }
         @page { size: 210mm 170mm; margin: 0; }
         @media print {
           .no-print { display: none !important; }
+          html, body { background: #ffffff !important; }
           body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
