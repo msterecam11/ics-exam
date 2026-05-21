@@ -7,7 +7,7 @@ import {
   ArrowLeft, Copy, QrCode, Pencil, Trash2, Lock, Unlock,
   Loader2, CheckCircle2, XCircle, ExternalLink, Users,
   CalendarDays, Clock, MapPin, Download, MoreHorizontal,
-  AlertTriangle, Ban,
+  AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,26 @@ import { cn } from "@/lib/utils"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
+
+function generateSlotPreviews(start: string, end: string, durMin: number, bufMin: number): string[] {
+  if (!start || !end || !durMin) return []
+  const [sh, sm] = start.split(":").map(Number)
+  const [eh, em] = end.split(":").map(Number)
+  const startMins = sh * 60 + sm
+  const endMins   = eh * 60 + em
+  if (endMins <= startMins) return []
+  const step = durMin + bufMin
+  const slots: string[] = []
+  let cur = startMins
+  while (cur + durMin <= endMins) {
+    const s  = `${String(Math.floor(cur / 60)).padStart(2,"0")}:${String(cur % 60).padStart(2,"0")}`
+    const e  = cur + durMin
+    const es = `${String(Math.floor(e / 60)).padStart(2,"0")}:${String(e % 60).padStart(2,"0")}`
+    slots.push(`${s}→${es}`)
+    cur += step
+  }
+  return slots
+}
 
 function formatUtcInTimezone(utc: string, tz: string) {
   return new Date(utc).toLocaleString("en-GB", {
@@ -88,6 +108,13 @@ export default function ScheduleDetailPage() {
   const [cancellingId,  setCancellingId]  = useState<string | null>(null)
   // RSVP sync from calendar
   const [syncingAll, setSyncingAll] = useState(false)
+
+  // Add day form
+  const [showAddDay,  setShowAddDay]  = useState(false)
+  const [newDate,     setNewDate]     = useState("")
+  const [newStart,    setNewStart]    = useState("09:00")
+  const [newEnd,      setNewEnd]      = useState("17:00")
+  const [addingSlots, setAddingSlots] = useState(false)
 
   useEffect(() => { loadAll() }, [scheduleId])
 
@@ -197,6 +224,25 @@ export default function ScheduleDetailPage() {
     setSyncingAll(false)
     if (updated > 0) toast.success(`${updated} RSVP${updated > 1 ? "s" : ""} updated from calendar`)
     else toast.info("All RSVPs already up to date")
+  }
+
+  async function handleAddDay() {
+    if (!newDate) { toast.error("Please select a date"); return }
+    setAddingSlots(true)
+    const res = await fetch(`/api/interview/schedule/${scheduleId}/slots`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ date: newDate, start_time: newStart, end_time: newEnd }),
+    })
+    const data = await res.json()
+    setAddingSlots(false)
+    if (!res.ok) { toast.error(data.error ?? "Failed to generate slots"); return }
+    toast.success(`${data.generated} slot${data.generated !== 1 ? "s" : ""} added!`)
+    setShowAddDay(false)
+    setNewDate("")
+    // Reload slots to include new ones
+    const slt = await fetch(`/api/interview/schedule/${scheduleId}/slots`).then(r => r.json())
+    setSlots(Array.isArray(slt) ? slt : [])
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-[#1B4F8A]" /></div>
@@ -419,13 +465,15 @@ export default function ScheduleDetailPage() {
         {/* ── Slots Tab ── */}
         {tab === "Slots" && (
           <div className="p-5 space-y-5">
-            {Object.keys(slotsByDate).length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
+            {Object.keys(slotsByDate).length === 0 && (
+              <div className="text-center py-8 text-slate-400">
                 <CalendarDays className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No slots defined</p>
               </div>
-            ) : (
-              Object.entries(slotsByDate).map(([date, daySlots]) => (
+            )}
+            {(
+              <>
+              {Object.entries(slotsByDate).map(([date, daySlots]) => (
                 <div key={date}>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                     <CalendarDays className="h-3.5 w-3.5" /> {date}
@@ -471,7 +519,68 @@ export default function ScheduleDetailPage() {
                     })}
                   </div>
                 </div>
-              ))
+              ))}
+
+              {/* ── Add Day panel ── */}
+              <div className="border border-dashed border-slate-300 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setShowAddDay(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                  <span className="flex items-center gap-2">
+                    <Plus className="h-4 w-4 text-[#1B4F8A]" />
+                    Add Another Day
+                  </span>
+                  {showAddDay ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                </button>
+
+                {showAddDay && (
+                  <div className="border-t border-dashed border-slate-200 px-4 py-4 bg-slate-50/40 space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Date</Label>
+                        <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="h-8 text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Start ({tz.split("/")[1]})</Label>
+                        <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-8 text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">End ({tz.split("/")[1]})</Label>
+                        <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-8 text-xs" />
+                      </div>
+                    </div>
+
+                    {/* Slot preview */}
+                    {(() => {
+                      const previews = generateSlotPreviews(newStart, newEnd, schedule.slot_duration_min, schedule.buffer_min)
+                      return previews.length > 0 ? (
+                        <div>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                            <Eye className="h-3 w-3" /> {previews.length} slots will be generated
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {previews.map(p => (
+                              <span key={p} className="text-[10px] bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 px-2 py-0.5 rounded-full font-medium">{p}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null
+                    })()}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        className="bg-[#1B4F8A] hover:bg-[#1B4F8A]/90 gap-2 h-8 text-xs px-4"
+                        onClick={handleAddDay} disabled={addingSlots || !newDate}>
+                        {addingSlots ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><Plus className="h-3.5 w-3.5" /> Generate Slots</>}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShowAddDay(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              </>
             )}
           </div>
         )}
