@@ -12,6 +12,7 @@ import {
   ChevronRight,
   LayoutGrid,
   BarChart3,
+  CalendarClock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +23,7 @@ const adminNav = [
   { href: "/interview/groups",    label: "Groups",     icon: Users           },
   { href: "/interview/assessors", label: "Assessors",  icon: UserCheck       },
   { href: "/interview/reports",   label: "Reports",    icon: BarChart3       },
+  { href: "/interview/schedule",  label: "Scheduling", icon: CalendarClock   },
   { href: "/interview/settings",  label: "Settings",   icon: Settings        },
 ]
 
