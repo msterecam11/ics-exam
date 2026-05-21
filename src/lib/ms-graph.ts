@@ -234,6 +234,8 @@ export interface ConfirmationEmailInput {
   location?:      string
   teamsUrl?:      string | null
   trackName?:     string
+  manageUrl?:     string
+  isReschedule?:  boolean
 }
 
 function fmtDateTime(utc: string, tz: string, opts: Intl.DateTimeFormatOptions): string {
@@ -249,6 +251,8 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
   const date  = fmtDateTime(input.startUtc, tz, { day: "numeric", month: "long", year: "numeric" })
   const start = fmtDateTime(input.startUtc, tz, { hour: "2-digit", minute: "2-digit", hour12: false })
   const end   = fmtDateTime(input.endUtc,   tz, { hour: "2-digit", minute: "2-digit", hour12: false })
+
+  const isReschedule = input.isReschedule ?? false
 
   const locationRow = input.location
     ? `<tr>
@@ -273,6 +277,15 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
        </tr>`
     : ""
 
+  const manageRow = input.manageUrl
+    ? `<div style="text-align:center;margin-bottom:20px;">
+        <a href="${input.manageUrl}"
+          style="display:inline-block;background:#f1f5fb;border:1px solid #dbeafe;color:#1B4F8A;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
+          ✏️ Reschedule or Cancel my booking
+        </a>
+       </div>`
+    : ""
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -283,14 +296,16 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
     <!-- Header -->
     <div style="background:#1B4F8A;padding:28px 32px;text-align:center;">
       <p style="color:rgba(255,255,255,0.7);font-size:11px;text-transform:uppercase;letter-spacing:3px;margin:0 0 6px;">ICS Aviation</p>
-      <h1 style="color:white;font-size:22px;font-weight:700;margin:0;">Interview Booking Confirmed</h1>
+      <h1 style="color:white;font-size:22px;font-weight:700;margin:0;">${isReschedule ? "Booking Rescheduled" : "Interview Booking Confirmed"}</h1>
     </div>
 
     <!-- Body -->
     <div style="padding:28px 32px;">
       <p style="color:#334155;font-size:15px;margin:0 0 20px;">
         Hi <strong>${input.candidateName}</strong>,<br><br>
-        Your interview slot has been successfully booked. Please find the details below.
+        ${isReschedule
+          ? "Your interview booking has been successfully rescheduled. Here are your updated details."
+          : "Your interview slot has been successfully booked. Please find the details below."}
       </p>
 
       <!-- Details table -->
@@ -319,9 +334,11 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
         <p style="color:#94a3b8;font-size:11px;margin:6px 0 0;">Keep this code — you may need it to manage your booking</p>
       </div>
 
-      <p style="color:#64748b;font-size:13px;line-height:1.7;margin:0;">
-        A calendar invite has been sent to your email. If you have any questions or need to reschedule, please contact us as soon as possible.
+      <p style="color:#64748b;font-size:13px;line-height:1.7;margin:0 0 20px;">
+        A calendar invite has been sent to your email. Please arrive on time.
       </p>
+
+      ${manageRow}
     </div>
 
     <!-- Footer -->
@@ -341,7 +358,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
     },
     body: JSON.stringify({
       message: {
-        subject: `Interview Booking Confirmed — ${input.scheduleName}`,
+        subject: `${isReschedule ? "Booking Rescheduled" : "Interview Booking Confirmed"} — ${input.scheduleName}`,
         body:    { contentType: "HTML", content: html },
         toRecipients: [{
           emailAddress: { address: input.candidateEmail, name: input.candidateName },

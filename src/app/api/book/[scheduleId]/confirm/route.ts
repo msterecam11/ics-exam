@@ -144,6 +144,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   // Send confirmation email to candidate (non-fatal)
+  const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const manageUrl = `${appUrl}/book/${scheduleId}/manage?code=${booking.confirmation_code}`
+
   try {
     await sendConfirmationEmail({
       candidateName:  candidate_name,
@@ -156,6 +159,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       location:       schedule.location ?? undefined,
       teamsUrl:       ms_teams_url,
       trackName,
+      manageUrl,
     })
   } catch (e) {
     console.error("Confirmation email error (non-fatal):", e)

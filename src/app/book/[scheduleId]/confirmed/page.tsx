@@ -1,13 +1,15 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useParams } from "next/navigation"
 import Image from "next/image"
-import { CheckCircle2, Calendar, Clock, Copy } from "lucide-react"
+import { CheckCircle2, Calendar, Clock, Copy, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { Suspense } from "react"
+import Link from "next/link"
 
 function ConfirmedContent() {
   const searchParams = useSearchParams()
+  const { scheduleId } = useParams() as { scheduleId: string }
   const code    = searchParams.get("code") ?? ""
   const slotUtc = searchParams.get("slot") ?? ""
 
@@ -65,9 +67,14 @@ function ConfirmedContent() {
       </div>
 
 
+      <Link href={`/book/${scheduleId}/manage?code=${code}`}
+        className="flex items-center justify-center gap-2 w-full border border-slate-200 rounded-xl py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+        <Settings className="h-4 w-4" /> Reschedule or Cancel
+      </Link>
+
       <p className="text-xs text-slate-400 leading-relaxed">
-        A calendar event has been created for the interviewer.<br />
-        Please arrive on time. If you need to reschedule, contact ICS Aviation directly.
+        A confirmation email has been sent to you.<br />
+        Please arrive on time and keep your confirmation code handy.
       </p>
 
       <p className="text-[10px] text-slate-300 uppercase tracking-widest">
