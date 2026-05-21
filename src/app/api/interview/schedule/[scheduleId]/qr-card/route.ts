@@ -22,8 +22,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!schedule) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const port     = process.env.PORT ?? "3000"
-  const secret   = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/interview/schedule/${scheduleId}?pdf_secret=${secret}`
+  const secret   = process.env.NEXTAUTH_SECRET ?? ""
+  const printUrl = `http://localhost:${port}/print/interview/schedule/${scheduleId}?pdf_secret=${encodeURIComponent(secret)}`
 
   const browser = await getBrowser()
 
