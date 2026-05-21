@@ -14,14 +14,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { data, error } = await db
     .from("schedule_bookings")
     .select(`
-      id, candidate_name, candidate_email, candidate_phone,
-      confirmation_code, status, rsvp_status, notes, ms_event_id, ms_teams_url,
-      booked_at, cancelled_at,
-      slot_id,
+      *,
       schedule_slots ( start_utc, end_utc ),
-      candidate_id,
       interview_candidates ( full_name, position ),
-      candidate_track_id,
       role_tracks ( name )
     `)
     .eq("schedule_id", scheduleId)
