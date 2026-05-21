@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import QRCode from "qrcode"
 
 interface Props {
@@ -11,329 +11,426 @@ interface Props {
   dark:       boolean
 }
 
-function fmt(utc: string, tz: string, type: "date" | "time") {
-  if (!utc) return "—"
-  const opts: Intl.DateTimeFormatOptions = type === "date"
-    ? { timeZone: tz, day: "numeric", month: "long", year: "numeric" }
-    : { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }
-  return new Date(utc).toLocaleString("en-GB", opts)
+function fmtDate(utc: string, tz: string) {
+  return new Date(utc).toLocaleDateString("en-GB", {
+    timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric",
+  })
+}
+function fmtTime(utc: string, tz: string) {
+  return new Date(utc).toLocaleTimeString("en-GB", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+  })
 }
 
-const BLUE      = "#1B4F8A"
-const BLUE_DARK = "#163d6e"
-const BLUE_LITE = "#F1F5FB"
-const BLUE_MID  = "#dbeafe"
+const NAVY   = "#0D2444"
+const BLUE   = "#1B4F8A"
+const ACCENT = "#3B82F6"
+const GOLD   = "#F0B429"
 
-export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl, dark }: Props) {
-  const [qrDataUrl, setQrDataUrl] = useState<string>("")
+const FORMAT_LABEL: Record<string, string> = {
+  in_person: "In-Person Interview",
+  online:    "Online Interview",
+  hybrid:    "Hybrid Interview",
+}
+
+export default function QRCardPrint({ schedule, firstSlot, lastSlot, bookingUrl }: Props) {
+  const [qr, setQr] = useState<string>("")
 
   useEffect(() => {
     QRCode.toDataURL(bookingUrl, {
-      width: 300, margin: 1,
-      color: { dark: BLUE, light: "#ffffff" },
+      width: 400, margin: 1,
+      color: { dark: NAVY, light: "#ffffff" },
       errorCorrectionLevel: "H",
-    }).then(setQrDataUrl)
+    }).then(setQr)
   }, [bookingUrl])
 
   useEffect(() => {
-    if (qrDataUrl) setTimeout(() => window.print(), 600)
-  }, [qrDataUrl])
+    if (qr) setTimeout(() => window.print(), 700)
+  }, [qr])
 
-  const tz       = schedule.timezone ?? "Asia/Dubai"
-  const date     = firstSlot ? fmt(firstSlot.start_utc, tz, "date")   : "—"
-  const timeFrom = firstSlot ? fmt(firstSlot.start_utc, tz, "time")   : "—"
-  const timeTo   = lastSlot  ? fmt(lastSlot.end_utc,    tz, "time")   : "—"
-  const dur      = schedule.slot_duration_min ?? "—"
-  const shortUrl = bookingUrl.replace(/^https?:\/\//, "")
-  const schedId  = schedule.id?.slice(0, 8).toUpperCase() ?? ""
-
-  const FORMAT_LABEL: Record<string, string> = {
-    in_person: "In-Person",
-    online:    "Online",
-    hybrid:    "Hybrid",
-  }
-  const FORMAT_EMOJI: Record<string, string> = {
-    in_person: "🏢",
-    online:    "💻",
-    hybrid:    "🔀",
-  }
-  const fmt_label = FORMAT_LABEL[schedule.interview_format] ?? schedule.interview_format ?? ""
-  const fmt_emoji = FORMAT_EMOJI[schedule.interview_format] ?? "📋"
+  const tz        = schedule.timezone ?? "Asia/Dubai"
+  const tzLabel   = tz.split("/").pop()?.replace(/_/g, " ") ?? tz
+  const date      = firstSlot ? fmtDate(firstSlot.start_utc, tz) : "—"
+  const timeFrom  = firstSlot ? fmtTime(firstSlot.start_utc, tz) : "—"
+  const timeTo    = lastSlot  ? fmtTime(lastSlot.end_utc,    tz) : "—"
+  const dur       = schedule.slot_duration_min
+  const shortUrl  = bookingUrl.replace(/^https?:\/\//, "")
+  const schedId   = schedule.id?.slice(0, 8).toUpperCase() ?? ""
+  const fmtLabel  = FORMAT_LABEL[schedule.interview_format] ?? (schedule.interview_format ?? "")
+  const groupName = schedule.assessment_groups?.name
+  const trackName = schedule.role_tracks?.name
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: A5 landscape; margin: 0; }
-        html, body { margin: 0; padding: 0; background: #fff; }
+        @font-face {
+          font-family: 'PlusJakartaSans';
+          src: url('/fonts/PlusJakartaSans-Light.ttf') format('truetype');
+          font-weight: 300;
+        }
+        @font-face {
+          font-family: 'PlusJakartaSans';
+          src: url('/fonts/PlusJakartaSans-Regular.ttf') format('truetype');
+          font-weight: 400;
+        }
+        @font-face {
+          font-family: 'PlusJakartaSans';
+          src: url('/fonts/PlusJakartaSans-Bold.ttf') format('truetype');
+          font-weight: 700;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+          margin: 0; padding: 0;
+          background: ${NAVY};
+          font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif;
+        }
+        @page { size: A4 portrait; margin: 0; }
         @media print {
           .no-print { display: none !important; }
-          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body { background: ${NAVY} !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
       {/* ── Toolbar ── */}
       <div className="no-print" style={{
-        position: "fixed", top: 16, right: 16, zIndex: 99,
-        display: "flex", gap: 8,
+        position: "fixed", top: 16, right: 16, zIndex: 99, display: "flex", gap: 8,
       }}>
         <button onClick={() => window.print()} style={{
-          background: BLUE, color: "#fff",
-          border: "none", borderRadius: 10, padding: "8px 18px",
-          fontSize: 13, fontWeight: 700, cursor: "pointer",
-          boxShadow: "0 4px 12px rgba(27,79,138,0.3)",
-        }}>⬇ Download PDF</button>
+          background: ACCENT, color: "#fff", border: "none", borderRadius: 10,
+          padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          fontFamily: "'PlusJakartaSans', sans-serif",
+          boxShadow: "0 4px 14px rgba(59,130,246,0.4)",
+        }}>⬇ Save as PDF</button>
         <button onClick={() => window.close()} style={{
-          background: "#f1f5f9", color: "#475569",
-          border: "none", borderRadius: 10, padding: "8px 14px",
-          fontSize: 13, fontWeight: 600, cursor: "pointer",
+          background: "rgba(255,255,255,0.1)", color: "#fff", border: "none",
+          borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600,
+          cursor: "pointer", fontFamily: "'PlusJakartaSans', sans-serif",
         }}>✕ Close</button>
       </div>
 
-      {/* ══ CARD — A5 landscape 210×148 mm ══ */}
+      {/* ══ CARD ══ */}
       <div style={{
-        width: "210mm", height: "148mm",
-        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
-        display: "flex", flexDirection: "column",
-        background: "#fff",
-        overflow: "hidden",
+        width: "210mm",
+        minHeight: "297mm",
+        background: NAVY,
         position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        fontFamily: "'PlusJakartaSans', 'Segoe UI', Arial, sans-serif",
       }}>
 
-        {/* ── HEADER BAR ── */}
+        {/* ── Background geometry ── */}
+        {/* Top-right large circle */}
         <div style={{
-          background: `linear-gradient(135deg, ${BLUE_DARK} 0%, ${BLUE} 60%, #2563eb 100%)`,
-          padding: "14px 28px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          flexShrink: 0,
-          position: "relative", overflow: "hidden",
-        }}>
-          {/* Decorative circle in header */}
-          <div style={{
-            position: "absolute", right: -30, top: -40,
-            width: 140, height: 140, borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)",
-          }} />
-          <div style={{
-            position: "absolute", right: 80, top: -20,
-            width: 80, height: 80, borderRadius: "50%",
-            background: "rgba(255,255,255,0.04)",
-          }} />
+          position: "absolute", top: -120, right: -120,
+          width: 420, height: 420, borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,0.06)",
+          pointerEvents: "none",
+        }} />
+        <div style={{
+          position: "absolute", top: -80, right: -80,
+          width: 300, height: 300, borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,0.04)",
+          pointerEvents: "none",
+        }} />
+        {/* Bottom-left circle */}
+        <div style={{
+          position: "absolute", bottom: -100, left: -100,
+          width: 360, height: 360, borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,0.05)",
+          pointerEvents: "none",
+        }} />
+        {/* Top gold accent bar */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0,
+          height: 3,
+          background: `linear-gradient(90deg, transparent, ${GOLD}, ${ACCENT}, transparent)`,
+        }} />
 
+        {/* ── HEADER ── */}
+        <div style={{
+          width: "100%",
+          padding: "48px 52px 32px",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          gap: 16,
+          position: "relative",
+        }}>
           {/* Logo */}
           <img
             src="/logo/logo-white.png"
             alt="ICS Aviation"
-            style={{ height: 24, objectFit: "contain", position: "relative" }}
+            style={{ height: 36, objectFit: "contain" }}
           />
 
-          {/* Center: title */}
-          <div style={{ textAlign: "center", position: "relative" }}>
-            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 7, fontWeight: 700,
-              letterSpacing: "0.22em", textTransform: "uppercase" }}>
-              Panel Interview
-            </p>
-            <p style={{ color: "#fff", fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", marginTop: 1 }}>
-              Interview Scheduling Card
-            </p>
+          {/* Thin line */}
+          <div style={{
+            width: 48, height: 1,
+            background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
+          }} />
+
+          {/* Label */}
+          <p style={{
+            fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+            letterSpacing: "0.3em", textTransform: "uppercase",
+          }}>
+            Panel Interview · {new Date().getFullYear()}
+          </p>
+        </div>
+
+        {/* ── HERO: Schedule name ── */}
+        <div style={{
+          width: "100%", padding: "0 52px 36px",
+          display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
+          gap: 12,
+        }}>
+          <p style={{
+            fontSize: 10, fontWeight: 700, color: GOLD,
+            letterSpacing: "0.2em", textTransform: "uppercase",
+          }}>
+            You are invited to
+          </p>
+          <h1 style={{
+            fontSize: 32, fontWeight: 700, color: "#ffffff",
+            lineHeight: 1.2, letterSpacing: "-0.01em",
+          }}>
+            {schedule.name}
+          </h1>
+
+          {/* Tags */}
+          {(groupName || trackName || fmtLabel) && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 4 }}>
+              {groupName && (
+                <span style={{
+                  background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)",
+                  fontSize: 9, fontWeight: 600, borderRadius: 20, padding: "4px 12px",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  letterSpacing: "0.04em",
+                }}>{groupName}</span>
+              )}
+              {trackName && (
+                <span style={{
+                  background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)",
+                  fontSize: 9, fontWeight: 600, borderRadius: 20, padding: "4px 12px",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}>{trackName}</span>
+              )}
+              {fmtLabel && (
+                <span style={{
+                  background: `rgba(240,180,41,0.15)`, color: GOLD,
+                  fontSize: 9, fontWeight: 700, borderRadius: 20, padding: "4px 12px",
+                  border: `1px solid rgba(240,180,41,0.3)`,
+                }}>{fmtLabel}</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── DETAILS CARD ── */}
+        <div style={{
+          width: "calc(100% - 80px)",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 20,
+          padding: "24px 28px",
+          display: "flex", flexDirection: "column", gap: 14,
+          backdropFilter: "blur(4px)",
+        }}>
+          {/* Date */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "rgba(59,130,246,0.15)",
+              border: "1px solid rgba(59,130,246,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, flexShrink: 0,
+            }}>📅</div>
+            <div>
+              <p style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 2 }}>Date</p>
+              <p style={{ fontSize: 13, color: "#fff", fontWeight: 700 }}>{date}</p>
+            </div>
           </div>
 
-          {/* Right: date */}
-          <div style={{ textAlign: "right", position: "relative" }}>
-            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 7, fontWeight: 600,
-              letterSpacing: "0.15em", textTransform: "uppercase" }}>Date</p>
-            <p style={{ color: "#fff", fontSize: 9, fontWeight: 700, marginTop: 2 }}>{date}</p>
+          {/* Divider */}
+          <div style={{ height: 1, background: "rgba(255,255,255,0.07)" }} />
+
+          {/* Time */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "rgba(59,130,246,0.15)",
+              border: "1px solid rgba(59,130,246,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, flexShrink: 0,
+            }}>🕐</div>
+            <div>
+              <p style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 2 }}>Time Window</p>
+              <p style={{ fontSize: 13, color: "#fff", fontWeight: 700 }}>
+                {timeFrom} – {timeTo}
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 400, marginLeft: 8 }}>
+                  {tzLabel}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Location (if present) */}
+          {schedule.location && (
+            <>
+              <div style={{ height: 1, background: "rgba(255,255,255,0.07)" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: "rgba(59,130,246,0.15)",
+                  border: "1px solid rgba(59,130,246,0.25)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, flexShrink: 0,
+                }}>📍</div>
+                <div>
+                  <p style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                    letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 2 }}>Location</p>
+                  <p style={{ fontSize: 13, color: "#fff", fontWeight: 700 }}>{schedule.location}</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "rgba(255,255,255,0.07)" }} />
+
+          {/* Slot duration */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "rgba(59,130,246,0.15)",
+              border: "1px solid rgba(59,130,246,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, flexShrink: 0,
+            }}>⏱</div>
+            <div>
+              <p style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", fontWeight: 600,
+                letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 2 }}>Slot Duration</p>
+              <p style={{ fontSize: 13, color: "#fff", fontWeight: 700 }}>{dur} minutes per interview</p>
+            </div>
           </div>
         </div>
 
-        {/* ── BODY ── */}
+        {/* ── QR SECTION ── */}
         <div style={{
-          flex: 1,
-          display: "flex", flexDirection: "row",
-          overflow: "hidden",
+          width: "calc(100% - 80px)",
+          marginTop: 28,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 20,
         }}>
+          {/* Heading */}
+          <div style={{ textAlign: "center" }}>
+            <p style={{
+              fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)",
+              letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 6,
+            }}>Book Your Interview Slot</p>
+            <div style={{
+              width: 40, height: 2, borderRadius: 2, margin: "0 auto",
+              background: `linear-gradient(90deg, ${ACCENT}, ${GOLD})`,
+            }} />
+          </div>
 
-          {/* ── LEFT CONTENT ── */}
+          {/* QR Box */}
           <div style={{
-            flex: 1,
-            padding: "18px 24px 16px 28px",
-            display: "flex", flexDirection: "column", justifyContent: "space-between",
-            borderRight: "2px dashed #e2e8f0",
+            background: "#ffffff",
+            borderRadius: 24,
+            padding: 20,
+            boxShadow: "0 0 0 1px rgba(255,255,255,0.1), 0 24px 48px rgba(0,0,0,0.4)",
             position: "relative",
           }}>
-            {/* Accent left stripe */}
+            {/* Corner accents */}
+            <div style={{ position: "absolute", top: -2, left: -2, width: 20, height: 20,
+              borderTop: `3px solid ${GOLD}`, borderLeft: `3px solid ${GOLD}`, borderRadius: "4px 0 0 0" }} />
+            <div style={{ position: "absolute", top: -2, right: -2, width: 20, height: 20,
+              borderTop: `3px solid ${GOLD}`, borderRight: `3px solid ${GOLD}`, borderRadius: "0 4px 0 0" }} />
+            <div style={{ position: "absolute", bottom: -2, left: -2, width: 20, height: 20,
+              borderBottom: `3px solid ${GOLD}`, borderLeft: `3px solid ${GOLD}`, borderRadius: "0 0 0 4px" }} />
+            <div style={{ position: "absolute", bottom: -2, right: -2, width: 20, height: 20,
+              borderBottom: `3px solid ${GOLD}`, borderRight: `3px solid ${GOLD}`, borderRadius: "0 0 4px 0" }} />
+
+            {qr
+              ? <img src={qr} alt="Booking QR" style={{ width: 180, height: 180, display: "block" }} />
+              : <div style={{ width: 180, height: 180, display: "flex", alignItems: "center",
+                  justifyContent: "center", color: "#94a3b8", fontSize: 12 }}>Loading…</div>
+            }
+          </div>
+
+          {/* Scan CTA */}
+          <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>
+              Scan the QR code to reserve your slot
+            </p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+              or visit the link below on your browser
+            </p>
             <div style={{
-              position: "absolute", left: 0, top: 16, bottom: 16,
-              width: 4, borderRadius: "0 4px 4px 0",
-              background: `linear-gradient(to bottom, ${BLUE}, #2563eb)`,
-            }} />
-
-            {/* Top: name + tags */}
-            <div>
-              <p style={{ fontSize: 8, fontWeight: 700, color: "#94a3b8",
-                letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 5 }}>
-                Interview Schedule
-              </p>
-              <h1 style={{ fontSize: 17, fontWeight: 900, color: BLUE, lineHeight: 1.15, marginBottom: 5 }}>
-                {schedule.name}
-              </h1>
-              {/* Tags */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {schedule.assessment_groups?.name && (
-                  <span style={{
-                    background: BLUE_LITE, color: BLUE,
-                    fontSize: 8, fontWeight: 700, borderRadius: 20,
-                    padding: "2px 9px", letterSpacing: "0.05em",
-                  }}>{schedule.assessment_groups.name}</span>
-                )}
-                {schedule.role_tracks?.name && (
-                  <span style={{
-                    background: BLUE_LITE, color: BLUE,
-                    fontSize: 8, fontWeight: 700, borderRadius: 20,
-                    padding: "2px 9px",
-                  }}>{schedule.role_tracks.name}</span>
-                )}
-                {fmt_label && (
-                  <span style={{
-                    background: "#f0fdf4", color: "#166534",
-                    fontSize: 8, fontWeight: 700, borderRadius: 20,
-                    padding: "2px 9px",
-                  }}>{fmt_emoji} {fmt_label}</span>
-                )}
-              </div>
+              marginTop: 4,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 10, padding: "8px 18px",
+            }}>
+              <p style={{
+                fontFamily: "monospace", fontSize: 10, color: ACCENT,
+                fontWeight: 700, letterSpacing: "0.02em",
+              }}>{shortUrl}</p>
             </div>
+          </div>
+        </div>
 
-            {/* Stat boxes row */}
-            <div style={{ display: "flex", gap: 8 }}>
-              {/* Time */}
-              <div style={{
-                flex: 1, background: BLUE_LITE, borderRadius: 10, padding: "8px 10px",
-              }}>
-                <p style={{ fontSize: 7, color: "#94a3b8", textTransform: "uppercase",
-                  letterSpacing: "0.12em", fontWeight: 700, marginBottom: 3 }}>Time Window</p>
-                <p style={{ fontSize: 11, fontWeight: 800, color: BLUE }}>
-                  {timeFrom} – {timeTo}
-                </p>
-                <p style={{ fontSize: 7, color: "#94a3b8", marginTop: 1 }}>
-                  {tz.replace("_", " ")}
-                </p>
-              </div>
+        {/* ── DESCRIPTION ── */}
+        {schedule.description && (
+          <div style={{
+            width: "calc(100% - 80px)",
+            marginTop: 24,
+            textAlign: "center",
+          }}>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, fontWeight: 300 }}>
+              {schedule.description}
+            </p>
+          </div>
+        )}
 
-              {/* Duration */}
-              <div style={{
-                width: 72, background: BLUE, borderRadius: 10, padding: "8px 10px",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              }}>
-                <p style={{ fontSize: 7, color: "rgba(255,255,255,0.6)", textTransform: "uppercase",
-                  letterSpacing: "0.12em", fontWeight: 700, marginBottom: 2, textAlign: "center" }}>Slot</p>
-                <p style={{ fontSize: 16, fontWeight: 900, color: "#fff", textAlign: "center", lineHeight: 1 }}>
-                  {dur}
-                </p>
-                <p style={{ fontSize: 7, color: "rgba(255,255,255,0.6)", textAlign: "center" }}>min</p>
-              </div>
-            </div>
+        {/* ── FOOTER ── */}
+        <div style={{
+          width: "100%",
+          marginTop: "auto",
+          padding: "32px 52px 40px",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+        }}>
+          {/* Divider line */}
+          <div style={{
+            width: "100%", height: 1,
+            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)",
+            marginBottom: 8,
+          }} />
 
-            {/* Location + description */}
-            <div>
-              {schedule.location && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 10 }}>📍</span>
-                  <span style={{ fontSize: 9, fontWeight: 600, color: "#475569" }}>{schedule.location}</span>
-                </div>
-              )}
-              {schedule.description && (
-                <p style={{ fontSize: 8, color: "#94a3b8", lineHeight: 1.5, borderTop: "1px solid #f1f5f9", paddingTop: 6 }}>
-                  {schedule.description.length > 130
-                    ? schedule.description.slice(0, 127) + "…"
-                    : schedule.description}
-                </p>
-              )}
-            </div>
+          {/* Logo small */}
+          <img
+            src="/logo/logo-white.png"
+            alt="ICS Aviation"
+            style={{ height: 20, objectFit: "contain", opacity: 0.4 }}
+          />
 
-            {/* Footer */}
-            <p style={{ fontSize: 7, color: "#cbd5e1", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              Confidential · ICS Aviation · Integrated Consulting Services · {new Date().getFullYear()}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <p style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+              ICS Aviation · Integrated Consulting Services
+            </p>
+            <span style={{ color: "rgba(255,255,255,0.15)", fontSize: 8 }}>·</span>
+            <p style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", fontFamily: "monospace", letterSpacing: "0.08em" }}>
+              ID: {schedId}
             </p>
           </div>
 
-          {/* ── NOTCH connector circles (boarding-pass effect) ── */}
-          <div style={{
-            position: "absolute",
-            left: "calc(210mm - 185px - 1px)",
-            top: -14, width: 28, height: 28, borderRadius: "50%",
-            background: "#fff",
-            border: "2px solid #e2e8f0",
-            boxShadow: "inset 0 0 0 10px #fff",
-          }} />
-          <div style={{
-            position: "absolute",
-            left: "calc(210mm - 185px - 1px)",
-            bottom: -14, width: 28, height: 28, borderRadius: "50%",
-            background: "#fff",
-            border: "2px solid #e2e8f0",
-          }} />
-
-          {/* ── RIGHT SECTION (QR + booking info) ── */}
-          <div style={{
-            width: 185,
-            padding: "18px 20px",
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "space-between",
-          }}>
-
-            {/* QR code */}
-            <div style={{
-              background: "#fff",
-              border: `2px solid ${BLUE}`,
-              borderRadius: 14,
-              padding: 8,
-              boxShadow: "0 4px 16px rgba(27,79,138,0.12)",
-            }}>
-              {qrDataUrl
-                ? <img src={qrDataUrl} alt="QR" style={{ width: 118, height: 118, display: "block" }} />
-                : <div style={{ width: 118, height: 118, display: "flex", alignItems: "center",
-                    justifyContent: "center", color: "#94a3b8", fontSize: 9 }}>Loading…</div>
-              }
-            </div>
-
-            {/* CTA */}
-            <div style={{ textAlign: "center" }}>
-              <p style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 2 }}>
-                Scan to Book
-              </p>
-              <p style={{ fontSize: 8, color: "#94a3b8", marginBottom: 8 }}>
-                or visit the link below
-              </p>
-              <div style={{
-                background: BLUE_LITE, borderRadius: 8,
-                padding: "5px 10px",
-              }}>
-                <p style={{
-                  fontSize: 7, fontFamily: "monospace", fontWeight: 700,
-                  color: BLUE, wordBreak: "break-all", lineHeight: 1.4,
-                }}>
-                  {shortUrl}
-                </p>
-              </div>
-            </div>
-
-            {/* Schedule ID */}
-            <div style={{
-              background: BLUE, borderRadius: 10,
-              padding: "6px 16px", textAlign: "center",
-              width: "100%",
-            }}>
-              <p style={{ fontSize: 7, color: "rgba(255,255,255,0.55)",
-                letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 2 }}>
-                Schedule ID
-              </p>
-              <p style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 800,
-                color: "#fff", letterSpacing: "0.15em" }}>
-                {schedId}
-              </p>
-            </div>
-          </div>
+          <p style={{ fontSize: 7, color: "rgba(255,255,255,0.15)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            Confidential · Do not share outside of authorized recipients
+          </p>
         </div>
       </div>
     </>
