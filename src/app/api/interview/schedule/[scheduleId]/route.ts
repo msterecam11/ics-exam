@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { deleteCalendarEvent } from "@/lib/ms-graph"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -60,6 +61,22 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
 
   const { scheduleId } = await params
 
+  // 1. Fetch all confirmed bookings that have a calendar event
+  const { data: bookings } = await db
+    .from("schedule_bookings")
+    .select("ms_event_id")
+    .eq("schedule_id", scheduleId)
+    .eq("status", "confirmed")
+    .not("ms_event_id", "is", null)
+
+  // 2. Cancel all MS calendar events in parallel (ignore individual failures)
+  if (bookings && bookings.length > 0) {
+    await Promise.allSettled(
+      bookings.map((b: any) => deleteCalendarEvent(b.ms_event_id))
+    )
+  }
+
+  // 3. Delete the schedule (cascades to slots + bookings via FK)
   const { error } = await db
     .from("schedules")
     .delete()
