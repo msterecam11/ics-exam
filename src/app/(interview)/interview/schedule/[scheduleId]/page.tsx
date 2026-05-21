@@ -87,7 +87,7 @@ export default function ScheduleDetailPage() {
   // Booking cancel
   const [cancellingId,  setCancellingId]  = useState<string | null>(null)
   // RSVP sync from calendar
-  const [syncingRsvpId, setSyncingRsvpId] = useState<string | null>(null)
+  const [syncingAll, setSyncingAll] = useState(false)
 
   useEffect(() => { loadAll() }, [scheduleId])
 
@@ -174,26 +174,29 @@ export default function ScheduleDetailPage() {
     toast.success("Booking cancelled")
   }
 
-  async function syncRsvp(bookingId: string) {
-    setSyncingRsvpId(bookingId)
-    const res = await fetch(
-      `/api/interview/schedule/${scheduleId}/bookings/${bookingId}/rsvp-sync`,
-      { method: "POST" }
-    )
-    const data = await res.json()
-    setSyncingRsvpId(null)
+  async function syncAllRsvp() {
+    const withEvent = bookings.filter(b => b.ms_event_id && b.status === "confirmed")
+    if (withEvent.length === 0) { toast.info("No calendar events to sync"); return }
 
-    if (!res.ok) {
-      // 422 = no calendar event linked yet
-      toast.error(data.error ?? "Sync failed")
-      return
-    }
-    if (data.changed) {
-      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, rsvp_status: data.rsvp_status } : b))
-      toast.success(`RSVP updated → ${data.rsvp_status}`)
-    } else {
-      toast.info("Already up to date")
-    }
+    setSyncingAll(true)
+    let updated = 0
+
+    await Promise.all(withEvent.map(async (b) => {
+      const res = await fetch(
+        `/api/interview/schedule/${scheduleId}/bookings/${b.id}/rsvp-sync`,
+        { method: "POST" }
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.changed) {
+        setBookings(prev => prev.map(x => x.id === b.id ? { ...x, rsvp_status: data.rsvp_status } : x))
+        updated++
+      }
+    }))
+
+    setSyncingAll(false)
+    if (updated > 0) toast.success(`${updated} RSVP${updated > 1 ? "s" : ""} updated from calendar`)
+    else toast.info("All RSVPs already up to date")
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-[#1B4F8A]" /></div>
@@ -338,14 +341,22 @@ export default function ScheduleDetailPage() {
           <div>
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-50">
               <p className="text-xs text-slate-400 font-semibold">{bookings.length} total booking{bookings.length !== 1 ? "s" : ""}</p>
-              <Button size="sm" variant="ghost" className="text-xs gap-1.5" onClick={() => {
-                const csv = ["Name,Email,Slot ("+tz+"),Track,Status,Confirmation"]
-                  .concat(bookings.map(b => `${b.candidate_name},${b.candidate_email},"${b.schedule_slots ? formatUtcInTimezone(b.schedule_slots.start_utc, tz) : "—"}",${b.role_tracks?.name ?? "—"},${b.status},${b.confirmation_code}`))
-                  .join("\n")
-                const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv])); a.download = "bookings.csv"; a.click()
-              }}>
-                <Download className="h-3.5 w-3.5" /> Export CSV
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="text-xs gap-1.5 text-[#1B4F8A] hover:bg-[#1B4F8A]/5"
+                  onClick={syncAllRsvp} disabled={syncingAll}>
+                  {syncingAll
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing…</>
+                    : <><span className="text-sm leading-none">↻</span> Sync RSVPs</>}
+                </Button>
+                <Button size="sm" variant="ghost" className="text-xs gap-1.5" onClick={() => {
+                  const csv = ["Name,Email,Slot ("+tz+"),Track,Status,RSVP,Confirmation"]
+                    .concat(bookings.map(b => `${b.candidate_name},${b.candidate_email},"${b.schedule_slots ? formatUtcInTimezone(b.schedule_slots.start_utc, tz) : "—"}",${b.role_tracks?.name ?? "—"},${b.status},${b.rsvp_status ?? "pending"},${b.confirmation_code}`))
+                    .join("\n")
+                  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv])); a.download = "bookings.csv"; a.click()
+                }}>
+                  <Download className="h-3.5 w-3.5" /> Export CSV
+                </Button>
+              </div>
             </div>
             {bookings.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
@@ -379,21 +390,7 @@ export default function ScheduleDetailPage() {
                       <td className="py-2.5 px-3 text-slate-500">{b.role_tracks?.name ?? "—"}</td>
                       <td className="py-2.5 px-3 text-center"><StatusBadge status={b.status} /></td>
                       <td className="py-2.5 px-3 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <RsvpBadge rsvp={b.rsvp_status ?? "pending"} />
-                          {b.ms_event_id && (
-                            <button
-                              onClick={() => syncRsvp(b.id)}
-                              disabled={syncingRsvpId === b.id}
-                              title="Sync from calendar"
-                              className="text-[9px] text-slate-400 hover:text-[#1B4F8A] flex items-center gap-0.5 transition-colors disabled:opacity-40">
-                              {syncingRsvpId === b.id
-                                ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                : <span>↻</span>}
-                              sync
-                            </button>
-                          )}
-                        </div>
+                        <RsvpBadge rsvp={b.rsvp_status ?? "pending"} />
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         {b.ms_teams_url
