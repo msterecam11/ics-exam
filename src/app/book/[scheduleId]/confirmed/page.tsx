@@ -1,15 +1,13 @@
 "use client"
 
-import { useParams, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Image from "next/image"
-import { CheckCircle2, Calendar, Clock, Copy, ThumbsUp, ThumbsDown, HelpCircle, Loader2 } from "lucide-react"
+import { CheckCircle2, Calendar, Clock, Copy } from "lucide-react"
 import { toast } from "sonner"
-import { Suspense, useState } from "react"
-import { cn } from "@/lib/utils"
+import { Suspense } from "react"
 
 function ConfirmedContent() {
-  const { scheduleId } = useParams() as { scheduleId: string }
-  const searchParams   = useSearchParams()
+  const searchParams = useSearchParams()
   const code    = searchParams.get("code") ?? ""
   const slotUtc = searchParams.get("slot") ?? ""
 
@@ -23,23 +21,6 @@ function ConfirmedContent() {
     timeZone: userTz, hour: "2-digit", minute: "2-digit", hour12: false,
   }) : "—"
 
-  // RSVP state
-  const [rsvp,    setRsvp]    = useState<"pending" | "accepted" | "tentative" | "declined">("pending")
-  const [loading, setLoading] = useState<"accepted" | "tentative" | "declined" | null>(null)
-
-  async function handleRsvp(choice: "accepted" | "tentative" | "declined") {
-    if (rsvp !== "pending") return
-    setLoading(choice)
-    const res = await fetch(`/api/book/${scheduleId}/rsvp`, {
-      method:  "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ confirmation_code: code, rsvp_status: choice }),
-    })
-    setLoading(null)
-    if (!res.ok) { toast.error("Could not update — please try again"); return }
-    setRsvp(choice)
-    toast.success(choice === "accepted" ? "Great! See you there 👋" : "Got it — we've noted your response")
-  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-16 text-center space-y-6">
@@ -83,72 +64,6 @@ function ConfirmedContent() {
         </div>
       </div>
 
-      {/* ── RSVP ── */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm space-y-3">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Confirm Your Attendance</p>
-
-        {rsvp === "pending" ? (
-          <>
-            <p className="text-sm text-slate-500">Will you be attending this interview?</p>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {/* Accept */}
-              <button
-                disabled={!!loading}
-                onClick={() => handleRsvp("accepted")}
-                className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl border-2 border-emerald-300 bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 transition-all disabled:opacity-60">
-                {loading === "accepted"
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <ThumbsUp className="h-4 w-4" />}
-                Yes, I&apos;ll attend
-              </button>
-              {/* Tentative */}
-              <button
-                disabled={!!loading}
-                onClick={() => handleRsvp("tentative")}
-                className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-600 font-bold text-xs hover:bg-blue-100 transition-all disabled:opacity-60">
-                {loading === "tentative"
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <HelpCircle className="h-4 w-4" />}
-                Maybe
-              </button>
-              {/* Decline */}
-              <button
-                disabled={!!loading}
-                onClick={() => handleRsvp("declined")}
-                className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl border-2 border-red-200 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all disabled:opacity-60">
-                {loading === "declined"
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <ThumbsDown className="h-4 w-4" />}
-                Can&apos;t make it
-              </button>
-            </div>
-          </>
-        ) : rsvp === "accepted" ? (
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-              <ThumbsUp className="h-6 w-6 text-emerald-600" />
-            </div>
-            <p className="text-sm font-bold text-emerald-700">You confirmed your attendance</p>
-            <p className="text-xs text-slate-400">We look forward to seeing you!</p>
-          </div>
-        ) : rsvp === "tentative" ? (
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-              <HelpCircle className="h-6 w-6 text-blue-500" />
-            </div>
-            <p className="text-sm font-bold text-blue-600">Marked as tentative</p>
-            <p className="text-xs text-slate-400">Please confirm as soon as you know. Contact ICS Aviation if you need to reschedule.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-              <ThumbsDown className="h-6 w-6 text-red-500" />
-            </div>
-            <p className="text-sm font-bold text-red-600">You declined this appointment</p>
-            <p className="text-xs text-slate-400">If you change your mind, contact ICS Aviation directly.</p>
-          </div>
-        )}
-      </div>
 
       <p className="text-xs text-slate-400 leading-relaxed">
         A calendar event has been created for the interviewer.<br />
