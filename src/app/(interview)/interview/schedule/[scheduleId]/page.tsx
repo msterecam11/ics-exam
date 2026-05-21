@@ -18,6 +18,19 @@ import { cn } from "@/lib/utils"
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
 
+function expandDateRange(startDate: string, endDate: string): string[] {
+  if (!startDate || !endDate) return []
+  const dates: string[] = []
+  const cur = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  if (end < cur) return []
+  while (cur <= end) {
+    dates.push(cur.toISOString().split("T")[0])
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
+}
+
 function generateSlotPreviews(start: string, end: string, durMin: number, bufMin: number): string[] {
   if (!start || !end || !durMin) return []
   const [sh, sm] = start.split(":").map(Number)
@@ -90,11 +103,16 @@ export default function ScheduleDetailPage() {
   const [tab,      setTab]      = useState<Tab>("Bookings")
 
   // Edit state
-  const [editing,     setEditing]     = useState(!!searchParams.get("edit"))
-  const [editName,    setEditName]    = useState("")
-  const [editLoc,     setEditLoc]     = useState("")
-  const [editDesc,    setEditDesc]    = useState("")
-  const [savingEdit,  setSavingEdit]  = useState(false)
+  const [editing,       setEditing]       = useState(!!searchParams.get("edit"))
+  const [editName,      setEditName]      = useState("")
+  const [editLoc,       setEditLoc]       = useState("")
+  const [editDesc,      setEditDesc]      = useState("")
+  const [editFormat,    setEditFormat]    = useState("")
+  const [editTimezone,  setEditTimezone]  = useState("")
+  const [editDuration,  setEditDuration]  = useState(30)
+  const [editBuffer,    setEditBuffer]    = useState(0)
+  const [editCapacity,  setEditCapacity]  = useState(1)
+  const [savingEdit,    setSavingEdit]    = useState(false)
 
   // Delete
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -109,12 +127,14 @@ export default function ScheduleDetailPage() {
   // RSVP sync from calendar
   const [syncingAll, setSyncingAll] = useState(false)
 
-  // Add day form
-  const [showAddDay,  setShowAddDay]  = useState(false)
-  const [newDate,     setNewDate]     = useState("")
-  const [newStart,    setNewStart]    = useState("09:00")
-  const [newEnd,      setNewEnd]      = useState("17:00")
-  const [addingSlots, setAddingSlots] = useState(false)
+  // Add slots form
+  const [showAddDay,   setShowAddDay]   = useState(false)
+  const [addMode,      setAddMode]      = useState<"range"|"single">("range")
+  const [newStartDate, setNewStartDate] = useState("")
+  const [newEndDate,   setNewEndDate]   = useState("")
+  const [newStart,     setNewStart]     = useState("09:00")
+  const [newEnd,       setNewEnd]       = useState("17:00")
+  const [addingSlots,  setAddingSlots]  = useState(false)
 
   useEffect(() => { loadAll() }, [scheduleId])
 
@@ -130,6 +150,11 @@ export default function ScheduleDetailPage() {
     setEditName(sch.name ?? "")
     setEditLoc(sch.location ?? "")
     setEditDesc(sch.description ?? "")
+    setEditFormat(sch.interview_format ?? "in_person")
+    setEditTimezone(sch.timezone ?? "Asia/Dubai")
+    setEditDuration(sch.slot_duration_min ?? 30)
+    setEditBuffer(sch.buffer_min ?? 0)
+    setEditCapacity(sch.capacity_per_slot ?? 1)
     setLoading(false)
   }
 
@@ -140,7 +165,16 @@ export default function ScheduleDetailPage() {
     setSavingEdit(true)
     const res = await fetch(`/api/interview/schedule/${scheduleId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName, location: editLoc, description: editDesc }),
+      body: JSON.stringify({
+        name:              editName,
+        location:          editLoc,
+        description:       editDesc,
+        interview_format:  editFormat,
+        timezone:          editTimezone,
+        slot_duration_min: editDuration,
+        buffer_min:        editBuffer,
+        capacity_per_slot: editCapacity,
+      }),
     })
     const d = await res.json()
     setSavingEdit(false)
@@ -226,21 +260,41 @@ export default function ScheduleDetailPage() {
     else toast.info("All RSVPs already up to date")
   }
 
-  async function handleAddDay() {
-    if (!newDate) { toast.error("Please select a date"); return }
+  async function handleAddSlots() {
     setAddingSlots(true)
-    const res = await fetch(`/api/interview/schedule/${scheduleId}/slots`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ date: newDate, start_time: newStart, end_time: newEnd }),
-    })
-    const data = await res.json()
+    let totalGenerated = 0
+
+    if (addMode === "single") {
+      // Single slot: end = start + slot_duration_min
+      if (!newStartDate || !newStart) { toast.error("Please select a date and time"); setAddingSlots(false); return }
+      const [h, m] = newStart.split(":").map(Number)
+      const endMins = h * 60 + m + schedule.slot_duration_min
+      const singleEnd = `${String(Math.floor(endMins / 60)).padStart(2,"0")}:${String(endMins % 60).padStart(2,"0")}`
+      const res = await fetch(`/api/interview/schedule/${scheduleId}/slots`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: newStartDate, start_time: newStart, end_time: singleEnd }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? "Failed to add slot"); setAddingSlots(false); return }
+      totalGenerated = data.generated
+    } else {
+      // Date range mode
+      if (!newStartDate || !newEndDate) { toast.error("Please select a date range"); setAddingSlots(false); return }
+      const dates = expandDateRange(newStartDate, newEndDate)
+      for (const date of dates) {
+        const res = await fetch(`/api/interview/schedule/${scheduleId}/slots`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date, start_time: newStart, end_time: newEnd }),
+        })
+        const data = await res.json()
+        if (res.ok) totalGenerated += data.generated
+      }
+    }
+
     setAddingSlots(false)
-    if (!res.ok) { toast.error(data.error ?? "Failed to generate slots"); return }
-    toast.success(`${data.generated} slot${data.generated !== 1 ? "s" : ""} added!`)
+    toast.success(`${totalGenerated} slot${totalGenerated !== 1 ? "s" : ""} added!`)
     setShowAddDay(false)
-    setNewDate("")
-    // Reload slots to include new ones
+    setNewStartDate(""); setNewEndDate("")
     const slt = await fetch(`/api/interview/schedule/${scheduleId}/slots`).then(r => r.json())
     setSlots(Array.isArray(slt) ? slt : [])
   }
@@ -521,61 +575,96 @@ export default function ScheduleDetailPage() {
                 </div>
               ))}
 
-              {/* ── Add Day panel ── */}
+              {/* ── Add Slots panel ── */}
               <div className="border border-dashed border-slate-300 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setShowAddDay(v => !v)}
+                <button onClick={() => setShowAddDay(v => !v)}
                   className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-                  <span className="flex items-center gap-2">
-                    <Plus className="h-4 w-4 text-[#1B4F8A]" />
-                    Add Another Day
-                  </span>
+                  <span className="flex items-center gap-2"><Plus className="h-4 w-4 text-[#1B4F8A]" />Add Slots</span>
                   {showAddDay ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                 </button>
 
                 {showAddDay && (
                   <div className="border-t border-dashed border-slate-200 px-4 py-4 bg-slate-50/40 space-y-3">
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Date</Label>
-                        <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="h-8 text-xs" />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Start ({tz.split("/")[1]})</Label>
-                        <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-8 text-xs" />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">End ({tz.split("/")[1]})</Label>
-                        <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-8 text-xs" />
-                      </div>
+
+                    {/* Mode toggle */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["range","single"] as const).map(m => (
+                        <button key={m} onClick={() => setAddMode(m)}
+                          className={cn("py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all",
+                            addMode === m ? "border-[#1B4F8A] bg-[#1B4F8A] text-white" : "border-slate-200 text-slate-600 hover:border-slate-300")}>
+                          {m === "range" ? "📅 Date Range" : "🕐 Single Slot"}
+                        </button>
+                      ))}
                     </div>
 
-                    {/* Slot preview */}
-                    {(() => {
-                      const previews = generateSlotPreviews(newStart, newEnd, schedule.slot_duration_min, schedule.buffer_min)
-                      return previews.length > 0 ? (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                            <Eye className="h-3 w-3" /> {previews.length} slots will be generated
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {previews.map(p => (
-                              <span key={p} className="text-[10px] bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 px-2 py-0.5 rounded-full font-medium">{p}</span>
-                            ))}
+                    {addMode === "range" ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Start Date</Label>
+                            <Input type="date" value={newStartDate}
+                              onChange={e => { setNewStartDate(e.target.value); if (!newEndDate || newEndDate < e.target.value) setNewEndDate(e.target.value) }}
+                              className="h-8 text-xs" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">End Date <span className="font-normal text-slate-400">(same = 1 day)</span></Label>
+                            <Input type="date" value={newEndDate} min={newStartDate}
+                              onChange={e => setNewEndDate(e.target.value)} className="h-8 text-xs" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Daily Start ({tz.split("/")[1]})</Label>
+                            <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-8 text-xs" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Daily End ({tz.split("/")[1]})</Label>
+                            <Input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-8 text-xs" />
                           </div>
                         </div>
-                      ) : null
-                    })()}
+                        {(() => {
+                          const previews  = generateSlotPreviews(newStart, newEnd, schedule.slot_duration_min, schedule.buffer_min)
+                          const dateCount = expandDateRange(newStartDate, newEndDate).length
+                          const multiDay  = dateCount > 1
+                          return previews.length > 0 ? (
+                            <div>
+                              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                <Eye className="h-3 w-3" />
+                                {multiDay ? `${previews.length} slots/day × ${dateCount} days = ${previews.length * dateCount} total` : `${previews.length} slots`}
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {previews.map(p => <span key={p} className="text-[10px] bg-[#1B4F8A]/8 text-[#1B4F8A] border border-[#1B4F8A]/20 px-2 py-0.5 rounded-full font-medium">{p}</span>)}
+                              </div>
+                            </div>
+                          ) : null
+                        })()}
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Date</Label>
+                          <Input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} className="h-8 text-xs" />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-slate-500 font-semibold mb-1 block">Slot Start ({tz.split("/")[1]})</Label>
+                          <Input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-8 text-xs" />
+                        </div>
+                        {newStart && (
+                          <div className="col-span-2">
+                            <p className="text-[10px] text-slate-400 bg-slate-100 rounded-lg px-3 py-2">
+                              One slot: <strong>{newStart}</strong> → <strong>
+                                {(() => { const [h,m] = newStart.split(":").map(Number); const e = h*60+m+schedule.slot_duration_min; return `${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}` })()}
+                              </strong> ({schedule.slot_duration_min} min)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2 pt-1">
-                      <Button
-                        className="bg-[#1B4F8A] hover:bg-[#1B4F8A]/90 gap-2 h-8 text-xs px-4"
-                        onClick={handleAddDay} disabled={addingSlots || !newDate}>
-                        {addingSlots ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><Plus className="h-3.5 w-3.5" /> Generate Slots</>}
+                      <Button className="bg-[#1B4F8A] hover:bg-[#1B4F8A]/90 gap-2 h-8 text-xs px-4"
+                        onClick={handleAddSlots} disabled={addingSlots}>
+                        {addingSlots ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><Plus className="h-3.5 w-3.5" /> Generate</>}
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShowAddDay(false)}>
-                        Cancel
-                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShowAddDay(false)}>Cancel</Button>
                     </div>
                   </div>
                 )}
@@ -607,13 +696,82 @@ export default function ScheduleDetailPage() {
               ))}
             </div>
             {editing && (
-              <div className="space-y-3 border-t border-slate-100 pt-4">
-                <div><Label className="text-xs mb-1 block">Name</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
-                <div><Label className="text-xs mb-1 block">Location</Label><Input value={editLoc} onChange={e => setEditLoc(e.target.value)} /></div>
-                <div><Label className="text-xs mb-1 block">Description</Label><Input value={editDesc} onChange={e => setEditDesc(e.target.value)} /></div>
-                <Button className="bg-[#1B4F8A] gap-2" onClick={saveEdit} disabled={savingEdit}>
-                  {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Save Changes
-                </Button>
+              <div className="space-y-4 border-t border-slate-100 pt-4">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Edit Settings</p>
+
+                {/* Basic info */}
+                <div className="space-y-3">
+                  <div><Label className="text-xs mb-1 block font-semibold text-slate-600">Name</Label>
+                    <Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
+                  <div><Label className="text-xs mb-1 block font-semibold text-slate-600">Location</Label>
+                    <Input value={editLoc} onChange={e => setEditLoc(e.target.value)} placeholder="e.g. ICS HQ — Room 4A" /></div>
+                  <div><Label className="text-xs mb-1 block font-semibold text-slate-600">Description</Label>
+                    <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Shown to candidates on the booking page" /></div>
+                </div>
+
+                {/* Format & Timezone */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs mb-1 block font-semibold text-slate-600">Interview Format</Label>
+                    <select value={editFormat} onChange={e => setEditFormat(e.target.value)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      {["in_person","online","hybrid"].map(f => <option key={f} value={f}>{f.replace("_"," ")}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block font-semibold text-slate-600">Timezone</Label>
+                    <select value={editTimezone} onChange={e => setEditTimezone(e.target.value)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      {[
+                        { label: "Dubai / Abu Dhabi (UTC+4)",  value: "Asia/Dubai"      },
+                        { label: "Riyadh / KSA (UTC+3)",       value: "Asia/Riyadh"     },
+                        { label: "Algeria / France (UTC+1)",   value: "Africa/Algiers"  },
+                        { label: "London (UTC+0)",             value: "Europe/London"   },
+                        { label: "Karachi (UTC+5)",            value: "Asia/Karachi"    },
+                        { label: "Mumbai (UTC+5:30)",          value: "Asia/Kolkata"    },
+                        { label: "Manila (UTC+8)",             value: "Asia/Manila"     },
+                        { label: "Cairo (UTC+2)",              value: "Africa/Cairo"    },
+                        { label: "Amman (UTC+3)",              value: "Asia/Amman"      },
+                      ].map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Slot settings */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs mb-1 block font-semibold text-slate-600">Slot Duration</Label>
+                    <select value={editDuration} onChange={e => setEditDuration(Number(e.target.value))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      {[15,20,30,45,60,90].map(d => <option key={d} value={d}>{d} min</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block font-semibold text-slate-600">Buffer</Label>
+                    <select value={editBuffer} onChange={e => setEditBuffer(Number(e.target.value))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      {[0,5,10,15,20,30].map(b => <option key={b} value={b}>{b === 0 ? "None" : `${b} min`}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1 block font-semibold text-slate-600">Per Slot</Label>
+                    <select value={editCapacity} onChange={e => setEditCapacity(Number(e.target.value))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                      {[1,2,3,4,5,10].map(n => <option key={n} value={n}>{n === 1 ? "1 — One-on-one" : `${n} candidates`}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  ⚠️ Changing duration, buffer or timezone only affects <strong>new slots</strong> added after saving. Existing slots are not modified.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <Button className="bg-[#1B4F8A] gap-2" onClick={saveEdit} disabled={savingEdit}>
+                    {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Save Changes
+                  </Button>
+                  <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+                </div>
               </div>
             )}
           </div>

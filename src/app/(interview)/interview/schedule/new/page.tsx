@@ -38,7 +38,21 @@ const TIMEZONES = [
 const DURATIONS = [15, 20, 30, 45, 60, 90]
 const BUFFERS   = [0, 5, 10, 15, 20, 30]
 
-type DayRow = { date: string; start: string; end: string }
+type DayRow = { startDate: string; endDate: string; start: string; end: string }
+
+// Expand a date range into individual date strings
+function expandDateRange(startDate: string, endDate: string): string[] {
+  if (!startDate || !endDate) return []
+  const dates: string[] = []
+  const cur = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  if (end < cur) return []
+  while (cur <= end) {
+    dates.push(cur.toISOString().split("T")[0])
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
+}
 
 function generateSlotPreviews(start: string, end: string, durMin: number, bufMin: number): string[] {
   if (!start || !end || !durMin) return []
@@ -85,7 +99,7 @@ export default function NewSchedulePage() {
   const [capSlot, setCapSlot] = useState(1)
 
   // Day rows
-  const [days, setDays] = useState<DayRow[]>([{ date: "", start: "09:00", end: "16:00" }])
+  const [days, setDays] = useState<DayRow[]>([{ startDate: "", endDate: "", start: "09:00", end: "17:00" }])
 
   // Data
   const [groups, setGroups] = useState<any[]>([])
@@ -117,16 +131,24 @@ export default function NewSchedulePage() {
       .catch(() => setCandidateCount(null))
   }, [bookingMode, sourceType, groupId, trackId])
 
-  function addDay() { setDays(prev => [...prev, { date: "", start: "09:00", end: "16:00" }]) }
+  function addDay() { setDays(prev => [...prev, { startDate: "", endDate: "", start: "09:00", end: "17:00" }]) }
   function removeDay(i: number) { setDays(prev => prev.filter((_, idx) => idx !== i)) }
   function updateDay(i: number, field: keyof DayRow, val: string) {
-    setDays(prev => prev.map((d, idx) => idx === i ? { ...d, [field]: val } : d))
+    setDays(prev => prev.map((d, idx) => {
+      if (idx !== i) return d
+      const updated = { ...d, [field]: val }
+      // Keep endDate in sync when startDate changes and endDate is empty/before
+      if (field === "startDate" && (!updated.endDate || updated.endDate < val)) {
+        updated.endDate = val
+      }
+      return updated
+    }))
   }
 
   async function handleSubmit() {
     if (!name.trim()) { toast.error("Schedule name is required"); return }
-    const validDays = days.filter(d => d.date && d.start && d.end)
-    if (validDays.length === 0) { toast.error("Add at least one day with slots"); return }
+    const validDays = days.filter(d => d.startDate && d.endDate && d.start && d.end)
+    if (validDays.length === 0) { toast.error("Add at least one date range with slots"); return }
 
     setSaving(true)
 
@@ -151,13 +173,16 @@ export default function NewSchedulePage() {
     const schedule = await res.json()
     if (!res.ok) { toast.error(schedule.error ?? "Failed to create schedule"); setSaving(false); return }
 
-    // 2 — Generate slots for each day
-    for (const day of validDays) {
-      await fetch(`/api/interview/schedule/${schedule.id}/slots`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ date: day.date, start_time: day.start, end_time: day.end }),
-      })
+    // 2 — Expand date ranges and generate slots for each day
+    for (const row of validDays) {
+      const dates = expandDateRange(row.startDate, row.endDate)
+      for (const date of dates) {
+        await fetch(`/api/interview/schedule/${schedule.id}/slots`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ date, start_time: row.start, end_time: row.end }),
+        })
+      }
     }
 
     setSaving(false)
@@ -339,26 +364,39 @@ export default function NewSchedulePage() {
       <Section n="5" title="Add Time Slots">
         <div className="space-y-3">
           {days.map((day, i) => {
-            const previews = generateSlotPreviews(day.start, day.end, durMin, bufMin)
+            const previews  = generateSlotPreviews(day.start, day.end, durMin, bufMin)
+            const dateCount = expandDateRange(day.startDate, day.endDate).length
+            const totalSlots = previews.length * dateCount
+            const multiDay   = dateCount > 1
             return (
               <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="flex items-center gap-2 p-3 bg-slate-50/60">
-                  <div className="flex-1 grid grid-cols-3 gap-2">
+                  <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-2">
+                    {/* Row 1: date range */}
                     <div>
-                      <Label className="text-[10px] text-slate-500 mb-1 block">Date</Label>
-                      <Input type="date" value={day.date} onChange={e => updateDay(i, "date", e.target.value)} className="h-8 text-xs" />
+                      <Label className="text-[10px] text-slate-500 mb-1 block">Start Date</Label>
+                      <Input type="date" value={day.startDate}
+                        onChange={e => updateDay(i, "startDate", e.target.value)} className="h-8 text-xs" />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-slate-500 mb-1 block">Start</Label>
-                      <Input type="time" value={day.start} onChange={e => updateDay(i, "start", e.target.value)} className="h-8 text-xs" />
+                      <Label className="text-[10px] text-slate-500 mb-1 block">End Date <span className="text-slate-400 font-normal">(same = one day)</span></Label>
+                      <Input type="date" value={day.endDate} min={day.startDate}
+                        onChange={e => updateDay(i, "endDate", e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    {/* Row 2: time range */}
+                    <div>
+                      <Label className="text-[10px] text-slate-500 mb-1 block">Daily Start</Label>
+                      <Input type="time" value={day.start}
+                        onChange={e => updateDay(i, "start", e.target.value)} className="h-8 text-xs" />
                     </div>
                     <div>
-                      <Label className="text-[10px] text-slate-500 mb-1 block">End</Label>
-                      <Input type="time" value={day.end} onChange={e => updateDay(i, "end", e.target.value)} className="h-8 text-xs" />
+                      <Label className="text-[10px] text-slate-500 mb-1 block">Daily End</Label>
+                      <Input type="time" value={day.end}
+                        onChange={e => updateDay(i, "end", e.target.value)} className="h-8 text-xs" />
                     </div>
                   </div>
                   {days.length > 1 && (
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 mt-4"
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0 self-end mb-0.5"
                       onClick={() => removeDay(i)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -367,7 +405,10 @@ export default function NewSchedulePage() {
                 {previews.length > 0 && (
                   <div className="px-3 py-2 border-t border-slate-100 bg-white">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <Eye className="h-3 w-3" /> {previews.length} slots generated
+                      <Eye className="h-3 w-3" />
+                      {multiDay
+                        ? `${previews.length} slots/day × ${dateCount} days = ${totalSlots} total slots`
+                        : `${previews.length} slots generated`}
                     </p>
                     <div className="flex flex-wrap gap-1">
                       {previews.map(p => (
@@ -380,7 +421,7 @@ export default function NewSchedulePage() {
             )
           })}
           <Button variant="outline" size="sm" className="gap-2 w-full text-xs" onClick={addDay}>
-            <Plus className="h-3.5 w-3.5" /> Add Another Day
+            <Plus className="h-3.5 w-3.5" /> Add Another Range
           </Button>
         </div>
       </Section>
