@@ -2,7 +2,7 @@
 
 import { useSearchParams, useParams } from "next/navigation"
 import Image from "next/image"
-import { CheckCircle2, Calendar, Clock, Copy, Settings } from "lucide-react"
+import { CheckCircle2, Calendar, Clock, Copy, Settings, Download } from "lucide-react"
 import { toast } from "sonner"
 import { Suspense } from "react"
 import Link from "next/link"
@@ -66,6 +66,12 @@ function ConfirmedContent() {
         </div>
       </div>
 
+
+      {/* Download receipt */}
+      <a href={`/api/book/${scheduleId}/receipt?code=${code}`}
+        className="flex items-center justify-center gap-2 w-full bg-[#1B4F8A] text-white rounded-xl py-3 text-sm font-bold hover:bg-[#1B4F8A]/90 transition-colors">
+        <Download className="h-4 w-4" /> Download Receipt (PDF)
+      </a>
 
       <Link href={`/book/${scheduleId}/manage?code=${code}`}
         className="flex items-center justify-center gap-2 w-full border border-slate-200 rounded-xl py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">

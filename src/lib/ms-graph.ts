@@ -235,6 +235,7 @@ export interface ConfirmationEmailInput {
   teamsUrl?:      string | null
   trackName?:     string
   manageUrl?:     string
+  receiptUrl?:    string
   isReschedule?:  boolean
 }
 
@@ -277,12 +278,20 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
        </tr>`
     : ""
 
-  const manageRow = input.manageUrl
-    ? `<div style="text-align:center;margin-bottom:20px;">
-        <a href="${input.manageUrl}"
-          style="display:inline-block;background:#f1f5fb;border:1px solid #dbeafe;color:#1B4F8A;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
-          ✏️ Reschedule or Cancel my booking
-        </a>
+  const actionButtons = (input.receiptUrl || input.manageUrl)
+    ? `<div style="text-align:center;margin-bottom:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        ${input.receiptUrl
+          ? `<a href="${input.receiptUrl}"
+              style="display:inline-block;background:#1B4F8A;color:white;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
+              ⬇️ Download Receipt (PDF)
+             </a>`
+          : ""}
+        ${input.manageUrl
+          ? `<a href="${input.manageUrl}"
+              style="display:inline-block;background:#f1f5fb;border:1px solid #dbeafe;color:#1B4F8A;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
+              ✏️ Reschedule or Cancel
+             </a>`
+          : ""}
        </div>`
     : ""
 
@@ -338,7 +347,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
         A calendar invite has been sent to your email. Please arrive on time.
       </p>
 
-      ${manageRow}
+      ${actionButtons}
     </div>
 
     <!-- Footer -->

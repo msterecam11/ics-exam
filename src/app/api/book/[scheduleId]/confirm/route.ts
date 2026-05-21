@@ -144,8 +144,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   }
 
   // Send confirmation email to candidate (non-fatal)
-  const appUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-  const manageUrl = `${appUrl}/book/${scheduleId}/manage?code=${booking.confirmation_code}`
+  const appUrl     = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  const manageUrl  = `${appUrl}/book/${scheduleId}/manage?code=${booking.confirmation_code}`
+  const receiptUrl = `${appUrl}/api/book/${scheduleId}/receipt?code=${booking.confirmation_code}`
 
   try {
     await sendConfirmationEmail({
@@ -160,6 +161,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       teamsUrl:       ms_teams_url,
       trackName,
       manageUrl,
+      receiptUrl,
     })
   } catch (e) {
     console.error("Confirmation email error (non-fatal):", e)
