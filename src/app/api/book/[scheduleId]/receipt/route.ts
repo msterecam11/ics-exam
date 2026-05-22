@@ -3,12 +3,17 @@ export const maxDuration = 60
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getBrowser } from "@/lib/browser"
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
 // GET /api/book/[scheduleId]/receipt?code=XXXX
 // Public — candidate downloads their booking receipt PDF
 export async function GET(req: NextRequest, { params }: Ctx) {
+  // 10 PDF downloads per IP per 10 minutes (Puppeteer is expensive)
+  const rl = rateLimit(req, "receipt", 10, 10 * 60 * 1000)
+  if (!rl.ok) return rateLimitResponse(rl)
+
   const { scheduleId } = await params
   const code = req.nextUrl.searchParams.get("code")?.toUpperCase()
 

@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
 // GET /api/book/[scheduleId]/candidates
 // Public endpoint — returns candidate name list for system-mode booking page
 // Only exposes: id, full_name, track name (no sensitive data)
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, { params }: Ctx) {
+  // 60 roster fetches per IP per minute
+  const rl = rateLimit(req, "candidates", 60, 60 * 1000)
+  if (!rl.ok) return rateLimitResponse(rl)
+
   const { scheduleId } = await params
 
   // Load the schedule to know source_type / group_id / track_id

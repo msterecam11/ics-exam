@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { createCalendarEvent, buildBookingEventBody, sendConfirmationEmail } from "@/lib/ms-graph"
 import { blockPoolSlots } from "@/lib/slot-pool"
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -12,6 +13,10 @@ type Ctx = { params: Promise<{ scheduleId: string }> }
 //   candidate_phone?, candidate_track_id?, notes?
 // }
 export async function POST(req: NextRequest, { params }: Ctx) {
+  // 10 booking attempts per IP per 15 minutes
+  const rl = rateLimit(req, "confirm", 10, 15 * 60 * 1000)
+  if (!rl.ok) return rateLimitResponse(rl)
+
   const { scheduleId } = await params
   const body = await req.json()
 
