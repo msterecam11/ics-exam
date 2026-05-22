@@ -13,6 +13,7 @@ import { formatDuration } from "@/lib/utils"
 import ExamStatusToggle from "@/components/admin/ExamStatusToggle"
 import AnalyzeExamButton from "@/components/admin/AnalyzeExamButton"
 import ExamEditModal from "@/components/admin/ExamEditModal"
+import DeleteExamButton from "@/components/admin/DeleteExamButton"
 
 async function getExam(id: string) {
   const { data } = await db
@@ -112,6 +113,7 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
             questionCount={exam.questions?.length ?? 0}
           />
           <ExamStatusToggle examId={id} currentStatus={exam.status} />
+          <DeleteExamButton examId={id} examTitle={exam.title} />
         </div>
       </div>
 
