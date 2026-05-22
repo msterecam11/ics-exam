@@ -394,6 +394,106 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
   }
 }
 
+// ─── Send Results Release Email ──────────────────────────────────────────────
+
+export interface ResultsEmailInput {
+  candidateName:  string
+  candidateEmail: string
+  examTitle:      string
+  score:          number | null   // percentage, e.g. 78.5
+  passed:         boolean | null
+  resultsUrl:     string          // link candidate can click to see full results
+}
+
+export async function sendResultsEmail(input: ResultsEmailInput): Promise<void> {
+  const token = await getAccessToken()
+
+  const scoreText  = input.score != null ? `${Math.round(input.score)}%` : "—"
+  const passed     = input.passed === true
+  const resultWord = passed ? "Passed" : "Did Not Pass"
+  const resultColor = passed ? "#10b981" : "#ef4444"
+  const resultIcon  = passed ? "✅" : "❌"
+  const resultBg    = passed ? "#f0fdf4" : "#fef2f2"
+  const resultBorder = passed ? "#bbf7d0" : "#fecaca"
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Header -->
+    <div style="background:#1B4F8A;padding:28px 32px;text-align:center;">
+      <p style="color:rgba(255,255,255,0.7);font-size:11px;text-transform:uppercase;letter-spacing:3px;margin:0 0 6px;">ICS Aviation</p>
+      <h1 style="color:white;font-size:22px;font-weight:700;margin:0;">Your Exam Results Are Ready</h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:28px 32px;">
+      <p style="color:#334155;font-size:15px;margin:0 0 24px;">
+        Hi <strong>${he(input.candidateName)}</strong>,<br><br>
+        Your results for <strong>${he(input.examTitle)}</strong> have been released. Here is your summary:
+      </p>
+
+      <!-- Result badge -->
+      <div style="background:${resultBg};border:2px solid ${resultBorder};border-radius:14px;padding:20px 24px;text-align:center;margin-bottom:24px;">
+        <p style="font-size:32px;margin:0 0 6px;">${resultIcon}</p>
+        <p style="color:${resultColor};font-size:24px;font-weight:800;margin:0 0 4px;">${resultWord}</p>
+        <p style="color:#64748b;font-size:14px;margin:0;">Score: <strong style="color:#1e293b;font-size:18px;">${scoreText}</strong></p>
+      </div>
+
+      <!-- Exam name -->
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+        <tr>
+          <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;">📋 Exam</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;">${he(input.examTitle)}</td>
+        </tr>
+      </table>
+
+      <!-- CTA -->
+      <div style="text-align:center;margin-bottom:24px;">
+        <a href="${he(input.resultsUrl)}"
+          style="display:inline-block;background:#1B4F8A;color:white;font-size:13px;font-weight:700;padding:12px 28px;border-radius:999px;text-decoration:none;">
+          View Full Results →
+        </a>
+      </div>
+
+      <p style="color:#94a3b8;font-size:12px;text-align:center;margin:0;">
+        If you have questions about your results, please contact ICS Aviation directly.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center;">
+      <p style="color:#94a3b8;font-size:11px;margin:0;">ICS Aviation — Integrated Consulting Services</p>
+    </div>
+  </div>
+</body>
+</html>`.trim()
+
+  const res = await fetch(`${GRAPH_BASE}/users/${USER_EMAIL}/sendMail`, {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject:      `Your Results — ${input.examTitle}`,
+        body:         { contentType: "HTML", content: html },
+        toRecipients: [{ emailAddress: { address: input.candidateEmail, name: input.candidateName } }],
+      },
+      saveToSentItems: true,
+    }),
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`MS Graph sendMail error: ${data.error?.message ?? res.status}`)
+  }
+}
+
 // ─── Build booking event body ─────────────────────────────────────────────────
 
 export function buildBookingEventBody(opts: {
