@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { deleteCalendarEvent } from "@/lib/ms-graph"
+import { unblockPoolSlots } from "@/lib/slot-pool"
 
 type Ctx = { params: Promise<{ scheduleId: string; bookingId: string }> }
 
@@ -25,14 +26,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     .eq("id", bookingId)
     .single()
 
-  // If cancelling, remove from Teams calendar
-  if (status === "cancelled" && booking?.ms_event_id) {
-    try {
-      await deleteCalendarEvent(booking.ms_event_id)
-    } catch (e) {
-      console.error("MS Graph delete event error:", e)
-      // Non-fatal — continue with DB update
-    }
+  // If cancelling — delete calendar event + unblock pool slots
+  if (status === "cancelled") {
+    await Promise.all([
+      booking?.ms_event_id ? deleteCalendarEvent(booking.ms_event_id).catch(e => console.error("MS Graph delete event error:", e)) : Promise.resolve(),
+      unblockPoolSlots(bookingId).catch(e => console.error("Pool unblock error:", e)),
+    ])
   }
 
   const patch: Record<string, any> = {
