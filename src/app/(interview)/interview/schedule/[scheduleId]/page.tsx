@@ -505,8 +505,8 @@ export default function ScheduleDetailPage() {
                     : <><span className="text-sm leading-none">↻</span> Sync RSVPs</>}
                 </Button>
                 <Button size="sm" variant="ghost" className="text-xs gap-1.5" onClick={() => {
-                  const csv = ["Name,Email,Slot ("+tz+"),Track,Status,RSVP,Confirmation"]
-                    .concat(bookings.map(b => `${b.candidate_name},${b.candidate_email},"${b.schedule_slots ? formatUtcInTimezone(b.schedule_slots.start_utc, tz) : "—"}",${b.role_tracks?.name ?? "—"},${b.status},${b.rsvp_status ?? "pending"},${b.confirmation_code}`))
+                  const csv = ["Name,Email,Slot ("+tz+"),Track,Status,RSVP,Confirmation,Meeting Link"]
+                    .concat(bookings.map(b => `${b.candidate_name},${b.candidate_email},"${b.schedule_slots ? formatUtcInTimezone(b.schedule_slots.start_utc, tz) : "—"}",${b.role_tracks?.name ?? "—"},${b.status},${b.rsvp_status ?? "pending"},${b.confirmation_code},${b.ms_teams_url ?? ""}`))
                     .join("\n")
                   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv])); a.download = "bookings.csv"; a.click()
                 }}>
