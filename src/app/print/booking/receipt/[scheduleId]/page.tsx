@@ -22,7 +22,7 @@ export default async function BookingReceiptPage({ params, searchParams }: Props
   const { pdf_secret, code } = await searchParams
 
   // Auth: either pdf_secret (Puppeteer) or session
-  const validSecret = process.env.NEXTAUTH_SECRET && pdf_secret === process.env.NEXTAUTH_SECRET
+  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")

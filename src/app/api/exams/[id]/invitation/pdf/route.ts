@@ -18,7 +18,7 @@ export async function GET(
   if (!exam) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const port = process.env.PORT ?? "3000"
-  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+  const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
   const printUrl = `http://localhost:${port}/print/invitation/${id}?pdf_secret=${secret}`
 
   console.log("[invitation-pdf] launching browser, url:", printUrl)

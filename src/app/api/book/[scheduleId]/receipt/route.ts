@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   }
 
   const port      = process.env.PORT ?? "3000"
-  const secret    = process.env.NEXTAUTH_SECRET ?? ""
+  const secret    = process.env.PDF_INTERNAL_SECRET ?? ""
   const printUrl  = `http://localhost:${port}/print/booking/receipt/${scheduleId}?code=${encodeURIComponent(code)}&pdf_secret=${encodeURIComponent(secret)}`
 
   const browser = await getBrowser()

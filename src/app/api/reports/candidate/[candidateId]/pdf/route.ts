@@ -33,7 +33,7 @@ export async function GET(
   const content = url.searchParams.get("content")  ?? "Course"
   const security = url.searchParams.get("security") ?? ""
   const port   = process.env.PORT ?? "3000"
-  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+  const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
   const printUrl = `http://localhost:${port}/print/candidate/${candidateId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}${security === "1" ? "&security=1" : ""}`
 
   const browser = await getBrowser()

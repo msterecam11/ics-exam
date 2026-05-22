@@ -18,11 +18,11 @@ export async function GET(req: Request, { params }: Params) {
 
   const { groupId, trackId } = await params
 
-  if (!process.env.NEXTAUTH_SECRET)
+  if (!process.env.PDF_INTERNAL_SECRET)
     return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
 
   const port   = process.env.PORT ?? "3000"
-  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET)
+  const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET)
   const printUrl = `http://localhost:${port}/print/interview/track/${groupId}/${trackId}?pdf_secret=${secret}`
 
   const browser = await getBrowser()

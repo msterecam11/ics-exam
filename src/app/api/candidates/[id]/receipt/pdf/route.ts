@@ -17,7 +17,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const port   = process.env.PORT ?? "3000"
-  const secret = encodeURIComponent(process.env.NEXTAUTH_SECRET ?? "")
+  const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
   const printUrl = `http://localhost:${port}/print/receipt/${id}?pdf_secret=${secret}`
 
   console.log("[receipt-pdf] generating for candidate:", id)

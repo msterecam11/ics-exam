@@ -12,7 +12,7 @@ interface Props {
 
 export default async function PrintInvitationPage({ params, searchParams }: Props) {
   const { pdf_secret } = await searchParams
-  const validSecret = process.env.NEXTAUTH_SECRET && pdf_secret === process.env.NEXTAUTH_SECRET
+  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")

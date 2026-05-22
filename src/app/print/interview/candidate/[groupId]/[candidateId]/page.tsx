@@ -14,7 +14,7 @@ export default async function PrintCandidatePage({
 }) {
   // ── Auth: accept pdf_secret (Puppeteer) or live session ──────────────────
   const { pdf_secret } = await searchParams
-  const validSecret = process.env.NEXTAUTH_SECRET && pdf_secret === process.env.NEXTAUTH_SECRET
+  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session || !["admin", "instructor"].includes(session.user?.role ?? ""))
