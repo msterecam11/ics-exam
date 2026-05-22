@@ -2,6 +2,17 @@
 // Handles token acquisition and calendar / online-meeting operations.
 // All functions are server-side only (uses CLIENT_SECRET).
 
+/** Escape user-supplied strings before embedding in HTML */
+function he(s: string | null | undefined): string {
+  if (!s) return ""
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 const TENANT_ID     = process.env.MICROSOFT_TENANT_ID!
 const CLIENT_ID     = process.env.MICROSOFT_CLIENT_ID!
 const CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET!
@@ -258,7 +269,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
   const locationRow = input.location
     ? `<tr>
         <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📍 Location</td>
-        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.location}</td>
+        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${he(input.location)}</td>
        </tr>`
     : ""
 
@@ -266,7 +277,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
     ? `<tr>
         <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🔗 Teams Link</td>
         <td style="padding:10px 16px;font-size:13px;border-bottom:1px solid #f1f5f9;">
-          <a href="${input.teamsUrl}" style="color:#1B4F8A;font-weight:600;">Join Interview</a>
+          <a href="${he(input.teamsUrl)}" style="color:#1B4F8A;font-weight:600;">Join Interview</a>
         </td>
        </tr>`
     : ""
@@ -274,20 +285,20 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
   const trackRow = input.trackName
     ? `<tr>
         <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🎯 Role / Track</td>
-        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.trackName}</td>
+        <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${he(input.trackName)}</td>
        </tr>`
     : ""
 
   const actionButtons = (input.receiptUrl || input.manageUrl)
     ? `<div style="text-align:center;margin-bottom:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
         ${input.receiptUrl
-          ? `<a href="${input.receiptUrl}"
+          ? `<a href="${he(input.receiptUrl)}"
               style="display:inline-block;background:#1B4F8A;color:white;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
               ⬇️ Download Receipt (PDF)
              </a>`
           : ""}
         ${input.manageUrl
-          ? `<a href="${input.manageUrl}"
+          ? `<a href="${he(input.manageUrl)}"
               style="display:inline-block;background:#f1f5fb;border:1px solid #dbeafe;color:#1B4F8A;font-size:12px;font-weight:600;padding:10px 22px;border-radius:999px;text-decoration:none;">
               ✏️ Reschedule or Cancel
              </a>`
@@ -311,7 +322,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
     <!-- Body -->
     <div style="padding:28px 32px;">
       <p style="color:#334155;font-size:15px;margin:0 0 20px;">
-        Hi <strong>${input.candidateName}</strong>,<br><br>
+        Hi <strong>${he(input.candidateName)}</strong>,<br><br>
         ${isReschedule
           ? "Your interview booking has been successfully rescheduled. Here are your updated details."
           : "Your interview slot has been successfully booked. Please find the details below."}
@@ -321,15 +332,15 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
       <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
         <tr>
           <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📅 Date</td>
-          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${date}</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${he(date)}</td>
         </tr>
         <tr>
           <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">🕐 Time</td>
-          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${start} – ${end} (${tzShort})</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${he(start)} – ${he(end)} (${he(tzShort)})</td>
         </tr>
         <tr>
           <td style="padding:10px 16px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #f1f5f9;">📋 Schedule</td>
-          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${input.scheduleName}</td>
+          <td style="padding:10px 16px;font-weight:600;font-size:13px;border-bottom:1px solid #f1f5f9;">${he(input.scheduleName)}</td>
         </tr>
         ${trackRow}
         ${locationRow}
@@ -339,7 +350,7 @@ export async function sendConfirmationEmail(input: ConfirmationEmailInput): Prom
       <!-- Confirmation code -->
       <div style="background:#f1f5fb;border:1px solid #dbeafe;border-radius:12px;padding:16px 20px;text-align:center;margin-bottom:24px;">
         <p style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 6px;">Your Confirmation Code</p>
-        <p style="color:#1B4F8A;font-size:24px;font-weight:800;font-family:monospace;letter-spacing:4px;margin:0;">${input.confirmCode}</p>
+        <p style="color:#1B4F8A;font-size:24px;font-weight:800;font-family:monospace;letter-spacing:4px;margin:0;">${he(input.confirmCode)}</p>
         <p style="color:#94a3b8;font-size:11px;margin:6px 0 0;">Keep this code — you may need it to manage your booking</p>
       </div>
 
@@ -397,19 +408,19 @@ export function buildBookingEventBody(opts: {
     <h3>ICS Aviation — Interview Booking</h3>
     <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Candidate</td>
-          <td style="padding:4px 0;font-weight:600;">${opts.candidateName}</td></tr>
+          <td style="padding:4px 0;font-weight:600;">${he(opts.candidateName)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Email</td>
-          <td style="padding:4px 0;">${opts.candidateEmail}</td></tr>
+          <td style="padding:4px 0;">${he(opts.candidateEmail)}</td></tr>
       ${opts.trackName ? `
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Role / Track</td>
-          <td style="padding:4px 0;">${opts.trackName}</td></tr>` : ""}
+          <td style="padding:4px 0;">${he(opts.trackName)}</td></tr>` : ""}
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Schedule</td>
-          <td style="padding:4px 0;">${opts.scheduleName}</td></tr>
+          <td style="padding:4px 0;">${he(opts.scheduleName)}</td></tr>
       ${opts.location ? `
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Location</td>
-          <td style="padding:4px 0;">${opts.location}</td></tr>` : ""}
+          <td style="padding:4px 0;">${he(opts.location)}</td></tr>` : ""}
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Confirmation</td>
-          <td style="padding:4px 0;font-family:monospace;font-weight:700;">${opts.confirmCode}</td></tr>
+          <td style="padding:4px 0;font-family:monospace;font-weight:700;">${he(opts.confirmCode)}</td></tr>
     </table>
   `.trim()
 }

@@ -30,6 +30,21 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (!candidate_name)   return NextResponse.json({ error: "candidate_name is required" },   { status: 400 })
   if (!candidate_email)  return NextResponse.json({ error: "candidate_email is required" },  { status: 400 })
 
+  // Basic input validation
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRe.test(candidate_email)) {
+    return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
+  }
+  if (typeof candidate_name !== "string" || candidate_name.trim().length > 200) {
+    return NextResponse.json({ error: "candidate_name is invalid" }, { status: 400 })
+  }
+  if (candidate_phone && (typeof candidate_phone !== "string" || candidate_phone.length > 30)) {
+    return NextResponse.json({ error: "candidate_phone is invalid" }, { status: 400 })
+  }
+  if (notes && (typeof notes !== "string" || notes.length > 2000)) {
+    return NextResponse.json({ error: "notes must be under 2000 characters" }, { status: 400 })
+  }
+
   // Load schedule info
   const { data: schedule, error: sErr } = await db
     .from("schedules")

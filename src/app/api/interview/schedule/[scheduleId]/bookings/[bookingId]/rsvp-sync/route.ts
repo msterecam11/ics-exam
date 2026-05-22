@@ -13,13 +13,14 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { bookingId } = await params
+  const { scheduleId, bookingId } = await params
 
-  // Load booking — need the MS Graph event ID and candidate email
+  // Load booking — scope to scheduleId to prevent IDOR
   const { data: booking, error: bErr } = await db
     .from("schedule_bookings")
     .select("id, ms_event_id, candidate_email, rsvp_status")
     .eq("id", bookingId)
+    .eq("schedule_id", scheduleId)
     .single()
 
   if (bErr || !booking) {

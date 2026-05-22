@@ -12,18 +12,19 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { bookingId } = await params
+  const { scheduleId, bookingId } = await params
   const { status } = await req.json()
 
   if (!["confirmed", "cancelled", "no_show"].includes(status)) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 })
   }
 
-  // Fetch current booking to get ms_event_id
+  // Fetch current booking — scope to scheduleId to prevent IDOR
   const { data: booking } = await db
     .from("schedule_bookings")
     .select("ms_event_id, status")
     .eq("id", bookingId)
+    .eq("schedule_id", scheduleId)
     .single()
 
   // If cancelling — delete calendar event + unblock pool slots
