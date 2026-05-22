@@ -8,6 +8,7 @@ import {
   Loader2, CheckCircle2, XCircle, ExternalLink, Users,
   CalendarDays, Clock, MapPin, Download, MoreHorizontal,
   AlertTriangle, Ban, Plus, Eye, ChevronDown, ChevronUp, X, UserPlus, Link2,
+  LayoutGrid, List,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import QRCardPrint from "@/components/interview/schedule/QRCardPrint"
+import SlotCalendar from "@/components/interview/schedule/SlotCalendar"
 
 const TAB = ["Bookings", "Slots", "Settings"] as const
 type Tab = typeof TAB[number]
@@ -140,6 +142,9 @@ export default function ScheduleDetailPage() {
 
   // QR card modal
   const [showQrModal, setShowQrModal] = useState(false)
+
+  // Slots view mode
+  const [slotView, setSlotView] = useState<"list" | "calendar">("list")
 
   // Add slots form
   const [showAddDay,   setShowAddDay]   = useState(false)
@@ -576,7 +581,46 @@ export default function ScheduleDetailPage() {
                 <p className="text-sm">No slots defined</p>
               </div>
             )}
-            {(
+
+            {/* View toggle */}
+            {Object.keys(slotsByDate).length > 0 && (
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  onClick={() => setSlotView("list")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border",
+                    slotView === "list"
+                      ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-300")}
+                >
+                  <List className="h-3.5 w-3.5" /> List
+                </button>
+                <button
+                  onClick={() => setSlotView("calendar")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border",
+                    slotView === "calendar"
+                      ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-slate-300")}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" /> Calendar
+                </button>
+              </div>
+            )}
+
+            {/* Calendar view */}
+            {slotView === "calendar" && Object.keys(slotsByDate).length > 0 && (
+              <SlotCalendar
+                slots={slots}
+                bookings={bookings}
+                timezone={tz}
+                togglingSlot={togglingSlot}
+                deletingSlot={deletingSlot}
+                onToggleBlock={toggleBlock}
+                onDeleteSlot={deleteSlot}
+              />
+            )}
+
+            {/* List view */}
+            {slotView === "list" && (
               <>
               {Object.entries(slotsByDate).map(([date, daySlots]) => (
                 <div key={date}>
