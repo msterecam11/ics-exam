@@ -55,3 +55,41 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })
 }
+
+// PATCH /api/interview/slot-pools — rename a pool
+export async function PATCH(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { id, name } = await req.json()
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+  if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 })
+
+  const { data, error } = await db
+    .from("slot_pools")
+    .update({ name: name.trim() })
+    .eq("id", id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+// DELETE /api/interview/slot-pools?id=xxx — delete a pool
+// Schedules linked to this pool will have slot_pool_id set to null (unlinked, not deleted)
+export async function DELETE(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const id = req.nextUrl.searchParams.get("id")
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+
+  // Unlink any schedules from this pool before deleting
+  await db.from("schedules").update({ slot_pool_id: null }).eq("slot_pool_id", id)
+
+  const { error } = await db.from("slot_pools").delete().eq("id", id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
+}
