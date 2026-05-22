@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { recalculateExamScores } from "@/lib/scoring"
+import bcrypt from "bcryptjs"
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -38,9 +39,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const body = await req.json()
   const { title, description, duration_minutes, passing_score, show_results, language, status, password } = body
 
+  // If a new password is provided, hash it
+  const passwordUpdates: Record<string, string> = {}
+  if (password) {
+    passwordUpdates.password      = password           // keep plaintext for admin display
+    passwordUpdates.password_hash = await bcrypt.hash(password, 12)
+  }
+
   const { data, error } = await db
     .from("exams")
-    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...(password ? { password } : {}) })
+    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...passwordUpdates })
     .eq("id", id)
     .select()
     .single()
@@ -60,8 +68,15 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const { error } = await db.from("exams").delete().eq("id", id)
 
+  // Fetch name before deleting (for audit log)
+  const { data: exam } = await db.from("exams").select("title").eq("id", id).single()
+
+  const { error } = await db.from("exams").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { auditLog } = await import("@/lib/audit")
+  await auditLog(session, "exam.delete", "exam", id, exam?.title)
+
   return NextResponse.json({ success: true })
 }

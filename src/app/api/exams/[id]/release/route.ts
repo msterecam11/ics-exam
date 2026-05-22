@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { auditLog } from "@/lib/audit"
 
 // Admin releases results for all (or specific) candidates
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,5 +20,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await auditLog(
+    session, "results.release", "exam", exam_id, null,
+    { candidate_id: candidate_id ?? "all" },
+  )
+
   return NextResponse.json({ success: true })
 }

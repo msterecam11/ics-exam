@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { auditLog } from "@/lib/audit"
 
 type Params = { params: Promise<{ groupId: string }> }
 
@@ -151,6 +152,11 @@ export async function DELETE(_: Request, { params }: Params) {
   // 7. Delete the group itself
   const { error } = await db.from("assessment_groups").delete().eq("id", groupId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await auditLog(
+    session, "group.delete", "assessment_group", groupId, null,
+    { candidates_deleted: candidateIds.length },
+  )
 
   return NextResponse.json({ ok: true })
 }

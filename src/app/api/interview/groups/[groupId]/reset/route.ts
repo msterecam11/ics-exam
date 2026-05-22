@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { auditLog } from "@/lib/audit"
 
 type Params = { params: Promise<{ groupId: string }> }
 
@@ -48,6 +49,11 @@ export async function POST(_: Request, { params }: Params) {
     .eq("group_id", groupId)
 
   if (qualErr) return NextResponse.json({ error: qualErr.message }, { status: 500 })
+
+  await auditLog(
+    session, "group.reset_scores", "assessment_group", groupId, group.id,
+    { candidates_cleared: candidateIds.length },
+  )
 
   return NextResponse.json({ ok: true, cleared: candidateIds.length })
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { auditLog } from "@/lib/audit"
 
 type Params = { params: Promise<{ groupId: string }> }
 
@@ -50,5 +51,8 @@ export async function POST(req: Request, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await auditLog(session, `group.${action}`, "assessment_group", groupId, null, { updates })
+
   return NextResponse.json(data)
 }

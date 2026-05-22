@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { generatePassword } from "@/lib/utils"
+import bcrypt from "bcryptjs"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -40,7 +41,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Title and course are required" }, { status: 400 })
   }
 
-  const password = generatePassword(6)
+  const plainPassword  = generatePassword(6)
+  const password_hash  = await bcrypt.hash(plainPassword, 12)
 
   const { data: exam, error } = await db
     .from("exams")
@@ -48,7 +50,8 @@ export async function POST(req: Request) {
       title: title.trim(),
       description: description?.trim() || null,
       course_id,
-      password,
+      password:      plainPassword,   // kept for display to admin only — never used to verify
+      password_hash,
       duration_minutes: duration_minutes ?? 60,
       passing_score: passing_score ?? 60,
       show_results: show_results ?? "admin_release",
