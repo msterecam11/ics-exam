@@ -96,8 +96,18 @@ DROP POLICY IF EXISTS "Public can read schedules"          ON schedules;
 
 -- slot_pools (added for shared interviewer availability feature)
 ALTER TABLE IF EXISTS slot_pools ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "Admins full access" ON slot_pools FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'slot_pools') AND
+     NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'slot_pools' AND policyname = 'Admins full access') THEN
+    EXECUTE 'CREATE POLICY "Admins full access" ON slot_pools FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
 
 -- candidate_assessments (added in scoring_v2 migration)
 ALTER TABLE IF EXISTS candidate_assessments ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "Admins full access" ON candidate_assessments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'candidate_assessments') AND
+     NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'candidate_assessments' AND policyname = 'Admins full access') THEN
+    EXECUTE 'CREATE POLICY "Admins full access" ON candidate_assessments FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
