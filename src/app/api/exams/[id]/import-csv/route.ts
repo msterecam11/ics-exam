@@ -2,13 +2,19 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { parseCSV } from "@/lib/csv-parser"
+import { parseBody, res400, res413, BodyTooLargeError } from "@/lib/apiUtils"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: examId } = await params
-  const { csv_text, start_index = 0 } = await req.json()
+
+  let body: any
+  try { body = await parseBody(req) } catch (e) {
+    return e instanceof BodyTooLargeError ? res413() : res400("Invalid request body")
+  }
+  const { csv_text, start_index = 0 } = body
 
   if (!csv_text?.trim()) return NextResponse.json({ error: "No CSV content provided" }, { status: 400 })
 

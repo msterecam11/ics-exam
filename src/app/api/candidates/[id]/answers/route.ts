@@ -41,6 +41,16 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     (a: any, b: any) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0)
   )
 
+  // Strip is_correct and score from choices — prevents candidates from using the
+  // result page to learn correct answers and sharing them with others sitting the same exam
+  const sanitizedAnswers = sorted.map((a: any) => ({
+    ...a,
+    questions: a.questions ? {
+      ...a.questions,
+      choices: (a.questions.choices ?? []).map(({ is_correct, score, ...rest }: any) => rest),
+    } : null,
+  }))
+
   return NextResponse.json({
     visible  : true,
     candidate: {
@@ -54,6 +64,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         passing_score: (candidate.exams as any)?.passing_score ?? null,
       },
     },
-    answers: sorted,
+    answers: sanitizedAnswers,
   })
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -7,6 +8,10 @@ type Ctx = { params: Promise<{ scheduleId: string }> }
 // Public endpoint — candidate updates their RSVP using their confirmation code.
 // Body: { confirmation_code: string, rsvp_status: "accepted" | "declined" }
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  // 20 RSVP updates per IP per hour
+  const rl = rateLimit(req, "rsvp", 20, 60 * 60 * 1000)
+  if (!rl.ok) return rateLimitResponse(rl)
+
   const { scheduleId } = await params
   const body = await req.json()
   const { confirmation_code, rsvp_status } = body
