@@ -115,6 +115,7 @@ export default function NewSchedulePage() {
   const [poolMode,     setPoolMode]     = useState<"existing"|"new">("existing")
   const [selectedPool, setSelectedPool] = useState("")
   const [newPoolName,  setNewPoolName]  = useState("")
+  const [deletingPool, setDeletingPool] = useState(false)
 
   const [saving, setSaving] = useState(false)
 
@@ -141,6 +142,22 @@ export default function NewSchedulePage() {
       .then(d => setCandidateCount(Array.isArray(d) ? d.length : null))
       .catch(() => setCandidateCount(null))
   }, [bookingMode, sourceType, groupId, trackId])
+
+  async function deletePoolFromForm(poolId: string) {
+    const pool = pools.find((p: any) => p.id === poolId)
+    if (!pool) return
+    const msg = pool.schedule_count > 1
+      ? `Delete "${pool.name}"? All ${pool.schedule_count} linked schedules will be unlinked (not deleted).`
+      : `Delete "${pool.name}"?`
+    if (!confirm(msg)) return
+    setDeletingPool(true)
+    const res = await fetch(`/api/interview/slot-pools?id=${poolId}`, { method: "DELETE" })
+    setDeletingPool(false)
+    if (!res.ok) { toast.error("Failed to delete group"); return }
+    setPools(prev => prev.filter((p: any) => p.id !== poolId))
+    setSelectedPool("")
+    toast.success(`"${pool.name}" deleted`)
+  }
 
   function addAttendee() {
     const email = attendeeInput.trim().toLowerCase()
@@ -461,15 +478,28 @@ export default function NewSchedulePage() {
                   No groups yet — create one first via another schedule.
                 </p>
               ) : (
-                <select value={selectedPool} onChange={e => setSelectedPool(e.target.value)}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
-                  <option value="">Select a group…</option>
-                  {pools.map((p: any) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.schedule_count} schedule{p.schedule_count !== 1 ? "s" : ""})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2 items-center">
+                  <select value={selectedPool} onChange={e => setSelectedPool(e.target.value)}
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-[#1B4F8A]">
+                    <option value="">Select a group…</option>
+                    {pools.map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.schedule_count} schedule{p.schedule_count !== 1 ? "s" : ""})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedPool && (
+                    <button
+                      type="button"
+                      onClick={() => deletePoolFromForm(selectedPool)}
+                      disabled={deletingPool}
+                      title="Delete this group permanently"
+                      className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors disabled:opacity-50"
+                    >
+                      {deletingPool ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
               )
             ) : (
               <div>
