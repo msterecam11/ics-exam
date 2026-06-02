@@ -124,8 +124,8 @@ function IconPicker({ value, color, onChange }: { value?: string; color?: string
     <div className="relative">
       <button
         onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }}
-        className="w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all hover:scale-105"
-        style={{ background: hex + "20", borderColor: hex + "60" }}
+        className="w-8 h-8 rounded-lg border-2 bg-white flex items-center justify-center transition-all hover:scale-105"
+        style={{ borderColor: hex }}
         title="Choose icon"
       >
         <IconComp className="h-3.5 w-3.5" style={{ color: hex }} />
