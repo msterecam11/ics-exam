@@ -85,7 +85,7 @@ function tierDefault(idx: number) {
 }
 
 // ── ColorPicker ───────────────────────────────────────────────────────────────
-function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string) => void }) {
+function ColorPicker({ value, onChange, openDown }: { value?: string; onChange: (c: string) => void; openDown?: boolean }) {
   const [open, setOpen] = useState(false)
   const effective = value || "#64748b"
   return (
@@ -99,7 +99,7 @@ function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string
       {open && (
         <>
           <div className="fixed inset-0 z-40 bg-black/10" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 bottom-9 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5">
+          <div className={`absolute z-50 ${openDown ? "top-9" : "bottom-9"} left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5`}>
             {COLOR_PALETTE.map(c => (
               <button
                 key={c}
@@ -116,7 +116,7 @@ function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string
 }
 
 // ── IconPicker ────────────────────────────────────────────────────────────────
-function IconPicker({ value, color, onChange }: { value?: string; color?: string; onChange: (name: string) => void }) {
+function IconPicker({ value, color, onChange, openDown }: { value?: string; color?: string; onChange: (name: string) => void; openDown?: boolean }) {
   const [open, setOpen] = useState(false)
   const IconComp = getIconComponent(value)
   const hex = color || "#64748b"
@@ -133,7 +133,7 @@ function IconPicker({ value, color, onChange }: { value?: string; color?: string
       {open && (
         <>
           <div className="fixed inset-0 z-40 bg-black/10" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 bottom-10 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5 w-[148px]">
+          <div className={`absolute z-50 ${openDown ? "top-10" : "bottom-10"} left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5 w-[148px]`}>
             {ICON_SET.map(({ name, Icon }) => (
               <button
                 key={name}
@@ -735,11 +735,13 @@ export default function ConfigEditorPage() {
               <div key={t.key ?? i} className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 items-center">
                 <ColorPicker
                   value={color}
+                  openDown={i === 0}
                   onChange={c => { updateVerdict(i, "color", c); saveVerdicts(config.verdict_thresholds.map((x, idx) => idx === i ? { ...x, color: c } : x)) }}
                 />
                 <IconPicker
                   value={icon}
                   color={color}
+                  openDown={i === 0}
                   onChange={name => { updateVerdict(i, "icon", name); saveVerdicts(config.verdict_thresholds.map((x, idx) => idx === i ? { ...x, icon: name } : x)) }}
                 />
                 <input
@@ -816,6 +818,7 @@ export default function ConfigEditorPage() {
               <div key={i} className="grid grid-cols-[28px_32px_1fr_44px_72px_44px_72px_32px] gap-2 items-center">
                 <ColorPicker
                   value={color}
+                  openDown={i === 0}
                   onChange={c => {
                     const next = (config.insight_thresholds ?? []).map((x, idx) => idx === i ? { ...x, color: c } : x)
                     setConfig(cv => cv ? { ...cv, insight_thresholds: next } : cv)
@@ -825,6 +828,7 @@ export default function ConfigEditorPage() {
                 <IconPicker
                   value={icon}
                   color={color}
+                  openDown={i === 0}
                   onChange={name => {
                     const next = (config.insight_thresholds ?? []).map((x, idx) => idx === i ? { ...x, icon: name } : x)
                     setConfig(cv => cv ? { ...cv, insight_thresholds: next } : cv)
