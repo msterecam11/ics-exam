@@ -98,8 +98,8 @@ function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string
       />
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 top-9 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5">
+          <div className="fixed inset-0 z-40 bg-black/10" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 bottom-9 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5">
             {COLOR_PALETTE.map(c => (
               <button
                 key={c}
@@ -132,16 +132,16 @@ function IconPicker({ value, color, onChange }: { value?: string; color?: string
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 top-10 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5 w-[140px]">
+          <div className="fixed inset-0 z-40 bg-black/10" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 bottom-10 left-0 bg-white border border-slate-200 rounded-xl shadow-xl p-2 grid grid-cols-4 gap-1.5 w-[148px]">
             {ICON_SET.map(({ name, Icon }) => (
               <button
                 key={name}
                 onClick={() => { onChange(name); setOpen(false) }}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-110 ${value === name ? "bg-slate-100 ring-2 ring-slate-400" : "hover:bg-slate-50"}`}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110 ${value === name ? "bg-slate-100 ring-2 ring-[#1B4F8A]" : "hover:bg-slate-50"}`}
                 title={name}
               >
-                <Icon className="h-3.5 w-3.5 text-slate-600" />
+                <Icon className="h-4 w-4 text-slate-600" />
               </button>
             ))}
           </div>
