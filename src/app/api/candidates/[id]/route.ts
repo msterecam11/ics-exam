@@ -20,7 +20,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   // Delete answers first (foreign key), then the candidate row
-  await db.from("answers").delete().eq("candidate_id", id)
+  await db.from("candidate_answers").delete().eq("candidate_id", id)
   const { error } = await db.from("candidates").delete().eq("id", id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
