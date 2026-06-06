@@ -96,6 +96,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
       max_tokens: 2000,
     })
   } catch (err: any) {
+    console.error("[Analyze] Groq error — status:", err?.status, "| message:", err?.message, "| headers:", JSON.stringify(err?.headers ?? {}))
     const isQuota = err?.status === 429 || err?.message?.includes("rate") || err?.message?.includes("quota")
     if (isQuota) {
       return NextResponse.json(
