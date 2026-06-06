@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText, ShieldAlert } from "lucide-react"
+import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText, ShieldAlert, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -20,14 +20,26 @@ interface Props {
 export default function AdminResultsView({ exam, candidates }: Props) {
   const router = useRouter()
   const [releasing, setReleasing] = useState<string | null>(null)
+  const [deleting,  setDeleting]  = useState<string | null>(null)
+  const [localCandidates, setLocalCandidates] = useState(candidates)
 
-  const submitted = candidates.filter((c) => c.submitted_at)
+  const submitted = localCandidates.filter((c) => c.submitted_at)
   const passed = submitted.filter((c) => c.passed)
   const passRate = submitted.length > 0 ? Math.round((passed.length / submitted.length) * 100) : 0
   const avgScore =
     submitted.length > 0
       ? submitted.reduce((sum, c) => sum + (c.total_score ?? 0), 0) / submitted.length
       : 0
+
+  async function deleteCandidate(id: string, name: string) {
+    if (!confirm(`Delete "${name}"?\n\nThis will permanently remove their registration and all submitted answers. This cannot be undone.`)) return
+    setDeleting(id)
+    const res = await fetch(`/api/candidates/${id}`, { method: "DELETE" })
+    setDeleting(null)
+    if (!res.ok) { toast.error("Failed to delete candidate"); return }
+    setLocalCandidates(prev => prev.filter(c => c.id !== id))
+    toast.success(`${name} deleted`)
+  }
 
   async function releaseAll() {
     setReleasing("all")
@@ -118,7 +130,7 @@ export default function AdminResultsView({ exam, candidates }: Props) {
           <CardTitle className="text-sm font-semibold">Candidates ({candidates.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {candidates.length === 0 ? (
+          {localCandidates.length === 0 ? (
             <p className="text-center text-muted-foreground py-8 text-sm">No candidates yet.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -136,7 +148,7 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {candidates.map((c) => (
+                  {localCandidates.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
                         <div>
@@ -217,6 +229,17 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                               Release
                             </Button>
                           )}
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => deleteCandidate(c.id, c.full_name)}
+                            disabled={deleting === c.id}
+                            title="Delete this candidate's response"
+                          >
+                            {deleting === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
