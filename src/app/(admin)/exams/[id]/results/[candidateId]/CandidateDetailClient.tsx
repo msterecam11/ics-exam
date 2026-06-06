@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatScore } from "@/lib/utils"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy } from "lucide-react"
+import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy, Printer } from "lucide-react"
 import AnswerCard from "@/components/admin/AnswerCard"
 
 interface Props {
@@ -132,7 +132,12 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
               <Badge className={passed ? "bg-emerald-100 text-emerald-700 border-0" : "bg-red-100 text-red-700 border-0"}>
                 {passed ? "Passed" : "Failed"} · Passing: {exam?.passing_score}%
               </Badge>
-              <div>
+              <div className="flex gap-2">
+                <Link href={`/print/exam-results/${candidateId}`} target="_blank">
+                  <Button size="sm" variant="outline" className="gap-2">
+                    <Printer className="h-4 w-4" /> Print Results
+                  </Button>
+                </Link>
                 <Link href={`/reports/candidate/${candidateId}`} target="_blank">
                   <Button size="sm" className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
                     <FileText className="h-4 w-4" /> View Report

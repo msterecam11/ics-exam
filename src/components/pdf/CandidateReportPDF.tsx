@@ -110,7 +110,7 @@ function ReportDocument({ candidate, answers }: { candidate: any; answers: any[]
               <Text style={styles.answerText}>{answerSummary(answer)}</Text>
               {answer.ai_justification && (
                 <View style={styles.aiBox}>
-                  <Text style={styles.aiLabel}>AI Evaluation</Text>
+                  <Text style={styles.aiLabel}>Expert Evaluation</Text>
                   <Text style={styles.aiText}>{answer.ai_justification}</Text>
                 </View>
               )}

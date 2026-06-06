@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input"
 import { CheckCircle2, XCircle, Bot, Pencil, Check, X } from "lucide-react"
 import { toast } from "sonner"
 
+// Show the minimum decimal places needed — avoids 1.46 rounding to 1.5
+function fmtPts(n: number): string {
+  if (Number.isInteger(n)) return String(n)
+  const s2 = parseFloat(n.toFixed(2))
+  return s2 === Math.round(s2 * 10) / 10 ? s2.toFixed(1) : s2.toFixed(2)
+}
+
 function renderAnswer(answer: any) {
   const q = answer.questions
   if (!q) return null
@@ -170,7 +177,7 @@ export default function AnswerCard({ answer, index, onScoreUpdate }: Props) {
             ) : (
               <div className="flex items-center gap-1.5">
                 <p className={`text-base font-bold ${scoreColor}`}>
-                  {score.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">/ {maxScore}</span>
+                  {fmtPts(score)} <span className="text-xs font-normal text-muted-foreground">/ {fmtPts(maxScore)}</span>
                 </p>
                 <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={startEdit} title="Override score">
                   <Pencil className="h-3 w-3" />
@@ -191,7 +198,7 @@ export default function AnswerCard({ answer, index, onScoreUpdate }: Props) {
           <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Bot className="h-3.5 w-3.5 text-blue-600" />
-              <p className="text-xs font-medium text-blue-700">AI Evaluation</p>
+              <p className="text-xs font-medium text-blue-700">Expert Evaluation</p>
             </div>
             <p className="text-xs text-blue-800 leading-relaxed">{answer.ai_justification}</p>
           </div>
