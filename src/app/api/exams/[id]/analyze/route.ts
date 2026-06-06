@@ -33,10 +33,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params
 
-  // Fetch all questions with their content
+  // Fetch questions — text only, no choices/pairs/items (not needed for topic grouping)
   const { data: questions } = await db
     .from("questions")
-    .select("id, text, type, score, choices(*), matching_pairs(*), ordering_items(*)")
+    .select("id, text, type, score")
     .eq("exam_id", id)
     .order("order_index", { ascending: true })
 
@@ -44,23 +44,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "No questions found for this exam" }, { status: 400 })
   }
 
-  // Build a readable summary of each question for the AI
+  // Compact prompt: question text truncated to 150 chars — AI only needs the topic,
+  // not the full wording or answer choices. Keeps prompt well under 4,000 tokens
+  // for exams with up to 200 questions.
   const questionsSummary = questions.map((q, i) => {
-    let detail = ""
-    if (q.type === "mcq_single" || q.type === "mcq_multi") {
-      const choices = (q.choices as any[])?.map((c: any) => `  - ${c.text}${c.is_correct ? " [correct]" : ""}`).join("\n") ?? ""
-      detail = choices ? `\nChoices:\n${choices}` : ""
-    } else if (q.type === "matching") {
-      const pairs = (q.matching_pairs as any[])?.map((p: any) => `  - ${p.left_item} → ${p.right_item}`).join("\n") ?? ""
-      detail = pairs ? `\nPairs:\n${pairs}` : ""
-    } else if (q.type === "ordering") {
-      const items = (q.ordering_items as any[])
-        ?.sort((a: any, b: any) => a.correct_position - b.correct_position)
-        .map((item: any) => `  ${item.correct_position + 1}. ${item.text}`).join("\n") ?? ""
-      detail = items ? `\nCorrect order:\n${items}` : ""
-    }
-    return `Q${i + 1} [ID: ${q.id}] [Type: ${q.type}] [${q.score}pts]\n${q.text}${detail}`
-  }).join("\n\n")
+    const text = q.text.length > 150 ? q.text.slice(0, 150) + "…" : q.text
+    return `Q${i + 1} [${q.id}] ${text}`
+  }).join("\n")
 
   const prompt = `You are an expert exam analyst. Analyze the following exam questions and group them into logical sections based on their topic and subject matter.
 
@@ -96,8 +86,8 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
       max_tokens: 2000,
     })
   } catch (err: any) {
-    console.error("[Analyze] Groq error — status:", err?.status, "| message:", err?.message, "| headers:", JSON.stringify(err?.headers ?? {}))
-    const isQuota = err?.status === 429 || err?.message?.includes("rate") || err?.message?.includes("quota")
+    console.error("[Analyze] Groq error — status:", err?.status, "| message:", err?.message)
+    const isQuota = err?.status === 429 || err?.status === 413 || err?.message?.includes("rate") || err?.message?.includes("quota") || err?.message?.includes("too large")
     if (isQuota) {
       return NextResponse.json(
         { error: "AI quota reached. Please wait a few minutes and try again." },
