@@ -90,7 +90,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
   let completion: Awaited<ReturnType<typeof groq.chat.completions.create>>
   try {
     completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 2000,

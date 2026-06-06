@@ -344,7 +344,7 @@ Return ONLY valid JSON (no markdown) with this exact structure:
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const completion = await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
+          model: "llama-3.1-8b-instant",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.3,
           max_tokens: 1800,
