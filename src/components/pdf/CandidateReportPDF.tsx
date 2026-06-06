@@ -30,6 +30,12 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 24, left: 40, right: 40, flexDirection: "row", justifyContent: "space-between", fontSize: 8, color: "#aaa" },
 })
 
+function fmtPts(n: number): string {
+  if (Number.isInteger(n)) return String(n)
+  const s2 = parseFloat(n.toFixed(2))
+  return s2 === Math.round(s2 * 10) / 10 ? s2.toFixed(1) : s2.toFixed(2)
+}
+
 function answerSummary(answer: any): string {
   const q = answer.questions
   if (!q) return "—"
@@ -102,7 +108,7 @@ function ReportDocument({ candidate, answers }: { candidate: any; answers: any[]
               <View style={styles.questionHeader}>
                 <Text style={styles.questionType}>Q{idx + 1} · {q?.type?.replace(/_/g, " ")}</Text>
                 <Text style={[{ fontSize: 9, fontFamily: "Helvetica-Bold" }, { color: scoreColor }]}>
-                  {sc.toFixed(1)} / {q?.score} pts
+                  {fmtPts(sc)} / {fmtPts(q?.score ?? 0)} pts
                 </Text>
               </View>
               <Text style={styles.questionText}>{q?.text}</Text>
