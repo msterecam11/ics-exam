@@ -6,6 +6,9 @@ function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
 }
 
+const VALID_TYPES = ["video", "ppt", "pdf", "text", "image", "link", "steps", "quiz", "assignment"] as const
+type ContentType = typeof VALID_TYPES[number]
+
 // GET /api/lms/content?module_id=xxx
 export async function GET(req: Request) {
   const session = await auth()
@@ -27,22 +30,33 @@ export async function GET(req: Request) {
 }
 
 // POST — create content item
+// Body: { module_id, title, type, content, download_allowed, is_mandatory, completion_rule, order_index }
+// `content` is type-specific JSONB:
+//   video:      { url, duration_seconds, chapters: [{label, second}] }
+//   ppt:        { url, slide_count }
+//   pdf:        { url, page_count }
+//   text:       { html_en, html_ar }
+//   image:      { url, caption }
+//   link:       { url, open_in_tab }
+//   steps:      { steps: [{title, body, image_url}] }
+//   quiz:       { quiz_id }
+//   assignment: { assignment_id }
 export async function POST(req: Request) {
   const session = await auth()
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { module_id, title, content_type, storage_url, external_url,
-          duration_seconds, download_allowed, order_index } = body
+  const {
+    module_id, title, type: contentType, content,
+    download_allowed, is_mandatory, completion_rule, order_index,
+  } = body
 
-  if (!module_id)     return NextResponse.json({ error: "module_id required" }, { status: 400 })
-  if (!title?.trim()) return NextResponse.json({ error: "title required" }, { status: 400 })
-  if (!content_type)  return NextResponse.json({ error: "content_type required" }, { status: 400 })
-
-  const validTypes = ["video","pdf","pptx","audio","embed","quiz","link","scorm"]
-  if (!validTypes.includes(content_type))
-    return NextResponse.json({ error: `content_type must be one of: ${validTypes.join(", ")}` }, { status: 400 })
+  if (!module_id)       return NextResponse.json({ error: "module_id required" }, { status: 400 })
+  if (!title?.trim())   return NextResponse.json({ error: "title required" }, { status: 400 })
+  if (!contentType)     return NextResponse.json({ error: "type required" }, { status: 400 })
+  if (!VALID_TYPES.includes(contentType as ContentType))
+    return NextResponse.json({ error: `type must be one of: ${VALID_TYPES.join(", ")}` }, { status: 400 })
 
   // Auto-assign order_index
   let idx = order_index
@@ -59,11 +73,11 @@ export async function POST(req: Request) {
     .insert({
       module_id,
       title:            title.trim(),
-      content_type,
-      storage_url:      storage_url || null,
-      external_url:     external_url || null,
-      duration_seconds: duration_seconds || null,
+      type:             contentType,
+      content:          content ?? {},
       download_allowed: download_allowed ?? false,
+      is_mandatory:     is_mandatory ?? true,
+      completion_rule:  completion_rule ?? { type: "click" },
       order_index:      idx,
     })
     .select()
@@ -84,15 +98,13 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
   const allowed = [
-    "title","content_type","storage_url","external_url",
-    "duration_seconds","download_allowed","order_index"
+    "title", "type", "content", "download_allowed",
+    "is_mandatory", "completion_rule", "order_index",
   ]
-  const updates: Record<string, unknown> = {}
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in fields) updates[key] = fields[key]
   }
-  if (!Object.keys(updates).length)
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
 
   const { data, error } = await db
     .from("lms_content_items")
@@ -115,7 +127,6 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-  // Warn but don't block if progress exists — admin decision
   const { error } = await db.from("lms_content_items").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

@@ -19,9 +19,9 @@ export async function GET(req: Request) {
   const { data, error } = await db
     .from("lms_modules")
     .select(`
-      id, course_id, title, description, delivery_mode, order_index,
-      is_mandatory, unlock_after_days, created_at,
-      lms_content_items(id, title, content_type, order_index, duration_seconds, download_allowed)
+      id, course_id, title, description, delivery_type, order_index,
+      estimated_duration, prerequisite_module_id, min_attendance_pct, created_at,
+      lms_content_items(id, title, type, order_index, download_allowed, is_mandatory, completion_rule, content)
     `)
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })
@@ -37,8 +37,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { course_id, title, description, delivery_mode, order_index,
-          is_mandatory, unlock_after_days } = body
+  const {
+    course_id, title, description, delivery_type, order_index,
+    estimated_duration, prerequisite_module_id, min_attendance_pct,
+  } = body
 
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
   if (!title?.trim()) return NextResponse.json({ error: "title required" }, { status: 400 })
@@ -57,12 +59,13 @@ export async function POST(req: Request) {
     .from("lms_modules")
     .insert({
       course_id,
-      title:             title.trim(),
-      description:       description?.trim() || null,
-      delivery_mode:     delivery_mode ?? "online",
-      order_index:       idx,
-      is_mandatory:      is_mandatory ?? true,
-      unlock_after_days: unlock_after_days || null,
+      title:                 title.trim(),
+      description:           description?.trim() || null,
+      delivery_type:         delivery_type ?? "online",
+      order_index:           idx,
+      estimated_duration:    estimated_duration || null,
+      prerequisite_module_id: prerequisite_module_id || null,
+      min_attendance_pct:    min_attendance_pct || null,
     })
     .select()
     .single()
@@ -71,7 +74,7 @@ export async function POST(req: Request) {
   return NextResponse.json(data, { status: 201 })
 }
 
-// PATCH — update module (title, order, etc.)
+// PATCH — update module
 export async function PATCH(req: Request) {
   const session = await auth()
   if (!session || !isMgr(session.user.role))
@@ -81,13 +84,14 @@ export async function PATCH(req: Request) {
   const { id, ...fields } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-  const allowed = ["title","description","delivery_mode","order_index","is_mandatory","unlock_after_days"]
-  const updates: Record<string, unknown> = {}
+  const allowed = [
+    "title", "description", "delivery_type", "order_index",
+    "estimated_duration", "prerequisite_module_id", "min_attendance_pct",
+  ]
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in fields) updates[key] = fields[key]
   }
-  if (!Object.keys(updates).length)
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
 
   const { data, error } = await db
     .from("lms_modules")
@@ -100,7 +104,7 @@ export async function PATCH(req: Request) {
   return NextResponse.json(data)
 }
 
-// DELETE — remove module (only if no progress recorded)
+// DELETE — remove module (only if no student progress)
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session || session.user.role !== "admin")
@@ -116,7 +120,10 @@ export async function DELETE(req: Request) {
     .eq("module_id", id)
 
   if ((count ?? 0) > 0)
-    return NextResponse.json({ error: "Cannot delete — students have progress on this module" }, { status: 409 })
+    return NextResponse.json(
+      { error: "Cannot delete — students have progress on this module" },
+      { status: 409 }
+    )
 
   const { error } = await db.from("lms_modules").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
