@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { formatScore } from "@/lib/utils"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy } from "lucide-react"
+import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy, Download, Loader2 } from "lucide-react"
 import AnswerCard from "@/components/admin/AnswerCard"
-import { PDFDownloadButton } from "@/components/pdf/CandidateReportPDF"
+import { toast } from "sonner"
 
 interface Props {
   candidate: any
@@ -109,10 +109,40 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
   const [totalScore, setTotalScore] = useState<number>(candidate.total_score ?? 0)
   const [passed, setPassed] = useState<boolean>(candidate.passed ?? false)
   const [activeTab, setActiveTab] = useState<"answers" | "security">("answers")
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
 
   function handleScoreUpdate(_answerId: string, _newScore: number, newTotal: number, newPassed: boolean) {
     setTotalScore(newTotal)
     setPassed(newPassed)
+  }
+
+  async function downloadPDF() {
+    setDownloadingPDF(true)
+    toast.info("Generating PDF — this may take a few seconds…")
+    try {
+      const res = await fetch(`/api/reports/exam-results/${candidateId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? "PDF generation failed. Please try again.")
+        return
+      }
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement("a")
+      a.href     = url
+      const cd   = res.headers.get("Content-Disposition") ?? ""
+      const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)
+      a.download = match ? decodeURIComponent(match[1]) : `${candidate.full_name} - Results.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success("PDF downloaded successfully")
+    } catch {
+      toast.error("Failed to download PDF. Please try again.")
+    } finally {
+      setDownloadingPDF(false)
+    }
   }
 
   return (
@@ -134,7 +164,15 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
                 {passed ? "Passed" : "Failed"} · Passing: {exam?.passing_score}%
               </Badge>
               <div className="flex gap-2">
-                <PDFDownloadButton candidateId={candidateId} candidateName={candidate.full_name} />
+                <Button
+                  size="sm" variant="outline" className="gap-2"
+                  onClick={downloadPDF} disabled={downloadingPDF}
+                >
+                  {downloadingPDF
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+                    : <><Download className="h-4 w-4" /> Download Results</>
+                  }
+                </Button>
                 <Link href={`/reports/candidate/${candidateId}`} target="_blank">
                   <Button size="sm" className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
                     <FileText className="h-4 w-4" /> View Report
