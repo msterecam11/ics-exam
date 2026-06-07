@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Plus, Pencil, Trash2, KeyRound, Check, X,
-  Loader2, UserCheck, Users, Eye, EyeOff,
+  Loader2, UserCheck, Users, Eye, EyeOff, Mail,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -67,6 +67,7 @@ function PasswordInput({ value, onChange, placeholder = "Password", disabled }: 
 // ── Create assessor modal ─────────────────────────────────────────────────────
 function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a: Assessor) => void }) {
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" })
+  const [sendEmail, setSendEmail] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -80,13 +81,13 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a:
     const res = await fetch("/api/interview/assessors", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+      body: JSON.stringify({ name: form.name, email: form.email, password: form.password, sendEmail }),
     })
     const data = await res.json()
     setLoading(false)
 
     if (!res.ok) { setError(data.error ?? "Failed to create assessor"); return }
-    toast.success(`${data.name} created`)
+    toast.success(sendEmail ? `${data.name} created — credentials email sent` : `${data.name} created`)
     onCreate(data)
     onClose()
   }
@@ -121,6 +122,20 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a:
           <Label>Confirm Password <span className="text-red-500">*</span></Label>
           <PasswordInput value={form.confirm} onChange={v => setForm(f => ({ ...f, confirm: v }))} placeholder="Confirm password" />
         </div>
+
+        {/* Email toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+          <input
+            type="checkbox"
+            checked={sendEmail}
+            onChange={e => setSendEmail(e.target.checked)}
+            className="w-4 h-4 accent-[#1B4F8A] cursor-pointer"
+          />
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-blue-600 shrink-0" />
+            <span className="text-sm text-blue-800 font-medium">Email credentials to assessor</span>
+          </div>
+        </label>
 
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
 
@@ -191,6 +206,7 @@ function EditModal({ assessor, onClose, onUpdate }: { assessor: Assessor; onClos
 function ResetPasswordModal({ assessor, onClose }: { assessor: Assessor; onClose: () => void }) {
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
+  const [sendEmail, setSendEmail] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -204,13 +220,15 @@ function ResetPasswordModal({ assessor, onClose }: { assessor: Assessor; onClose
     const res = await fetch("/api/interview/assessors", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: assessor.id, password }),
+      body: JSON.stringify({ id: assessor.id, password, sendEmail }),
     })
     const data = await res.json()
     setLoading(false)
 
     if (!res.ok) { setError(data.error ?? "Failed to reset password"); return }
-    toast.success(`Password reset for ${assessor.name}`)
+    toast.success(sendEmail
+      ? `Password reset for ${assessor.name} — new credentials emailed`
+      : `Password reset for ${assessor.name}`)
     onClose()
   }
 
@@ -226,6 +244,21 @@ function ResetPasswordModal({ assessor, onClose }: { assessor: Assessor; onClose
           <Label>Confirm Password</Label>
           <PasswordInput value={confirm} onChange={setConfirm} placeholder="Confirm new password" />
         </div>
+
+        {/* Email toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+          <input
+            type="checkbox"
+            checked={sendEmail}
+            onChange={e => setSendEmail(e.target.checked)}
+            className="w-4 h-4 accent-[#1B4F8A] cursor-pointer"
+          />
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-blue-600 shrink-0" />
+            <span className="text-sm text-blue-800 font-medium">Email new password to assessor</span>
+          </div>
+        </label>
+
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
         <div className="flex gap-3 pt-1">
           <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
@@ -284,9 +317,10 @@ export default function AssessorsPage() {
       </div>
 
       {/* Credential tip */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-        <strong>Sharing credentials:</strong> After creating an assessor, share their email and password with them directly.
-        They log in at <code className="bg-amber-100 px-1.5 py-0.5 rounded text-xs">/auth/login</code> and are taken straight to the scoring interface.
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        <strong>Auto-email credentials:</strong> When creating an assessor or resetting their password, check
+        <em> "Email credentials to assessor"</em> to send their login details automatically via ICS email.
+        They log in at <code className="bg-blue-100 px-1.5 py-0.5 rounded text-xs">/auth/login</code> and are taken straight to the scoring interface.
       </div>
 
       {/* Loading */}

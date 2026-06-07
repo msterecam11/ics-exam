@@ -494,6 +494,106 @@ export async function sendResultsEmail(input: ResultsEmailInput): Promise<void> 
   }
 }
 
+// ─── Send Assessor Credentials Email ─────────────────────────────────────────
+
+export interface AssessorCredentialsEmailInput {
+  assessorName:  string
+  assessorEmail: string
+  password:      string
+  loginUrl:      string
+  isReset?:      boolean   // true = password reset, false/undefined = new account
+}
+
+export async function sendAssessorCredentialsEmail(input: AssessorCredentialsEmailInput): Promise<void> {
+  const token    = await getAccessToken()
+  const isReset  = !!input.isReset
+  const subject  = isReset
+    ? `Your ICS Aviation Assessor Password Has Been Reset`
+    : `Welcome to ICS Aviation — Your Assessor Account Is Ready`
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Header -->
+    <div style="background:#1B4F8A;padding:28px 32px;text-align:center;">
+      <p style="color:rgba(255,255,255,0.7);font-size:11px;text-transform:uppercase;letter-spacing:3px;margin:0 0 6px;">ICS Aviation</p>
+      <h1 style="color:white;font-size:22px;font-weight:700;margin:0;">
+        ${isReset ? "Password Reset" : "Assessor Account Created"}
+      </h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:28px 32px;">
+      <p style="color:#334155;font-size:15px;margin:0 0 20px;">
+        Hi <strong>${he(input.assessorName)}</strong>,<br><br>
+        ${isReset
+          ? "Your assessor account password has been reset. Use the credentials below to log in."
+          : "An assessor account has been created for you on the ICS Aviation platform. Use the credentials below to log in and start scoring candidates."}
+      </p>
+
+      <!-- Credentials box -->
+      <div style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+        <p style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-weight:700;">Your Login Credentials</p>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0;color:#64748b;font-size:13px;white-space:nowrap;width:80px;">📧 Email</td>
+            <td style="padding:6px 0;font-weight:600;font-size:13px;font-family:monospace;">${he(input.assessorEmail)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#64748b;font-size:13px;white-space:nowrap;">🔑 Password</td>
+            <td style="padding:6px 0;font-weight:700;font-size:15px;font-family:monospace;color:#1B4F8A;letter-spacing:1px;">${he(input.password)}</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- CTA -->
+      <div style="text-align:center;margin-bottom:24px;">
+        <a href="${he(input.loginUrl)}"
+          style="display:inline-block;background:#1B4F8A;color:white;font-size:13px;font-weight:700;padding:12px 28px;border-radius:999px;text-decoration:none;">
+          Log In Now →
+        </a>
+      </div>
+
+      <p style="color:#94a3b8;font-size:12px;text-align:center;margin:0;">
+        For security, please change your password after your first login.<br>
+        If you did not expect this email, contact ICS Aviation administration.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;text-align:center;">
+      <p style="color:#94a3b8;font-size:11px;margin:0;">ICS Aviation — Integrated Consulting Services</p>
+    </div>
+  </div>
+</body>
+</html>`.trim()
+
+  const res = await fetch(`${GRAPH_BASE}/users/${USER_EMAIL}/sendMail`, {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body:         { contentType: "HTML", content: html },
+        toRecipients: [{ emailAddress: { address: input.assessorEmail, name: input.assessorName } }],
+      },
+      saveToSentItems: true,
+    }),
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`MS Graph sendMail error: ${data.error?.message ?? res.status}`)
+  }
+}
+
 // ─── Build booking event body ─────────────────────────────────────────────────
 
 export function buildBookingEventBody(opts: {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
+import { sendAssessorCredentialsEmail } from "@/lib/ms-graph"
 
 // Only admin + instructor can manage assessors
 function isMgr(role?: string) {
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { name, email, password } = body
+  const { name, email, password, sendEmail } = body
 
   if (!name?.trim())     return NextResponse.json({ error: "Name is required" },     { status: 400 })
   if (!email?.trim())    return NextResponse.json({ error: "Email is required" },    { status: 400 })
@@ -78,6 +79,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Fire-and-forget credential email — don't block the response if it fails
+  if (sendEmail) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+    sendAssessorCredentialsEmail({
+      assessorName:  name.trim(),
+      assessorEmail: email.trim().toLowerCase(),
+      password,
+      loginUrl:      `${appUrl}/auth/login`,
+    }).catch(err => console.error("[Assessor email] failed:", err?.message))
+  }
+
   return NextResponse.json({ ...data, group_count: 0 }, { status: 201 })
 }
 
@@ -88,7 +100,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { id, name, email, password } = body
+  const { id, name, email, password, sendEmail } = body
 
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
@@ -118,6 +130,18 @@ export async function PATCH(req: Request) {
     if (error.code === "23505")
       return NextResponse.json({ error: "Email already in use" }, { status: 409 })
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Fire-and-forget credential email for password resets
+  if (sendEmail && password && data) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+    sendAssessorCredentialsEmail({
+      assessorName:  data.name,
+      assessorEmail: data.email,
+      password,
+      loginUrl:      `${appUrl}/auth/login`,
+      isReset:       true,
+    }).catch(err => console.error("[Assessor reset email] failed:", err?.message))
   }
 
   return NextResponse.json(data)
