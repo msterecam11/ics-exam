@@ -79,18 +79,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Fire-and-forget credential email — don't block the response if it fails
+  // Send credential email — await it so we can report success/failure to the UI
+  let emailSent = false
+  let emailError: string | null = null
   if (sendEmail) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-    sendAssessorCredentialsEmail({
-      assessorName:  name.trim(),
-      assessorEmail: email.trim().toLowerCase(),
-      password,
-      loginUrl:      `${appUrl}/auth/login`,
-    }).catch(err => console.error("[Assessor email] failed:", err?.message))
+    try {
+      await sendAssessorCredentialsEmail({
+        assessorName:  name.trim(),
+        assessorEmail: email.trim().toLowerCase(),
+        password,
+        loginUrl:      `${appUrl}/auth/login`,
+      })
+      emailSent = true
+    } catch (err: any) {
+      emailError = err?.message ?? "Unknown email error"
+      console.error("[Assessor email] failed:", emailError)
+    }
   }
 
-  return NextResponse.json({ ...data, group_count: 0 }, { status: 201 })
+  return NextResponse.json({ ...data, group_count: 0, emailSent, emailError }, { status: 201 })
 }
 
 // PATCH — update name / email, or reset password
@@ -132,19 +140,27 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Fire-and-forget credential email for password resets
+  // Send credential email for password resets
+  let emailSent = false
+  let emailError: string | null = null
   if (sendEmail && password && data) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-    sendAssessorCredentialsEmail({
-      assessorName:  data.name,
-      assessorEmail: data.email,
-      password,
-      loginUrl:      `${appUrl}/auth/login`,
-      isReset:       true,
-    }).catch(err => console.error("[Assessor reset email] failed:", err?.message))
+    try {
+      await sendAssessorCredentialsEmail({
+        assessorName:  data.name,
+        assessorEmail: data.email,
+        password,
+        loginUrl:      `${appUrl}/auth/login`,
+        isReset:       true,
+      })
+      emailSent = true
+    } catch (err: any) {
+      emailError = err?.message ?? "Unknown email error"
+      console.error("[Assessor reset email] failed:", emailError)
+    }
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json({ ...data, emailSent, emailError })
 }
 
 // DELETE — remove assessor (only if not assigned to active/published groups)

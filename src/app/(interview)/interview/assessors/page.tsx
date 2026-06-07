@@ -87,7 +87,17 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (a:
     setLoading(false)
 
     if (!res.ok) { setError(data.error ?? "Failed to create assessor"); return }
-    toast.success(sendEmail ? `${data.name} created — credentials email sent` : `${data.name} created`)
+
+    if (sendEmail) {
+      if (data.emailSent) {
+        toast.success(`${data.name} created — credentials email sent ✓`)
+      } else {
+        toast.success(`${data.name} created`)
+        toast.error(`Email failed: ${data.emailError ?? "unknown error"}`)
+      }
+    } else {
+      toast.success(`${data.name} created`)
+    }
     onCreate(data)
     onClose()
   }
@@ -226,9 +236,17 @@ function ResetPasswordModal({ assessor, onClose }: { assessor: Assessor; onClose
     setLoading(false)
 
     if (!res.ok) { setError(data.error ?? "Failed to reset password"); return }
-    toast.success(sendEmail
-      ? `Password reset for ${assessor.name} — new credentials emailed`
-      : `Password reset for ${assessor.name}`)
+
+    if (sendEmail) {
+      if (data.emailSent) {
+        toast.success(`Password reset for ${assessor.name} — new credentials emailed ✓`)
+      } else {
+        toast.success(`Password reset for ${assessor.name}`)
+        toast.error(`Email failed: ${data.emailError ?? "unknown error"}`)
+      }
+    } else {
+      toast.success(`Password reset for ${assessor.name}`)
+    }
     onClose()
   }
 
