@@ -167,6 +167,11 @@ export default async function MyCoursesPage() {
     coursesByTrack[r.track_id].push(r)
   }
 
+  const progressByCourse: Record<string, number> = {}
+  for (const e of (rawEnrollments ?? []) as any[]) {
+    if (e.lms_courses?.id) progressByCourse[e.lms_courses.id] = e.progress_pct ?? 0
+  }
+
   function shapeCourse(row: any, idx: number) {
     const c = row.lms_courses
     return {
