@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
-import { sendAssessorCredentialsEmail } from "@/lib/ms-graph"
+import { sendStudentCredentialsEmail } from "@/lib/email"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 
   let query = db
     .from("lms_students")
-    .select("id, name, email, job_title, company, language, qr_code, last_login, created_at", { count: "exact" })
+    .select("id, name, email, job_title, company, language, last_login, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       department: department?.trim() || null,
       language:   language ?? "en",
     })
-    .select("id, name, email, job_title, company, language, qr_code, created_at")
+    .select("id, name, email, job_title, company, language, created_at")
     .single()
 
   if (error) {
@@ -75,14 +75,11 @@ export async function POST(req: Request) {
   let emailSent = false
   let emailError: string | null = null
   if (sendEmail) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
     try {
-      // Reuse the same email helper with student-friendly subject
-      await sendAssessorCredentialsEmail({
-        assessorName:  name.trim(),
-        assessorEmail: email.trim().toLowerCase(),
+      await sendStudentCredentialsEmail({
+        studentName:  name.trim(),
+        studentEmail: email.trim().toLowerCase(),
         password,
-        loginUrl:      `${appUrl}/lms/login`,
       })
       emailSent = true
     } catch (err: any) {
@@ -126,7 +123,7 @@ export async function PATCH(req: Request) {
     .from("lms_students")
     .update(updates)
     .eq("id", id)
-    .select("id, name, email, job_title, company, language, qr_code, created_at")
+    .select("id, name, email, job_title, company, language, created_at")
     .single()
 
   if (error) {

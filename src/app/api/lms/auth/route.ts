@@ -15,7 +15,7 @@ export async function POST(req: Request) {
 
   const { data: student } = await db
     .from("lms_students")
-    .select("id, name, email, password_hash, failed_attempts, locked_until, language, avatar_url, qr_code")
+    .select("id, name, email, password_hash, failed_attempts, locked_until, language, avatar_url")
     .eq("email", email.toLowerCase().trim())
     .single()
 

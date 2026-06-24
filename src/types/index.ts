@@ -1,12 +1,32 @@
-export type Role = "admin" | "instructor"
+export type Role = "admin" | "instructor" | "assessor" | "viewer"
 
 export interface AdminUser {
   id: string
   email: string
   name: string
   role: Role
+  is_active?: boolean
+  department?: string | null
+  phone?: string | null
   created_at: string
 }
+
+export interface ViewerAccess {
+  id: string
+  user_id: string
+  system: string
+  resource_type: string
+  resource_id: string
+  label: string | null
+  permissions: Record<string, boolean>
+  created_at: string
+  created_by: string | null
+}
+
+// Exam permissions: scores | results | reports
+// Interview permissions: progress | scores | verdicts | reports
+export type ExamPermission      = "scores" | "results" | "reports"
+export type InterviewPermission = "progress" | "scores" | "verdicts" | "reports"
 
 export interface Group {
   id: string

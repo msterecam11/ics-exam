@@ -24,8 +24,8 @@ function questionIcon(q: Question) {
 }
 
 export default function ReportSection({ title, description, orderIndex, questions, aiInsight }: Props) {
-  const totalPossible = questions.reduce((s, q) => s + q.score, 0)
-  const totalEarned = questions.reduce((s, q) => s + q.scoreAchieved, 0)
+  const totalPossible = Math.round(questions.reduce((s, q) => s + parseFloat(q.score as any ?? 0), 0) * 10) / 10
+  const totalEarned = Math.round(questions.reduce((s, q) => s + parseFloat(q.scoreAchieved as any ?? 0), 0) * 10) / 10
   const sectionPct = totalPossible > 0 ? (totalEarned / totalPossible) * 100 : 0
 
   return (
@@ -47,7 +47,7 @@ export default function ReportSection({ title, description, orderIndex, question
           }}>
             {sectionPct.toFixed(0)}%
           </p>
-          <p className="text-xs text-slate-400">{totalEarned.toFixed(1)} / {totalPossible} pts</p>
+          <p className="text-xs text-slate-400">{totalEarned.toFixed(1)} / {totalPossible.toFixed(1)} pts</p>
         </div>
       </div>
 

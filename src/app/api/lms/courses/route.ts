@@ -18,9 +18,10 @@ export async function GET(req: Request) {
   let query = db
     .from("lms_courses")
     .select(`
-      id, title, description, thumbnail_url, language, delivery_mode,
+      id, title, description, overview_html, course_code, category, tags,
+      thumbnail_url, language, delivery_mode,
       status, progress_enforcement, certificate_enabled, feedback_enabled,
-      start_date, end_date, capacity, created_at, created_by,
+      start_date, end_date, capacity, final_exam_pass_mark, created_at, updated_at, created_by,
       lms_course_instructors(instructor_id, admin_users(id, name, email))
     `)
     .order("created_at", { ascending: false })
@@ -137,10 +138,11 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
   const allowed = [
-    "title","description","thumbnail_url","language","delivery_mode","status",
+    "title","description","overview_html","course_code","category","tags",
+    "thumbnail_url","language","delivery_mode","status",
     "progress_enforcement","progress_test_every_x","min_attendance_pct",
     "certificate_enabled","certificate_auto_release",
-    "feedback_enabled","feedback_mandatory",
+    "feedback_enabled","feedback_mandatory","feedback_anonymous",
     "start_date","end_date","capacity","drip_days","final_exam_pass_mark",
   ]
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }

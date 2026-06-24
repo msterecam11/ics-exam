@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Plus, Search, MoreHorizontal, Trash2, Edit,
   Mail, Eye, EyeOff, Loader2, Upload,
-  User, Building2, RefreshCw,
+  User, Building2, RefreshCw, BarChart2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -176,8 +178,125 @@ function StudentModal({
   )
 }
 
+// ─── CSV Import Modal ────────────────────────────────────────
+function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [file,       setFile]       = useState<File | null>(null)
+  const [courseId,   setCourseId]   = useState("")
+  const [courses,    setCourses]    = useState<{ id: string; title: string }[]>([])
+  const [uploading,  setUploading]  = useState(false)
+  const [result,     setResult]     = useState<{
+    total: number; success: number; errors: number; skipped: number;
+    results: { row: number; email: string; status: string; error?: string }[]
+  } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/lms/courses").then(r => r.json()).then(d => setCourses(d.courses ?? []))
+  }, [open])
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault()
+    if (!file) { toast.error("Select a CSV file"); return }
+    setUploading(true)
+    const fd = new FormData()
+    fd.append("file", file)
+    if (courseId) fd.append("enroll_course_id", courseId)
+    const res  = await fetch("/api/lms/import", { method: "POST", body: fd })
+    const data = await res.json()
+    setUploading(false)
+    if (!res.ok) { toast.error(data.error ?? "Import failed"); return }
+    setResult(data)
+    if (data.success > 0) onDone()
+  }
+
+  function reset() { setFile(null); setCourseId(""); setResult(null) }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) { onClose(); reset() } }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Import Students from CSV</DialogTitle>
+        </DialogHeader>
+
+        {!result ? (
+          <form onSubmit={handleUpload} className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>CSV File <span className="text-red-500">*</span></Label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={e => setFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#1B4F8A]/10 file:text-[#1B4F8A] hover:file:bg-[#1B4F8A]/20 cursor-pointer"
+                required
+              />
+              <p className="text-xs text-slate-400">
+                Required columns: <code className="bg-slate-100 px-1 rounded">name</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">email</code>.
+                Optional: <code className="bg-slate-100 px-1 rounded">password</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">job_title</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">company</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">department</code>.
+                Passwords auto-generated if not provided.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Auto-enroll in Course (optional)</Label>
+              <select
+                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
+                value={courseId}
+                onChange={e => setCourseId(e.target.value)}
+              >
+                <option value="">No auto-enrollment</option>
+                {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+              </select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { onClose(); reset() }}>Cancel</Button>
+              <Button type="submit" disabled={uploading} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {uploading ? "Importing…" : "Import"}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-4 gap-2 text-center">
+              {[
+                { label: "Total",   value: result.total,   color: "text-slate-700" },
+                { label: "Created", value: result.success,  color: "text-emerald-600" },
+                { label: "Skipped", value: result.skipped,  color: "text-amber-600" },
+                { label: "Errors",  value: result.errors,   color: "text-red-500" },
+              ].map(s => (
+                <div key={s.label} className="bg-slate-50 rounded-lg p-3">
+                  <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                  <p className="text-xs text-slate-500">{s.label}</p>
+                </div>
+              ))}
+            </div>
+            {result.errors > 0 && (
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {result.results.filter(r => r.status === "error").map(r => (
+                  <p key={r.row} className="text-xs text-red-600">
+                    Row {r.row} ({r.email}): {r.error}
+                  </p>
+                ))}
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={() => { onClose(); reset() }} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
+                Done
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────
 export default function StudentsPage() {
+  const router = useRouter()
   const [students,   setStudents]   = useState<Student[]>([])
   const [pagination, setPagination] = useState<Pagination>({ total: 0, page: 1, limit: 50 })
   const [loading,    setLoading]    = useState(true)
@@ -186,6 +305,7 @@ export default function StudentsPage() {
   const [modalOpen,  setModalOpen]  = useState(false)
   const [editTarget, setEditTarget] = useState<Student | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [csvOpen,    setCsvOpen]    = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function load(page = 1, q = searchQ) {
@@ -237,7 +357,7 @@ export default function StudentsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => toast.info("CSV import coming soon")}>
+          <Button variant="outline" className="gap-2" onClick={() => setCsvOpen(true)}>
             <Upload className="h-4 w-4" /> Import CSV
           </Button>
           <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2" onClick={openCreate}>
@@ -323,7 +443,13 @@ export default function StudentsPage() {
                             ? <Loader2 className="h-4 w-4 animate-spin" />
                             : <MoreHorizontal className="h-4 w-4" />}
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/lms-admin/progress/${s.id}`)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <BarChart2 className="h-4 w-4" /> View Progress
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(s)} className="gap-2">
                             <Edit className="h-4 w-4" /> Edit
                           </DropdownMenuItem>
@@ -375,6 +501,12 @@ export default function StudentsPage() {
         onClose={() => setModalOpen(false)}
         onSaved={load}
         student={editTarget}
+      />
+
+      <CsvImportModal
+        open={csvOpen}
+        onClose={() => setCsvOpen(false)}
+        onDone={load}
       />
     </div>
   )

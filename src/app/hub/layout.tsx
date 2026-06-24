@@ -5,8 +5,8 @@ export default async function HubLayout({ children }: { children: React.ReactNod
   const session = await auth()
   if (!session) redirect("/auth/login")
 
-  // Assessors belong in the interview panel only — never the hub
   if (session.user.role === "assessor") redirect("/interview")
+  if (session.user.role === "viewer") redirect("/viewer")
 
   return <>{children}</>
 }

@@ -175,7 +175,7 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
                 </Button>
                 <Link href={`/reports/candidate/${candidateId}`} target="_blank">
                   <Button size="sm" className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-                    <FileText className="h-4 w-4" /> View Report
+                    <FileText className="h-4 w-4" /> View Results
                   </Button>
                 </Link>
               </div>

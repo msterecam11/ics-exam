@@ -17,10 +17,36 @@ type Params = { params: Promise<{ groupId: string }> }
  */
 export async function GET(req: Request, { params }: Params) {
   const session = await auth()
-  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  const role = session.user.role ?? ""
+  if (!["admin", "instructor", "viewer"].includes(role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { groupId } = await params
+
+  // Viewer: verify access via viewer_access table (read-only cache, safe to expose)
+  if (role === "viewer") {
+    const { data: accessRows } = await db
+      .from("viewer_access")
+      .select("resource_type, resource_id, permissions")
+      .eq("user_id", session.user.id)
+      .eq("system", "interview")
+
+    const rows = accessRows ?? []
+    const directOk = rows.some(
+      a => a.permissions?.reports && a.resource_type === "group" && a.resource_id === groupId
+    )
+
+    if (!directOk) {
+      const { data: grp } = await db
+        .from("assessment_groups").select("config_id").eq("id", groupId).single()
+      const configOk = grp?.config_id && rows.some(
+        a => a.permissions?.reports && a.resource_type === "config" && a.resource_id === grp.config_id
+      )
+      if (!configOk) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+  }
   const { searchParams } = new URL(req.url)
   const candidateId = searchParams.get("candidate_id")
   const trackId     = searchParams.get("track_id")

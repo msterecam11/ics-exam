@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
-import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3 } from "lucide-react"
+import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface System {
@@ -44,10 +44,10 @@ const SYSTEMS: System[] = [
   {
     id: "lms",
     label: "Learning Management",
-    description: "Course delivery, progress tracking, and certification management for trainees.",
+    description: "Course delivery, progress tracking, live sessions, quizzes, and attendance for trainees.",
     icon: BookOpen,
-    href: "#",
-    status: "soon",
+    href: "/lms-admin",
+    status: "live",
     accent: "#059669",
     accentBg: "bg-emerald-600",
     accentText: "text-emerald-600",
@@ -65,13 +65,29 @@ const SYSTEMS: System[] = [
   },
 ]
 
+const ADMIN_SYSTEMS: System[] = [
+  {
+    id: "users",
+    label: "User Management",
+    description: "Create and manage admins, instructors, assessors, and viewers across all ICS systems.",
+    icon: ShieldCheck,
+    href: "/hub/users",
+    status: "live",
+    accent: "#1B4F8A",
+    accentBg: "bg-[#1B4F8A]",
+    accentText: "text-[#1B4F8A]",
+  },
+]
+
 interface Props {
   userName: string
   userEmail: string
   userInitial: string
+  userRole: string
 }
 
-export default function HubPortal({ userName, userEmail, userInitial }: Props) {
+export default function HubPortal({ userName, userEmail, userInitial, userRole }: Props) {
+  const allSystems = userRole === "admin" ? [...SYSTEMS, ...ADMIN_SYSTEMS] : SYSTEMS
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
 
@@ -125,7 +141,7 @@ export default function HubPortal({ userName, userEmail, userInitial }: Props) {
 
         {/* System cards grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-5xl">
-          {SYSTEMS.map((system) => {
+          {allSystems.map((system) => {
             const Icon = system.icon
             const isLive = system.status === "live"
 

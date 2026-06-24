@@ -1,6 +1,6 @@
 import Groq from "groq-sdk"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY ?? "placeholder" })
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS || process.env.GROQ_API_KEY || "placeholder" })
 
 export interface ScoringResult {
   score: number

@@ -44,45 +44,47 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "No questions found for this exam" }, { status: 400 })
   }
 
-  // Compact prompt: question text truncated to 150 chars — AI only needs the topic,
-  // not the full wording or answer choices. Keeps prompt well under 4,000 tokens
-  // for exams with up to 200 questions.
+  // Build Q-number → real UUID map (used after parsing)
+  const qIndexMap: Record<string, string> = {}
+  questions.forEach((q, i) => { qIndexMap[`Q${i + 1}`] = q.id })
+
+  const totalQ = questions.length
   const questionsSummary = questions.map((q, i) => {
-    const text = q.text.length > 150 ? q.text.slice(0, 150) + "…" : q.text
-    return `Q${i + 1} [${q.id}] ${text}`
+    const text = q.text.length > 120 ? q.text.slice(0, 120) + "…" : q.text
+    return `Q${i + 1}: ${text}`
   }).join("\n")
 
-  const prompt = `You are an expert exam analyst. Analyze the following exam questions and group them into logical sections based on their topic and subject matter.
+  // Two-part format: AI commits to 4-10 section names first, then classifies
+  // each question by number. Prevents model from inventing a new section per question.
+  const prompt = `You are an expert exam analyst. Group the following ${totalQ} questions into sections.
 
 EXAM QUESTIONS:
 ${questionsSummary}
 
-Instructions:
-- Create between 2 and 6 sections depending on how many distinct topics you identify
-- Each section must have a clear, professional title
-- Each section must have a short description (1 sentence) of what it covers
-- Assign every question to exactly one section
-- Keep related topics together
-- Order sections logically (general → specific, or foundational → advanced)
+Respond in exactly two blocks with no extra text:
 
-Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
-{
-  "sections": [
-    {
-      "title": "Section title",
-      "description": "One sentence describing what this section covers",
-      "question_ids": ["uuid1", "uuid2", ...],
-      "order_index": 0
-    }
-  ]
-}`
+SECTIONS:
+1. [section title]
+2. [section title]
+(between 4 and 10 sections total, short professional titles, 3-6 words each)
+
+ASSIGNMENTS:
+Q1: [section number]
+Q2: [section number]
+...
+Q${totalQ}: [section number]
+
+Rules:
+- Every question from Q1 to Q${totalQ} must appear in ASSIGNMENTS
+- Use only the section numbers you defined above
+- Group related topics together`
 
   let completion: Awaited<ReturnType<typeof groq.chat.completions.create>>
   try {
     completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+      temperature: 0.1,
       max_tokens: 2000,
     })
   } catch (err: any) {
@@ -98,23 +100,56 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
   }
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? ""
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
 
-  let sections: any[]
-  try {
-    const parsed = JSON.parse(cleaned)
-    sections = parsed.sections
-    if (!Array.isArray(sections)) throw new Error("Invalid format")
-  } catch {
-    // Fallback regex extraction
-    const match = cleaned.match(/"sections"\s*:\s*(\[[\s\S]*\])/)
-    if (!match) return NextResponse.json({ error: "AI returned invalid response" }, { status: 500 })
-    try {
-      sections = JSON.parse(match[1])
-    } catch {
-      return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 })
+  // Parse SECTIONS block: "1. Title"
+  const sectionTitles: Record<number, string> = {}
+  const sectionsBlock = raw.match(/SECTIONS:\s*([\s\S]*?)(?=ASSIGNMENTS:|$)/i)?.[1] ?? ""
+  for (const line of sectionsBlock.split("\n")) {
+    const m = line.match(/^(\d+)[.)]\s*(.+)$/)
+    if (m) sectionTitles[parseInt(m[1])] = m[2].trim()
+  }
+
+  // Parse ASSIGNMENTS block: "Q1: 3"
+  const assignMap: Record<number, number> = {}
+  const assignBlock = raw.match(/ASSIGNMENTS:\s*([\s\S]*?)$/i)?.[1] ?? ""
+  for (const line of assignBlock.split("\n")) {
+    const m = line.match(/^Q(\d+):\s*(\d+)/i)
+    if (m) assignMap[parseInt(m[1])] = parseInt(m[2])
+  }
+
+  if (Object.keys(sectionTitles).length === 0) {
+    return NextResponse.json({ error: "AI returned invalid response" }, { status: 500 })
+  }
+
+  // Group question UUIDs by section number
+  const sectionGroups: Record<number, string[]> = {}
+  for (let i = 1; i <= totalQ; i++) {
+    const secNum = assignMap[i]
+    if (!secNum || !sectionTitles[secNum]) continue
+    if (!sectionGroups[secNum]) sectionGroups[secNum] = []
+    sectionGroups[secNum].push(qIndexMap[`Q${i}`])
+  }
+
+  // Any questions the AI missed → last section as fallback
+  const lastSecNum = Math.max(...Object.keys(sectionTitles).map(Number))
+  for (let i = 1; i <= totalQ; i++) {
+    const secNum = assignMap[i]
+    if (!secNum || !sectionTitles[secNum]) {
+      if (!sectionGroups[lastSecNum]) sectionGroups[lastSecNum] = []
+      sectionGroups[lastSecNum].push(qIndexMap[`Q${i}`])
     }
   }
+
+  const sections = Object.keys(sectionTitles)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .filter(num => (sectionGroups[num]?.length ?? 0) > 0)
+    .map((num, idx) => ({
+      title: sectionTitles[num],
+      description: "",
+      order_index: idx,
+      question_ids: sectionGroups[num],
+    }))
 
   // Upsert — replace existing analysis if re-run
   const { data, error } = await db

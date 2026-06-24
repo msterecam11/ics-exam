@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -33,32 +34,116 @@ export async function GET(req: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Attach progress %
+    // Compute real-time progress per student for this course
     const studentIds = (data ?? []).map((e: any) => e.lms_students?.id).filter(Boolean)
-    let progressMap: Record<string, number> = {}
-    if (studentIds.length) {
-      const { data: prog } = await db
-        .from("lms_progress")
-        .select("student_id, status")
-        .eq("course_id", courseId)
-        .in("student_id", studentIds)
 
-      const totals: Record<string, number>    = {}
-      const done:   Record<string, number>    = {}
-      for (const row of prog ?? []) {
-        totals[row.student_id] = (totals[row.student_id] ?? 0) + 1
-        if (row.status === "completed")
-          done[row.student_id] = (done[row.student_id] ?? 0) + 1
+    // Fetch modules for this course
+    const { data: modulesRows } = await db
+      .from("lms_modules")
+      .select("id, course_id, module_type")
+      .eq("course_id", courseId)
+
+    const moduleIds = (modulesRows ?? []).map((m: any) => m.id)
+
+    // Fetch packages per module
+    const pkgIdsByModuleId: Record<string, string> = {}
+    const allPkgIds: string[] = []
+    if (moduleIds.length) {
+      const { data: pkgs } = await db.from("lms_packages").select("id, module_id").in("module_id", moduleIds)
+      for (const p of pkgs ?? []) { pkgIdsByModuleId[(p as any).module_id] = (p as any).id; allPkgIds.push((p as any).id) }
+    }
+
+    // Package item counts
+    const pkgItemCountById: Record<string, number> = {}
+    if (allPkgIds.length) {
+      const { data: pkgItems } = await db.from("lms_package_items").select("package_id").in("package_id", allPkgIds)
+      for (const item of pkgItems ?? [])
+        pkgItemCountById[(item as any).package_id] = (pkgItemCountById[(item as any).package_id] ?? 0) + 1
+    }
+
+    // Content items per module (mandatory only)
+    const contentItemsByModule: Record<string, string[]> = {}
+    if (moduleIds.length) {
+      const { data: cis } = await db.from("lms_content_items").select("id, module_id, is_mandatory").in("module_id", moduleIds)
+      for (const ci of cis ?? []) {
+        if (!(ci as any).is_mandatory) continue
+        const mid = (ci as any).module_id
+        if (!contentItemsByModule[mid]) contentItemsByModule[mid] = []
+        contentItemsByModule[mid].push((ci as any).id)
       }
-      for (const sid of studentIds)
-        progressMap[sid] = totals[sid]
-          ? Math.round((done[sid] ?? 0) / totals[sid] * 100)
-          : 0
+    }
+
+    // Exam modules — per student, track who passed
+    const examModuleIds = (modulesRows ?? [])
+      .filter((m: any) => m.module_type === "final_exam")
+      .map((m: any) => m.id)
+    const examPassedByStudent: Record<string, Set<string>> = {}
+    if (examModuleIds.length && studentIds.length) {
+      const { data: passedExams } = await db.from("lms_module_attempts")
+        .select("student_id, module_id")
+        .in("module_id", examModuleIds)
+        .in("student_id", studentIds)
+        .eq("passed", true)
+      for (const a of passedExams ?? []) {
+        const sid = (a as any).student_id
+        if (!examPassedByStudent[sid]) examPassedByStudent[sid] = new Set()
+        examPassedByStudent[sid].add((a as any).module_id)
+      }
+    }
+
+    // Per-student progress
+    const progressPctMap: Record<string, number> = {}
+    if (studentIds.length && moduleIds.length) {
+      const [pkgProgRes, contentProgRes] = await Promise.all([
+        allPkgIds.length
+          ? db.from("lms_package_progress").select("student_id, module_id, completed_items")
+              .in("student_id", studentIds).in("package_id", allPkgIds)
+          : Promise.resolve({ data: [] }),
+        db.from("lms_progress").select("student_id, content_item_id, status")
+          .in("student_id", studentIds).in("module_id", moduleIds),
+      ])
+
+      // Index by student
+      const pkgProgByStudentModule: Record<string, Record<string, any>> = {}
+      for (const pp of pkgProgRes.data ?? []) {
+        const sid = (pp as any).student_id
+        if (!pkgProgByStudentModule[sid]) pkgProgByStudentModule[sid] = {}
+        pkgProgByStudentModule[sid][(pp as any).module_id] = pp
+      }
+      const contentProgByStudent: Record<string, Record<string, string>> = {}
+      for (const cp of contentProgRes.data ?? []) {
+        const sid = (cp as any).student_id
+        if (!contentProgByStudent[sid]) contentProgByStudent[sid] = {}
+        contentProgByStudent[sid][(cp as any).content_item_id] = (cp as any).status
+      }
+
+      const mods = modulesRows ?? []
+      for (const sid of studentIds) {
+        if (!mods.length) { progressPctMap[sid] = 0; continue }
+        let sumPct = 0
+        for (const mod of mods) {
+          const pkgId = pkgIdsByModuleId[(mod as any).id]
+          if (pkgId) {
+            const total     = pkgItemCountById[pkgId] ?? 0
+            const pkgProg   = pkgProgByStudentModule[sid]?.[(mod as any).id]
+            const completed = pkgProg && Array.isArray(pkgProg.completed_items) ? pkgProg.completed_items.length : 0
+            sumPct += total > 0 ? (completed / total) * 100 : 0
+          } else if (examModuleIds.includes((mod as any).id)) {
+            sumPct += examPassedByStudent[sid]?.has((mod as any).id) ? 100 : 0
+          } else {
+            const items     = contentItemsByModule[(mod as any).id] ?? []
+            const cpMap     = contentProgByStudent[sid] ?? {}
+            const completed = items.filter(id => cpMap[id] === "completed").length
+            sumPct += items.length > 0 ? (completed / items.length) * 100 : 0
+          }
+        }
+        progressPctMap[sid] = Math.round(sumPct / mods.length)
+      }
     }
 
     const enriched = (data ?? []).map((e: any) => ({
       ...e,
-      progress_pct: progressMap[e.lms_students?.id] ?? 0,
+      progress_pct: progressPctMap[e.lms_students?.id] ?? 0,
     }))
     return NextResponse.json(enriched)
   }
@@ -126,6 +211,34 @@ export async function POST(req: Request) {
     .select()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Send enrollment emails (fire & forget — don't block response)
+  const sendEmails = body.send_email !== false  // default true
+  if (sendEmails && (data?.length ?? 0) > 0) {
+    const { data: courseRow } = await db
+      .from("lms_courses")
+      .select("title")
+      .eq("id", course_id)
+      .single()
+
+    const { data: students } = await db
+      .from("lms_students")
+      .select("id, name, email")
+      .in("id", student_ids)
+
+    const courseTitle = courseRow?.title ?? "your course"
+    for (const student of students ?? []) {
+      if (!student.email) continue
+      const { subject, html } = buildEnrollmentEmail({
+        studentName: student.name,
+        courseTitle,
+        courseId:    course_id,
+      })
+      sendEmail({ type: "enrollment", to: student.email, subject, html,
+        studentId: student.id, courseId: course_id }).catch(() => {})
+    }
+  }
+
   return NextResponse.json({ enrolled: data?.length ?? 0 }, { status: 201 })
 }
 

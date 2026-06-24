@@ -18,14 +18,28 @@ const scriptSrc = isDev
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://challenges.cloudflare.com"
   : "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com"
 
+const storageSrc = supabaseHost ? `https://${supabaseHost}` : ""
+
 const csp = [
   "default-src 'self'",
   scriptSrc,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://api.qrserver.com",
+  // Images: allow Supabase storage, qrserver
+  ["img-src 'self' data: blob:", "https://api.qrserver.com", storageSrc].filter(Boolean).join(" "),
   "font-src 'self'",
-  `connect-src ${connectSrc} https://api.qrserver.com`,
-  "frame-src https://challenges.cloudflare.com",
+  `connect-src ${connectSrc} https://api.qrserver.com https://www.youtube.com`,
+  // Frames: Supabase storage (PDFs), YouTube, Vimeo, Office Online, Google Docs
+  [
+    "frame-src 'self'",
+    "https://challenges.cloudflare.com",
+    storageSrc,
+    "https://www.youtube.com",
+    "https://player.vimeo.com",
+    "https://view.officeapps.live.com",
+    "https://docs.google.com",
+  ].filter(Boolean).join(" "),
+  // Media: Supabase storage for <video>/<audio>
+  ["media-src 'self' blob:", storageSrc].filter(Boolean).join(" "),
   "frame-ancestors 'none'",
   "form-action 'self'",
   "base-uri 'self'",
@@ -34,6 +48,14 @@ const csp = [
 const nextConfig: NextConfig = {
   // Keep Puppeteer out of the webpack bundle — it uses native binaries
   serverExternalPackages: ["puppeteer"],
+
+  images: {
+    remotePatterns: [
+      ...(supabaseHost
+        ? [{ protocol: "https" as const, hostname: supabaseHost }]
+        : []),
+    ],
+  },
 
   async headers() {
     return [

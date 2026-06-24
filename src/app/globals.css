@@ -73,6 +73,10 @@
   --radius-xl: calc(var(--radius) * 1.4);
 }
 
+/* Hide scrollbar cross-browser while keeping scroll functionality */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 :root {
   /* ICS Aviation primary = dark blue */
   --background: oklch(0.98 0 0);
@@ -164,4 +168,53 @@
 }
 .timer-warning {
   animation: timer-warning 1s ease-in-out infinite;
+}
+
+/* ── Rich text editor (TipTap) ─────────────────────────────────── */
+.rich-editor .ProseMirror,
+.rich-content {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  color: #1e293b;
+  outline: none;
+  min-height: 100%;
+  padding: 2rem 2.5rem;
+}
+.rich-editor .ProseMirror { padding: 2rem 2.5rem; }
+
+/* Headings */
+.rich-editor .ProseMirror h1, .rich-content h1 { font-size: 2rem;   font-weight: 700; line-height: 1.25; margin: 1.5rem 0 0.75rem; color: #0f172a; }
+.rich-editor .ProseMirror h2, .rich-content h2 { font-size: 1.5rem;  font-weight: 700; line-height: 1.3;  margin: 1.25rem 0 0.6rem; color: #1e293b; }
+.rich-editor .ProseMirror h3, .rich-content h3 { font-size: 1.25rem; font-weight: 600; line-height: 1.4;  margin: 1rem 0 0.5rem;   color: #1e293b; }
+.rich-editor .ProseMirror h4, .rich-content h4 { font-size: 1.1rem;  font-weight: 600; line-height: 1.4;  margin: 0.75rem 0 0.4rem; color: #334155; }
+
+/* Paragraphs & spacing */
+.rich-editor .ProseMirror p, .rich-content p { margin: 0 0 0.75rem; }
+.rich-editor .ProseMirror p:last-child, .rich-content p:last-child { margin-bottom: 0; }
+
+/* Lists */
+.rich-editor .ProseMirror ul, .rich-content ul { list-style: disc;    padding-left: 1.5rem; margin: 0.5rem 0 0.75rem; }
+.rich-editor .ProseMirror ol, .rich-content ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0 0.75rem; }
+.rich-editor .ProseMirror li, .rich-content li { margin-bottom: 0.25rem; }
+
+/* Horizontal rule */
+.rich-editor .ProseMirror hr, .rich-content hr { border: none; border-top: 2px solid #e2e8f0; margin: 1.5rem 0; }
+
+/* Images */
+.rich-editor .ProseMirror img, .rich-content img { max-width: 100%; border-radius: 0.5rem; margin: 0.75rem 0; }
+
+/* Tables */
+.rich-editor .ProseMirror table, .rich-content table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+.rich-editor .ProseMirror th, .rich-content th { background: #f1f5f9; font-weight: 600; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; text-align: left; }
+.rich-editor .ProseMirror td, .rich-content td { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; }
+.rich-editor .ProseMirror tr:nth-child(even) td { background: #f8fafc; }
+
+/* Placeholder */
+.rich-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
 }

@@ -15,7 +15,6 @@ export type StudentSession = {
   email:      string
   language:   string
   avatar_url: string | null
-  qr_code:    string
 }
 
 // ── Hash token for storage ────────────────────────────────────
@@ -75,7 +74,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 
   const { data: student } = await db
     .from("lms_students")
-    .select("id, name, email, language, avatar_url, qr_code")
+    .select("id, name, email, language, avatar_url")
     .eq("id", session.student_id)
     .single()
 
@@ -87,7 +86,6 @@ export async function getStudentSession(): Promise<StudentSession | null> {
     email:      student.email,
     language:   student.language,
     avatar_url: student.avatar_url,
-    qr_code:    student.qr_code,
   }
 }
 

@@ -594,6 +594,45 @@ export async function sendAssessorCredentialsEmail(input: AssessorCredentialsEma
   }
 }
 
+// ─── Generic send-mail helper (reusable by any module) ───────────────────────
+// Sends an email FROM any mailbox the Azure app has Mail.Send permission on.
+// The existing MICROSOFT_CLIENT_ID / TENANT / SECRET app already has this
+// permission (used for alep@ics-aviation.com).  Just pass a different fromEmail
+// to send from lms@ics-aviation.com or any other shared mailbox.
+
+export async function sendGraphMailAs(opts: {
+  fromEmail:   string   // e.g. "lms@ics-aviation.com"
+  toEmail:     string
+  toName?:     string
+  subject:     string
+  html:        string
+}): Promise<void> {
+  const token = await getAccessToken()
+
+  const res = await fetch(`${GRAPH_BASE}/users/${opts.fromEmail}/sendMail`, {
+    method:  "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject: opts.subject,
+        body:    { contentType: "HTML", content: opts.html },
+        toRecipients: [{
+          emailAddress: { address: opts.toEmail, name: opts.toName ?? opts.toEmail },
+        }],
+      },
+      saveToSentItems: true,
+    }),
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`MS Graph sendMail error: ${data.error?.message ?? res.status}`)
+  }
+}
+
 // ─── Build booking event body ─────────────────────────────────────────────────
 
 export function buildBookingEventBody(opts: {

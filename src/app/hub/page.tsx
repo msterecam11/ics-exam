@@ -15,5 +15,5 @@ export default async function HubPage() {
   const email = user?.email ?? ""
   const initial = name[0]?.toUpperCase() ?? "A"
 
-  return <HubPortal userName={name} userEmail={email} userInitial={initial} />
+  return <HubPortal userName={name} userEmail={email} userInitial={initial} userRole={user?.role ?? ""} />
 }

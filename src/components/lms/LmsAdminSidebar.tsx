@@ -13,6 +13,10 @@ import {
   LayoutGrid,
   FolderOpen,
   CalendarDays,
+  HelpCircle,
+  Settings,
+  Route,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -20,11 +24,15 @@ import { Badge } from "@/components/ui/badge"
 const navItems = [
   { href: "/lms-admin",          label: "Dashboard",  icon: LayoutDashboard, exact: true },
   { href: "/lms-admin/courses",  label: "Courses",    icon: BookOpen },
-  { href: "/lms-admin/students", label: "Students",   icon: Users },
-  { href: "/lms-admin/cohorts",  label: "Cohorts",    icon: GraduationCap },
-  { href: "/lms-admin/sessions", label: "Live Sessions", icon: CalendarDays },
-  { href: "/lms-admin/reports",  label: "Reports",    icon: BarChart3 },
-  { href: "/lms-admin/library",  label: "Library",    icon: FolderOpen },
+  { href: "/lms-admin/students",  label: "Students",        icon: Users },
+  { href: "/lms-admin/progress",  label: "Student Progress", icon: TrendingUp },
+  { href: "/lms-admin/cohorts",        label: "Cohorts",        icon: GraduationCap },
+  { href: "/lms-admin/learning-paths", label: "Learning Paths", icon: Route },
+  { href: "/lms-admin/sessions",       label: "Live Sessions",  icon: CalendarDays },
+  { href: "/lms-admin/questions", label: "Question Bank",   icon: HelpCircle     },
+  { href: "/lms-admin/reports",   label: "Reports",         icon: BarChart3  },
+  { href: "/lms-admin/library",   label: "Library",         icon: FolderOpen },
+  { href: "/lms-admin/settings",  label: "Settings",        icon: Settings   },
 ]
 
 interface Props {

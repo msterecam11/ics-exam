@@ -95,10 +95,11 @@ function renderAnswer(answer: any) {
 interface Props {
   answer: any
   index: number
-  onScoreUpdate: (answerId: string, newScore: number, newTotal: number, passed: boolean) => void
+  onScoreUpdate?: (answerId: string, newScore: number, newTotal: number, passed: boolean) => void
+  readOnly?: boolean
 }
 
-export default function AnswerCard({ answer, index, onScoreUpdate }: Props) {
+export default function AnswerCard({ answer, index, onScoreUpdate, readOnly = false }: Props) {
   const q = answer.questions
   const maxScore = q?.score ?? 0
 
@@ -135,7 +136,7 @@ export default function AnswerCard({ answer, index, onScoreUpdate }: Props) {
     const data = await res.json()
     setScore(data.score_achieved)
     setEditing(false)
-    onScoreUpdate(answer.id, data.score_achieved, data.new_total, data.passed)
+    onScoreUpdate?.(answer.id, data.score_achieved, data.new_total, data.passed)
     toast.success("Score updated")
   }
 
@@ -179,9 +180,11 @@ export default function AnswerCard({ answer, index, onScoreUpdate }: Props) {
                 <p className={`text-base font-bold ${scoreColor}`}>
                   {fmtPts(score)} <span className="text-xs font-normal text-muted-foreground">/ {fmtPts(maxScore)}</span>
                 </p>
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={startEdit} title="Override score">
-                  <Pencil className="h-3 w-3" />
-                </Button>
+                {!readOnly && (
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={startEdit} title="Override score">
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             )}
           </div>

@@ -21,6 +21,13 @@ export async function GET(req: Request) {
     .select(`
       id, course_id, title, description, delivery_type, order_index,
       estimated_duration, prerequisite_module_id, min_attendance_pct, created_at,
+      module_type, content_body, web_url, library_file_id, downloadable,
+      questions, activity_settings,
+      assignment_brief_html, assignment_rubric, assignment_submission_types,
+      assignment_due_date, assignment_max_attempts,
+      completion_method, completion_time_minutes, completion_check,
+      is_mandatory, lock_until_previous, available_from, available_until, show_in_progress,
+      library_file:lms_library_files(id, name, original_name, mime_type, file_type, size_bytes, public_url),
       lms_content_items(id, title, type, order_index, download_allowed, is_mandatory, completion_rule, content)
     `)
     .eq("course_id", courseId)
@@ -40,10 +47,22 @@ export async function POST(req: Request) {
   const {
     course_id, title, description, delivery_type, order_index,
     estimated_duration, prerequisite_module_id, min_attendance_pct,
+    module_type,
   } = body
 
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
   if (!title?.trim()) return NextResponse.json({ error: "title required" }, { status: 400 })
+
+  // Only one final_exam allowed per course
+  if (module_type === "final_exam") {
+    const { count } = await db
+      .from("lms_modules")
+      .select("*", { count: "exact", head: true })
+      .eq("course_id", course_id)
+      .eq("module_type", "final_exam")
+    if ((count ?? 0) > 0)
+      return NextResponse.json({ error: "A Final Exam already exists for this course" }, { status: 409 })
+  }
 
   // Auto-assign order_index if not provided
   let idx = order_index
@@ -66,6 +85,7 @@ export async function POST(req: Request) {
       estimated_duration:    estimated_duration || null,
       prerequisite_module_id: prerequisite_module_id || null,
       min_attendance_pct:    min_attendance_pct || null,
+      module_type:           module_type ?? "content",
     })
     .select()
     .single()
@@ -85,8 +105,23 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
   const allowed = [
+    // Basic
     "title", "description", "delivery_type", "order_index",
     "estimated_duration", "prerequisite_module_id", "min_attendance_pct",
+    "module_type",
+    // Content
+    "content_body", "web_url", "library_file_id", "downloadable",
+    // Activities
+    "questions", "activity_settings",
+    // Assignment
+    "assignment_brief_html", "assignment_rubric", "assignment_submission_types",
+    "assignment_due_date", "assignment_max_attempts",
+    // Completion
+    "completion_method", "completion_time_minutes", "completion_check",
+    // Access
+    "is_mandatory", "lock_until_previous", "available_from", "available_until",
+    // Display
+    "show_in_progress",
   ]
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {

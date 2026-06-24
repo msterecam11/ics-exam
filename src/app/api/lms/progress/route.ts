@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
+import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 
 // GET /api/lms/progress?course_id=xxx  — student's own progress for a course
 export async function GET(req: Request) {
@@ -74,46 +75,11 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Auto-complete enrollment if all mandatory items done
+  // Sync progress % and check course completion
   if (status === "completed") {
+    await syncEnrollmentProgress(student.id, course_id)
     await checkCourseCompletion(student.id, course_id)
   }
 
   return NextResponse.json(data)
-}
-
-// ── Check if student has completed all mandatory content ──────
-async function checkCourseCompletion(studentId: string, courseId: string) {
-  try {
-    // Count mandatory content items in course
-    const { data: items } = await db
-      .from("lms_content_items")
-      .select("id, lms_modules!inner(course_id)")
-      .eq("lms_modules.course_id", courseId)
-      .eq("is_mandatory", true)
-
-    const mandatoryIds = (items ?? []).map((i: any) => i.id)
-    if (!mandatoryIds.length) return
-
-    // Count completed ones
-    const { count: doneCount } = await db
-      .from("lms_progress")
-      .select("*", { count: "exact", head: true })
-      .eq("student_id", studentId)
-      .eq("course_id", courseId)
-      .eq("status", "completed")
-      .in("content_item_id", mandatoryIds)
-
-    if ((doneCount ?? 0) >= mandatoryIds.length) {
-      // Mark enrollment as completed
-      await db
-        .from("lms_enrollments")
-        .update({ status: "completed", completed_at: new Date().toISOString() })
-        .eq("student_id", studentId)
-        .eq("course_id", courseId)
-        .eq("status", "active")
-    }
-  } catch (_) {
-    // Non-critical — don't fail the progress save
-  }
 }

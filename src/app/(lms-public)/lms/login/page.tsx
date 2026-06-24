@@ -30,22 +30,18 @@ export default function LmsLoginPage() {
     setLoading(false)
 
     if (!res.ok) { setError(data.error ?? "Login failed"); return }
-    router.push("/lms/dashboard")
-    router.refresh()
+    window.location.href = "/lms/dashboard"
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1B4F8A] via-[#1a4578] to-[#0f2d50] flex items-center justify-center p-4">
-      {/* Background decoration */}
       <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-10 pointer-events-none"
         style={{ background: "radial-gradient(circle, #60a5fa, transparent)", transform: "translate(30%, -30%)" }} />
       <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-10 pointer-events-none"
         style={{ background: "radial-gradient(circle, #93c5fd, transparent)", transform: "translate(-30%, 30%)" }} />
 
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="bg-[#1B4F8A] px-8 py-8 text-center">
             <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36}
               className="object-contain mx-auto mb-4" />
@@ -53,7 +49,6 @@ export default function LmsLoginPage() {
             <p className="text-white/60 text-sm mt-1">Sign in to access your courses</p>
           </div>
 
-          {/* Form */}
           <div className="px-8 py-8">
             <form onSubmit={submit} className="space-y-5">
               <div className="space-y-2">

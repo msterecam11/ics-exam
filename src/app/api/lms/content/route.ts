@@ -6,7 +6,7 @@ function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
 }
 
-const VALID_TYPES = ["video", "ppt", "pdf", "text", "image", "link", "steps", "quiz", "assignment"] as const
+const VALID_TYPES = ["video", "ppt", "pdf", "text", "image", "link", "steps", "quiz", "progress_test", "final_exam", "assignment"] as const
 type ContentType = typeof VALID_TYPES[number]
 
 // GET /api/lms/content?module_id=xxx
