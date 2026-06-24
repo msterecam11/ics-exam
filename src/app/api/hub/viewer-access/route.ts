@@ -15,12 +15,12 @@ const AssignSchema = z.object({
   resource_type: z.string().min(1).max(50),
   resource_id:   z.string().uuid(),
   label:         z.string().max(255).optional(),
-  permissions:   z.record(z.boolean()).default({}),
+  permissions:   z.record(z.string(), z.boolean()).default({}),
 })
 
 const UpdatePermSchema = z.object({
   id:          z.string().uuid(),
-  permissions: z.record(z.boolean()),
+  permissions: z.record(z.string(), z.boolean()),
 })
 
 // ── GET — list access rows ──────────────────────────────────────────────────
