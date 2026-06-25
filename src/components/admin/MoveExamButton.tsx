@@ -74,7 +74,7 @@ export default function MoveExamButton({ examId, currentCourseId }: Props) {
           </div>
         ) : (
           <div className="space-y-4 mt-1">
-            <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+            <Select value={selectedCourseId} onValueChange={v => { if (v) setSelectedCourseId(v) }}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a course" />
               </SelectTrigger>
