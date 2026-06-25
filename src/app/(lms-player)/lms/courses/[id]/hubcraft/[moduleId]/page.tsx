@@ -1,4 +1,4 @@
-import { getStudentSession } from "@/lib/lms-auth"
+﻿import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
@@ -6,7 +6,7 @@ import Image from "next/image"
 import { ArrowLeft, Download, File, BookOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// ── HubCraft block types ──────────────────────────────────────
+// â”€â”€ HubCraft block types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface HCBlock {
   id: string; type: string; html?: string
   fileId?: string; fileName?: string; fileUrl?: string; fileMime?: string
@@ -116,7 +116,7 @@ function BlockRenderer({ block }: { block: HCBlock }) {
       const style = CALLOUT_STYLES[block.color ?? "blue"] ?? CALLOUT_STYLES.blue
       return (
         <div className={cn("flex gap-3 p-4 rounded-xl border", style.bg, style.border)}>
-          <span className="text-xl shrink-0">{block.icon ?? "💡"}</span>
+          <span className="text-xl shrink-0">{block.icon ?? "ðŸ’¡"}</span>
           <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{block.html}</p>
         </div>
       )
@@ -128,7 +128,7 @@ function BlockRenderer({ block }: { block: HCBlock }) {
   }
 }
 
-// ── Page ─────────────────────────────────────────────────────
+// â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default async function HubCraftViewerPage({
   params,
 }: {
@@ -180,7 +180,7 @@ export default async function HubCraftViewerPage({
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <Image src="/logo/logo-white.png" alt="ICS" width={90} height={24} className="object-contain" />
-          <span className="text-white/40 text-sm hidden sm:block">
+          <span className="text-white/60 text-sm truncate">
             / {course?.title} / {module.title}
           </span>
         </div>
@@ -222,3 +222,5 @@ export default async function HubCraftViewerPage({
     </div>
   )
 }
+
+

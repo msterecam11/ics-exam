@@ -1,4 +1,4 @@
-import { getStudentSession } from "@/lib/lms-auth"
+﻿import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
@@ -70,7 +70,7 @@ export default async function AssignmentPage({
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <Image src="/logo/logo-white.png" alt="ICS" width={90} height={24} className="object-contain" />
-          <span className="text-white/40 text-sm hidden sm:block">
+          <span className="text-white/60 text-sm truncate">
             / {course?.title} / {module.title}
           </span>
         </div>
@@ -81,7 +81,7 @@ export default async function AssignmentPage({
           {/* Title */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-xs text-green-600 font-semibold uppercase tracking-wider mb-1">
-              📤 Assignment
+              ðŸ“¤ Assignment
             </div>
             <h1 className="text-2xl font-bold text-slate-900">{module.title}</h1>
             {module.description && (
@@ -111,3 +111,4 @@ export default async function AssignmentPage({
     </div>
   )
 }
+

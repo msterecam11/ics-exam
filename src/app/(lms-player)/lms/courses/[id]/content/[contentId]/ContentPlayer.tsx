@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
@@ -35,7 +35,7 @@ interface Props {
   nextItem:       { id: string; title: string; type: string } | null
 }
 
-// ── Save progress debounced ───────────────────────────────────
+// â”€â”€ Save progress debounced â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function useSaveProgress(
   courseId: string, item: ContentItem, moduleId: string
 ) {
@@ -68,7 +68,7 @@ function useSaveProgress(
   return save
 }
 
-// ── Video Player ──────────────────────────────────────────────
+// â”€â”€ Video Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function VideoPlayer({
   url, resumeSecond, onProgress, onComplete, downloadAllowed, studentName,
 }: {
@@ -121,7 +121,7 @@ function VideoPlayer({
   )
 }
 
-// ── PPT / Slide Player ────────────────────────────────────────
+// â”€â”€ PPT / Slide Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PptPlayer({
   url, slideCount, resumeSlide, onProgress, onComplete, downloadAllowed, studentName,
 }: {
@@ -178,7 +178,7 @@ function PptPlayer({
         </Button>
         <span className="text-sm text-slate-500">
           Slide {slide} / {total}
-          <span className="mx-1 text-slate-300">·</span>
+          <span className="mx-1 text-slate-300">Â·</span>
           <button onClick={() => go(total)} className="text-xs text-[#1B4F8A] hover:underline">Jump to end</button>
         </span>
         <Button variant="outline" size="sm" onClick={() => go(slide + 1)} disabled={slide >= total}>
@@ -189,7 +189,7 @@ function PptPlayer({
   )
 }
 
-// ── PDF Viewer ────────────────────────────────────────────────
+// â”€â”€ PDF Viewer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PdfViewer({
   url, pageCount, resumePage, onProgress, onComplete, downloadAllowed, studentName,
 }: {
@@ -251,7 +251,7 @@ function PdfViewer({
   )
 }
 
-// ── Text / Rich Content ───────────────────────────────────────
+// â”€â”€ Text / Rich Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TextContent({ html, onComplete }: { html: string; onComplete: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const [done, setDone] = useState(false)
@@ -278,7 +278,7 @@ function TextContent({ html, onComplete }: { html: string; onComplete: () => voi
   )
 }
 
-// ── Link / Embed ──────────────────────────────────────────────
+// â”€â”€ Link / Embed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LinkContent({ url, openInTab, onComplete }: { url: string; openInTab: boolean; onComplete: () => void }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-4">
@@ -297,7 +297,7 @@ function LinkContent({ url, openInTab, onComplete }: { url: string; openInTab: b
   )
 }
 
-// ── Steps ─────────────────────────────────────────────────────
+// â”€â”€ Steps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepsContent({
   steps, resumeStep, onProgress, onComplete,
 }: {
@@ -363,7 +363,7 @@ function StepsContent({
   )
 }
 
-// ── Final Exam Shell (anti-cheating wrapper) ──────────────────
+// â”€â”€ Final Exam Shell (anti-cheating wrapper) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FinalExamShell({ title, children }: { title: string; children: React.ReactNode }) {
   const [started, setStarted] = useState(false)
   const [tabWarn, setTabWarn] = useState(false)
@@ -416,7 +416,7 @@ function FinalExamShell({ title, children }: { title: string; children: React.Re
       <div className="max-w-2xl space-y-5">
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 space-y-4">
           <div className="flex items-center gap-3">
-            <span className="text-3xl">🏆</span>
+            <span className="text-3xl">ðŸ†</span>
             <div>
               <h2 className="text-xl font-bold text-slate-900">{title}</h2>
               <p className="text-sm text-amber-700 font-medium">Final Examination</p>
@@ -429,13 +429,13 @@ function FinalExamShell({ title, children }: { title: string; children: React.Re
           </div>
           <ul className="space-y-1.5 text-sm text-slate-600">
             {[
-              "Exam runs in fullscreen — exiting is recorded",
+              "Exam runs in fullscreen â€” exiting is recorded",
               "Tab switching is monitored and logged",
               "Copy, paste, and right-click are disabled",
               "Do not refresh or close this tab during the exam",
             ].map((r, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="text-[#1B4F8A] font-bold shrink-0 mt-0.5">›</span>{r}
+                <span className="text-[#1B4F8A] font-bold shrink-0 mt-0.5">â€º</span>{r}
               </li>
             ))}
           </ul>
@@ -466,7 +466,7 @@ function FinalExamShell({ title, children }: { title: string; children: React.Re
       {fsWarn && (
         <div className="bg-red-600 text-white text-sm font-medium text-center py-2 px-4 flex items-center justify-center gap-2 shrink-0">
           <AlertTriangle className="h-4 w-4" />
-          You exited fullscreen — this has been recorded.
+          You exited fullscreen â€” this has been recorded.
           <button onClick={() => document.documentElement.requestFullscreen?.()} className="underline ml-2 font-bold">
             Return to fullscreen
           </button>
@@ -485,7 +485,7 @@ function FinalExamShell({ title, children }: { title: string; children: React.Re
   )
 }
 
-// ── Quiz Player ───────────────────────────────────────────────
+// â”€â”€ Quiz Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type QuizState = "loading" | "ready" | "submitting" | "result" | "error"
 
 interface QuizQuestion {
@@ -649,11 +649,11 @@ function QuizPlayer({
             {result.pct}%
           </div>
           <h3 className={cn("text-2xl font-bold mb-1", result.passed ? "text-emerald-700" : "text-red-600")}>
-            {result.passed ? "Passed! 🎉" : "Not Passed"}
+            {result.passed ? "Passed! ðŸŽ‰" : "Not Passed"}
           </h3>
           <p className="text-slate-600">
             You scored {result.score} / {result.total_score} points
-            &nbsp;·&nbsp;Pass mark: {quiz?.pass_score}%
+            &nbsp;Â·&nbsp;Pass mark: {quiz?.pass_score}%
           </p>
 
           {!result.passed && quiz?.max_attempts && (
@@ -692,7 +692,7 @@ function QuizPlayer({
                           selected  ? "bg-red-50 text-red-600" :
                           "text-slate-500"
                         )}>
-                          {correct ? "✓" : selected ? "✗" : "○"} {c.text_en}
+                          {correct ? "âœ“" : selected ? "âœ—" : "â—‹"} {c.text_en}
                         </div>
                       )
                     })}
@@ -730,8 +730,8 @@ function QuizPlayer({
         <div>
           <h3 className="font-semibold text-slate-900">{quiz?.title}</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            {total} questions · Pass: {quiz?.pass_score}%
-            {quiz?.max_attempts && ` · ${quiz.max_attempts} attempt(s)`}
+            {total} questions Â· Pass: {quiz?.pass_score}%
+            {quiz?.max_attempts && ` Â· ${quiz.max_attempts} attempt(s)`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -740,7 +740,7 @@ function QuizPlayer({
               "font-mono text-sm font-bold px-3 py-1.5 rounded-lg",
               timeLeft < 60 ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-700"
             )}>
-              ⏱ {fmtTime(timeLeft)}
+              â± {fmtTime(timeLeft)}
             </div>
           )}
           <div className="text-xs text-slate-500">{answered}/{total} answered</div>
@@ -760,8 +760,8 @@ function QuizPlayer({
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
           Previous attempts: {attempts.map((a, i) => (
             <span key={a.id}>
-              {i > 0 && " · "}
-              {a.pct}% {a.passed ? "✓" : "✗"}
+              {i > 0 && " Â· "}
+              {a.pct}% {a.passed ? "âœ“" : "âœ—"}
             </span>
           ))}
           {quiz?.max_attempts && ` (${attempts.length}/${quiz.max_attempts} used)`}
@@ -780,7 +780,7 @@ function QuizPlayer({
               <div>
                 <p className="font-medium text-slate-900">{q.text_en}</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {isSingle ? "Single answer" : "Multiple answers"} · {q.score} pt{q.score !== 1 ? "s" : ""}
+                  {isSingle ? "Single answer" : "Multiple answers"} Â· {q.score} pt{q.score !== 1 ? "s" : ""}
                 </p>
               </div>
             </div>
@@ -805,7 +805,7 @@ function QuizPlayer({
                         ? "bg-[#1B4F8A] border-[#1B4F8A] text-white"
                         : "border-slate-300"
                     )}>
-                      {isSingle ? (selected ? "●" : "") : (selected ? "✓" : "")}
+                      {isSingle ? (selected ? "â—" : "") : (selected ? "âœ“" : "")}
                     </span>
                     {c.text_en}
                   </button>
@@ -822,7 +822,7 @@ function QuizPlayer({
           <p className="text-sm text-slate-500">
             {answered < total
               ? `${total - answered} question${total - answered !== 1 ? "s" : ""} unanswered`
-              : "All questions answered — ready to submit!"}
+              : "All questions answered â€” ready to submit!"}
           </p>
           <Button
             onClick={handleSubmit}
@@ -830,7 +830,7 @@ function QuizPlayer({
             className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2 shrink-0"
           >
             {state === "submitting"
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Submittingâ€¦</>
               : "Submit Quiz"}
           </Button>
         </div>
@@ -839,7 +839,7 @@ function QuizPlayer({
   )
 }
 
-// ── Assignment Player ─────────────────────────────────────────
+// â”€â”€ Assignment Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type AssignState = "loading" | "idle" | "submitting" | "submitted"
 
 function AssignmentPlayer({
@@ -918,7 +918,7 @@ function AssignmentPlayer({
     <div className="flex justify-center py-12"><Loader2 className="h-7 w-7 animate-spin text-[#1B4F8A]" /></div>
   )
 
-  // ── Graded result view ───────────────────────────────────────
+  // â”€â”€ Graded result view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (existing?.status === "graded" || existing?.status === "returned") {
     const pct = existing.max_score > 0 ? Math.round(existing.score / existing.max_score * 100) : null
     return (
@@ -932,13 +932,13 @@ function AssignmentPlayer({
               "w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shrink-0",
               pct !== null && pct >= 60 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
             )}>
-              {pct !== null ? `${pct}%` : "✓"}
+              {pct !== null ? `${pct}%` : "âœ“"}
             </div>
             <div>
               <p className="font-semibold text-slate-900">Assignment Graded</p>
               {existing.score !== null && (
                 <p className="text-sm text-slate-600">
-                  Score: {existing.score} / {existing.max_score ?? "—"} pts
+                  Score: {existing.score} / {existing.max_score ?? "â€”"} pts
                 </p>
               )}
               <p className="text-xs text-slate-400 mt-0.5">
@@ -972,7 +972,7 @@ function AssignmentPlayer({
     )
   }
 
-  // ── Submitted (awaiting grading) ─────────────────────────────
+  // â”€â”€ Submitted (awaiting grading) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (state === "submitted" && existing) {
     return (
       <div className="space-y-4">
@@ -1009,7 +1009,7 @@ function AssignmentPlayer({
     )
   }
 
-  // ── Submission form ──────────────────────────────────────────
+  // â”€â”€ Submission form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="space-y-4">
       {/* Instructions */}
@@ -1035,7 +1035,7 @@ function AssignmentPlayer({
             value={textInput}
             onChange={e => setTextInput(e.target.value)}
             rows={8}
-            placeholder="Write your answer here…"
+            placeholder="Write your answer hereâ€¦"
             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]/40"
           />
           <p className="text-xs text-slate-400 text-right">{textInput.length} characters</p>
@@ -1065,14 +1065,14 @@ function AssignmentPlayer({
         className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2"
       >
         {state === "submitting" || uploading
-          ? <><Loader2 className="h-4 w-4 animate-spin" /> {uploading ? "Uploading…" : "Submitting…"}</>
+          ? <><Loader2 className="h-4 w-4 animate-spin" /> {uploading ? "Uploadingâ€¦" : "Submittingâ€¦"}</>
           : <><CheckCircle2 className="h-4 w-4" /> Submit Assignment</>}
       </Button>
     </div>
   )
 }
 
-// ── Main ContentPlayer ────────────────────────────────────────
+// â”€â”€ Main ContentPlayer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function ContentPlayer({
   courseId, courseTitle, item, moduleTitle,
   studentId, studentName, resumePosition, resumeStatus, nextItem,
@@ -1131,7 +1131,7 @@ export default function ContentPlayer({
         }),
       })
       setCompleted(true)
-      toast.success("✅ Item completed!")
+      toast.success("âœ… Item completed!")
     } catch {
       toast.error("Failed to save progress")
     } finally {
@@ -1151,8 +1151,8 @@ export default function ContentPlayer({
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <Image src="/logo/logo-white.png" alt="ICS" width={80} height={22} className="object-contain shrink-0" />
-          <div className="flex-1 min-w-0 hidden sm:block">
-            <p className="text-xs text-white/50 truncate">{courseTitle} / {moduleTitle}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-white/50 truncate hidden sm:block">{courseTitle} / {moduleTitle}</p>
             <p className="text-sm font-medium truncate">{item.title}</p>
           </div>
           {completed && (
@@ -1261,12 +1261,12 @@ export default function ContentPlayer({
           />
         )}
 
-        {/* Quiz / Progress Test — standard QuizPlayer */}
+        {/* Quiz / Progress Test â€” standard QuizPlayer */}
         {(item.type === "quiz" || item.type === "progress_test") && content.quiz_id && (
           <>
             {item.type === "progress_test" && (
               <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                <span className="text-2xl">📋</span>
+                <span className="text-2xl">ðŸ“‹</span>
                 <div>
                   <p className="font-semibold text-blue-800 text-sm">Progress Test</p>
                   <p className="text-xs text-blue-600">Check your understanding before continuing</p>
@@ -1284,7 +1284,7 @@ export default function ContentPlayer({
           </>
         )}
 
-        {/* Final Exam — anti-cheating shell around QuizPlayer */}
+        {/* Final Exam â€” anti-cheating shell around QuizPlayer */}
         {item.type === "final_exam" && content.quiz_id && (
           <FinalExamShell title={item.title}>
             <QuizPlayer
@@ -1340,7 +1340,7 @@ export default function ContentPlayer({
           ) : (
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-slate-500">
-                {item.is_mandatory ? "Mandatory item" : "Optional item"} — mark complete when done.
+                {item.is_mandatory ? "Mandatory item" : "Optional item"} â€” mark complete when done.
               </p>
               <Button
                 onClick={onComplete}
@@ -1358,3 +1358,4 @@ export default function ContentPlayer({
     </div>
   )
 }
+
