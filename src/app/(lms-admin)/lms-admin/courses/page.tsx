@@ -189,12 +189,12 @@ export default function CoursesPage() {
     <div className="space-y-5">
 
       {/* ── Header ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage your LMS course catalogue</p>
         </div>
-        <Link href="/lms-admin/courses/new">
+        <Link href="/lms-admin/courses/new" className="shrink-0">
           <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
             <Plus className="h-4 w-4" /> New Course
           </Button>
@@ -202,7 +202,7 @@ export default function CoursesPage() {
       </div>
 
       {/* ── Status tabs ──────────────────────────────────────── */}
-      <div className="flex gap-0 border-b border-slate-200">
+      <div className="flex gap-0 border-b border-slate-200 overflow-x-auto scrollbar-none">
         {STATUS_TABS.map(tab => (
           <button key={tab.key} onClick={() => setStatusTab(tab.key)}
             className={cn("px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2",
@@ -265,8 +265,10 @@ export default function CoursesPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {/* Scrollable table area — scrolls horizontally on mobile */}
+          <div className="overflow-x-auto">
           {/* Table header */}
-          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
+          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] min-w-[820px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
             <span className="text-center">#</span>
             <button className="flex items-center gap-1 text-left hover:text-slate-800 transition-colors" onClick={() => toggleSort("title")}>
               Course <ArrowUpDown className="h-3 w-3 opacity-50" />
@@ -292,7 +294,7 @@ export default function CoursesPage() {
 
               return (
                 <div key={course.id}
-                  className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
+                  className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] min-w-[820px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
 
                   {/* # */}
                   <span className="text-xs text-slate-400 font-medium text-center">{idx + 1}</span>
@@ -412,6 +414,7 @@ export default function CoursesPage() {
             })}
           </div>
 
+          </div>{/* end overflow-x-auto */}
           {/* Footer */}
           <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
             <p className="text-xs text-slate-400">

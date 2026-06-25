@@ -349,19 +349,19 @@ export default function StudentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Students</h1>
           <p className="text-sm text-slate-500 mt-1">
             {pagination.total} student{pagination.total !== 1 ? "s" : ""} registered
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => setCsvOpen(true)}>
-            <Upload className="h-4 w-4" /> Import CSV
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" className="gap-2 text-xs sm:text-sm" onClick={() => setCsvOpen(true)}>
+            <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Import </span>CSV
           </Button>
-          <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Student
+          <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2 text-xs sm:text-sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add </span>Student
           </Button>
         </div>
       </div>
