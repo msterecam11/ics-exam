@@ -141,11 +141,11 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
 
       {/* Password */}
       <Card className="border-dashed">
-        <CardContent className="py-3 px-4 flex items-center gap-3">
-          <Lock className="h-4 w-4 text-muted-foreground" />
+        <CardContent className="py-3 px-4 flex flex-wrap items-center gap-2">
+          <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground">Exam password:</span>
           <code className="font-bold text-[#1B4F8A] tracking-widest text-base">{exam.password}</code>
-          <span className="text-xs text-muted-foreground ml-2">(give this to candidates)</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">(give this to candidates)</span>
         </CardContent>
       </Card>
 
