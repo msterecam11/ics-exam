@@ -161,7 +161,7 @@ export default function LmsStudentShell({
             >
               <Menu className="h-5 w-5" />
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[220px]">
+            <SheetContent side="left" className="p-0 w-[220px] bg-[#1B4F8A] border-0">
               <SidebarContent {...sidebarProps} />
             </SheetContent>
           </Sheet>

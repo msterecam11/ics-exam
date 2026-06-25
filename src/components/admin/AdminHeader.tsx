@@ -46,7 +46,7 @@ export default function AdminHeader({ user }: Props) {
           >
             <Menu className="h-5 w-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64">
+          <SheetContent side="left" className="p-0 w-64 bg-[#1B4F8A] border-0">
             <AdminSidebar user={user} inSheet />
           </SheetContent>
         </Sheet>

@@ -42,7 +42,7 @@ export default function InterviewHeader({ user }: Props) {
           <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" />}>
             <Menu className="h-5 w-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64">
+          <SheetContent side="left" className="p-0 w-64 bg-[#1B4F8A] border-0">
             <InterviewSidebar user={user} inSheet />
           </SheetContent>
         </Sheet>

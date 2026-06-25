@@ -42,7 +42,7 @@ export default function InterviewSidebar({ user, inSheet = false }: Props) {
   const navItems = isAssessor ? assessorNav : adminNav
 
   return (
-    <aside className={`${inSheet ? "flex" : "hidden md:flex"} flex-col w-64 bg-[#1B4F8A] text-white shrink-0`}>
+    <aside className={`${inSheet ? "flex h-full" : "hidden md:flex"} flex-col w-64 bg-[#1B4F8A] text-white shrink-0`}>
 
       {/* Logo + system label */}
       <div className="flex flex-col items-center justify-center px-6 py-5 border-b border-white/10 gap-1">
