@@ -205,7 +205,7 @@ export default function CoursesPage() {
       <div className="flex gap-0 border-b border-slate-200 overflow-x-auto scrollbar-none">
         {STATUS_TABS.map(tab => (
           <button key={tab.key} onClick={() => setStatusTab(tab.key)}
-            className={cn("px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2",
+            className={cn("px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0",
               statusTab === tab.key
                 ? "border-[#1B4F8A] text-[#1B4F8A]"
                 : "border-transparent text-slate-500 hover:text-slate-700")}>
@@ -219,20 +219,20 @@ export default function CoursesPage() {
       </div>
 
       {/* ── Toolbar ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48 max-w-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <Input placeholder="Search by title, code, or path…" value={search}
-            onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+            onChange={e => setSearch(e.target.value)} className="pl-9 h-9 w-full" />
           {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>}
         </div>
-        {/* Delivery filter */}
+        {/* Delivery filter + count */}
         <div className="flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-slate-400" />
-          <div className="flex gap-1">
+          <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <div className="flex gap-1 overflow-x-auto scrollbar-none">
             {DELIVERY_FILTERS.map(f => (
               <button key={f.key} onClick={() => setDeliveryFilter(f.key)}
-                className={cn("px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors",
+                className={cn("px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0",
                   deliveryFilter === f.key
                     ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
                     : "bg-white text-slate-600 border-slate-200 hover:border-slate-300")}>
@@ -240,8 +240,8 @@ export default function CoursesPage() {
               </button>
             ))}
           </div>
+          <p className="text-xs text-slate-400 ml-auto shrink-0">{filtered.length} course{filtered.length !== 1 ? "s" : ""}</p>
         </div>
-        <p className="text-xs text-slate-400 ml-auto">{filtered.length} course{filtered.length !== 1 ? "s" : ""}</p>
       </div>
 
       {/* ── Table ────────────────────────────────────────────── */}
