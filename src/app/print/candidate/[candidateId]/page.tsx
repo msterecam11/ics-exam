@@ -157,8 +157,8 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   const exam = (candidate as any).exams as any
   const sections = (((analysis?.sections ?? []) as any[])).sort((a: any, b: any) => a.order_index - b.order_index)
   const answerMap = new Map(answers.map((a: any) => [a.question_id, a]))
-  const totalPossible = answers.reduce((s: number, a: any) => s + ((a.questions as any)?.score ?? 0), 0)
-  const totalEarned = answers.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+  const totalPossible = Math.round(answers.reduce((s: number, a: any) => s + parseFloat((a.questions as any)?.score ?? 0), 0) * 10) / 10
+  const totalEarned   = Math.round(answers.reduce((s: number, a: any) => s + parseFloat(a.score_achieved ?? 0), 0) * 10) / 10
   const overallPct = (candidate as any).total_score ?? 0
 
   const sectionsWithData = sections.map((section: any, si: number) => {
@@ -166,10 +166,10 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
       .map((qid: string) => {
         const a = answerMap.get(qid); if (!a) return null
         const q = (a as any).questions
-        return { id: qid, text: q?.text ?? "", type: q?.type ?? "", score: q?.score ?? 0, scoreAchieved: (a as any).score_achieved ?? 0 }
+        return { id: qid, text: q?.text ?? "", type: q?.type ?? "", score: parseFloat(q?.score ?? 0), scoreAchieved: parseFloat((a as any).score_achieved ?? 0) }
       }).filter(Boolean)
-    const earned = questions.reduce((s: number, q: any) => s + q.scoreAchieved, 0)
-    const possible = questions.reduce((s: number, q: any) => s + q.score, 0)
+    const earned   = Math.round(questions.reduce((s: number, q: any) => s + q.scoreAchieved, 0) * 10) / 10
+    const possible = Math.round(questions.reduce((s: number, q: any) => s + q.score, 0) * 10) / 10
     const pct = possible > 0 ? (earned / possible) * 100 : 0
     const correct = questions.filter((q: any) => q.scoreAchieved >= q.score).length
     const partial = questions.filter((q: any) => q.scoreAchieved > 0 && q.scoreAchieved < q.score).length
@@ -229,7 +229,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
             <div className="flex items-center gap-10">
               <div className="text-center">
                 <p className="text-2xl font-bold text-white">
-                  {totalEarned.toFixed(1)}<span className="text-white/40 text-sm font-normal">/{totalPossible}</span>
+                  {totalEarned.toFixed(1)}<span className="text-white/40 text-sm font-normal">/{totalPossible.toFixed(1)}</span>
                 </p>
                 <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Points</p>
               </div>
@@ -286,7 +286,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                   [t("Course"), exam?.courses?.name ?? "—"],
                   [t("Group"), exam?.courses?.groups?.name ?? "—"],
                   ["Total Questions", `${answers.length}`],
-                  ["Total Points", `${totalPossible} pts`],
+                  ["Total Points", `${totalPossible.toFixed(1)} pts`],
                   ["Passing Score", `${exam?.passing_score}%`],
                   ["Your Score", `${overallPct.toFixed(1)}%`],
                   ["Result", (candidate as any).passed ? "✓ Passed" : "✗ Failed"],
@@ -323,7 +323,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Performance by Section</p>
                 {sectionsWithData.map((s: any) => (
                   <ScoreBar key={s.title} label={s.title} score={s.pct}
-                    detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible} pts`} />
+                    detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible.toFixed(1)} pts`} />
                 ))}
               </div>
             )}
@@ -412,7 +412,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                     { label: "Full Marks", val: section.correct, color: "bg-emerald-50 text-emerald-700" },
                     { label: "Partial", val: section.partial, color: "bg-amber-50 text-amber-700" },
                     { label: "Zero", val: section.zero, color: "bg-red-50 text-red-600" },
-                    { label: "Points", val: `${section.earned.toFixed(1)}/${section.possible}`, color: "bg-blue-50 text-blue-700" },
+                    { label: "Points", val: `${section.earned.toFixed(1)}/${section.possible.toFixed(1)}`, color: "bg-blue-50 text-blue-700" },
                   ].map(({ label, val, color }) => (
                     <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
                       <p className="text-xs font-bold">{val}</p>
@@ -440,7 +440,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                           </div>
                           <p className="flex-1 text-xs text-slate-600 leading-relaxed">{q.text}</p>
                           <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
-                            {q.scoreAchieved.toFixed(1)}<span className="text-slate-300 font-normal text-[10px]">/{q.score}</span>
+                            {q.scoreAchieved.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.score.toFixed(2)}</span>
                           </span>
                         </div>
                       )
