@@ -63,7 +63,7 @@ export default function LmsAdminSidebar({ user, inSheet = false }: Props) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className={`${inSheet ? "" : "flex-1"} px-3 py-4 space-y-0.5 overflow-y-auto`}>
         {navItems.map(({ href, label, icon: Icon, exact }) => {
           const active = exact ? pathname === href : (pathname === href || pathname.startsWith(href + "/"))
           return (

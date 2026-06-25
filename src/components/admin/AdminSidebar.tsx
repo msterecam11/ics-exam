@@ -46,7 +46,7 @@ export default function AdminSidebar({ user, inSheet = false }: Props) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className={`${inSheet ? "" : "flex-1"} px-3 py-4 space-y-1 overflow-y-auto`}>
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/")
           return (
