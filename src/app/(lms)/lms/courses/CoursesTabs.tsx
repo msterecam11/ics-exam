@@ -315,9 +315,9 @@ function CoursesTab({ enrollments }: { enrollments: EnrollmentRow[] }) {
   return (
     <div className="space-y-4">
       {/* Search + filter + sort bar */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         {/* Search */}
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
@@ -328,39 +328,42 @@ function CoursesTab({ enrollments }: { enrollments: EnrollmentRow[] }) {
           />
         </div>
 
-        {/* Filter */}
-        <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden text-xs font-medium">
-          {[
-            { key: "all",       label: `All (${enrollments.length})`  },
-            { key: "active",    label: `Active (${active})`           },
-            { key: "completed", label: `Done (${completed})`          },
-          ].map(f => (
-            <button key={f.key} onClick={() => setFilter(f.key as any)}
-              className={cn(
-                "px-3 py-2 transition-colors",
-                filter === f.key
-                  ? "bg-[#1B4F8A] text-white"
-                  : "text-slate-500 hover:bg-slate-50"
-              )}>
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {/* Filter + Sort — share one scrollable row on mobile */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none sm:contents">
+          {/* Filter */}
+          <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden text-xs font-medium shrink-0">
+            {[
+              { key: "all",       label: `All (${enrollments.length})`  },
+              { key: "active",    label: `Active (${active})`           },
+              { key: "completed", label: `Done (${completed})`          },
+            ].map(f => (
+              <button key={f.key} onClick={() => setFilter(f.key as any)}
+                className={cn(
+                  "px-3 py-2 transition-colors whitespace-nowrap",
+                  filter === f.key
+                    ? "bg-[#1B4F8A] text-white"
+                    : "text-slate-500 hover:bg-slate-50"
+                )}>
+                {f.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Sort */}
-        <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white overflow-hidden text-xs font-medium px-1">
-          <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 ml-1.5" />
-          {sortOptions.map(s => (
-            <button key={s.key} onClick={() => setSort(s.key)}
-              className={cn(
-                "px-2.5 py-2 transition-colors rounded-md",
-                sort === s.key
-                  ? "text-[#1B4F8A] font-semibold"
-                  : "text-slate-500 hover:bg-slate-50"
-              )}>
-              {s.label}
-            </button>
-          ))}
+          {/* Sort */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white overflow-hidden text-xs font-medium px-1 shrink-0">
+            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 ml-1.5" />
+            {sortOptions.map(s => (
+              <button key={s.key} onClick={() => setSort(s.key)}
+                className={cn(
+                  "px-2.5 py-2 transition-colors rounded-md whitespace-nowrap",
+                  sort === s.key
+                    ? "text-[#1B4F8A] font-semibold"
+                    : "text-slate-500 hover:bg-slate-50"
+                )}>
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
