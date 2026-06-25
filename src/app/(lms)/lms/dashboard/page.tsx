@@ -244,7 +244,7 @@ export default async function StudentDashboard() {
       ))}
 
       {/* ── Stat cards ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: "Enrolled",     value: (enrollments ?? []).length, icon: BookOpen,       color: "text-[#1B4F8A]",   bg: "bg-[#1B4F8A]/6",  border: "border-[#1B4F8A]/12", iconBg: "bg-[#1B4F8A]/10" },
           { label: "In Progress",  value: active.length,              icon: TrendingUp,     color: "text-amber-600",   bg: "bg-amber-50",      border: "border-amber-100",    iconBg: "bg-amber-100"    },
@@ -267,10 +267,10 @@ export default async function StudentDashboard() {
       </div>
 
       {/* ── Main grid ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
         {/* LEFT col (3/5) */}
-        <div className="col-span-3 space-y-5">
+        <div className="col-span-1 lg:col-span-3 space-y-5">
 
           {/* Resume CTA — if studying */}
           {resumeItem ? (
@@ -498,7 +498,7 @@ export default async function StudentDashboard() {
         </div>
 
         {/* RIGHT col (2/5) */}
-        <div className="col-span-2 space-y-5">
+        <div className="col-span-1 lg:col-span-2 space-y-5">
 
           {/* Streak / nudge */}
           <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-3">

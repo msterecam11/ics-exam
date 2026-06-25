@@ -5,9 +5,11 @@ import Link from "next/link"
 import Image from "next/image"
 import {
   LayoutDashboard, BookOpen, Calendar, ClipboardList,
-  Award, UserCircle, LogOut, Bell,
+  Award, UserCircle, LogOut, Bell, Menu,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
 
 const NAV = [
   { href: "/lms/dashboard",    label: "Dashboard",      icon: LayoutDashboard, badge: null },
@@ -23,6 +25,88 @@ interface Props {
   student: { name: string; email: string }
   upcomingSessions?: number
   pendingAssignments?: number
+}
+
+interface SidebarContentProps {
+  pathname: string
+  student: { name: string; email: string }
+  initials: string
+  badges: Record<string, number>
+  logout: () => void
+}
+
+function SidebarContent({ pathname, student, initials, badges, logout }: SidebarContentProps) {
+  return (
+    <div className="flex flex-col h-full w-full bg-[#1B4F8A] overflow-hidden">
+      {/* Brand */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/10 flex-shrink-0">
+        <Image
+          src="/logo/logo-white.png"
+          alt="ICS Aviation"
+          width={110}
+          height={30}
+          className="object-contain"
+        />
+        <p className="text-white/40 text-[10px] mt-1 font-medium tracking-wide">
+          Learning Portal
+        </p>
+      </div>
+
+      {/* Student identity */}
+      <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5 flex-shrink-0">
+        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-white text-[11px] font-medium truncate leading-tight">{student.name}</p>
+          <p className="text-white/45 text-[10px] truncate leading-tight">{student.email}</p>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+        {NAV.map(item => {
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/lms/dashboard" && pathname.startsWith(item.href))
+          const count = item.badge ? (badges[item.badge] ?? 0) : 0
+          const Icon = item.icon
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] transition-all",
+                isActive
+                  ? "bg-white/20 text-white font-medium"
+                  : "text-white/60 hover:text-white hover:bg-white/10"
+              )}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+              <span className="flex-1 truncate">{item.label}</span>
+              {count > 0 && (
+                <span className="bg-white/25 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none flex-shrink-0">
+                  {count}
+                </span>
+              )}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {/* Sign out */}
+      <div className="px-2 py-3 border-t border-white/10 flex-shrink-0">
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] text-white/60 hover:text-white hover:bg-white/10 transition-all"
+        >
+          <LogOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+          <span>Sign out</span>
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function LmsStudentShell({
@@ -55,91 +139,39 @@ export default function LmsStudentShell({
     window.location.href = "/lms/login"
   }
 
+  const sidebarProps = { pathname, student, initials, badges, logout }
+
   return (
     <div className="flex h-screen overflow-hidden">
 
-      {/* ── Sidebar ─────────────────────────────────────────── */}
-      <aside className="w-[220px] flex-shrink-0 bg-[#1B4F8A] flex flex-col overflow-hidden">
-
-        {/* Brand */}
-        <div className="px-4 pt-4 pb-3 border-b border-white/10">
-          <Image
-            src="/logo/logo-white.png"
-            alt="ICS Aviation"
-            width={110}
-            height={30}
-            className="object-contain"
-          />
-          <p className="text-white/40 text-[10px] mt-1 font-medium tracking-wide">
-            Learning Portal
-          </p>
-        </div>
-
-        {/* Student identity */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-white text-[11px] font-medium truncate leading-tight">{student.name}</p>
-            <p className="text-white/45 text-[10px] truncate leading-tight">{student.email}</p>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.map(item => {
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/lms/dashboard" && pathname.startsWith(item.href))
-            const count = item.badge ? (badges[item.badge] ?? 0) : 0
-            const Icon = item.icon
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] transition-all",
-                  isActive
-                    ? "bg-white/20 text-white font-medium"
-                    : "text-white/60 hover:text-white hover:bg-white/10"
-                )}
-              >
-                <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                <span className="flex-1 truncate">{item.label}</span>
-                {count > 0 && (
-                  <span className="bg-white/25 text-white text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none flex-shrink-0">
-                    {count}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* Sign out */}
-        <div className="px-2 py-3 border-t border-white/10">
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] text-white/60 hover:text-white hover:bg-white/10 transition-all"
-          >
-            <LogOut className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-            <span>Sign out</span>
-          </button>
-        </div>
+      {/* ── Desktop Sidebar ─────────────────────────────────────── */}
+      <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 overflow-hidden">
+        <SidebarContent {...sidebarProps} />
       </aside>
 
-      {/* ── Main area ───────────────────────────────────────── */}
+      {/* ── Main area ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Topbar */}
-        <header className="h-12 bg-white border-b border-slate-200 flex items-center px-6 flex-shrink-0 gap-4">
+        <header className="h-12 bg-white border-b border-slate-200 flex items-center px-3 md:px-6 flex-shrink-0 gap-3">
+          {/* Mobile hamburger */}
+          <Sheet>
+            <SheetTrigger
+              render={<Button variant="ghost" size="icon" className="md:hidden -ml-1 flex-shrink-0" />}
+            >
+              <Menu className="h-5 w-5" />
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-[220px]">
+              <SidebarContent {...sidebarProps} />
+            </SheetContent>
+          </Sheet>
+
           <span className="text-sm font-semibold text-slate-800 flex-1 truncate">
             {activeItem?.label ?? "ICS Learning Portal"}
           </span>
+
           <button
-            className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+            className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors flex-shrink-0"
             aria-label="Notifications"
           >
             <Bell className="h-4 w-4" />

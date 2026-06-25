@@ -174,7 +174,7 @@ function ExamsContent() {
           {exams.map((exam) => (
             <Card key={exam.id} className="hover:shadow-md transition-shadow">
               <CardContent className="py-4 px-5">
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-sm truncate">{exam.title}</h3>
@@ -186,16 +186,16 @@ function ExamsContent() {
                       {exam.courses?.groups?.name} → {exam.courses?.name}
                     </p>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatDuration(exam.duration_minutes)}</span>
                     <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.candidates?.length ?? 0}</span>
+                    <Link
+                      href={`/exams/${exam.id}`}
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 ml-auto sm:ml-0")}
+                    >
+                      <Settings className="h-3.5 w-3.5" /> Manage
+                    </Link>
                   </div>
-                  <Link
-                    href={`/exams/${exam.id}`}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
-                  >
-                    <Settings className="h-3.5 w-3.5" /> Manage
-                  </Link>
                 </div>
               </CardContent>
             </Card>
