@@ -63,6 +63,29 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   return NextResponse.json(data)
 }
 
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { id } = await params
+  const { course_id } = await req.json()
+  if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
+
+  const { data, error } = await db
+    .from("exams")
+    .update({ course_id })
+    .eq("id", id)
+    .select("id, title, course_id")
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { auditLog } = await import("@/lib/audit")
+  await auditLog(session, "exam.move", "exam", id, data?.title)
+
+  return NextResponse.json(data)
+}
+
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

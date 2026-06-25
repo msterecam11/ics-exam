@@ -14,6 +14,7 @@ import ExamStatusToggle from "@/components/admin/ExamStatusToggle"
 import AnalyzeExamButton from "@/components/admin/AnalyzeExamButton"
 import ExamEditModal from "@/components/admin/ExamEditModal"
 import DeleteExamButton from "@/components/admin/DeleteExamButton"
+import MoveExamButton from "@/components/admin/MoveExamButton"
 
 async function getExam(id: string) {
   const { data } = await db
@@ -106,6 +107,7 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
           {exam.description && <p className="text-sm mt-1">{exam.description}</p>}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <MoveExamButton examId={id} currentCourseId={(exam.courses as any)?.id} />
           <ExamEditModal exam={exam} />
           <AnalyzeExamButton
             examId={id}
