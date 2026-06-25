@@ -15,7 +15,7 @@ import {
   Layers, Video, Link2, PlusCircle, X, Settings,
   SkipForward, Eye, EyeOff, Clock, Target, Shield,
   ChevronDown, ChevronUp, Square, CheckSquare, Play,
-  Globe, Music, Database, Search, Check,
+  Globe, Music, Database, Search, Check, Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -950,6 +950,14 @@ export default function PackageEditor({
   const [webModal, setWebModal] = useState(false)
   const [webUrl,   setWebUrl]   = useState("")
 
+  // AI title analysis state
+  const [aiPanel,       setAiPanel]       = useState(false)
+  const [aiLoading,     setAiLoading]     = useState(false)
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    id: string; current_title: string; suggested_title: string; type: string
+  }[]>([])
+  const [aiSelected, setAiSelected] = useState<Set<string>>(new Set())
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   // ── Load ─────────────────────────────────────────────────────
@@ -1104,6 +1112,43 @@ export default function PackageEditor({
     setPicker({ open: false, mode: null })
   }
 
+  // ── AI title analysis ────────────────────────────────────────
+  async function runAiAnalysis() {
+    if (items.length === 0) { toast.error("Add content items first"); return }
+    setAiLoading(true)
+    setAiPanel(true)
+    setAiSuggestions([])
+    try {
+      const res = await fetch("/api/lms/packages/analyze-titles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_id: moduleId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Analysis failed")
+      const suggestions = (data.suggestions ?? []) as typeof aiSuggestions
+      setAiSuggestions(suggestions)
+      // Pre-select all that differ from current
+      setAiSelected(new Set(suggestions.filter(s => s.suggested_title !== s.current_title).map(s => s.id)))
+    } catch (e: any) {
+      toast.error(e.message ?? "AI analysis failed")
+      setAiPanel(false)
+    }
+    setAiLoading(false)
+  }
+
+  function applyAiSuggestions() {
+    const count = aiSelected.size
+    setItems(prev => prev.map(it => {
+      const s = aiSuggestions.find(sg => sg.id === it.id)
+      return s && aiSelected.has(it.id) ? { ...it, title: s.suggested_title } : it
+    }))
+    mark()
+    setAiPanel(false)
+    setAiSuggestions([])
+    toast.success(`Applied ${count} title${count !== 1 ? "s" : ""}`)
+  }
+
   // ── Save ─────────────────────────────────────────────────────
   async function save() {
     setSaving(true)
@@ -1254,6 +1299,20 @@ export default function PackageEditor({
           </button>
 
           {importing && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
+        </div>
+
+        {/* AI Analyze — pinned right */}
+        <div className="pl-2 pr-2 py-2 shrink-0 border-l border-slate-200 bg-white">
+          <button
+            onClick={runAiAnalysis}
+            disabled={aiLoading || items.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {aiLoading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Sparkles className="h-3.5 w-3.5" />}
+            AI Analyze
+          </button>
         </div>
 
         {/* Save — pinned right, never scrolls */}
@@ -1420,6 +1479,134 @@ export default function PackageEditor({
               <Button variant="outline" onClick={() => { setYtModal(false); setYtUrl("") }}>Cancel</Button>
               <Button onClick={handleInsertYoutube} disabled={!ytUrl.trim()}>Add Video</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI TITLE REVIEW PANEL ────────────────────────────────── */}
+      {aiPanel && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">AI Title Suggestions</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {aiLoading
+                      ? "Analyzing content… this may take 20–40 seconds"
+                      : `${aiSelected.size} of ${aiSuggestions.filter(s => s.suggested_title !== s.current_title).length} selected`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setAiPanel(false); setAiSuggestions([]) }}
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {aiLoading ? (
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                  <Loader2 className="h-10 w-10 animate-spin text-purple-300" />
+                  <div className="text-center">
+                    <p className="font-medium text-slate-700">Reading content…</p>
+                    <p className="text-xs text-slate-400 mt-1">PDFs are analyzed page by page</p>
+                  </div>
+                </div>
+              ) : aiSuggestions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <Sparkles className="h-10 w-10 mb-3 opacity-20" />
+                  <p className="text-sm">No suggestions — add content items first</p>
+                </div>
+              ) : (
+                <>
+                  <div className="px-6 py-2.5 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
+                    <span className="text-xs font-medium text-slate-500">{aiSuggestions.length} items analyzed</span>
+                    <button
+                      className="text-xs text-purple-600 hover:underline"
+                      onClick={() => {
+                        const changeable = aiSuggestions.filter(s => s.suggested_title !== s.current_title).map(s => s.id)
+                        const allSel = changeable.every(id => aiSelected.has(id))
+                        setAiSelected(allSel ? new Set() : new Set(changeable))
+                      }}
+                    >
+                      {aiSuggestions.filter(s => s.suggested_title !== s.current_title).every(s => aiSelected.has(s.id))
+                        ? "Deselect all" : "Select all"}
+                    </button>
+                  </div>
+
+                  {aiSuggestions.map((s, idx) => {
+                    const meta = TYPE_META[s.type as ItemType] ?? TYPE_META["text"]
+                    const Icon = meta.icon
+                    const changed = s.suggested_title !== s.current_title
+                    const selected = aiSelected.has(s.id)
+
+                    return (
+                      <div key={s.id} className={cn("px-6 py-3.5 flex items-start gap-3", selected && changed ? "bg-purple-50/40" : "")}>
+                        <div className={cn("w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5", meta.bg)}>
+                          <Icon className={cn("h-3.5 w-3.5", meta.color)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">
+                            {idx + 1}. {meta.label}
+                          </p>
+                          <p className="text-xs text-slate-400 line-through leading-relaxed">{s.current_title}</p>
+                          <p className={cn("text-sm font-semibold mt-1 leading-snug", changed ? "text-slate-800" : "text-slate-400 italic")}>
+                            {s.suggested_title}
+                          </p>
+                          {!changed && <p className="text-[10px] text-slate-300 mt-0.5">No change suggested</p>}
+                        </div>
+                        {changed && (
+                          <button
+                            onClick={() => setAiSelected(prev => {
+                              const n = new Set(prev)
+                              n.has(s.id) ? n.delete(s.id) : n.add(s.id)
+                              return n
+                            })}
+                            className={cn(
+                              "shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors mt-1",
+                              selected ? "bg-purple-600 border-purple-600 text-white" : "border-slate-300 hover:border-purple-400"
+                            )}
+                          >
+                            {selected && <Check className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!aiLoading && aiSuggestions.length > 0 && (
+              <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
+                <p className="text-sm text-slate-500">
+                  {aiSelected.size} title{aiSelected.size !== 1 ? "s" : ""} will be updated
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setAiPanel(false); setAiSuggestions([]) }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={applyAiSuggestions}
+                    disabled={aiSelected.size === 0}
+                    className="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-40"
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1.5" />
+                    Apply {aiSelected.size > 0 ? aiSelected.size : ""} Title{aiSelected.size !== 1 ? "s" : ""}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

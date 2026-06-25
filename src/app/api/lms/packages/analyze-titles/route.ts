@@ -1,0 +1,301 @@
+import { NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { db } from "@/lib/db"
+import Groq from "groq-sdk"
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
+})
+
+function isMgr(role?: string) {
+  return role === "admin" || role === "instructor"
+}
+
+// ── Filename cleaner (no AI needed) ──────────────────────────────
+function cleanFilename(name: string): string {
+  return name
+    .replace(/\.[^.]+$/, "")           // remove extension
+    .replace(/[-_]/g, " ")             // dashes/underscores → spaces
+    .replace(/\s{2,}/g, " ")           // collapse double spaces
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase()) // Title Case
+}
+
+// ── PDF text extraction (pdfjs-dist, Node-compatible) ─────────────
+async function extractPdfPageTexts(url: string): Promise<string[]> {
+  try {
+    // Dynamic import — pdfjs-dist legacy build works in Node.js
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = ""
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!res.ok) return []
+    const buffer = await res.arrayBuffer()
+
+    const loadingTask = pdfjsLib.getDocument({ data: buffer, disableFontFace: true })
+    const pdf = await loadingTask.promise
+
+    const texts: string[] = []
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p)
+      const content = await page.getTextContent()
+      const text = content.items
+        .map((item: any) => ("str" in item ? item.str : ""))
+        .join(" ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+      texts.push(text)
+    }
+    return texts
+  } catch {
+    return []
+  }
+}
+
+// ── Groq: generate titles for all pages of one PDF (single call) ──
+async function titlesForPdfPages(
+  pageTexts: string[],
+  filename: string,
+): Promise<string[]> {
+  // Pages with no extractable text → fall back to cleaned filename + page number
+  const hasText = pageTexts.some(t => t.length > 20)
+  if (!hasText) {
+    const base = cleanFilename(filename)
+    return pageTexts.map((_, i) => `${base} — Page ${i + 1}`)
+  }
+
+  const numbered = pageTexts
+    .map((t, i) => `Page ${i + 1}: ${t.slice(0, 300)}`)
+    .join("\n---\n")
+
+  const prompt = `You are an e-learning content specialist. Below are text extracts from each page of a training PDF titled "${filename}".
+For EVERY page, write a concise, descriptive title (4–7 words) that captures the main topic of that page.
+
+${numbered}
+
+Respond with ONLY a JSON array of strings, one per page, in the same order:
+["Title for page 1", "Title for page 2", ...]
+No explanation, no markdown — only the JSON array.`
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 1500,
+    })
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "[]"
+    const match = raw.match(/\[[\s\S]*\]/)
+    if (!match) throw new Error("No JSON array in response")
+    const parsed: string[] = JSON.parse(match[0])
+    // Ensure we have one title per page
+    return pageTexts.map((_, i) => parsed[i] || `${cleanFilename(filename)} — Page ${i + 1}`)
+  } catch {
+    const base = cleanFilename(filename)
+    return pageTexts.map((_, i) => `${base} — Page ${i + 1}`)
+  }
+}
+
+// ── Groq: single title for a quiz/exam item ───────────────────────
+async function titleForQuiz(
+  questions: { text: string }[],
+  defaultTitle: string,
+): Promise<string> {
+  if (!questions.length) return defaultTitle
+  const sample = questions
+    .slice(0, 5)
+    .map((q, i) => `Q${i + 1}: ${q.text.slice(0, 120)}`)
+    .join("\n")
+
+  const prompt = `These are questions from a training quiz:
+${sample}
+
+Write a concise 4-7 word title for this quiz that describes its main topic. Include the number of questions.
+Example: "10-Question Ramp Safety Knowledge Check"
+Respond with only the title.`
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 30,
+    })
+    return completion.choices[0]?.message?.content?.trim() || defaultTitle
+  } catch {
+    return defaultTitle
+  }
+}
+
+// ── Groq: title from HTML text content ────────────────────────────
+async function titleForText(html: string, defaultTitle: string): Promise<string> {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400)
+  if (!text) return defaultTitle
+
+  const prompt = `This is the text content of a training slide:
+"${text}"
+
+Write a concise 4-7 word title for this content. Respond with only the title.`
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 30,
+    })
+    return completion.choices[0]?.message?.content?.trim() || defaultTitle
+  } catch {
+    return defaultTitle
+  }
+}
+
+// ── Groq vision: title from image URL ─────────────────────────────
+async function titleForImage(imageUrl: string, defaultTitle: string): Promise<string> {
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: imageUrl } },
+            {
+              type: "text",
+              text: "This is an image from an aviation training course. Write a concise 4-7 word descriptive title for this image. Respond with only the title.",
+            },
+          ],
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 30,
+    })
+    return completion.choices[0]?.message?.content?.trim() || defaultTitle
+  } catch {
+    return defaultTitle
+  }
+}
+
+// ── Main handler ──────────────────────────────────────────────────
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session || !isMgr(session.user.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  const body = await req.json().catch(() => ({}))
+  const { module_id } = body
+  if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
+
+  // Fetch the package + items
+  const { data: pkg } = await db
+    .from("lms_packages")
+    .select("id, title, lms_package_items(id, type, title, config, order_index)")
+    .eq("module_id", module_id)
+    .single()
+
+  if (!pkg) return NextResponse.json({ error: "Package not found" }, { status: 404 })
+
+  const items = ((pkg.lms_package_items ?? []) as any[])
+    .sort((a: any, b: any) => a.order_index - b.order_index)
+
+  if (!items.length) return NextResponse.json({ suggestions: [] })
+
+  // ── Group slide_pdf items by file_url (one extraction per file) ──
+  const pdfGroups = new Map<string, { items: any[]; filename: string }>()
+  for (const item of items) {
+    if (item.type === "slide_pdf" && item.config?.file_url) {
+      const url = item.config.file_url as string
+      if (!pdfGroups.has(url)) {
+        pdfGroups.set(url, { items: [], filename: item.config.file_name ?? "Training PDF" })
+      }
+      pdfGroups.get(url)!.items.push(item)
+    }
+  }
+
+  // ── Extract text + generate titles for each unique PDF ───────────
+  const pdfTitleMap = new Map<string, string>() // item.id → suggested title
+
+  for (const [url, group] of pdfGroups) {
+    const pageNumbers = group.items.map((it: any) => it.config.page_number as number)
+    const maxPage = Math.max(...pageNumbers)
+
+    const allTexts = await extractPdfPageTexts(url)
+    // allTexts is 0-indexed; page_number is 1-indexed
+    const relevantTexts = pageNumbers.map(p => allTexts[p - 1] ?? "")
+
+    const titles = await titlesForPdfPages(relevantTexts, group.filename)
+    group.items.forEach((it: any, idx: number) => {
+      pdfTitleMap.set(it.id, titles[idx])
+    })
+  }
+
+  // ── Build suggestions for every item ─────────────────────────────
+  const suggestions: { id: string; current_title: string; suggested_title: string; type: string }[] = []
+
+  // Process non-PDF items concurrently (cap at 5 parallel)
+  const nonPdfItems = items.filter((it: any) => it.type !== "slide_pdf")
+
+  // Batch concurrency: process 5 at a time
+  for (let i = 0; i < nonPdfItems.length; i += 5) {
+    const batch = nonPdfItems.slice(i, i + 5)
+    const batchResults = await Promise.all(
+      batch.map(async (item: any) => {
+        let suggested = item.title as string
+
+        switch (item.type as string) {
+          case "quiz":
+            suggested = await titleForQuiz(
+              item.config?.questions ?? [],
+              `${(item.config?.questions ?? []).length}-Question Quiz`,
+            )
+            break
+          case "exam":
+            suggested = await titleForQuiz(
+              item.config?.questions ?? [],
+              `${(item.config?.questions ?? []).length}-Question Knowledge Test`,
+            )
+            break
+          case "text":
+            suggested = await titleForText(item.config?.html ?? "", item.title)
+            break
+          case "image":
+            if (item.config?.file_url) {
+              suggested = await titleForImage(item.config.file_url, cleanFilename(item.config?.file_name ?? item.title))
+            } else {
+              suggested = cleanFilename(item.config?.file_name ?? item.title)
+            }
+            break
+          case "slide_pptx":
+          case "video":
+          case "audio":
+            suggested = cleanFilename(item.config?.file_name ?? item.title)
+            break
+          case "youtube":
+            suggested = item.title // keep as-is — admin should rename manually
+            break
+          case "web_content":
+            suggested = item.config?.title || item.title
+            break
+          case "divider":
+            suggested = item.title // section dividers — admin renames manually
+            break
+        }
+
+        return { id: item.id, current_title: item.title, suggested_title: suggested, type: item.type }
+      })
+    )
+    suggestions.push(...batchResults)
+  }
+
+  // Add PDF suggestions (already computed)
+  for (const item of items.filter((it: any) => it.type === "slide_pdf")) {
+    const suggested = pdfTitleMap.get(item.id) ?? cleanFilename(item.config?.file_name ?? item.title)
+    suggestions.push({ id: item.id, current_title: item.title, suggested_title: suggested, type: item.type })
+  }
+
+  // Re-sort suggestions by original item order
+  const orderMap = new Map(items.map((it: any, idx: number) => [it.id, idx]))
+  suggestions.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
+
+  return NextResponse.json({ suggestions })
+}
