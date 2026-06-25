@@ -179,7 +179,7 @@ export default async function StudentDashboard() {
     <div className="p-5 space-y-5">
 
       {/* ── Welcome header ──────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">
             {daysSinceLogin === 0 || daysSinceLogin === null

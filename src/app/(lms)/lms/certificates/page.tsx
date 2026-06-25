@@ -147,7 +147,7 @@ export default async function CertificatesPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-700 truncate">{course?.title}</p>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden max-w-[200px]">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#1B4F8A] rounded-full transition-all"
                           style={{ width: `${pct}%` }}
@@ -156,7 +156,7 @@ export default async function CertificatesPage() {
                       <span className="text-xs text-slate-400">{pct}% complete</span>
                     </div>
                   </div>
-                  <span className="text-xs text-slate-300 shrink-0">Complete to unlock</span>
+                  <span className="text-xs text-slate-300 shrink-0 hidden sm:inline">Complete to unlock</span>
                 </div>
               )
             })}
