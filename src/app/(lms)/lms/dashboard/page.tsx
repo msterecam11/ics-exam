@@ -44,7 +44,7 @@ export default async function StudentDashboard() {
 
     courseIds.length
       ? db.from("lms_sessions")
-          .select("id, title, session_date, start_time, location, meeting_link, course_id")
+          .select("id, title, session_date, start_time, location, meeting_link, course_id, duration_minutes")
           .in("course_id", courseIds).gte("session_date", today)
           .is("closed_at", null)
           .order("session_date", { ascending: true }).order("start_time", { ascending: true })

@@ -101,7 +101,7 @@ export default async function StudentCoursePage({
   // Fetch live sessions for this course
   const { data: liveSessions } = await db
     .from("lms_sessions")
-    .select("id, title, session_date, start_time, end_time, location, delivery_mode, closed_at, meeting_link")
+    .select("id, title, session_date, start_time, duration_minutes, location, closed_at, meeting_link")
     .eq("course_id", courseId)
     .order("session_date", { ascending: false })
     .order("start_time", { ascending: false })
@@ -634,7 +634,7 @@ export default async function StudentCoursePage({
                               <Clock className="h-3 w-3" />
                               {new Date(s.session_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
                               {" · "}{s.start_time?.slice(0, 5)}
-                              {s.end_time && <> – {s.end_time.slice(0, 5)}</>}
+                              {s.duration_minutes && <> · {s.duration_minutes} min</>}
                             </span>
                             {s.location && (
                               <span className="text-xs text-slate-500 flex items-center gap-1">

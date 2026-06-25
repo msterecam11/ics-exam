@@ -23,7 +23,7 @@ export default async function SchedulePage() {
   const { data: upcoming } = courseIds.length
     ? await db
         .from("lms_sessions")
-        .select("id, title, session_date, start_time, duration_minutes, location, meeting_link, course_id, lms_courses(title)")
+        .select("id, title, session_date, start_time, duration_minutes, location, recording_url, course_id, lms_courses(title)")
         .in("course_id", courseIds)
         .gte("session_date", today)
         .is("closed_at", null)
@@ -113,9 +113,9 @@ export default async function SchedulePage() {
                             {(s.lms_courses as any)?.title}
                           </p>
                         </div>
-                        {s.meeting_link && (
+                        {s.recording_url && (
                           <a
-                            href={s.meeting_link}
+                            href={s.recording_url}
                             target="_blank"
                             rel="noreferrer"
                             className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4F8A] hover:bg-[#163f6e] px-3 py-2 rounded-lg transition-colors"
