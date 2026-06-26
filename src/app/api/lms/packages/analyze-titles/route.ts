@@ -34,7 +34,8 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } 
 async function extractPdfPageTexts(url: string): Promise<string[]> {
   try {
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any)
-    pdfjsLib.GlobalWorkerOptions.workerSrc = ""
+    // pdfjs v6 requires a real workerSrc — empty string no longer triggers fake-worker mode
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `file://${process.cwd()}/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs`
 
     // Try plain fetch first (public bucket / pre-signed URL)
     let buffer: ArrayBuffer | null = null
