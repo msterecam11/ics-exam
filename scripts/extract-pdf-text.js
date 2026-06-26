@@ -6,6 +6,12 @@ const pdfjsLib = require('pdfjs-dist/build/pdf.js')
 // pdfjs v2 in Node.js auto-detects no Worker API and uses inline processing.
 // Do NOT set workerSrc = '' — it can suppress page loading in some builds.
 
+// pdfjs writes font warnings directly to process.stdout which corrupts the JSON output.
+// Set verbosity to ERRORS only (0) to suppress them.
+if (typeof pdfjsLib.verbosity !== 'undefined') {
+  pdfjsLib.verbosity = 0 // 0 = ERRORS only
+}
+
 function readStdin() {
   return new Promise((resolve, reject) => {
     const chunks = []

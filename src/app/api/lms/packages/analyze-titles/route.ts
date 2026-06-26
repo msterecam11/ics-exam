@@ -81,7 +81,15 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
           return
         }
         try {
-          const parsed = JSON.parse(rawOut.toString())
+          // pdfjs may write warning lines before the JSON — skip to first '['
+          const rawStr = rawOut.toString()
+          const jsonStart = rawStr.indexOf("[")
+          if (jsonStart === -1) {
+            console.error("[analyze-titles] No JSON array in subprocess stdout, preview:", rawStr.slice(0, 300))
+            resolve([])
+            return
+          }
+          const parsed = JSON.parse(rawStr.slice(jsonStart))
           resolve(Array.isArray(parsed) ? parsed : [])
         } catch (e: any) {
           console.error("[analyze-titles] JSON.parse failed:", e.message, "stdout preview:", rawOut.toString().slice(0, 200))
