@@ -106,7 +106,9 @@ Rules:
       max_tokens: 2000,
     })
     raw = completion.choices[0]?.message?.content?.trim() ?? ""
+    console.log("[exam-analysis] Groq raw (first 300):", raw.slice(0, 300))
   } catch (err: any) {
+    console.error("[exam-analysis] Groq error:", err?.message, "status:", err?.status)
     return { ok: false, error: err?.message ?? "Groq error" }
   }
 
@@ -117,7 +119,8 @@ Rules:
     if (m) sectionTitles[parseInt(m[1])] = m[2].trim()
   }
 
-  if (Object.keys(sectionTitles).length === 0) return { ok: false, error: "AI returned invalid response" }
+  console.log("[exam-analysis] parsed sectionTitles count:", Object.keys(sectionTitles).length)
+  if (Object.keys(sectionTitles).length === 0) return { ok: false, error: `AI invalid response — raw: ${raw.slice(0, 200)}` }
 
   const assignMap: Record<number, number> = {}
   const assignBlock = raw.match(/ASSIGNMENTS:\s*([\s\S]*?)$/i)?.[1] ?? ""

@@ -2945,7 +2945,8 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
       if (!res.ok) { toast.error(data.error ?? "Analysis failed"); return }
       const { modules_analyzed, exams_analyzed, failed } = data
       if (failed?.length) {
-        toast.warning(`Analyzed ${modules_analyzed} module(s), ${exams_analyzed} exam(s). ${failed.length} failed.`)
+        console.error("[AI Analyze] failed:", failed)
+        toast.warning(`Analyzed ${modules_analyzed} module(s), ${exams_analyzed} exam(s). Failed: ${failed.join(" | ")}`)
       } else {
         toast.success(`Analysis complete — ${modules_analyzed} module(s), ${exams_analyzed} exam(s) analyzed`)
       }
