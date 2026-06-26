@@ -15,7 +15,7 @@ import {
   FileVideo, Image, Link2, ListOrdered,
   MessageSquare, Star, Download, ExternalLink,
   Layers2, MoreHorizontal, Lock, GripVertical,
-  ChevronUp,
+  ChevronUp, Sparkles,
 } from "lucide-react"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -192,7 +192,7 @@ const CONTENT_TYPES = [
   { value: "assignment", label: "Assignment", group: "assessment" },
 ]
 
-type ActiveView = "overview" | "users" | "settings" | string // string = module id
+type ActiveView = "overview" | "users" | "settings" | "ai-report" | string // string = module id
 type SaveStatus = "saved" | "saving" | "unsaved"
 
 // ──────────────────────────────────────────────────────────────
@@ -1239,8 +1239,10 @@ function ModuleContentEditor({ mod, courseId }: { mod: Module; courseId: string 
 function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; courseId: string; moduleName: string }) {
   interface LiveSession {
     id: string; title: string; session_date: string; start_time: string
-    duration_minutes: number; location: string | null; closed_at: string | null
-    is_open: boolean; attendance_count: number; notes: string | null
+    duration_minutes: number; location: string | null; meeting_link: string | null
+    closed_at: string | null; is_open: boolean; attendance_count: number
+    notes: string | null; agenda: string | null
+    topics_covered: string | null; instructor_notes: string | null
   }
 
   const [sessions,   setSessions]   = useState<LiveSession[]>([])
@@ -1250,8 +1252,11 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
   const [toggling,   setToggling]   = useState<string | null>(null)
   const [form, setForm] = useState({
     title: "", session_date: "", start_time: "09:00",
-    duration_minutes: 60, location: "", late_threshold: 15, notes: "",
+    duration_minutes: 60, location: "", meeting_link: "",
+    late_threshold: 15, notes: "", agenda: "",
   })
+  const [closeModal, setCloseModal] = useState<{ id: string; title: string } | null>(null)
+  const [closeForm,  setCloseForm]  = useState({ topics_covered: "", instructor_notes: "" })
 
   async function loadSessions() {
     setLoading(true)
@@ -1276,20 +1281,46 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
     toast.success("Session scheduled")
     setShowCreate(false)
-    setForm({ title: "", session_date: "", start_time: "09:00", duration_minutes: 60, location: "", late_threshold: 15, notes: "" })
+    setForm({ title: "", session_date: "", start_time: "09:00", duration_minutes: 60, location: "", meeting_link: "", late_threshold: 15, notes: "", agenda: "" })
     loadSessions()
   }
 
-  async function toggleSession(id: string, isOpen: boolean) {
+  async function toggleSession(id: string, isOpen: boolean, session?: LiveSession) {
+    if (isOpen) {
+      // Show wrap-up modal before closing
+      setCloseForm({ topics_covered: session?.topics_covered ?? "", instructor_notes: session?.instructor_notes ?? "" })
+      setCloseModal({ id, title: session?.title ?? "Session" })
+      return
+    }
     setToggling(id)
     const res = await fetch("/api/lms/sessions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, action: isOpen ? "close" : "open" }),
+      body: JSON.stringify({ id, action: "open" }),
     })
     setToggling(null)
     if (!res.ok) { toast.error("Failed"); return }
-    toast.success(isOpen ? "Session closed" : "Session opened")
+    toast.success("Session opened")
+    loadSessions()
+  }
+
+  async function confirmCloseSession(skipWrapUp = false) {
+    if (!closeModal) return
+    setToggling(closeModal.id)
+    const payload: Record<string, unknown> = { id: closeModal.id, action: "close" }
+    if (!skipWrapUp) {
+      payload.topics_covered   = closeForm.topics_covered   || null
+      payload.instructor_notes = closeForm.instructor_notes || null
+    }
+    const res = await fetch("/api/lms/sessions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    setToggling(null)
+    setCloseModal(null)
+    if (!res.ok) { toast.error("Failed to close session"); return }
+    toast.success("Session closed")
     loadSessions()
   }
 
@@ -1357,6 +1388,9 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
                       </Badge>
                     </div>
                     <h3 className="font-semibold text-slate-900 truncate">{s.title}</h3>
+                    {s.agenda && (
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{s.agenda}</p>
+                    )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                       <span className="text-xs text-slate-500 flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
@@ -1367,6 +1401,12 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
                         <span className="text-xs text-slate-500 flex items-center gap-1">
                           <Tag className="h-3.5 w-3.5" /> {s.location}
                         </span>
+                      )}
+                      {s.meeting_link && (
+                        <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                           className="text-xs text-[#1B4F8A] hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" /> Join Link
+                        </a>
                       )}
                       <span className="text-xs text-slate-500 flex items-center gap-1">
                         <Users className="h-3.5 w-3.5" /> {s.attendance_count} checked in
@@ -1384,7 +1424,7 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
                         <MoreHorizontal className="h-4 w-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem onClick={() => toggleSession(s.id, s.is_open)} className="gap-2">
+                        <DropdownMenuItem onClick={() => toggleSession(s.id, s.is_open, s)} className="gap-2">
                           {toggling === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                           {s.is_open ? "Close Session" : "Open Session"}
                         </DropdownMenuItem>
@@ -1404,6 +1444,58 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
           ))}
         </div>
       )}
+
+      {/* ── Close Session Wrap-Up Modal ───────────────────────── */}
+      <Dialog open={!!closeModal} onOpenChange={open => { if (!open) setCloseModal(null) }}>
+        <DialogContent className="max-w-md" showCloseButton={false}>
+          <DialogHeader className="px-0 pb-4 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="font-bold text-slate-900">Close Session</DialogTitle>
+              <Button variant="ghost" size="icon" onClick={() => setCloseModal(null)} className="h-8 w-8">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-sm text-slate-500 mt-1">
+              Optionally record what was covered — this helps build richer AI reports later.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Topics Covered <span className="text-slate-400 font-normal">(optional)</span></Label>
+              <textarea
+                className="w-full h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
+                placeholder="What topics were actually covered in this session?"
+                value={closeForm.topics_covered}
+                onChange={e => setCloseForm(f => ({ ...f, topics_covered: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instructor Notes <span className="text-slate-400 font-normal">(optional)</span></Label>
+              <textarea
+                className="w-full h-20 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
+                placeholder="Any observations about this session…"
+                value={closeForm.instructor_notes}
+                onChange={e => setCloseForm(f => ({ ...f, instructor_notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter className="px-0 pt-4 border-0 bg-transparent gap-2">
+            <Button type="button" variant="ghost" className="text-slate-500" onClick={() => confirmCloseSession(true)}>
+              Skip & Close
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setCloseModal(null)}>Cancel</Button>
+            <Button
+              type="button"
+              className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white"
+              onClick={() => confirmCloseSession(false)}
+              disabled={toggling === closeModal?.id}
+            >
+              {toggling === closeModal?.id && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Close Session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Schedule Session Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -1447,13 +1539,26 @@ function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; co
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Location / Link</Label>
-              <Input placeholder="e.g. Room 3A or Zoom link" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+              <Label>Location</Label>
+              <Input placeholder="e.g. Room 3A, Building B" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Meeting Link</Label>
+              <Input placeholder="https://zoom.us/j/..." value={form.meeting_link} onChange={e => setForm(f => ({ ...f, meeting_link: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Agenda <span className="text-slate-400 font-normal">(what will be covered)</span></Label>
+              <textarea
+                className="w-full h-20 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
+                placeholder="Topics planned for this session…"
+                value={form.agenda}
+                onChange={e => setForm(f => ({ ...f, agenda: e.target.value }))}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>
               <textarea
-                className="w-full h-20 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
+                className="w-full h-16 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
                 placeholder="Any notes for instructors or students…"
                 value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
@@ -2577,6 +2682,151 @@ function SortableModuleItem({
 }
 
 // ──────────────────────────────────────────────────────────────
+// AI REPORT VIEW
+// ──────────────────────────────────────────────────────────────
+function AiReportView({ report, analyzing, onAnalyze }: {
+  report: any | null; analyzing: boolean; onAnalyze: () => void
+}) {
+  if (!report && !analyzing) {
+    return (
+      <div className="max-w-2xl mx-auto pt-16 text-center">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-50 mb-5">
+          <Sparkles className="h-8 w-8 text-purple-400" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">AI Course Analysis</h2>
+        <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
+          Run AI analysis to get a structured breakdown of what each module covers. The exam analysis will then map every question to the relevant course module.
+        </p>
+        <Button
+          onClick={onAnalyze}
+          className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+        >
+          <Sparkles className="h-4 w-4" /> Run AI Analysis
+        </Button>
+      </div>
+    )
+  }
+
+  if (analyzing && !report) {
+    return (
+      <div className="flex flex-col items-center justify-center pt-24 gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+        <p className="text-slate-500 text-sm">Analyzing modules with AI…</p>
+      </div>
+    )
+  }
+
+  const modules: any[] = report?.modules ?? []
+  const exams:   any[] = report?.exams   ?? []
+
+  return (
+    <div className="max-w-3xl mx-auto pb-16 space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-500" /> AI Course Report
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Generated {report?.generated_at ? new Date(report.generated_at).toLocaleString() : "—"}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 border-purple-200 text-purple-700 hover:bg-purple-50"
+          onClick={onAnalyze}
+          disabled={analyzing}
+        >
+          {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          Re-analyze
+        </Button>
+      </div>
+
+      {/* Module summaries */}
+      {modules.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Course Modules ({modules.length})</p>
+          <div className="space-y-3">
+            {modules.map((m: any, i: number) => (
+              <div key={m.module_id ?? i} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-[#1B4F8A]/10 text-[#1B4F8A] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-semibold text-slate-900 text-sm">{m.module_title}</p>
+                      <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full capitalize">
+                        {m.module_type?.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-2">{m.summary}</p>
+                    {m.topics?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {m.topics.map((t: string, j: number) => (
+                          <span key={j} className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Exam analysis */}
+      {exams.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Final Exam Analysis</p>
+          {exams.map((exam: any, i: number) => (
+            <div key={exam.module_id ?? i} className="bg-white rounded-xl border border-purple-200 p-4 space-y-4">
+              <div>
+                <p className="font-semibold text-slate-900">{exam.module_title}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{exam.summary}</p>
+              </div>
+              {exam.sections?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-600 mb-2">Questions by Course Module</p>
+                  <div className="space-y-2">
+                    {exam.sections.map((sec: any, j: number) => (
+                      <div key={j} className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <p className="text-xs font-medium text-slate-700 truncate">{sec.title}</p>
+                            <p className="text-xs text-slate-400 shrink-0 ml-2">{sec.question_count} Q · {sec.percentage}%</p>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-purple-400"
+                              style={{ width: `${sec.percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {modules.length === 0 && exams.length === 0 && (
+        <div className="text-center py-12 text-slate-400">
+          <p className="text-sm">No analysis data yet. Run AI Analyze to generate the report.</p>
+          <Button onClick={onAnalyze} className="mt-4 bg-purple-600 hover:bg-purple-700 text-white gap-2" disabled={analyzing}>
+            <Sparkles className="h-4 w-4" /> Run AI Analysis
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ──────────────────────────────────────────────────────────────
 export default function CourseBuilderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -2599,6 +2849,8 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
   const [editingContent,  setEditingContent]  = useState<{ item: ContentItem; moduleId: string } | null>(null)
   const [testAsStudent,   setTestAsStudent]   = useState(false)
   const [submissionsItem, setSubmissionsItem] = useState<ContentItem | null>(null)
+  const [aiAnalyzing,     setAiAnalyzing]     = useState(false)
+  const [aiReport,        setAiReport]        = useState<any>(null)
 
   useEffect(() => {
     async function init() {
@@ -2679,6 +2931,34 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
     toast.success(newStatus === "published" ? "Course published ✓" : "Reverted to draft")
   }
 
+  async function analyzeFullCourse() {
+    if (!course || aiAnalyzing) return
+    setAiAnalyzing(true)
+    toast.info("AI analysis started — this may take a minute…")
+    try {
+      const res = await fetch("/api/lms/analyze/course", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course_id: courseId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? "Analysis failed"); return }
+      const { modules_analyzed, exams_analyzed, failed } = data
+      if (failed?.length) {
+        toast.warning(`Analyzed ${modules_analyzed} module(s), ${exams_analyzed} exam(s). ${failed.length} failed.`)
+      } else {
+        toast.success(`Analysis complete — ${modules_analyzed} module(s), ${exams_analyzed} exam(s) analyzed`)
+      }
+      // Fetch report
+      const rRes = await fetch(`/api/lms/analyze/report?course_id=${courseId}`)
+      if (rRes.ok) { setAiReport(await rRes.json()); setActiveView("ai-report") }
+    } catch {
+      toast.error("Analysis failed — check console")
+    } finally {
+      setAiAnalyzing(false)
+    }
+  }
+
   // Quick-add blocks that don't need a modal (divider, callout)
   async function quickAddBlock(type: string, moduleId: string) {
     const defaults: Record<string, { title: string; content: Record<string, any> }> = {
@@ -2743,6 +3023,14 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
           </Button>
           <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs hidden sm:flex" onClick={() => setEnrollModal(true)}>
             <UserPlus className="h-3.5 w-3.5" /> Enroll
+          </Button>
+          <Button size="sm" variant="outline"
+            className="gap-1.5 h-8 text-xs hidden sm:flex border-purple-200 text-purple-700 hover:bg-purple-50"
+            onClick={analyzeFullCourse}
+            disabled={aiAnalyzing}
+          >
+            {aiAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {aiAnalyzing ? "Analyzing…" : "AI Analyze"}
           </Button>
           {course && course.status !== "archived" && (
             <Button size="sm" disabled={toggling}
@@ -2823,17 +3111,30 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
             {/* Users + Settings */}
             {[
-              { key: "users",    icon: Users,    label: "Students" },
-              { key: "settings", icon: Settings, label: "Settings" },
+              { key: "users",     icon: Users,     label: "Students" },
+              { key: "settings",  icon: Settings,  label: "Settings" },
+              { key: "ai-report", icon: Sparkles,  label: "AI Report" },
             ].map(({ key, icon: Icon, label }) => (
               <button key={key}
-                onClick={() => setActiveView(key as ActiveView)}
+                onClick={() => {
+                  if (key === "ai-report" && !aiReport) {
+                    // Lazily load report if not loaded yet
+                    fetch(`/api/lms/analyze/report?course_id=${courseId}`)
+                      .then(r => r.ok ? r.json() : null)
+                      .then(data => { if (data) setAiReport(data) })
+                  }
+                  setActiveView(key as ActiveView)
+                }}
                 className={cn("w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors",
                   activeView === key
                     ? "bg-white/15 text-white font-semibold"
                     : "text-white/70 hover:bg-white/10 hover:text-white"
                 )}>
-                <Icon className="h-4 w-4 shrink-0" /> {label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+                {key === "ai-report" && aiReport && (
+                  <span className="ml-auto text-[10px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded-full">ready</span>
+                )}
               </button>
             ))}
           </div>
@@ -2873,6 +3174,15 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               {/* Settings */}
               {activeView === "settings" && course && (
                 <SettingsTab course={course} onSaved={c => setCourse(c)} />
+              )}
+
+              {/* AI Report */}
+              {activeView === "ai-report" && (
+                <AiReportView
+                  report={aiReport}
+                  analyzing={aiAnalyzing}
+                  onAnalyze={analyzeFullCourse}
+                />
               )}
 
             </div>

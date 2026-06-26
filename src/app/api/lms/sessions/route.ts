@@ -22,9 +22,9 @@ export async function GET(req: Request) {
     .from("lms_sessions")
     .select(`
       id, title, session_date, start_time, duration_minutes,
-      location, recording_url, materials, late_threshold,
-      notes, closed_at, created_at,
-      module_id, course_id,
+      location, meeting_link, recording_url, materials, late_threshold,
+      notes, agenda, topics_covered, instructor_notes,
+      closed_at, created_at, module_id, course_id,
       lms_courses(title)
     `)
     .order("session_date", { ascending: false })
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   const {
     module_id, course_id, title,
     session_date, start_time, duration_minutes,
-    location, late_threshold, notes, materials,
+    location, meeting_link, late_threshold, notes, materials, agenda,
   } = body
 
   if (!module_id)    return NextResponse.json({ error: "module_id required" },  { status: 400 })
@@ -90,10 +90,12 @@ export async function POST(req: Request) {
       session_date,
       start_time,
       duration_minutes: duration_minutes ?? 60,
-      location:         location?.trim()  || null,
-      late_threshold:   late_threshold    ?? 15,
-      notes:            notes?.trim()     || null,
-      materials:        materials         ?? [],
+      location:         location?.trim()     || null,
+      meeting_link:     meeting_link?.trim() || null,
+      late_threshold:   late_threshold       ?? 15,
+      notes:            notes?.trim()        || null,
+      agenda:           agenda?.trim()       || null,
+      materials:        materials            ?? [],
       created_by:       session.user.id,
     })
     .select()
@@ -126,9 +128,12 @@ export async function PATCH(req: Request) {
   }
 
   if (action === "close") {
+    const patch: Record<string, unknown> = { closed_at: new Date().toISOString() }
+    if (fields.topics_covered   != null) patch.topics_covered   = fields.topics_covered   || null
+    if (fields.instructor_notes != null) patch.instructor_notes = fields.instructor_notes || null
     const { data, error } = await db
       .from("lms_sessions")
-      .update({ closed_at: new Date().toISOString() })
+      .update(patch)
       .eq("id", id)
       .select()
       .single()
@@ -138,7 +143,8 @@ export async function PATCH(req: Request) {
 
   const allowed = [
     "title", "session_date", "start_time", "duration_minutes",
-    "location", "recording_url", "materials", "late_threshold", "notes",
+    "location", "meeting_link", "recording_url", "materials",
+    "late_threshold", "notes", "agenda", "topics_covered", "instructor_notes",
   ]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
