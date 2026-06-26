@@ -70,31 +70,28 @@ Rules:
 
     const catchAllNum = analyses.length + 1
 
-    prompt = `You are an expert exam analyst for an aviation training course. Map each exam question to the most relevant course module below.
+    // Section titles are already known from Phase 3 — only ask for the Q→module mapping.
+    // Asking for SECTIONS in the response caused the model to skip the header and mix blocks.
+    prompt = `You are an expert exam analyst for an aviation training course.
+Map each exam question to the number of the most relevant course module.
 
 COURSE MODULES:
 ${moduleContext}
-Module ${catchAllNum}: "General Knowledge" — topics: general aviation knowledge (use for questions that don't fit any specific module)
+Module ${catchAllNum}: "General Knowledge" — use for questions that don't fit any specific module
 
 EXAM QUESTIONS (${totalQ} total):
 ${questionList}
 
-Respond in exactly two blocks with no extra text:
-
-SECTIONS:
-${analyses.map((a, i) => `${i + 1}. ${(a.analysis as any).module_title}`).join("\n")}
-${catchAllNum}. General Knowledge
-
-ASSIGNMENTS:
+Respond with ONLY the question assignments — no headers, no explanations, nothing else:
 Q1: [module number]
 Q2: [module number]
 ...
 Q${totalQ}: [module number]
 
 Rules:
-- Every question from Q1 to Q${totalQ} must appear in ASSIGNMENTS
-- Use only the module numbers listed in SECTIONS above
-- Pick the module whose topics most closely match the question's subject matter`
+- Every question from Q1 to Q${totalQ} must appear exactly once
+- Use only module numbers 1–${catchAllNum}
+- Pick the module whose topics best match the question`
   }
 
   let raw = ""
@@ -112,19 +109,30 @@ Rules:
     return { ok: false, error: err?.message ?? "Groq error" }
   }
 
+  // Build sectionTitles: from Phase 3 analyses when available, else parse from Groq output
   const sectionTitles: Record<number, string> = {}
-  const sectionsBlock = raw.match(/SECTIONS:\s*([\s\S]*?)(?=ASSIGNMENTS:|$)/i)?.[1] ?? ""
-  for (const line of sectionsBlock.split("\n")) {
-    const m = line.match(/^(\d+)[.)]\s*(.+)$/)
-    if (m) sectionTitles[parseInt(m[1])] = m[2].trim()
+
+  if (analyses.length > 0) {
+    // Section titles are already known — fill from Phase 3 data
+    analyses.forEach((a, i) => {
+      sectionTitles[i + 1] = (a.analysis as any).module_title ?? `Module ${i + 1}`
+    })
+    sectionTitles[analyses.length + 1] = "General Knowledge"
+  } else {
+    // No Phase 3 data — parse sections from Groq's SECTIONS block
+    const sectionsBlock = raw.match(/SECTIONS:\s*([\s\S]*?)(?=ASSIGNMENTS:|$)/i)?.[1] ?? ""
+    for (const line of sectionsBlock.split("\n")) {
+      const m = line.match(/^(\d+)[.)]\s*(.+)$/)
+      if (m) sectionTitles[parseInt(m[1])] = m[2].trim()
+    }
   }
 
-  console.log("[exam-analysis] parsed sectionTitles count:", Object.keys(sectionTitles).length)
+  console.log("[exam-analysis] sectionTitles count:", Object.keys(sectionTitles).length)
   if (Object.keys(sectionTitles).length === 0) return { ok: false, error: `AI invalid response — raw: ${raw.slice(0, 200)}` }
 
+  // Parse Q→module assignments (works for both prompt formats)
   const assignMap: Record<number, number> = {}
-  const assignBlock = raw.match(/ASSIGNMENTS:\s*([\s\S]*?)$/i)?.[1] ?? ""
-  for (const line of assignBlock.split("\n")) {
+  for (const line of raw.split("\n")) {
     const m = line.match(/^Q(\d+):\s*(\d+)/i)
     if (m) assignMap[parseInt(m[1])] = parseInt(m[2])
   }
