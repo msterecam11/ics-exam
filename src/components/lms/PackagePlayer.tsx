@@ -12,7 +12,6 @@ import { toast } from "sonner"
 import { type PackageItem, type ItemType, type PackageQuestion, type MCQOption, type OrderItem, type MatchPair } from "./PackageEditor"
 import { RichTextViewer } from "./RichTextEditor"
 import ActivityPlayer from "./ActivityPlayer"
-import type { Activity } from "./ActivitySection"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -699,6 +698,7 @@ const TYPE_COLORS: Record<ItemType, { color: string; bg: string }> = {
   image:       { color: "text-pink-400",   bg: "bg-pink-900/30"   },
   web_content: { color: "text-cyan-400",   bg: "bg-cyan-900/30"   },
   divider:     { color: "text-teal-400",   bg: "bg-teal-900/30"   },
+  activity:    { color: "text-purple-400", bg: "bg-purple-900/30" },
 }
 
 function PlayerThumbnail({
@@ -752,18 +752,6 @@ export default function PackagePlayer({
   const [reviewItemId,  setReviewItemId]  = useState<string | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Activities ───────────────────────────────────────────────
-  const [activities,         setActivities]         = useState<Activity[]>([])
-  const [activeActivity,     setActiveActivity]     = useState<Activity | null>(null)
-  const [doneActivityKeys,   setDoneActivityKeys]   = useState<Set<string>>(new Set())
-  const [pendingNavIdx,      setPendingNavIdx]      = useState<number | null>(null)
-
-  useEffect(() => {
-    fetch(`/api/lms/activities?module_id=${moduleId}`)
-      .then(r => r.ok ? r.json() : { activities: [] })
-      .then(d => setActivities(d.activities ?? []))
-      .catch(() => {})
-  }, [moduleId])
 
   const currentItem = items[currentIdx] ?? null
 
@@ -850,51 +838,17 @@ export default function PackagePlayer({
   // Passive item types complete only when the student explicitly clicks Next
   const PASSIVE_TYPES: ItemType[] = ["slide_pdf", "slide_pptx", "text", "image", "web_content", "divider"]
 
-  // Check if a slide_pdf item has an activity that hasn't been seen yet
-  function activityForCurrentSlide(): Activity | null {
-    if (!currentItem || currentItem.type !== "slide_pdf") return null
-    const pageNum = currentItem.config?.page_number ?? 0
-    return activities.find(a => {
-      const key = a.id ?? `${a.type}_${a.placement_slide}`
-      return a.placement_slide === pageNum && !doneActivityKeys.has(key)
-    }) ?? null
-  }
-
-  function markActivityDone(act: Activity) {
-    const key = act.id ?? `${act.type}_${act.placement_slide}`
-    setDoneActivityKeys(prev => new Set([...prev, key]))
-  }
-
   function goNext() {
     const item = items[currentIdx]
     if (!item || currentIdx >= items.length - 1) return
-    // Assessed items (quiz/video) must complete themselves before advancing
+    // Assessed items (quiz/video/activity) must complete themselves before advancing
     if (ASSESSED_TYPES.includes(item.type) && !completedIds.has(item.id) && !previewMode && !freeNavigation) return
     // Mark current passive item complete before advancing
     if (PASSIVE_TYPES.includes(item.type) && !completedIds.has(item.id)) {
       handleItemComplete(item.id)
     }
-
-    // Check if an activity is due for this slide
-    const pending = activityForCurrentSlide()
-    if (pending) {
-      setPendingNavIdx(currentIdx + 1)
-      setActiveActivity(pending)
-      return
-    }
-
     setReviewItemId(null)
     setCurrentIdx(currentIdx + 1)
-  }
-
-  function dismissActivity() {
-    if (activeActivity) markActivityDone(activeActivity)
-    setActiveActivity(null)
-    if (pendingNavIdx !== null) {
-      setReviewItemId(null)
-      setCurrentIdx(pendingNavIdx)
-      setPendingNavIdx(null)
-    }
   }
 
   // ── Keyboard nav ─────────────────────────────────────────────
@@ -910,7 +864,7 @@ export default function PackagePlayer({
 
   // canNext: passive items are always advanceable (Next button completes them);
   // assessed items (video/quiz/exam) need to complete themselves first
-  const ASSESSED_TYPES: ItemType[] = ["video", "youtube", "audio", "quiz", "exam"]
+  const ASSESSED_TYPES: ItemType[] = ["video", "youtube", "audio", "quiz", "exam", "activity"]
   const currentIsAssessed = currentItem ? ASSESSED_TYPES.includes(currentItem.type) : false
   const currentDone       = currentItem ? completedIds.has(currentItem.id) : true
   const canNext = currentIdx < items.length - 1 &&
@@ -1137,6 +1091,29 @@ export default function PackagePlayer({
             if (currentItem.type === "divider") {
               return <DividerCard title={cfg.title ?? "Section"} subtitle={cfg.subtitle} />
             }
+            if (currentItem.type === "activity") {
+              const activityData = {
+                id: currentItem.id,
+                type: (cfg.activity_type ?? "mcq") as any,
+                title: currentItem.title,
+                placement_slide: 0,
+                difficulty: (cfg.difficulty ?? "medium") as any,
+                ai_generated: cfg.ai_generated ?? false,
+                content: cfg.content ?? {},
+              }
+              return (
+                <div className="flex-1 overflow-y-auto bg-slate-50 flex items-start justify-center p-6">
+                  <div className="w-full max-w-lg">
+                    <ActivityPlayer
+                      key={currentItem.id}
+                      activity={activityData}
+                      onComplete={() => handleItemComplete(currentItem.id)}
+                      onNext={goNext}
+                    />
+                  </div>
+                </div>
+              )
+            }
             return null
           })() : (
             <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
@@ -1145,32 +1122,6 @@ export default function PackagePlayer({
           )}
         </main>
       </div>
-
-      {/* ── ACTIVITY OVERLAY ──────────────────────────────────── */}
-      {activeActivity && (
-        <div className="absolute inset-0 bg-black/70 z-30 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-lg">
-            <ActivityPlayer
-              activity={activeActivity}
-              onComplete={() => {
-                markActivityDone(activeActivity)
-                setActiveActivity(null)
-                if (pendingNavIdx !== null) {
-                  setReviewItemId(null)
-                  setCurrentIdx(pendingNavIdx)
-                  setPendingNavIdx(null)
-                }
-              }}
-              onNext={dismissActivity}
-              className="shadow-2xl"
-            />
-            <button onClick={dismissActivity}
-              className="mt-3 w-full text-center text-xs text-white/40 hover:text-white/70 transition-colors py-2">
-              Skip activity
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── BOTTOM NAV ────────────────────────────────────────── */}
       <div className="h-12 bg-slate-800 border-t border-white/5 flex items-center justify-between px-4 shrink-0">
@@ -1218,11 +1169,8 @@ export default function PackagePlayer({
           <button
             onClick={goNext}
             disabled={!canNext}
-            className="relative flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-sm"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-sm"
           >
-            {activityForCurrentSlide() && (
-              <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-full border-2 border-slate-800" title="Activity after this slide" />
-            )}
             Next <ChevronRight className="h-4 w-4" />
           </button>
         )}

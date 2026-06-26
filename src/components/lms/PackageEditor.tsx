@@ -16,6 +16,8 @@ import {
   SkipForward, Eye, EyeOff, Clock, Target, Shield,
   ChevronDown, ChevronUp, Square, CheckSquare, Play,
   Globe, Music, Database, Search, Check, Sparkles, Puzzle,
+  BookOpen, ArrowUpDown, AlertTriangle, TextCursor, WholeWord,
+  GitBranch, Layers3, Zap, ListOrdered,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -24,14 +26,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import LibraryPicker, { LibraryFile } from "@/components/lms/LibraryPicker"
 import { RichTextEditor } from "@/components/lms/RichTextEditor"
-import ActivitySection from "@/components/lms/ActivitySection"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────
 export type ItemType =
   | "slide_pdf" | "slide_pptx" | "video" | "youtube" | "audio"
-  | "quiz" | "exam" | "text" | "image" | "web_content" | "divider"
+  | "quiz" | "exam" | "text" | "image" | "web_content" | "divider" | "activity"
 
 export interface MCQOption  { id: string; text: string; is_correct: boolean }
 export interface OrderItem  { id: string; text: string }
@@ -72,6 +73,7 @@ const TYPE_META: Record<ItemType, { icon: React.ElementType; label: string; colo
   image:       { icon: ImageIcon,     label: "Image",          color: "text-pink-600",   bg: "bg-pink-100"   },
   web_content: { icon: Globe,         label: "Web Content",    color: "text-cyan-600",   bg: "bg-cyan-100"   },
   divider:     { icon: Layers,        label: "Section",        color: "text-teal-600",   bg: "bg-teal-100"   },
+  activity:    { icon: Puzzle,        label: "Activity",       color: "text-purple-600", bg: "bg-purple-100" },
 }
 
 function uid() { return `new_${Math.random().toString(36).slice(2)}` }
@@ -89,6 +91,7 @@ function defaultItem(type: ItemType): PackageItem {
     image:       { file_id: null, file_url: null, file_name: null },
     web_content: { url: "", title: "" },
     divider:     { title: "New Section", subtitle: "" },
+    activity:    { activity_type: "mcq", difficulty: "medium", ai_generated: false, content: {} },
   }
   return { id: uid(), type, title: TYPE_META[type].label, config: bases[type], required: true, order_index: 0 }
 }
@@ -619,10 +622,148 @@ function QuestionEditor({
 // ─────────────────────────────────────────────────────────────────
 // Main content area renderer (editor mode)
 // ─────────────────────────────────────────────────────────────────
-function ItemEditor({
-  item, onChange,
+const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; color: string; bg: string }[] = [
+  { type: "mcq",           label: "MCQ",            icon: ListOrdered,  color: "#0C447C", bg: "#E6F1FB" },
+  { type: "flashcard",     label: "Flashcard",      icon: BookOpen,     color: "#27500A", bg: "#EAF3DE" },
+  { type: "ordering",      label: "Ordering",       icon: ArrowUpDown,  color: "#633806", bg: "#FAEEDA" },
+  { type: "error_spotter", label: "Error Spotter",  icon: AlertTriangle,color: "#791F1F", bg: "#FCEBEB" },
+  { type: "gap_fill",      label: "Gap Fill",       icon: TextCursor,   color: "#26215C", bg: "#EEEDFE" },
+  { type: "word_scramble", label: "Word Scramble",  icon: WholeWord,    color: "#4B1528", bg: "#FBEAF0" },
+  { type: "scenario",      label: "Scenario",       icon: GitBranch,    color: "#04342C", bg: "#E1F5EE" },
+  { type: "concept_sorter",label: "Concept Sorter", icon: Layers3,      color: "#3B3B00", bg: "#FFFFF0" },
+  { type: "acronym",       label: "Acronym",        icon: Sparkles,     color: "#2C1A00", bg: "#FFF3E0" },
+  { type: "drag_match",    label: "Drag & Match",   icon: Puzzle,       color: "#1A0033", bg: "#F3E5F5" },
+  { type: "fill_blank",    label: "Fill in Blank",  icon: AlignLeft,    color: "#002244", bg: "#E3F2FD" },
+  { type: "rapid_fire",    label: "Rapid Fire",     icon: Zap,          color: "#4A0000", bg: "#FFEBEE" },
+]
+
+function ActivityItemEditor({
+  item, onChange, moduleId,
 }: {
-  item: PackageItem; onChange: (patch: Partial<PackageItem>) => void
+  item: PackageItem; onChange: (patch: Partial<PackageItem>) => void; moduleId: string
+}) {
+  const cfg = item.config
+  const setConfig = (patch: Record<string, any>) => onChange({ config: { ...cfg, ...patch } })
+  const [generating, setGenerating] = useState(false)
+
+  const selectedType = ACTIVITY_TYPES.find(t => t.type === cfg.activity_type) ?? ACTIVITY_TYPES[0]
+  const hasContent = cfg.content && Object.keys(cfg.content).length > 0
+
+  async function generateActivity() {
+    setGenerating(true)
+    try {
+      const res = await fetch("/api/lms/activities/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module_id: moduleId,
+          count: 1,
+          types: [cfg.activity_type ?? "mcq"],
+          difficulty: cfg.difficulty ?? "medium",
+          placement: "ai_topic",
+          language: "English",
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Generation failed")
+      const act = data.activities?.[0]
+      if (act) {
+        onChange({
+          title: act.title ?? item.title,
+          config: { ...cfg, content: act.content, ai_generated: true, difficulty: act.difficulty },
+        })
+        toast.success("Activity generated")
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Generation failed")
+    }
+    setGenerating(false)
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+      <div className="max-w-2xl mx-auto space-y-5">
+
+        {/* Type selector */}
+        <div>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Activity type</p>
+          <div className="grid grid-cols-4 gap-2">
+            {ACTIVITY_TYPES.map(t => {
+              const Icon = t.icon
+              const on = cfg.activity_type === t.type
+              return (
+                <button key={t.type} onClick={() => setConfig({ activity_type: t.type, content: {} })}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border-2 text-[11px] font-semibold transition-all",
+                    on ? "border-transparent" : "border-slate-200 bg-white hover:border-slate-300 text-slate-500"
+                  )}
+                  style={on ? { background: t.bg, color: t.color, borderColor: t.color + "40" } : {}}>
+                  <Icon className="h-5 w-5" style={on ? { color: t.color } : {}} />
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Difficulty */}
+        <div>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Difficulty</p>
+          <div className="flex gap-2">
+            {(["easy","medium","hard"] as const).map(d => (
+              <button key={d} onClick={() => setConfig({ difficulty: d })}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg border text-xs font-semibold capitalize transition-all",
+                  cfg.difficulty === d
+                    ? d === "easy"   ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                    : d === "medium" ? "border-amber-500 bg-amber-50 text-amber-700"
+                    :                  "border-red-500 bg-red-50 text-red-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                )}>{d}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Generate */}
+        <button onClick={generateActivity} disabled={generating}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60">
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {generating ? "Generating…" : hasContent ? "Regenerate with AI" : "Generate with AI"}
+        </button>
+
+        {/* Content preview */}
+        {hasContent && (
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              {(() => { const Icon = selectedType.icon; return <Icon className="h-4 w-4" style={{ color: selectedType.color }} /> })()}
+              <p className="text-xs font-bold" style={{ color: selectedType.color }}>{selectedType.label} — ready</p>
+              <span className="ml-auto text-[10px] text-slate-400 flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> AI generated
+              </span>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 font-mono overflow-hidden max-h-40 overflow-y-auto">
+              <pre className="whitespace-pre-wrap">{JSON.stringify(cfg.content, null, 2)}</pre>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">Students will see this as an interactive activity. Save the package to publish it.</p>
+          </div>
+        )}
+
+        {!hasContent && (
+          <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-slate-200 rounded-xl bg-white">
+            <Puzzle className="h-10 w-10 text-slate-200 mb-3" />
+            <p className="text-sm text-slate-500 font-medium mb-1">No content yet</p>
+            <p className="text-xs text-slate-400">Click "Generate with AI" above to create the activity content</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ItemEditor({
+  item, onChange, moduleId,
+}: {
+  item: PackageItem; onChange: (patch: Partial<PackageItem>) => void; moduleId: string
 }) {
   const cfg = item.config
 
@@ -919,6 +1060,11 @@ function ItemEditor({
     )
   }
 
+  // ── activity ───────────────────────────────────────────────────
+  if (item.type === "activity") {
+    return <ActivityItemEditor item={item} onChange={onChange} moduleId={moduleId} />
+  }
+
   return null
 }
 
@@ -958,8 +1104,6 @@ export default function PackageEditor({
     id: string; current_title: string; suggested_title: string; type: string
   }[]>([])
   const [aiSelected,  setAiSelected]  = useState<Set<string>>(new Set())
-  const [activeView,  setActiveView]  = useState<"content" | "activities">("content")
-  const [hasAnalysis, setHasAnalysis] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
@@ -981,11 +1125,6 @@ export default function PackageEditor({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-    // Check if Expert analysis exists
-    fetch(`/api/lms/module-analysis?module_id=${moduleId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setHasAnalysis(!!(d && !d.error && d.analysis)))
-      .catch(() => {})
   }, [moduleId])
 
   // ── Mark dirty on item changes ───────────────────────────────
@@ -1216,13 +1355,6 @@ export default function PackageEditor({
 
   const currentItem = items[currentIdx] ?? null
 
-  // Slide count: sum PDF pages + PPTX slides (fallback 20)
-  const slideCount = items.reduce((acc, it) => {
-    if (it.type === "slide_pdf")  return acc + (it.config.total_pages  ?? 0)
-    if (it.type === "slide_pptx") return acc + (it.config.total_slides ?? 0)
-    return acc
-  }, 0) || 20
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
@@ -1286,6 +1418,7 @@ export default function PackageEditor({
             { label: "Web Content",    icon: Globe,         action: () => setWebModal(true) },
             { label: "Quiz",           icon: HelpCircle,    action: () => insertSimple("quiz") },
             { label: "Knowledge Test", icon: GraduationCap, action: () => insertSimple("exam") },
+            { label: "Activity",       icon: Puzzle,        action: () => insertSimple("activity") },
             { label: "Image",          icon: ImageIcon,     action: () => setPicker({ open: true, mode: "image" }) },
             { label: "Text",           icon: AlignLeft,     action: () => insertSimple("text") },
             { label: "Section",        icon: Layers,        action: () => insertSimple("divider") },
@@ -1316,34 +1449,7 @@ export default function PackageEditor({
           {importing && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
         </div>
 
-        {/* View toggle: Content | Activities */}
-        <div className="pl-2 pr-2 py-2 shrink-0 border-l border-slate-200 bg-white flex items-center gap-1">
-          <button
-            onClick={() => setActiveView("content")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
-              activeView === "content"
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-            )}
-          >
-            <Layers className="h-3.5 w-3.5" /> Content
-          </button>
-          <button
-            onClick={() => setActiveView("activities")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
-              activeView === "activities"
-                ? "bg-[#1B4F8A] text-white"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-            )}
-          >
-            <Puzzle className="h-3.5 w-3.5" /> Activities
-          </button>
-        </div>
-
-        {/* AI Analyze — pinned right (only in content view) */}
-        {activeView === "content" && (
+        {/* AI Analyze — pinned right */}
         <div className="pl-2 pr-2 py-2 shrink-0 border-l border-slate-200 bg-white">
           <button
             onClick={runAiAnalysis}
@@ -1356,7 +1462,6 @@ export default function PackageEditor({
             AI Analyze
           </button>
         </div>
-        )}
 
         {/* Save — pinned right, never scrolls */}
         <div className="pl-2 pr-4 py-2 shrink-0 border-l border-slate-200 bg-white">
@@ -1377,17 +1482,7 @@ export default function PackageEditor({
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────── */}
-      {activeView === "activities" ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ActivitySection
-            moduleId={moduleId}
-            courseId={courseId}
-            slideCount={slideCount}
-            hasAnalysis={hasAnalysis}
-          />
-        </div>
-      ) : null}
-      <div className={cn("flex flex-1 min-h-0", activeView !== "content" && "hidden")}>
+      <div className="flex flex-1 min-h-0">
 
         {/* LEFT THUMBNAIL STRIP */}
         <aside className="w-44 shrink-0 bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden">
@@ -1454,6 +1549,7 @@ export default function PackageEditor({
                 <ItemEditor
                   item={currentItem}
                   onChange={patch => updateItem(currentItem.id, patch)}
+                  moduleId={moduleId}
                 />
               </div>
             </>
@@ -1467,7 +1563,7 @@ export default function PackageEditor({
       </div>
 
       {/* ── BOTTOM NAV BAR ────────────────────────────────────── */}
-      {items.length > 0 && activeView === "content" && (
+      {items.length > 0 && (
         <div className="flex items-center justify-between px-4 py-2.5 bg-white border-t border-slate-200 shrink-0">
           <button
             onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}
