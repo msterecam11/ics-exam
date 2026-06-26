@@ -155,14 +155,23 @@ Respond ONLY with a valid JSON array. No explanation. No markdown. No code fence
     "placement_reason": "...",
     "difficulty": "${difficulty}",
     "content": {
-      "text": "A paragraph about the module topic with exactly 2 factual errors embedded naturally",
+      "text": "The pilot must hold a Class III medical certificate and complete 500 hours of total flight time before applying for a commercial licence.",
       "errors": [
-        {"wrong": "the incorrect word or phrase in the text", "correct": "the correct replacement"},
-        {"wrong": "the second incorrect phrase", "correct": "correct version"}
+        {"wrong": "Class III", "correct": "Class I"},
+        {"wrong": "500 hours", "correct": "200 hours"}
       ]
     }
   }
 ]
+
+CRITICAL RULES FOR error_spotter TYPE:
+1. Write the "text" paragraph first — it must be 2-3 sentences about the module topic
+2. The paragraph MUST contain exactly 2 factual errors (wrong aviation facts that a student should catch)
+3. The "wrong" field MUST be the EXACT substring as it appears in your "text" paragraph — copy and paste it
+4. Double-check: search your "text" for each "wrong" value before outputting — if it is not there, rewrite
+5. The "correct" field is the replacement value (not the full sentence, just the corrected phrase/number/word)
+6. Example: if text says "Class III medical certificate", then wrong="Class III", correct="Class I"
+7. NEVER use a "wrong" value that does not appear verbatim in the "text"
 
 CONTENT RULES:
 - All content must be directly relevant to "${moduleTitle}" and the topics listed
@@ -170,7 +179,7 @@ CONTENT RULES:
 - For flashcard: 3-6 cards
 - For mcq: exactly 4 options, exactly 1 correct
 - For ordering: 4-6 items
-- For error_spotter: exactly 2 errors, errors must actually appear word-for-word in the text
+- For error_spotter: exactly 2 errors — see CRITICAL RULES above
 - For gap_fill: "paragraph" field with blanks as [BLANK_1], [BLANK_2] etc, "blanks" array with answers
 - For word_scramble: "word" is a single aviation term from the topics, "hint" is a definition
 - For scenario: "situation" text, "choices" array with is_correct on exactly one
@@ -211,15 +220,41 @@ CONTENT RULES:
   }
 
   // Normalize and validate each activity
-  const normalized = activities.slice(0, count).map((act: any, i: number) => ({
-    type:            act.type ?? "mcq",
-    title:           act.title ?? `Activity ${i + 1}`,
-    placement_slide: Math.max(1, Math.min(slideCount, act.placement_slide ?? Math.round((slideCount / count) * (i + 1)))),
-    placement_reason:act.placement_reason ?? "",
-    difficulty,
-    ai_generated:    true,
-    content:         act.content ?? {},
-  }))
+  const normalized = activities.slice(0, count).map((act: any, i: number) => {
+    let content = act.content ?? {}
+
+    // Post-process error_spotter: ensure every "wrong" value appears verbatim in the text
+    if (act.type === "error_spotter" && content.text && Array.isArray(content.errors)) {
+      content = {
+        ...content,
+        errors: content.errors.map((e: any) => {
+          const wrong = e.wrong ?? ""
+          const correct = e.correct ?? ""
+          if (wrong && content.text.includes(wrong)) return e
+          // Try case-insensitive match and use the actual substring from the text
+          const lowerText: string = content.text.toLowerCase()
+          const lowerWrong: string = wrong.toLowerCase()
+          const idx = lowerText.indexOf(lowerWrong)
+          if (idx !== -1) {
+            // Use the actual casing from the text
+            return { wrong: content.text.slice(idx, idx + wrong.length), correct }
+          }
+          // Wrong phrase not in text at all — mark as invalid so the UI can skip it
+          return { wrong: "", correct, _invalid: true }
+        }).filter((e: any) => !e._invalid && e.wrong),
+      }
+    }
+
+    return {
+      type:            act.type ?? "mcq",
+      title:           act.title ?? `Activity ${i + 1}`,
+      placement_slide: Math.max(1, Math.min(slideCount, act.placement_slide ?? Math.round((slideCount / count) * (i + 1)))),
+      placement_reason:act.placement_reason ?? "",
+      difficulty,
+      ai_generated:    true,
+      content,
+    }
+  })
 
   return NextResponse.json({ activities: normalized })
 }

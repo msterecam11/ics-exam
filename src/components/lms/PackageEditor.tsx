@@ -681,24 +681,47 @@ function ActivityItemEditor({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
-      <div className="max-w-2xl mx-auto space-y-5">
+    <div className="flex-1 overflow-y-auto bg-white">
 
-        {/* Type selector */}
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-purple-50 to-white">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
+            <Puzzle className="h-5 w-5 text-purple-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-slate-800 text-sm">Activity Editor</p>
+            <p className="text-xs text-slate-400">Choose a type, set difficulty, then generate with AI</p>
+          </div>
+          {hasContent && (
+            <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              <Check className="h-3 w-3" /> Ready
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6 space-y-6 max-w-2xl">
+
+        {/* Step 1 — Type */}
         <div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Activity type</p>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">1</span>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Choose activity type</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
             {ACTIVITY_TYPES.map(t => {
               const Icon = t.icon
               const on = cfg.activity_type === t.type
               return (
-                <button key={t.type} onClick={() => setConfig({ activity_type: t.type, content: {} })}
+                <button key={t.type}
+                  onClick={() => setConfig({ activity_type: t.type, content: {} })}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border-2 text-[11px] font-semibold transition-all",
-                    on ? "border-transparent" : "border-slate-200 bg-white hover:border-slate-300 text-slate-500"
+                    "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-left",
+                    on ? "border-transparent shadow-sm" : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
                   )}
-                  style={on ? { background: t.bg, color: t.color, borderColor: t.color + "40" } : {}}>
-                  <Icon className="h-5 w-5" style={on ? { color: t.color } : {}} />
+                  style={on ? { background: t.bg, color: t.color, borderColor: t.color + "60" } : {}}>
+                  <Icon className="h-4 w-4 shrink-0" style={on ? { color: t.color } : { color: "#94a3b8" }} />
                   {t.label}
                 </button>
               )
@@ -706,53 +729,110 @@ function ActivityItemEditor({
           </div>
         </div>
 
-        {/* Difficulty */}
+        {/* Step 2 — Difficulty */}
         <div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Difficulty</p>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">2</span>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Set difficulty</p>
+          </div>
           <div className="flex gap-2">
             {(["easy","medium","hard"] as const).map(d => (
               <button key={d} onClick={() => setConfig({ difficulty: d })}
                 className={cn(
-                  "flex-1 py-1.5 rounded-lg border text-xs font-semibold capitalize transition-all",
+                  "flex-1 py-2 rounded-xl border-2 text-xs font-bold capitalize transition-all",
                   cfg.difficulty === d
-                    ? d === "easy"   ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                    : d === "medium" ? "border-amber-500 bg-amber-50 text-amber-700"
-                    :                  "border-red-500 bg-red-50 text-red-700"
-                    : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                    ? d === "easy"   ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                    : d === "medium" ? "border-amber-400 bg-amber-50 text-amber-700"
+                    :                  "border-red-400 bg-red-50 text-red-700"
+                    : "border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300 hover:bg-white"
                 )}>{d}</button>
             ))}
           </div>
         </div>
 
-        {/* Generate */}
-        <button onClick={generateActivity} disabled={generating}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60">
-          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {generating ? "Generating…" : hasContent ? "Regenerate with AI" : "Generate with AI"}
-        </button>
+        {/* Step 3 — Generate */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">3</span>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Generate with AI</p>
+          </div>
+          <button onClick={generateActivity} disabled={generating}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {generating ? "AI is generating content…" : hasContent ? "Regenerate with AI" : "Generate activity content"}
+          </button>
+          <p className="text-[11px] text-slate-400 mt-2 text-center">
+            AI will use the module's Expert analysis to generate relevant content
+          </p>
+        </div>
 
-        {/* Content preview */}
-        {hasContent && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-2 mb-3">
+        {/* Content status */}
+        {hasContent ? (
+          <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 space-y-3">
+            <div className="flex items-center gap-2">
               {(() => { const Icon = selectedType.icon; return <Icon className="h-4 w-4" style={{ color: selectedType.color }} /> })()}
-              <p className="text-xs font-bold" style={{ color: selectedType.color }}>{selectedType.label} — ready</p>
-              <span className="ml-auto text-[10px] text-slate-400 flex items-center gap-1">
+              <p className="text-sm font-bold text-emerald-800">{selectedType.label} — ready</p>
+              <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-600">
                 <Sparkles className="h-3 w-3" /> AI generated
               </span>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 font-mono overflow-hidden max-h-40 overflow-y-auto">
-              <pre className="whitespace-pre-wrap">{JSON.stringify(cfg.content, null, 2)}</pre>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2">Students will see this as an interactive activity. Save the package to publish it.</p>
-          </div>
-        )}
 
-        {!hasContent && (
-          <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-slate-200 rounded-xl bg-white">
-            <Puzzle className="h-10 w-10 text-slate-200 mb-3" />
-            <p className="text-sm text-slate-500 font-medium mb-1">No content yet</p>
-            <p className="text-xs text-slate-400">Click "Generate with AI" above to create the activity content</p>
+            {/* Human-readable preview per type */}
+            {cfg.activity_type === "mcq" && cfg.content?.question && (
+              <div className="text-xs text-slate-700 space-y-1">
+                <p className="font-medium text-slate-800">Q: {cfg.content.question}</p>
+                {cfg.content.options?.map((o: any, i: number) => (
+                  <p key={i} className={cn("pl-3", o.is_correct ? "text-emerald-700 font-semibold" : "text-slate-500")}>
+                    {o.is_correct ? "✓" : "·"} {o.text}
+                  </p>
+                ))}
+              </div>
+            )}
+            {cfg.activity_type === "flashcard" && (
+              <p className="text-xs text-slate-600">{cfg.content?.cards?.length ?? 0} flashcards generated</p>
+            )}
+            {cfg.activity_type === "ordering" && (
+              <p className="text-xs text-slate-600">{cfg.content?.items?.length ?? 0} items to order — "{cfg.content?.question}"</p>
+            )}
+            {cfg.activity_type === "error_spotter" && cfg.content?.text && (
+              <div className="text-xs text-slate-700 space-y-1">
+                <p className="italic text-slate-600">"{cfg.content.text.slice(0, 120)}{cfg.content.text.length > 120 ? "…" : ""}"</p>
+                <p className="text-slate-500">{cfg.content.errors?.length ?? 0} errors to find</p>
+              </div>
+            )}
+            {cfg.activity_type === "gap_fill" && cfg.content?.paragraph && (
+              <p className="text-xs text-slate-600 italic">"{cfg.content.paragraph.slice(0, 120)}…"</p>
+            )}
+            {cfg.activity_type === "word_scramble" && (
+              <p className="text-xs text-slate-600">Term: <strong>{cfg.content?.word}</strong> — {cfg.content?.hint}</p>
+            )}
+            {cfg.activity_type === "scenario" && (
+              <p className="text-xs text-slate-600">{cfg.content?.situation?.slice(0, 100)}…</p>
+            )}
+            {cfg.activity_type === "concept_sorter" && (
+              <p className="text-xs text-slate-600">{cfg.content?.categories?.length ?? 0} categories, {cfg.content?.items?.length ?? 0} items</p>
+            )}
+            {cfg.activity_type === "acronym" && (
+              <p className="text-xs text-slate-600">Acronym: <strong>{cfg.content?.acronym}</strong></p>
+            )}
+            {cfg.activity_type === "drag_match" && (
+              <p className="text-xs text-slate-600">{cfg.content?.pairs?.length ?? 0} pairs to match</p>
+            )}
+            {cfg.activity_type === "fill_blank" && cfg.content?.sentence && (
+              <p className="text-xs text-slate-600 italic">"{cfg.content.sentence}"</p>
+            )}
+            {cfg.activity_type === "rapid_fire" && (
+              <p className="text-xs text-slate-600">{cfg.content?.questions?.length ?? 0} rapid-fire questions, {cfg.content?.time_per_question_s ?? 10}s each</p>
+            )}
+
+            <p className="text-[11px] text-emerald-700 pt-1 border-t border-emerald-200">
+              Save the package to publish this activity to students.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+            <Puzzle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs text-slate-400">No content yet — click "Generate activity content" above</p>
           </div>
         )}
       </div>
