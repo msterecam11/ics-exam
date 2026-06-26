@@ -47,7 +47,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   // Keep Puppeteer out of the webpack bundle — it uses native binaries
-  serverExternalPackages: ["puppeteer"],
+  // Keep these out of the Turbopack bundle — they use Node.js fs/path at init time
+  serverExternalPackages: ["puppeteer", "pdf-parse", "pdfjs-dist"],
 
   images: {
     remotePatterns: [

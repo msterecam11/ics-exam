@@ -52,10 +52,9 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
       return []
     }
 
-    // pdf-parse bundles pdfjs v2 which works natively in Node.js (no worker setup needed)
-    // ESM types export the fn directly; CJS wraps it in .default — handle both
-    const pdfParseModule = await import("pdf-parse" as any) as any
-    const pdfParse: (buf: Buffer, opts: any) => Promise<any> = pdfParseModule.default ?? pdfParseModule
+    // Load pdf-parse via require so Turbopack does not bundle it (see serverExternalPackages)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require("pdf-parse") as (buf: Buffer, opts?: any) => Promise<any>
     const pageTexts: string[] = []
 
     await pdfParse(rawBuffer, {
