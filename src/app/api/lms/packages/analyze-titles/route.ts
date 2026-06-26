@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import Groq from "groq-sdk"
+import { spawn } from "child_process"
+import path from "path"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -30,7 +32,10 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } 
   return { bucket: m[1], path: decodeURIComponent(m[2]) }
 }
 
-// ── PDF text extraction (pdf-parse, Node-native) ──────────────────
+// ── PDF text extraction via subprocess ────────────────────────────
+// pdfjs cannot run inside the Next.js/Turbopack bundle (worker setup
+// fails in bundled environments). We spawn scripts/extract-pdf-text.js
+// as a plain Node.js subprocess so it loads pdfjs natively.
 async function extractPdfPageTexts(url: string): Promise<string[]> {
   try {
     // Download the PDF — try plain fetch first, fall back to Supabase storage client
@@ -52,28 +57,44 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
       return []
     }
 
-    // Load pdf-parse via require so Turbopack does not bundle it (see serverExternalPackages)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (buf: Buffer, opts?: any) => Promise<any>
-    const pageTexts: string[] = []
+    // Spawn the extraction script as a subprocess (unbundled native Node.js)
+    const scriptPath = path.join(process.cwd(), "scripts", "extract-pdf-text.js")
+    const buf = rawBuffer
 
-    await pdfParse(rawBuffer, {
-      pagerender(pageData: any) {
-        return pageData.getTextContent().then((content: any) => {
-          const text = (content.items as any[])
-            .map(item => item.str ?? "")
-            .join(" ")
-            .replace(/\s{2,}/g, " ")
-            .trim()
-          pageTexts.push(text)
-          return text
-        })
-      },
+    const texts = await new Promise<string[]>((resolve) => {
+      const proc = spawn(process.execPath, [scriptPath], { timeout: 30_000 })
+      const out: Buffer[] = []
+      const err: Buffer[] = []
+
+      proc.stdout.on("data", d => out.push(d))
+      proc.stderr.on("data", d => err.push(d))
+
+      proc.on("close", code => {
+        if (code !== 0) {
+          console.error("[analyze-titles] PDF subprocess error:", Buffer.concat(err).toString().slice(0, 300))
+          resolve([])
+          return
+        }
+        try {
+          const parsed = JSON.parse(Buffer.concat(out).toString())
+          resolve(Array.isArray(parsed) ? parsed : [])
+        } catch {
+          resolve([])
+        }
+      })
+
+      proc.on("error", e => {
+        console.error("[analyze-titles] PDF subprocess spawn failed:", e.message)
+        resolve([])
+      })
+
+      proc.stdin.write(buf)
+      proc.stdin.end()
     })
 
-    const withText = pageTexts.filter(t => t.length > 10).length
-    console.log(`[analyze-titles] PDF extracted: ${pageTexts.length} pages, ${withText} have text`)
-    return pageTexts
+    const withText = texts.filter(t => t.length > 10).length
+    console.log(`[analyze-titles] PDF extracted: ${texts.length} pages, ${withText} have text`)
+    return texts
   } catch (err) {
     console.error(`[analyze-titles] PDF extraction failed:`, err)
     return []
