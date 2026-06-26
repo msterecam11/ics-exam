@@ -15,7 +15,7 @@ import {
   Layers, Video, Link2, PlusCircle, X, Settings,
   SkipForward, Eye, EyeOff, Clock, Target, Shield,
   ChevronDown, ChevronUp, Square, CheckSquare, Play,
-  Globe, Music, Database, Search, Check, Sparkles,
+  Globe, Music, Database, Search, Check, Sparkles, Puzzle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import LibraryPicker, { LibraryFile } from "@/components/lms/LibraryPicker"
 import { RichTextEditor } from "@/components/lms/RichTextEditor"
+import ActivitySection from "@/components/lms/ActivitySection"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -956,7 +957,9 @@ export default function PackageEditor({
   const [aiSuggestions, setAiSuggestions] = useState<{
     id: string; current_title: string; suggested_title: string; type: string
   }[]>([])
-  const [aiSelected, setAiSelected] = useState<Set<string>>(new Set())
+  const [aiSelected,  setAiSelected]  = useState<Set<string>>(new Set())
+  const [activeView,  setActiveView]  = useState<"content" | "activities">("content")
+  const [hasAnalysis, setHasAnalysis] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
@@ -978,6 +981,11 @@ export default function PackageEditor({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+    // Check if Expert analysis exists
+    fetch(`/api/lms/module-analysis?module_id=${moduleId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setHasAnalysis(!!(d && !d.error && d.analysis)))
+      .catch(() => {})
   }, [moduleId])
 
   // ── Mark dirty on item changes ───────────────────────────────
@@ -1208,6 +1216,13 @@ export default function PackageEditor({
 
   const currentItem = items[currentIdx] ?? null
 
+  // Slide count: sum PDF pages + PPTX slides (fallback 20)
+  const slideCount = items.reduce((acc, it) => {
+    if (it.type === "slide_pdf")  return acc + (it.config.total_pages  ?? 0)
+    if (it.type === "slide_pptx") return acc + (it.config.total_slides ?? 0)
+    return acc
+  }, 0) || 20
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
@@ -1301,7 +1316,34 @@ export default function PackageEditor({
           {importing && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
         </div>
 
-        {/* AI Analyze — pinned right */}
+        {/* View toggle: Content | Activities */}
+        <div className="pl-2 pr-2 py-2 shrink-0 border-l border-slate-200 bg-white flex items-center gap-1">
+          <button
+            onClick={() => setActiveView("content")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
+              activeView === "content"
+                ? "bg-slate-900 text-white"
+                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+            )}
+          >
+            <Layers className="h-3.5 w-3.5" /> Content
+          </button>
+          <button
+            onClick={() => setActiveView("activities")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
+              activeView === "activities"
+                ? "bg-[#1B4F8A] text-white"
+                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+            )}
+          >
+            <Puzzle className="h-3.5 w-3.5" /> Activities
+          </button>
+        </div>
+
+        {/* AI Analyze — pinned right (only in content view) */}
+        {activeView === "content" && (
         <div className="pl-2 pr-2 py-2 shrink-0 border-l border-slate-200 bg-white">
           <button
             onClick={runAiAnalysis}
@@ -1314,6 +1356,7 @@ export default function PackageEditor({
             AI Analyze
           </button>
         </div>
+        )}
 
         {/* Save — pinned right, never scrolls */}
         <div className="pl-2 pr-4 py-2 shrink-0 border-l border-slate-200 bg-white">
@@ -1334,7 +1377,17 @@ export default function PackageEditor({
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
+      {activeView === "activities" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ActivitySection
+            moduleId={moduleId}
+            courseId={courseId}
+            slideCount={slideCount}
+            hasAnalysis={hasAnalysis}
+          />
+        </div>
+      ) : null}
+      <div className={cn("flex flex-1 min-h-0", activeView !== "content" && "hidden")}>
 
         {/* LEFT THUMBNAIL STRIP */}
         <aside className="w-44 shrink-0 bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden">
@@ -1414,7 +1467,7 @@ export default function PackageEditor({
       </div>
 
       {/* ── BOTTOM NAV BAR ────────────────────────────────────── */}
-      {items.length > 0 && (
+      {items.length > 0 && activeView === "content" && (
         <div className="flex items-center justify-between px-4 py-2.5 bg-white border-t border-slate-200 shrink-0">
           <button
             onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}

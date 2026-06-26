@@ -2693,15 +2693,15 @@ function AiReportView({ report, analyzing, onAnalyze }: {
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-50 mb-5">
           <Sparkles className="h-8 w-8 text-purple-400" />
         </div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">AI Course Analysis</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">Expert Course Analysis</h2>
         <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
-          Run AI analysis to get a structured breakdown of what each module covers. The exam analysis will then map every question to the relevant course module.
+          Run Expert analysis to get a structured breakdown of what each module covers. The exam analysis will then map every question to the relevant course module.
         </p>
         <Button
           onClick={onAnalyze}
           className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
         >
-          <Sparkles className="h-4 w-4" /> Run AI Analysis
+          <Sparkles className="h-4 w-4" /> Run Expert Analysis
         </Button>
       </div>
     )
@@ -2711,7 +2711,7 @@ function AiReportView({ report, analyzing, onAnalyze }: {
     return (
       <div className="flex flex-col items-center justify-center pt-24 gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
-        <p className="text-slate-500 text-sm">Analyzing modules with AI…</p>
+        <p className="text-slate-500 text-sm">Expert analysis in progress…</p>
       </div>
     )
   }
@@ -2724,7 +2724,7 @@ function AiReportView({ report, analyzing, onAnalyze }: {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500" /> AI Course Report
+            <Sparkles className="h-5 w-5 text-purple-500" /> Expert Course Report
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             Generated {report?.generated_at ? new Date(report.generated_at).toLocaleString() : "—"}
@@ -2742,41 +2742,7 @@ function AiReportView({ report, analyzing, onAnalyze }: {
         </Button>
       </div>
 
-      {/* Module summaries */}
-      {modules.length > 0 && (
-        <section>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Course Modules ({modules.length})</p>
-          <div className="space-y-3">
-            {modules.map((m: any, i: number) => (
-              <div key={m.module_id ?? i} className="bg-white rounded-xl border border-slate-200 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-[#1B4F8A]/10 text-[#1B4F8A] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-slate-900 text-sm">{m.module_title}</p>
-                      <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full capitalize">
-                        {m.module_type?.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-2">{m.summary}</p>
-                    {m.topics?.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {m.topics.map((t: string, j: number) => (
-                          <span key={j} className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{t}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Exam analysis */}
+      {/* Exam analysis — shown first so it's immediately visible */}
       {exams.length > 0 && (
         <section>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Final Exam Analysis</p>
@@ -2814,11 +2780,45 @@ function AiReportView({ report, analyzing, onAnalyze }: {
         </section>
       )}
 
+      {/* Module summaries */}
+      {modules.length > 0 && (
+        <section>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Course Modules ({modules.length})</p>
+          <div className="space-y-3">
+            {modules.map((m: any, i: number) => (
+              <div key={m.module_id ?? i} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-[#1B4F8A]/10 text-[#1B4F8A] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-semibold text-slate-900 text-sm">{m.module_title}</p>
+                      <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full capitalize">
+                        {m.module_type?.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-2">{m.summary}</p>
+                    {m.topics?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {m.topics.map((t: string, j: number) => (
+                          <span key={j} className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {modules.length === 0 && exams.length === 0 && (
         <div className="text-center py-12 text-slate-400">
-          <p className="text-sm">No analysis data yet. Run AI Analyze to generate the report.</p>
+          <p className="text-sm">No analysis data yet. Run Expert Analysis to generate the report.</p>
           <Button onClick={onAnalyze} className="mt-4 bg-purple-600 hover:bg-purple-700 text-white gap-2" disabled={analyzing}>
-            <Sparkles className="h-4 w-4" /> Run AI Analysis
+            <Sparkles className="h-4 w-4" /> Run Expert Analysis
           </Button>
         </div>
       )}
@@ -2934,7 +2934,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
   async function analyzeFullCourse() {
     if (!course || aiAnalyzing) return
     setAiAnalyzing(true)
-    toast.info("AI analysis started — this may take a minute…")
+    toast.info("Expert analysis started — this may take a minute…")
     try {
       const res = await fetch("/api/lms/analyze/course", {
         method: "POST",
@@ -3031,7 +3031,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
             disabled={aiAnalyzing}
           >
             {aiAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {aiAnalyzing ? "Analyzing…" : "AI Analyze"}
+            {aiAnalyzing ? "Analyzing…" : "Expert Analyze"}
           </Button>
           {course && course.status !== "archived" && (
             <Button size="sm" disabled={toggling}
@@ -3114,12 +3114,12 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
             {[
               { key: "users",     icon: Users,     label: "Students" },
               { key: "settings",  icon: Settings,  label: "Settings" },
-              { key: "ai-report", icon: Sparkles,  label: "AI Report" },
+              { key: "ai-report", icon: Sparkles,  label: "Expert Report" },
             ].map(({ key, icon: Icon, label }) => (
               <button key={key}
                 onClick={() => {
-                  if (key === "ai-report" && !aiReport) {
-                    // Lazily load report if not loaded yet
+                  if (key === "ai-report") {
+                    // Always re-fetch so exam data shows after analysis
                     fetch(`/api/lms/analyze/report?course_id=${courseId}`)
                       .then(r => r.ok ? r.json() : null)
                       .then(data => { if (data) setAiReport(data) })
