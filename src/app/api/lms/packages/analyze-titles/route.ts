@@ -30,51 +30,49 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } 
   return { bucket: m[1], path: decodeURIComponent(m[2]) }
 }
 
-// ── PDF text extraction (pdfjs-dist, Node-compatible) ─────────────
+// ── PDF text extraction (pdf-parse, Node-native) ──────────────────
 async function extractPdfPageTexts(url: string): Promise<string[]> {
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any)
-    // pdfjs v6 requires a real workerSrc — empty string no longer triggers fake-worker mode
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `file://${process.cwd()}/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs`
-
-    // Try plain fetch first (public bucket / pre-signed URL)
-    let buffer: ArrayBuffer | null = null
+    // Download the PDF — try plain fetch first, fall back to Supabase storage client
+    let rawBuffer: Buffer | null = null
     const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
     if (res.ok) {
-      buffer = await res.arrayBuffer()
+      rawBuffer = Buffer.from(await res.arrayBuffer())
     } else {
       console.warn(`[analyze-titles] PDF fetch ${res.status} — trying Supabase storage client`)
-      // Fallback: use service-role client for private buckets
       const parsed = parseSupabaseStorageUrl(url)
       if (parsed) {
         const { data } = await db.storage.from(parsed.bucket).download(parsed.path)
-        if (data) buffer = await (data as Blob).arrayBuffer()
+        if (data) rawBuffer = Buffer.from(await (data as Blob).arrayBuffer())
       }
     }
 
-    if (!buffer) {
+    if (!rawBuffer) {
       console.warn(`[analyze-titles] Could not download PDF: ${url.slice(0, 80)}`)
       return []
     }
 
-    const loadingTask = pdfjsLib.getDocument({ data: buffer, disableFontFace: true })
-    const pdf = await loadingTask.promise
+    // pdf-parse bundles pdfjs v2 which works natively in Node.js (no worker setup needed)
+    const pdfParse = (await import("pdf-parse")).default
+    const pageTexts: string[] = []
 
-    const texts: string[] = []
-    for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p)
-      const content = await page.getTextContent()
-      const text = content.items
-        .map((item: any) => ("str" in item ? item.str : ""))
-        .join(" ")
-        .replace(/\s{2,}/g, " ")
-        .trim()
-      texts.push(text)
-    }
+    await pdfParse(rawBuffer, {
+      pagerender(pageData: any) {
+        return pageData.getTextContent().then((content: any) => {
+          const text = (content.items as any[])
+            .map(item => item.str ?? "")
+            .join(" ")
+            .replace(/\s{2,}/g, " ")
+            .trim()
+          pageTexts.push(text)
+          return text
+        })
+      },
+    })
 
-    const withText = texts.filter(t => t.length > 10).length
-    console.log(`[analyze-titles] PDF extracted: ${pdf.numPages} pages, ${withText} have text`)
-    return texts
+    const withText = pageTexts.filter(t => t.length > 10).length
+    console.log(`[analyze-titles] PDF extracted: ${pageTexts.length} pages, ${withText} have text`)
+    return pageTexts
   } catch (err) {
     console.error(`[analyze-titles] PDF extraction failed:`, err)
     return []
