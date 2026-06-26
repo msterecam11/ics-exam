@@ -21,16 +21,40 @@ function cleanFilename(name: string): string {
     .replace(/\b\w/g, c => c.toUpperCase()) // Title Case
 }
 
+// ── Parse Supabase storage URL → bucket + path ────────────────────
+function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } | null {
+  // https://*.supabase.co/storage/v1/object/public/{bucket}/{path}
+  // https://*.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=...
+  const m = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/?]+)\/(.+?)(?:\?|$)/)
+  if (!m) return null
+  return { bucket: m[1], path: decodeURIComponent(m[2]) }
+}
+
 // ── PDF text extraction (pdfjs-dist, Node-compatible) ─────────────
 async function extractPdfPageTexts(url: string): Promise<string[]> {
   try {
-    // Dynamic import — pdfjs-dist legacy build works in Node.js
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any)
     pdfjsLib.GlobalWorkerOptions.workerSrc = ""
 
+    // Try plain fetch first (public bucket / pre-signed URL)
+    let buffer: ArrayBuffer | null = null
     const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-    if (!res.ok) return []
-    const buffer = await res.arrayBuffer()
+    if (res.ok) {
+      buffer = await res.arrayBuffer()
+    } else {
+      console.warn(`[analyze-titles] PDF fetch ${res.status} — trying Supabase storage client`)
+      // Fallback: use service-role client for private buckets
+      const parsed = parseSupabaseStorageUrl(url)
+      if (parsed) {
+        const { data } = await db.storage.from(parsed.bucket).download(parsed.path)
+        if (data) buffer = await (data as Blob).arrayBuffer()
+      }
+    }
+
+    if (!buffer) {
+      console.warn(`[analyze-titles] Could not download PDF: ${url.slice(0, 80)}`)
+      return []
+    }
 
     const loadingTask = pdfjsLib.getDocument({ data: buffer, disableFontFace: true })
     const pdf = await loadingTask.promise
@@ -46,8 +70,12 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
         .trim()
       texts.push(text)
     }
+
+    const withText = texts.filter(t => t.length > 10).length
+    console.log(`[analyze-titles] PDF extracted: ${pdf.numPages} pages, ${withText} have text`)
     return texts
-  } catch {
+  } catch (err) {
+    console.error(`[analyze-titles] PDF extraction failed:`, err)
     return []
   }
 }
@@ -217,16 +245,27 @@ export async function POST(req: Request) {
 
   for (const [url, group] of pdfGroups) {
     const pageNumbers = group.items.map((it: any) => it.config.page_number as number)
-    const maxPage = Math.max(...pageNumbers)
 
     const allTexts = await extractPdfPageTexts(url)
     // allTexts is 0-indexed; page_number is 1-indexed
     const relevantTexts = pageNumbers.map(p => allTexts[p - 1] ?? "")
 
-    const titles = await titlesForPdfPages(relevantTexts, group.filename)
-    group.items.forEach((it: any, idx: number) => {
-      pdfTitleMap.set(it.id, titles[idx])
-    })
+    const hasAnyText = relevantTexts.some(t => t.length > 20)
+
+    if (!hasAnyText) {
+      // Image-based PDF or inaccessible URL — use actual page_number from config
+      // (not array index, which would give wrong numbers for non-sequential pages)
+      const base = cleanFilename(group.filename)
+      console.log(`[analyze-titles] Image-based PDF or no text — using filename fallback for: ${group.filename}`)
+      group.items.forEach((it: any) => {
+        pdfTitleMap.set(it.id, `${base} — Slide ${it.config.page_number}`)
+      })
+    } else {
+      const titles = await titlesForPdfPages(relevantTexts, group.filename)
+      group.items.forEach((it: any, idx: number) => {
+        pdfTitleMap.set(it.id, titles[idx])
+      })
+    }
   }
 
   // ── Build suggestions for every item ─────────────────────────────
