@@ -67,7 +67,10 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
       const err: Buffer[] = []
 
       proc.stdout.on("data", d => out.push(d))
-      proc.stderr.on("data", d => err.push(d))
+      proc.stderr.on("data", d => {
+        err.push(d)
+        process.stdout.write(d) // forward subprocess diagnostics to Render logs
+      })
 
       proc.on("close", code => {
         if (code !== 0) {

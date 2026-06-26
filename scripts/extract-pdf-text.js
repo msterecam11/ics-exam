@@ -1,10 +1,10 @@
 'use strict'
-// Standalone script — called as a subprocess from analyze-titles route.
-// Reads PDF bytes from stdin, writes JSON array of per-page texts to stdout.
-// Runs outside the Next.js/Turbopack bundle so pdfjs v2 fake-worker works.
+// Subprocess: reads PDF bytes from stdin, writes JSON per-page text array to stdout.
+// Runs outside the Next.js/Turbopack bundle so pdfjs works natively.
 
 const pdfjsLib = require('pdfjs-dist/build/pdf.js')
-pdfjsLib.GlobalWorkerOptions.workerSrc = '' // fake-worker mode (works in pdfjs v2)
+// pdfjs v2 in Node.js auto-detects no Worker API and uses inline processing.
+// Do NOT set workerSrc = '' — it can suppress page loading in some builds.
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -17,13 +17,20 @@ function readStdin() {
 
 async function main() {
   const buf = await readStdin()
+  process.stderr.write(`[extract-pdf] received ${buf.length} bytes\n`)
+
   if (!buf.length) {
     process.stdout.write('[]')
     return
   }
 
-  const data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)
-  const pdf = await pdfjsLib.getDocument({ data, disableFontFace: true }).promise
+  // Use new Uint8Array(buf) — creates a clean copy; avoids Buffer byteOffset issues
+  const data = new Uint8Array(buf)
+  process.stderr.write(`[extract-pdf] uint8array ${data.length} bytes\n`)
+
+  const loadingTask = pdfjsLib.getDocument({ data, disableFontFace: true })
+  const pdf = await loadingTask.promise
+  process.stderr.write(`[extract-pdf] numPages: ${pdf.numPages}\n`)
 
   const texts = []
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -35,12 +42,13 @@ async function main() {
       .replace(/\s{2,}/g, ' ')
       .trim()
     texts.push(text)
+    process.stderr.write(`[extract-pdf] page ${i}: ${text.length} chars\n`)
   }
 
   process.stdout.write(JSON.stringify(texts))
 }
 
 main().catch(err => {
-  process.stderr.write(err.message + '\n')
+  process.stderr.write(`[extract-pdf] FAILED: ${err.message}\n${err.stack}\n`)
   process.exit(1)
 })
