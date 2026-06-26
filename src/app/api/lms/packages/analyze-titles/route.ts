@@ -73,15 +73,18 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
       })
 
       proc.on("close", code => {
+        const rawOut = Buffer.concat(out)
+        console.log(`[analyze-titles] subprocess exit code=${code} stdout_bytes=${rawOut.length}`)
         if (code !== 0) {
           console.error("[analyze-titles] PDF subprocess error:", Buffer.concat(err).toString().slice(0, 300))
           resolve([])
           return
         }
         try {
-          const parsed = JSON.parse(Buffer.concat(out).toString())
+          const parsed = JSON.parse(rawOut.toString())
           resolve(Array.isArray(parsed) ? parsed : [])
-        } catch {
+        } catch (e: any) {
+          console.error("[analyze-titles] JSON.parse failed:", e.message, "stdout preview:", rawOut.toString().slice(0, 200))
           resolve([])
         }
       })

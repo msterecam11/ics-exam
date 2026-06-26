@@ -45,7 +45,11 @@ async function main() {
     process.stderr.write(`[extract-pdf] page ${i}: ${text.length} chars\n`)
   }
 
-  process.stdout.write(JSON.stringify(texts))
+  // On Linux pipes, stdout.write is async — await the callback so
+  // the process doesn't exit before the data is flushed to the parent.
+  await new Promise((res, rej) => {
+    process.stdout.write(JSON.stringify(texts), err => (err ? rej(err) : res(undefined)))
+  })
 }
 
 main().catch(err => {
