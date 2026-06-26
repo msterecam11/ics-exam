@@ -53,7 +53,9 @@ async function extractPdfPageTexts(url: string): Promise<string[]> {
     }
 
     // pdf-parse bundles pdfjs v2 which works natively in Node.js (no worker setup needed)
-    const pdfParse = (await import("pdf-parse")).default
+    // ESM types export the fn directly; CJS wraps it in .default — handle both
+    const pdfParseModule = await import("pdf-parse" as any) as any
+    const pdfParse: (buf: Buffer, opts: any) => Promise<any> = pdfParseModule.default ?? pdfParseModule
     const pageTexts: string[] = []
 
     await pdfParse(rawBuffer, {
