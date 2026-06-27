@@ -671,6 +671,11 @@ function ActivityItemEditor({
   const hasContent = !!(cfg.content && Object.keys(cfg.content).length > 0)
   const [activeTab, setActiveTab] = useState<"preview" | "generate">(hasContent ? "preview" : "generate")
 
+  // Reset tab whenever the item changes (clicking a different activity in sidebar)
+  useEffect(() => {
+    setActiveTab(hasContent ? "preview" : "generate")
+  }, [item.id])
+
   // ── Load Expert analysis on mount ──────────────────────────────
   useEffect(() => {
     fetch(`/api/lms/module-analysis?module_id=${moduleId}`)
@@ -834,6 +839,7 @@ function ActivityItemEditor({
             Student preview
           </p>
           <ActivityPlayer
+            key={item.id}
             activity={{
               id: item.id,
               type: cfg.activity_type ?? "mcq",
