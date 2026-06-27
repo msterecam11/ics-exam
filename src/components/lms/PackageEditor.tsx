@@ -1796,8 +1796,15 @@ export default function PackageEditor({
                       if (mode === "end") {
                         next.push(...extras)
                       } else if (mode === "evenly") {
-                        // Stack right after anchor
-                        next.splice(anchorIdx + 1, 0, ...extras)
+                        // Distribute evenly across the full items list
+                        // Insert in reverse so earlier insertions don't shift later indices
+                        const total = next.length + extras.length
+                        const withIdx = extras.map((ex, i) =>
+                          ({ ex, at: Math.round(((i + 1) / (extras.length + 1)) * total) })
+                        ).sort((a, b) => b.at - a.at)
+                        for (const { ex, at } of withIdx) {
+                          next.splice(Math.min(at, next.length), 0, ex)
+                        }
                       } else {
                         // ai_topic — each extra has _targetIdx; insert in reverse order so indices stay valid
                         const sorted = [...extras].sort((a, b) => (b._targetIdx ?? 0) - (a._targetIdx ?? 0))
