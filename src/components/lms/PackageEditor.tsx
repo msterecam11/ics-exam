@@ -637,7 +637,7 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
   { type: "rapid_fire",    label: "Rapid Fire",     icon: Zap,          color: "#4A0000", bg: "#FFEBEE" },
 ]
 
-type PlacementMode = "smart" | "here" | "before"
+type PlacementMode = "ai_topic" | "end" | "evenly"
 
 function ActivityItemEditor({
   item, onChange, moduleId, onInsertMore, currentItemIdx, totalItems,
@@ -650,330 +650,332 @@ function ActivityItemEditor({
   totalItems: number
 }) {
   const cfg = item.config
-  const setConfig = (patch: Record<string, any>) => onChange({ config: { ...cfg, ...patch } })
-  const [generating,    setGenerating]    = useState(false)
-  const [genCount,      setGenCount]      = useState(1)
-  const [genLang,       setGenLang]       = useState("English")
-  const [genPlacement,  setGenPlacement]  = useState<PlacementMode>("smart")
 
-  const selectedType = ACTIVITY_TYPES.find(t => t.type === cfg.activity_type) ?? ACTIVITY_TYPES[0]
+  // ── Analysis state ─────────────────────────────────────────────
+  const [analysisLoading, setAnalysisLoading] = useState(true)
+  const [moduleTitle,  setModuleTitle]  = useState("")
+  const [slideCount,   setSlideCount]   = useState(0)
+  const [topicCount,   setTopicCount]   = useState(0)
+  const [aiSuggest,    setAiSuggest]    = useState(4)
+  const [aiRecommended,setAiRecommended]= useState<string[]>(["mcq","flashcard","ordering","error_spotter"])
+
+  // ── Config state ───────────────────────────────────────────────
+  const [genCount,     setGenCount]     = useState(4)
+  const [selectedTypes,setSelectedTypes]= useState<Set<string>>(new Set(["mcq","flashcard","ordering","error_spotter"]))
+  const [difficulty,   setDifficulty]   = useState<"easy"|"medium"|"hard">(cfg.difficulty ?? "medium")
+  const [placement,    setPlacement]    = useState<PlacementMode>("ai_topic")
+  const [language,     setLanguage]     = useState<"English"|"Arabic"|"Both">("English")
+  const [generating,   setGenerating]   = useState(false)
+
   const hasContent = cfg.content && Object.keys(cfg.content).length > 0
 
-  async function generateActivity() {
+  // ── Load Expert analysis on mount ──────────────────────────────
+  useEffect(() => {
+    fetch(`/api/lms/module-analysis?module_id=${moduleId}`)
+      .then(r => r.json())
+      .then(data => {
+        const a = data.analysis ?? {}
+        const sc = a.content_breakdown?.slides ?? a.content_breakdown?.pages ?? 0
+        const topics: string[] = a.topics ?? []
+        const tc = topics.length
+        const suggested = Math.max(2, Math.min(10, tc || 4))
+        setModuleTitle(a.module_title ?? "")
+        setSlideCount(sc)
+        setTopicCount(tc)
+        setAiSuggest(suggested)
+        setGenCount(suggested)
+
+        // Recommend types based on topic keywords
+        const text = [...topics, ...(a.key_concepts ?? [])].join(" ").toLowerCase()
+        const recs: string[] = ["mcq", "flashcard"]
+        if (/procedure|step|sequence|phase|checklist/.test(text)) recs.push("ordering")
+        if (/regulation|rule|certificate|licence|requirement/.test(text)) recs.push("error_spotter")
+        if (!recs.includes("ordering")) recs.push("ordering")
+        if (!recs.includes("error_spotter")) recs.push("error_spotter")
+        const final = recs.slice(0, 4)
+        setAiRecommended(final)
+        setSelectedTypes(new Set(final))
+      })
+      .catch(() => {})
+      .finally(() => setAnalysisLoading(false))
+  }, [moduleId])
+
+  function toggleType(type: string) {
+    setSelectedTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) { if (next.size > 1) next.delete(type) }
+      else next.add(type)
+      return next
+    })
+  }
+
+  async function generate() {
+    if (selectedTypes.size === 0) return toast.error("Select at least one activity type")
     setGenerating(true)
     try {
-      const res = await fetch("/api/lms/activities/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          module_id: moduleId,
-          count: genCount,
-          types: [cfg.activity_type ?? "mcq"],
-          difficulty: cfg.difficulty ?? "medium",
-          placement: genPlacement === "smart" ? "ai_topic" : genPlacement === "before" ? "evenly" : "evenly",
-          language: genLang,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Generation failed")
-      const acts: any[] = data.activities ?? []
-      if (acts.length === 0) throw new Error("No activities returned")
-      const slideCount: number = data.slideCount ?? 1
+      const langs = language === "Both" ? ["English", "Arabic"] : [language]
+      const perLang = Math.ceil(genCount / langs.length)
+      const allActs: any[] = []
+      let totalSlideCount = slideCount || 20
 
-      // Sort all activities by placement_slide (AI smart order)
-      const sorted = [...acts].sort((a, b) => (a.placement_slide ?? 0) - (b.placement_slide ?? 0))
+      for (const lang of langs) {
+        const res = await fetch("/api/lms/activities/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            module_id: moduleId,
+            count: perLang,
+            types: [...selectedTypes],
+            difficulty,
+            placement,
+            language: lang,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Generation failed")
+        if (data.slideCount) totalSlideCount = data.slideCount
+        allActs.push(...(data.activities ?? []))
+      }
 
-      // First in sorted order updates the current item
+      if (allActs.length === 0) throw new Error("No activities returned")
+
+      // Sort by placement_slide
+      const sorted = [...allActs].sort((a, b) => (a.placement_slide ?? 0) - (b.placement_slide ?? 0))
+
+      // First activity → update current item
       const first = sorted[0]
       onChange({
         title: first.title ?? item.title,
         config: {
           ...cfg,
-          activity_type: first.type ?? cfg.activity_type,
+          activity_type: first.type ?? "mcq",
           content: first.content,
           ai_generated: true,
-          difficulty: first.difficulty,
+          difficulty: first.difficulty ?? difficulty,
         },
       })
 
-      // Extra activities become new items with computed target positions
+      // Extra activities → new items with placement-based target indices
       if (sorted.length > 1 && onInsertMore) {
         const extras: Array<PackageItem & { _targetIdx?: number }> = sorted.slice(1).map(act => {
           let targetIdx: number
-          if (genPlacement === "smart") {
-            // Proportional: place after the slide % of total items
-            const ratio = (act.placement_slide ?? 1) / slideCount
-            targetIdx = Math.max(currentItemIdx + 1, Math.min(totalItems - 1, Math.round(ratio * totalItems)))
-          } else if (genPlacement === "before") {
-            // Distribute evenly before the current item
-            targetIdx = Math.max(0, currentItemIdx - 1)
+          if (placement === "ai_topic") {
+            const ratio = (act.placement_slide ?? 1) / totalSlideCount
+            targetIdx = Math.max(currentItemIdx + 1, Math.min(totalItems, Math.round(ratio * totalItems)))
+          } else if (placement === "end") {
+            targetIdx = totalItems
           } else {
-            // "here" — stack right after current item
+            // evenly
             targetIdx = currentItemIdx + 1
           }
-
-          const pi: PackageItem & { _targetIdx?: number } = {
+          return {
             ...defaultItem("activity"),
             title: act.title ?? "Activity",
             config: {
-              activity_type: act.type ?? cfg.activity_type ?? "mcq",
-              difficulty: act.difficulty ?? cfg.difficulty ?? "medium",
+              activity_type: act.type ?? "mcq",
+              difficulty: act.difficulty ?? difficulty,
               ai_generated: true,
               content: act.content ?? {},
             },
             _targetIdx: targetIdx,
           }
-          return pi
         })
-        onInsertMore(extras, genPlacement)
+        onInsertMore(extras, placement)
       }
 
-      toast.success(`${acts.length} activit${acts.length === 1 ? "y" : "ies"} generated`)
+      toast.success(`${allActs.length} activit${allActs.length === 1 ? "y" : "ies"} generated`)
     } catch (e: any) {
       toast.error(e.message ?? "Generation failed")
     }
     setGenerating(false)
   }
 
+  // ── Render ─────────────────────────────────────────────────────
   return (
-    <div className="flex-1 overflow-y-auto bg-white">
+    <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-purple-50 to-white">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-            <Puzzle className="h-5 w-5 text-purple-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-slate-800 text-sm">Activity Editor</p>
-            <p className="text-xs text-slate-400">Choose a type, set difficulty, then generate with AI</p>
-          </div>
-          {hasContent && (
-            <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-              <Check className="h-3 w-3" /> Ready
-            </span>
-          )}
+      <div className="px-6 py-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <Sparkles className="h-4 w-4 text-[#1B4F8A]" />
+          <p className="font-semibold text-slate-800 text-sm">Generate activities</p>
         </div>
+        {analysisLoading ? (
+          <p className="text-xs text-slate-400">Loading module analysis…</p>
+        ) : (
+          <p className="text-xs text-slate-400">
+            {moduleTitle && <>{moduleTitle} — </>}
+            {slideCount > 0 && <>{slideCount} slides</>}
+          </p>
+        )}
       </div>
 
-      <div className="p-6 space-y-6 max-w-2xl">
+      {/* Scrollable config */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-        {/* Step 1 — Type */}
+        {/* Number of activities */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">1</span>
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Choose activity type</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Number of activities</p>
+            <span className="text-[10px] font-semibold text-[#1B4F8A] bg-[#E6F1FB] px-2 py-0.5 rounded-full">
+              AI suggests {aiSuggest}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-1">
+              <button onClick={() => setGenCount(c => Math.min(20, c + 1))}
+                className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-lg font-bold">+</button>
+              <button onClick={() => setGenCount(c => Math.max(1, c - 1))}
+                className="w-8 h-8 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center text-lg font-bold">−</button>
+            </div>
+            <div>
+              <p className="text-5xl font-bold text-slate-800 leading-none">{genCount}</p>
+            </div>
+            {!analysisLoading && slideCount > 0 && topicCount > 0 && (
+              <p className="text-xs text-slate-400 leading-relaxed ml-2">
+                Based on <span className="text-[#1B4F8A] font-semibold">{slideCount} slides</span> and{" "}
+                <span className="text-[#1B4F8A] font-semibold">{topicCount} topics</span>{" "}
+                — one activity per major topic section
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Activity types */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Activity types to include</p>
+            <span className="text-[10px] font-semibold text-[#1B4F8A] bg-[#E6F1FB] px-2 py-0.5 rounded-full">
+              AI pre-selected
+            </span>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {ACTIVITY_TYPES.map(t => {
-              const Icon = t.icon
-              const on = cfg.activity_type === t.type
+              const on = selectedTypes.has(t.type)
+              const recommended = aiRecommended.includes(t.type)
               return (
-                <button key={t.type}
-                  onClick={() => setConfig({ activity_type: t.type, content: {} })}
+                <button key={t.type} onClick={() => toggleType(t.type)}
                   className={cn(
-                    "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-left",
-                    on ? "border-transparent shadow-sm" : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
+                    "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all text-left relative",
+                    on
+                      ? "border-[#1B4F8A] bg-[#E6F1FB] text-[#1B4F8A]"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                  )}>
+                  {recommended && (
+                    <span className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-[#1B4F8A]" />
                   )}
-                  style={on ? { background: t.bg, color: t.color, borderColor: t.color + "60" } : {}}>
-                  <Icon className="h-4 w-4 shrink-0" style={on ? { color: t.color } : { color: "#94a3b8" }} />
+                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all",
+                    on ? "bg-[#1B4F8A] border-[#1B4F8A]" : "border-slate-300")}>
+                    {on && <Check className="h-2.5 w-2.5 text-white" />}
+                  </div>
                   {t.label}
                 </button>
               )
             })}
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#1B4F8A] mr-1 align-middle" />
+            Blue dot = AI recommended for this module's content
+          </p>
         </div>
 
-        {/* Step 2 — Difficulty */}
+        {/* Difficulty */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">2</span>
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Set difficulty</p>
-          </div>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Difficulty level</p>
           <div className="flex gap-2">
             {(["easy","medium","hard"] as const).map(d => (
-              <button key={d} onClick={() => setConfig({ difficulty: d })}
+              <button key={d} onClick={() => setDifficulty(d)}
                 className={cn(
-                  "flex-1 py-2 rounded-xl border-2 text-xs font-bold capitalize transition-all",
-                  cfg.difficulty === d
+                  "flex-1 py-2.5 rounded-xl border text-xs font-semibold capitalize transition-all",
+                  difficulty === d
                     ? d === "easy"   ? "border-emerald-400 bg-emerald-50 text-emerald-700"
                     : d === "medium" ? "border-amber-400 bg-amber-50 text-amber-700"
                     :                  "border-red-400 bg-red-50 text-red-700"
-                    : "border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300 hover:bg-white"
+                    : "border-slate-200 bg-white text-slate-400 hover:border-slate-300"
                 )}>{d}</button>
             ))}
           </div>
         </div>
 
-        {/* Step 3 — Placement */}
+        {/* Placement */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">3</span>
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Placement</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Placement</p>
+            {placement === "ai_topic" && (
+              <span className="text-[10px] font-semibold text-[#1B4F8A] bg-[#E6F1FB] px-2 py-0.5 rounded-full">AI places by topic</span>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             {([
-              {
-                mode: "smart" as PlacementMode,
-                label: "AI chooses position",
-                desc: "AI reads the module flow and places each activity after students have seen the relevant slides — never before the prerequisite content.",
-                icon: Sparkles,
-              },
-              {
-                mode: "here" as PlacementMode,
-                label: "At current position",
-                desc: "All activities are inserted right here in the sidebar, stacked at the current item's position.",
-                icon: Target,
-              },
-              {
-                mode: "before" as PlacementMode,
-                label: "Before current position",
-                desc: "Activities are placed before this item — useful as a recap or warm-up before the upcoming slides.",
-                icon: ChevronUp,
-              },
-            ] as const).map(({ mode, label, desc, icon: Icon }) => (
-              <button key={mode} onClick={() => setGenPlacement(mode)}
+              { value: "ai_topic" as PlacementMode, label: "AI places after each topic section" },
+              { value: "end"      as PlacementMode, label: "All activities at end of module" },
+              { value: "evenly"   as PlacementMode, label: "Evenly spaced throughout slides" },
+            ]).map(opt => (
+              <button key={opt.value} onClick={() => setPlacement(opt.value)}
                 className={cn(
-                  "flex items-start gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all",
-                  genPlacement === mode
-                    ? "border-[#1B4F8A] bg-[#E6F1FB]"
-                    : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                  "flex items-center gap-3 px-4 py-3 rounded-xl border text-sm text-left transition-all",
+                  placement === opt.value
+                    ? "border-[#1B4F8A] bg-[#E6F1FB] text-[#0C447C] font-semibold"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                 )}>
-                <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", genPlacement === mode ? "text-[#1B4F8A]" : "text-slate-400")} />
-                <div>
-                  <p className={cn("text-xs font-bold", genPlacement === mode ? "text-[#1B4F8A]" : "text-slate-700")}>{label}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
+                <div className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0",
+                  placement === opt.value ? "border-[#1B4F8A]" : "border-slate-300")}>
+                  {placement === opt.value && <div className="w-2 h-2 rounded-full bg-[#1B4F8A]" />}
                 </div>
+                {opt.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Step 4 — Generate */}
+        {/* Language */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">4</span>
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Generate with AI</p>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Language</p>
+          <div className="flex gap-2">
+            {(["English","Arabic","Both"] as const).map(l => (
+              <button key={l} onClick={() => setLanguage(l)}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl border text-xs font-semibold transition-all",
+                  language === l
+                    ? "border-[#1B4F8A] bg-[#E6F1FB] text-[#1B4F8A]"
+                    : "border-slate-200 bg-white text-slate-400 hover:border-slate-300"
+                )}>{l === "Arabic" ? "العربية" : l}</button>
+            ))}
           </div>
-
-          {/* Count + language row */}
-          <div className="flex gap-3 mb-3">
-            <div className="flex-1">
-              <p className="text-[11px] text-slate-500 font-semibold mb-1.5">How many activities?</p>
-              <div className="flex gap-1.5">
-                {[1,2,3,5,10].map(n => (
-                  <button key={n} onClick={() => setGenCount(n)}
-                    className={cn(
-                      "flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all",
-                      genCount === n
-                        ? "border-[#1B4F8A] bg-[#E6F1FB] text-[#1B4F8A]"
-                        : "border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300"
-                    )}>{n}</button>
-                ))}
-              </div>
-            </div>
-            <div className="w-32">
-              <p className="text-[11px] text-slate-500 font-semibold mb-1.5">Language</p>
-              <select value={genLang} onChange={e => setGenLang(e.target.value)}
-                className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 font-medium focus:outline-none focus:border-[#1B4F8A]">
-                <option value="English">English</option>
-                <option value="French">French</option>
-                <option value="Arabic">Arabic</option>
-                <option value="Spanish">Spanish</option>
-              </select>
-            </div>
-          </div>
-
-          <button onClick={generateActivity} disabled={generating}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
-            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {generating
-              ? `Generating ${genCount} activit${genCount === 1 ? "y" : "ies"}…`
-              : hasContent
-              ? `Regenerate (×${genCount})`
-              : `Generate ${genCount === 1 ? "activity" : `${genCount} activities`}`
-            }
-          </button>
-          {genCount > 1 && (
-            <p className="text-[11px] text-amber-600 mt-2 text-center">
-              {genCount - 1} extra activit{genCount - 1 === 1 ? "y" : "ies"} will be added as new items in the sidebar
-            </p>
-          )}
-          {genCount === 1 && (
-            <p className="text-[11px] text-slate-400 mt-2 text-center">
-              AI uses the module's Expert analysis to create relevant content
-            </p>
-          )}
         </div>
 
-        {/* Content status */}
-        {hasContent ? (
-          <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              {(() => { const Icon = selectedType.icon; return <Icon className="h-4 w-4" style={{ color: selectedType.color }} /> })()}
-              <p className="text-sm font-bold text-emerald-800">{selectedType.label} — ready</p>
-              <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-600">
-                <Sparkles className="h-3 w-3" /> AI generated
-              </span>
+        {/* Summary */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-100 text-sm">
+          {[
+            ["Activities to generate", genCount],
+            ["Types selected", `${selectedTypes.size} of ${ACTIVITY_TYPES.length}`],
+            ["Difficulty", difficulty.charAt(0).toUpperCase() + difficulty.slice(1)],
+            ["Placement", placement === "ai_topic" ? "AI by topic" : placement === "end" ? "End of module" : "Evenly spaced"],
+            ["Language", language],
+          ].map(([label, value]) => (
+            <div key={label as string} className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-slate-400 text-xs">{label}</span>
+              <span className="text-slate-700 text-xs font-semibold">{value}</span>
             </div>
+          ))}
+        </div>
 
-            {/* Human-readable preview per type */}
-            {cfg.activity_type === "mcq" && cfg.content?.question && (
-              <div className="text-xs text-slate-700 space-y-1">
-                <p className="font-medium text-slate-800">Q: {cfg.content.question}</p>
-                {cfg.content.options?.map((o: any, i: number) => (
-                  <p key={i} className={cn("pl-3", o.is_correct ? "text-emerald-700 font-semibold" : "text-slate-500")}>
-                    {o.is_correct ? "✓" : "·"} {o.text}
-                  </p>
-                ))}
-              </div>
-            )}
-            {cfg.activity_type === "flashcard" && (
-              <p className="text-xs text-slate-600">{cfg.content?.cards?.length ?? 0} flashcards generated</p>
-            )}
-            {cfg.activity_type === "ordering" && (
-              <p className="text-xs text-slate-600">{cfg.content?.items?.length ?? 0} items to order — "{cfg.content?.question}"</p>
-            )}
-            {cfg.activity_type === "error_spotter" && cfg.content?.text && (
-              <div className="text-xs text-slate-700 space-y-1">
-                <p className="italic text-slate-600">"{cfg.content.text.slice(0, 120)}{cfg.content.text.length > 120 ? "…" : ""}"</p>
-                <p className="text-slate-500">{cfg.content.errors?.length ?? 0} errors to find</p>
-              </div>
-            )}
-            {cfg.activity_type === "gap_fill" && cfg.content?.paragraph && (
-              <p className="text-xs text-slate-600 italic">"{cfg.content.paragraph.slice(0, 120)}…"</p>
-            )}
-            {cfg.activity_type === "word_scramble" && (
-              <p className="text-xs text-slate-600">Term: <strong>{cfg.content?.word}</strong> — {cfg.content?.hint}</p>
-            )}
-            {cfg.activity_type === "scenario" && (
-              <p className="text-xs text-slate-600">{cfg.content?.situation?.slice(0, 100)}…</p>
-            )}
-            {cfg.activity_type === "concept_sorter" && (
-              <p className="text-xs text-slate-600">{cfg.content?.categories?.length ?? 0} categories, {cfg.content?.items?.length ?? 0} items</p>
-            )}
-            {cfg.activity_type === "acronym" && (
-              <p className="text-xs text-slate-600">Acronym: <strong>{cfg.content?.acronym}</strong></p>
-            )}
-            {cfg.activity_type === "drag_match" && (
-              <p className="text-xs text-slate-600">{cfg.content?.pairs?.length ?? 0} pairs to match</p>
-            )}
-            {cfg.activity_type === "fill_blank" && cfg.content?.sentence && (
-              <p className="text-xs text-slate-600 italic">"{cfg.content.sentence}"</p>
-            )}
-            {cfg.activity_type === "rapid_fire" && (
-              <p className="text-xs text-slate-600">{cfg.content?.questions?.length ?? 0} rapid-fire questions, {cfg.content?.time_per_question_s ?? 10}s each</p>
-            )}
+      </div>
 
-            <p className="text-[11px] text-emerald-700 pt-1 border-t border-emerald-200">
-              Save the package to publish this activity to students.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-            <Puzzle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs text-slate-400">No content yet — click "Generate activity content" above</p>
-          </div>
+      {/* Fixed footer */}
+      <div className="shrink-0 border-t border-slate-200 px-6 py-4 space-y-2 bg-white">
+        <button onClick={generate} disabled={generating || selectedTypes.size === 0}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
+          {generating
+            ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating {genCount} activit{genCount === 1 ? "y" : "ies"}…</>
+            : <><Sparkles className="h-4 w-4" /> Generate {genCount} activit{genCount === 1 ? "y" : "ies"}</>
+          }
+        </button>
+        {hasContent && (
+          <button onClick={() => onChange({ config: { ...cfg, content: {}, ai_generated: false } })}
+            className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+            Clear existing content
+          </button>
         )}
       </div>
     </div>
@@ -1791,14 +1793,13 @@ export default function PackageEditor({
                       const anchorIdx = prev.findIndex(it => it.id === currentItem.id)
                       const next = [...prev]
 
-                      if (mode === "here") {
+                      if (mode === "end") {
+                        next.push(...extras)
+                      } else if (mode === "evenly") {
                         // Stack right after anchor
                         next.splice(anchorIdx + 1, 0, ...extras)
-                      } else if (mode === "before") {
-                        // Insert before the anchor item
-                        next.splice(anchorIdx, 0, ...extras)
                       } else {
-                        // smart — each extra has _targetIdx; insert in reverse order so indices stay valid
+                        // ai_topic — each extra has _targetIdx; insert in reverse order so indices stay valid
                         const sorted = [...extras].sort((a, b) => (b._targetIdx ?? 0) - (a._targetIdx ?? 0))
                         for (const ex of sorted) {
                           const at = Math.max(anchorIdx + 1, Math.min(next.length, ex._targetIdx ?? anchorIdx + 1))
