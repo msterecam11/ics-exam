@@ -668,14 +668,33 @@ function ScenarioPlayer({ content, onScore }: { content: any; onScore: (s: numbe
 
 // ─── 8. Concept Sorter ─────────────────────────────────────────────
 function ConceptSorterPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
-  // Normalize: AI sometimes returns ["Cat A","Cat B"] instead of [{name:"Cat A"}]
-  const categories: { name: string }[] = (content.categories ?? []).map((c: any) =>
-    typeof c === "string" ? { name: c } : { name: c.name ?? c.label ?? String(c) }
-  )
-  // Normalize items: handle {text,category} or {item,category} or {concept,category}
+  // Extract a display string from any object — tries known fields, then finds any non-letter string value
+  function extractText(obj: any): string {
+    if (typeof obj === "string") return obj
+    if (!obj || typeof obj !== "object") return String(obj)
+    const known = obj.text ?? obj.item ?? obj.concept ?? obj.statement ?? obj.name ??
+      obj.label ?? obj.description ?? obj.value ?? obj.content ?? obj.phrase
+    if (typeof known === "string" && known) return known
+    // Fallback: find first string property value longer than 1 char
+    const found = Object.values(obj).find((v): v is string => typeof v === "string" && v.length > 1)
+    return found ?? JSON.stringify(obj)
+  }
+  function extractCategory(obj: any): string {
+    if (!obj || typeof obj !== "object") return ""
+    return obj.category ?? obj.group ?? obj.correct_category ?? obj.belongs_to ?? obj.belongs ?? ""
+  }
+  function extractCatName(c: any): string {
+    if (typeof c === "string") return c
+    const known = c.name ?? c.label ?? c.title ?? c.category
+    if (typeof known === "string" && known) return known
+    const found = Object.values(c).find((v): v is string => typeof v === "string" && v.length > 1)
+    return found ?? String(c)
+  }
+
+  const categories: { name: string }[] = (content.categories ?? []).map((c: any) => ({ name: extractCatName(c) }))
   const items: { text: string; category: string }[] = (content.items ?? []).map((it: any) => ({
-    text: it.text ?? it.item ?? it.concept ?? it.name ?? String(it),
-    category: it.category ?? it.group ?? "",
+    text: extractText(it),
+    category: extractCategory(it),
   }))
   const [selected, setSelected] = useState<string | null>(null) // item text
   const [placements, setPlacements] = useState<Record<string, string>>({}) // item → category
@@ -786,8 +805,14 @@ function AcronymPlayer({ content, onScore }: { content: any; onScore: (s: number
       <div className="space-y-2">
         {letters.map((item, i) => {
           const isRevealed = revealed.has(i)
-          // AI may use "word", "meaning", "stands_for", or "expansion" — handle all
-          const expansion: string = item.expansion ?? item.word ?? item.meaning ?? item.stands_for ?? item.full ?? ""
+          // AI may generate {letter:"I", word:"International"} or even {"I":"International"}
+          const expansion: string = (() => {
+            const direct = item.expansion ?? item.word ?? item.meaning ?? item.stands_for ?? item.full ?? item.phrase
+            if (typeof direct === "string" && direct) return direct
+            // Fallback: find first string value longer than 1 char (i.e. not the letter itself)
+            const found = Object.values(item).find((v): v is string => typeof v === "string" && v.length > 1)
+            return found ?? ""
+          })()
           return (
             <button key={i} onClick={() => reveal(i)} disabled={isRevealed}
               className={cn(
@@ -903,7 +928,8 @@ function DragMatchPlayer({ content, onScore }: { content: any; onScore: (s: numb
 
 // ─── 11. Fill in the Blank ─────────────────────────────────────────
 function FillBlankPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
-  const sentence: string = content.sentence ?? ""
+  // Normalize sentence: [BLANK_1] style (gap_fill format) → ___ so the same splitter works
+  const sentence: string = (content.sentence ?? "").replace(/\[BLANK_\d+\]/g, "___")
   const blanks: { answer: string }[] = content.blanks ?? []
   const parts = sentence.split("___")
   const [values, setValues] = useState<string[]>(Array(blanks.length).fill(""))
@@ -1108,7 +1134,7 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
 
   function handleScore(s: number, tot: number) {
     setScore(s); setTotal(tot)
-    setTimeout(() => { setPhase("result"); onComplete?.(Math.round((s / tot) * 100)) }, 400)
+    setTimeout(() => { setPhase("result"); onComplete?.(Math.round((s / tot) * 100)) }, 900)
   }
 
   function handleRetry() {
