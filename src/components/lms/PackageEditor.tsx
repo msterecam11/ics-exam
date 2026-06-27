@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import LibraryPicker, { LibraryFile } from "@/components/lms/LibraryPicker"
 import { RichTextEditor } from "@/components/lms/RichTextEditor"
+import ActivityPlayer from "@/components/lms/ActivityPlayer"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -667,7 +668,8 @@ function ActivityItemEditor({
   const [language,     setLanguage]     = useState<"English"|"Arabic"|"Both">("English")
   const [generating,   setGenerating]   = useState(false)
 
-  const hasContent = cfg.content && Object.keys(cfg.content).length > 0
+  const hasContent = !!(cfg.content && Object.keys(cfg.content).length > 0)
+  const [activeTab, setActiveTab] = useState<"preview" | "generate">(hasContent ? "preview" : "generate")
 
   // ── Load Expert analysis on mount ──────────────────────────────
   useEffect(() => {
@@ -791,21 +793,62 @@ function ActivityItemEditor({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-white">
 
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-100 shrink-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <Sparkles className="h-4 w-4 text-[#1B4F8A]" />
-          <p className="font-semibold text-slate-800 text-sm">Generate activities</p>
+      {/* Header + Tabs */}
+      <div className="px-6 pt-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Puzzle className="h-4 w-4 text-[#1B4F8A]" />
+          <p className="font-semibold text-slate-800 text-sm">{item.title || "Activity"}</p>
+          {hasContent && (
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full ml-auto">Generated</span>
+          )}
         </div>
-        {analysisLoading ? (
-          <p className="text-xs text-slate-400">Loading module analysis…</p>
-        ) : (
-          <p className="text-xs text-slate-400">
-            {moduleTitle && <>{moduleTitle} — </>}
-            {slideCount > 0 && <>{slideCount} slides</>}
-          </p>
-        )}
+        {/* Tab bar */}
+        <div className="flex gap-1">
+          {hasContent && (
+            <button onClick={() => setActiveTab("preview")}
+              className={cn(
+                "px-4 py-2 text-xs font-semibold rounded-t-lg border border-b-0 transition-colors",
+                activeTab === "preview"
+                  ? "bg-white border-slate-200 text-[#1B4F8A]"
+                  : "bg-slate-50 border-transparent text-slate-400 hover:text-slate-600"
+              )}>
+              <span className="flex items-center gap-1.5"><Eye className="h-3 w-3" /> Preview</span>
+            </button>
+          )}
+          <button onClick={() => setActiveTab("generate")}
+            className={cn(
+              "px-4 py-2 text-xs font-semibold rounded-t-lg border border-b-0 transition-colors",
+              activeTab === "generate"
+                ? "bg-white border-slate-200 text-[#1B4F8A]"
+                : "bg-slate-50 border-transparent text-slate-400 hover:text-slate-600"
+            )}>
+            <span className="flex items-center gap-1.5"><Sparkles className="h-3 w-3" /> {hasContent ? "Regenerate" : "Generate"}</span>
+          </button>
+        </div>
       </div>
+
+      {/* ── Preview tab ────────────────────────────────────────────── */}
+      {activeTab === "preview" && hasContent && (
+        <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3 text-center">
+            Student preview
+          </p>
+          <ActivityPlayer
+            activity={{
+              id: item.id,
+              type: cfg.activity_type ?? "mcq",
+              title: item.title ?? "Activity",
+              difficulty: cfg.difficulty ?? "medium",
+              content: cfg.content ?? {},
+              placement_slide: 1,
+              ai_generated: cfg.ai_generated ?? false,
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── Generate tab ────────────────────────────────────────────── */}
+      {activeTab === "generate" && <>
 
       {/* No analysis warning */}
       {!analysisLoading && slideCount === 0 && topicCount === 0 && (
@@ -988,6 +1031,8 @@ function ActivityItemEditor({
           </button>
         )}
       </div>
+
+      </> /* end generate tab */}
     </div>
   )
 }

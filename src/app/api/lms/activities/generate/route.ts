@@ -173,21 +173,30 @@ CRITICAL RULES FOR error_spotter TYPE:
 6. Example: if text says "Class III medical certificate", then wrong="Class III", correct="Class I"
 7. NEVER use a "wrong" value that does not appear verbatim in the "text"
 
-CONTENT RULES:
+CONTENT RULES — EXACT FIELD NAMES (use these exactly, no variations):
+- flashcard: "cards": [{"front":"...","back":"..."}] — 3-6 cards
+- mcq: "question":"...", "options":[{"text":"...","is_correct":false}] x4 exactly 1 correct, "explanation":"..."
+- ordering: "question":"...", "items":[{"id":"1","text":"..."}], "correct_order":["1","2","3","4"]
+- error_spotter: see CRITICAL RULES above — "text":"...", "errors":[{"wrong":"...","correct":"..."}]
+- gap_fill: "paragraph":"... [BLANK_1] ... [BLANK_2] ...", "blanks":[{"answer":"..."}]
+- word_scramble: "word":"SINGLEWORD", "hint":"definition"
+- scenario: "situation":"...", "choices":[{"text":"...","is_correct":false,"consequence":"..."}]
+- concept_sorter: "categories":[{"name":"Category A"},{"name":"Category B"}], "items":[{"text":"...","category":"Category A"}]
+- acronym: "acronym":"ICAO", "letters":[{"letter":"I","expansion":"International"},{"letter":"C","expansion":"Civil"},...]
+- drag_match: "pairs":[{"left":"term","right":"definition"}] — 4-6 pairs
+- fill_blank: "sentence":"The ___ must be completed before ___.", "blanks":[{"answer":"flight plan"},{"answer":"departure"}]
+- rapid_fire: "questions":[{"q":"Question text?","options":[{"text":"...","is_correct":false}]}], "time_per_question_s":10 — 5 questions each with 4 options
+
+DIFFICULTY RULES for "${difficulty}":
+${difficulty === "easy"
+  ? "- Simple recall of definitions and basic facts\n- Wrong options are clearly different from correct\n- Short, direct questions with obvious answers"
+  : difficulty === "hard"
+  ? "- Test analysis, edge cases, and nuanced distinctions\n- Wrong options must be plausible and similar in length/style to the correct answer — a student who only skimmed the material should get it wrong\n- Use specific numbers, regulations, or exceptions that are easily confused\n- For MCQ/scenario/rapid_fire: NEVER make the correct answer the longest — deliberately make 1-2 wrong options longer"
+  : "- Application of concepts, not just recall\n- Wrong options should be somewhat plausible\n- Questions test understanding, not just memory"}
+MCQ AND SCENARIO RULE: The correct answer must NOT be the longest option. Mix answer lengths deliberately.
+
 - All content must be directly relevant to "${moduleTitle}" and the topics listed
-- Use real aviation terminology and accurate facts
-- For flashcard: 3-6 cards
-- For mcq: exactly 4 options, exactly 1 correct
-- For ordering: 4-6 items
-- For error_spotter: exactly 2 errors — see CRITICAL RULES above
-- For gap_fill: "paragraph" field with blanks as [BLANK_1], [BLANK_2] etc, "blanks" array with answers
-- For word_scramble: "word" is a single aviation term from the topics, "hint" is a definition
-- For scenario: "situation" text, "choices" array with is_correct on exactly one
-- For concept_sorter: "categories" array (3 max), "items" array with correct category
-- For acronym: "acronym" string, "letters" array matching each letter
-- For drag_match: "pairs" array with left/right strings (4-6 pairs)
-- For fill_blank: "sentence" with ___ for each blank, "blanks" array with answers in order
-- For rapid_fire: "questions" array of 5 mcq-style questions, "time_per_question_s": 10
+- Use real aviation terminology and accurate facts (GCAA, ICAO, EASA regulations where applicable)
 - Placement slide must be between 1 and ${slideCount}
 - ${language !== "English" ? `Write all content in ${language}` : "Write in English"}
 - Return ONLY the JSON array, starting with [ and ending with ]`

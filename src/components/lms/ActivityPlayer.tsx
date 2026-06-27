@@ -308,65 +308,100 @@ function OrderingPlayer({ content, onScore }: { content: any; onScore: (s: numbe
 // ─── 4. Error Spotter ──────────────────────────────────────────────
 function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
   const errors: { wrong: string; correct: string }[] = content.errors ?? []
-  const [found, setFound]     = useState<Set<number>>(new Set())
-  const [submitted, setSubmitted] = useState(false)
-  const [highlight, setHighlight] = useState<number | null>(null)
-
-  // Build clickable segments from text
   const text: string = content.text ?? ""
-  const segments: { text: string; errorIdx: number | null }[] = []
-  let remaining = text
-  const positions: { idx: number; wrong: string; start: number; end: number }[] = []
+  const [selected, setSelected] = useState<Set<number>>(new Set()) // selected token indices
+  const [submitted, setSubmitted]  = useState(false)
+  const [decoy, setDecoy]          = useState<number | null>(null)
 
-  errors.forEach((e, i) => {
-    const pos = remaining.indexOf(e.wrong)
-    if (pos !== -1) positions.push({ idx: i, wrong: e.wrong, start: pos, end: pos + e.wrong.length })
-  })
-  positions.sort((a, b) => text.indexOf(a.wrong) - text.indexOf(b.wrong))
-
-  let cursor = 0
-  positions.forEach(p => {
-    const absStart = text.indexOf(p.wrong, cursor)
-    if (absStart > cursor) segments.push({ text: text.slice(cursor, absStart), errorIdx: null })
-    segments.push({ text: p.wrong, errorIdx: p.idx })
-    cursor = absStart + p.wrong.length
-  })
-  if (cursor < text.length) segments.push({ text: text.slice(cursor), errorIdx: null })
-
-  function click(idx: number) {
-    if (submitted) return
-    setFound(prev => { const n = new Set(prev); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
+  // Tokenize entire text into word-level tokens so ALL words are equally clickable
+  // Each token is either a word or whitespace/punctuation between words
+  const tokens: { text: string; tokenIdx: number }[] = []
+  let raw = text
+  let ti = 0
+  const rx = /([a-zA-Z0-9''-]+|[^a-zA-Z0-9''-]+)/g
+  let m: RegExpExecArray | null
+  while ((m = rx.exec(raw)) !== null) {
+    tokens.push({ text: m[0], tokenIdx: ti++ })
   }
+
+  // Map each word token index → error index (null if not an error)
+  const tokenErrorMap: Record<number, number> = {}
+  errors.forEach((e, ei) => {
+    // Find which token indices cover the wrong phrase
+    let charPos = 0
+    tokens.forEach(tok => {
+      const start = charPos
+      const end = charPos + tok.text.length
+      // Check if this token overlaps the wrong phrase
+      const wrongStart = text.indexOf(e.wrong)
+      if (wrongStart !== -1 && start >= wrongStart && end <= wrongStart + e.wrong.length) {
+        tokenErrorMap[tok.tokenIdx] = ei
+      }
+      charPos += tok.text.length
+    })
+  })
+
+  function clickToken(tok: { text: string; tokenIdx: number }) {
+    if (submitted) return
+    const isWord = /[a-zA-Z0-9]/.test(tok.text)
+    if (!isWord) return
+    if (tokenErrorMap[tok.tokenIdx] !== undefined) {
+      // It's part of an error phrase — toggle selection
+      setSelected(prev => {
+        const n = new Set(prev)
+        n.has(tok.tokenIdx) ? n.delete(tok.tokenIdx) : n.add(tok.tokenIdx)
+        return n
+      })
+    } else {
+      // Decoy — brief visual feedback then reset
+      setDecoy(tok.tokenIdx)
+      setTimeout(() => setDecoy(null), 400)
+    }
+  }
+
+  // Count how many distinct errors the student found (at least one token from each error)
+  const foundErrorIndices = new Set(
+    [...selected].map(ti => tokenErrorMap[ti]).filter(ei => ei !== undefined)
+  )
 
   function submit() {
     setSubmitted(true)
-    onScore(found.size === errors.length && [...found].every(i => i < errors.length) ? errors.length : found.size, errors.length)
+    onScore(foundErrorIndices.size, errors.length)
   }
+
+  const isWord = (t: string) => /[a-zA-Z0-9]/.test(t)
 
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-2 p-3 bg-[#FCEBEB] rounded-xl border border-[#D63B3B]/20">
         <AlertTriangle className="h-4 w-4 text-[#D63B3B] shrink-0 mt-0.5" />
-        <p className="text-xs text-[#791F1F] font-medium">Find and click the {errors.length} factual error{errors.length !== 1 ? "s" : ""} hidden in the paragraph</p>
+        <p className="text-xs text-[#791F1F] font-medium">
+          Read carefully and click the {errors.length} factual error{errors.length !== 1 ? "s" : ""} in the paragraph
+        </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 text-sm text-slate-700 leading-relaxed">
-        {segments.map((seg, i) => {
-          if (seg.errorIdx === null) return <span key={i}>{seg.text}</span>
-          const ei = seg.errorIdx
-          const isFound = found.has(ei)
-          const isRevealed = submitted
+      <div className="bg-white rounded-xl border border-slate-200 p-4 text-sm text-slate-700 leading-relaxed select-none">
+        {tokens.map(tok => {
+          if (!isWord(tok.text)) return <span key={tok.tokenIdx}>{tok.text}</span>
+          const isSelected  = selected.has(tok.tokenIdx)
+          const isErrorTok  = tokenErrorMap[tok.tokenIdx] !== undefined
+          const isDecoy     = decoy === tok.tokenIdx
+          const isRevealedOk = submitted && isErrorTok
+          const isRevealedBad = submitted && isSelected && !isErrorTok
           return (
-            <span key={i}
-              onClick={() => click(ei)}
+            <span key={tok.tokenIdx}
+              onClick={() => clickToken(tok)}
               className={cn(
-                "cursor-pointer rounded px-0.5 py-px transition-all",
-                !submitted && !isFound && "hover:bg-red-100 hover:underline",
-                !submitted && isFound  && "bg-red-200 text-red-800 line-through",
-                submitted && "bg-emerald-200 text-emerald-800 font-medium"
+                "cursor-pointer rounded px-0.5 transition-all",
+                // Before submit: all words look the same; selected errors highlighted; decoy flashes
+                !submitted && !isSelected && !isDecoy && "hover:bg-slate-100",
+                !submitted && isSelected  && "bg-red-200 text-red-800 underline",
+                !submitted && isDecoy     && "bg-slate-300",
+                // After submit
+                isRevealedOk  && "bg-emerald-200 text-emerald-800 font-semibold",
+                isRevealedBad && "bg-red-100 text-red-600 line-through",
               )}
-              title={submitted ? `✓ "${errors[ei].correct}"` : "Click if this looks wrong"}
-            >{seg.text}</span>
+            >{tok.text}</span>
           )
         })}
       </div>
@@ -386,9 +421,9 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
       )}
 
       {!submitted && (
-        <button onClick={submit} disabled={found.size === 0}
+        <button onClick={submit} disabled={foundErrorIndices.size === 0}
           className="w-full py-2.5 rounded-xl bg-[#D63B3B] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#b52e2e] transition-colors">
-          I found {found.size} error{found.size !== 1 ? "s" : ""} — check
+          I found {foundErrorIndices.size} error{foundErrorIndices.size !== 1 ? "s" : ""} — check
         </button>
       )}
     </div>
@@ -447,6 +482,22 @@ function GapFillPlayer({ content, onScore }: { content: any; onScore: (s: number
           return <span key={i}>{part}</span>
         })}
       </div>
+      {submitted && blanks.some((b, i) => values[i]?.trim().toLowerCase() !== (b.answer ?? "").toLowerCase()) && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+          <p className="text-xs font-bold text-emerald-700 mb-2">Correct answers:</p>
+          {blanks.map((b: any, i: number) => {
+            const ans = b.answer ?? b.placeholder ?? ""
+            const correct = values[i]?.trim().toLowerCase() === ans.toLowerCase()
+            if (correct) return null
+            return (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span className="text-slate-400">Blank {i + 1}:</span>
+                <span className="font-bold text-emerald-700">{ans}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
       {!submitted && (
         <button onClick={submit} disabled={values.some(v => !v.trim())}
           className="w-full py-2.5 rounded-xl bg-[#6E67D8] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#5850c5] transition-colors">
@@ -617,8 +668,15 @@ function ScenarioPlayer({ content, onScore }: { content: any; onScore: (s: numbe
 
 // ─── 8. Concept Sorter ─────────────────────────────────────────────
 function ConceptSorterPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
-  const categories: { name: string }[] = content.categories ?? []
-  const items: { text: string; category: string }[] = content.items ?? []
+  // Normalize: AI sometimes returns ["Cat A","Cat B"] instead of [{name:"Cat A"}]
+  const categories: { name: string }[] = (content.categories ?? []).map((c: any) =>
+    typeof c === "string" ? { name: c } : { name: c.name ?? c.label ?? String(c) }
+  )
+  // Normalize items: handle {text,category} or {item,category} or {concept,category}
+  const items: { text: string; category: string }[] = (content.items ?? []).map((it: any) => ({
+    text: it.text ?? it.item ?? it.concept ?? it.name ?? String(it),
+    category: it.category ?? it.group ?? "",
+  }))
   const [selected, setSelected] = useState<string | null>(null) // item text
   const [placements, setPlacements] = useState<Record<string, string>>({}) // item → category
   const [submitted, setSubmitted] = useState(false)
@@ -708,7 +766,7 @@ function ConceptSorterPlayer({ content, onScore }: { content: any; onScore: (s: 
 // ─── 9. Acronym Explainer ──────────────────────────────────────────
 function AcronymPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
   const acronym: string = content.acronym ?? ""
-  const letters: { letter: string; expansion: string }[] = content.letters ?? []
+  const letters: any[] = content.letters ?? []
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
   const [done, setDone] = useState(false)
 
@@ -728,6 +786,8 @@ function AcronymPlayer({ content, onScore }: { content: any; onScore: (s: number
       <div className="space-y-2">
         {letters.map((item, i) => {
           const isRevealed = revealed.has(i)
+          // AI may use "word", "meaning", "stands_for", or "expansion" — handle all
+          const expansion: string = item.expansion ?? item.word ?? item.meaning ?? item.stands_for ?? item.full ?? ""
           return (
             <button key={i} onClick={() => reveal(i)} disabled={isRevealed}
               className={cn(
@@ -739,12 +799,12 @@ function AcronymPlayer({ content, onScore }: { content: any; onScore: (s: number
               <span className={cn(
                 "w-10 h-10 rounded-xl text-xl font-black flex items-center justify-center shrink-0 transition-all",
                 isRevealed ? "bg-[#E65100] text-white" : "bg-slate-100 text-slate-400"
-              )}>{item.letter}</span>
+              )}>{item.letter ?? acronym[i] ?? ""}</span>
               <span className={cn(
                 "text-sm font-medium transition-all",
                 isRevealed ? "text-[#2C1A00]" : "text-slate-300"
               )}>
-                {isRevealed ? item.expansion : "Tap to reveal…"}
+                {isRevealed ? (expansion || "—") : "Tap to reveal…"}
               </span>
             </button>
           )
@@ -890,10 +950,25 @@ function FillBlankPlayer({ content, onScore }: { content: any; onScore: (s: numb
           </span>
         ))}
       </div>
+      {submitted && blanks.some((b, i) => values[i]?.trim().toLowerCase() !== b.answer.toLowerCase()) && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+          <p className="text-xs font-bold text-emerald-700 mb-2">Correct answers:</p>
+          {blanks.map((b, i) => {
+            const correct = values[i]?.trim().toLowerCase() === b.answer.toLowerCase()
+            if (correct) return null
+            return (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span className="text-slate-400">Blank {i + 1}:</span>
+                <span className="font-bold text-emerald-700">{b.answer}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
       {!submitted && (
         <button onClick={submit} disabled={values.some(v => !v.trim())}
           className="w-full py-2.5 rounded-xl bg-[#1565C0] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#0d47a1] transition-colors">
-          Check
+          Check answers
         </button>
       )}
     </div>
@@ -902,7 +977,7 @@ function FillBlankPlayer({ content, onScore }: { content: any; onScore: (s: numb
 
 // ─── 12. Rapid Fire ────────────────────────────────────────────────
 function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
-  const questions: { q: string; options: { text: string; is_correct: boolean }[] }[] = content.questions ?? []
+  const questions: any[] = content.questions ?? []
   const timePerQ: number = content.time_per_question_s ?? 10
   const [qIdx, setQIdx]       = useState(0)
   const [scores, setScores]   = useState(0)
@@ -947,6 +1022,8 @@ function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: numb
   if (done) return null
 
   const q = questions[qIdx]
+  // AI may use "q", "question", or "text" as the question field
+  const questionText: string = q?.q ?? q?.question ?? q?.text ?? ""
   const pct = (timeLeft / timePerQ) * 100
 
   return (
@@ -972,12 +1049,12 @@ function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: numb
       {/* Question */}
       <div className="bg-gradient-to-br from-[#C62828] to-[#b71c1c] rounded-2xl p-5">
         <span className="text-[10px] font-bold uppercase tracking-widest text-red-300 block mb-2">Quick!</span>
-        <p className="text-white font-semibold leading-snug">{q.q}</p>
+        <p className="text-white font-semibold leading-snug">{questionText}</p>
       </div>
 
       {/* Options */}
       <div className="grid grid-cols-2 gap-2">
-        {q.options.map((opt, i) => {
+        {(q?.options ?? []).map((opt: any, i: number) => {
           const isCorrect = answered !== null && opt.is_correct
           const isWrong   = answered === false && !opt.is_correct
           return (
