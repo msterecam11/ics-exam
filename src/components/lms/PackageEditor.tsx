@@ -638,13 +638,18 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
 ]
 
 function ActivityItemEditor({
-  item, onChange, moduleId,
+  item, onChange, moduleId, onInsertMore,
 }: {
-  item: PackageItem; onChange: (patch: Partial<PackageItem>) => void; moduleId: string
+  item: PackageItem
+  onChange: (patch: Partial<PackageItem>) => void
+  moduleId: string
+  onInsertMore?: (items: PackageItem[]) => void
 }) {
   const cfg = item.config
   const setConfig = (patch: Record<string, any>) => onChange({ config: { ...cfg, ...patch } })
   const [generating, setGenerating] = useState(false)
+  const [genCount, setGenCount]     = useState(1)
+  const [genLang,  setGenLang]      = useState("English")
 
   const selectedType = ACTIVITY_TYPES.find(t => t.type === cfg.activity_type) ?? ACTIVITY_TYPES[0]
   const hasContent = cfg.content && Object.keys(cfg.content).length > 0
@@ -657,23 +662,41 @@ function ActivityItemEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           module_id: moduleId,
-          count: 1,
+          count: genCount,
           types: [cfg.activity_type ?? "mcq"],
           difficulty: cfg.difficulty ?? "medium",
           placement: "ai_topic",
-          language: "English",
+          language: genLang,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Generation failed")
-      const act = data.activities?.[0]
-      if (act) {
-        onChange({
-          title: act.title ?? item.title,
-          config: { ...cfg, content: act.content, ai_generated: true, difficulty: act.difficulty },
-        })
-        toast.success("Activity generated")
+      const acts: any[] = data.activities ?? []
+      if (acts.length === 0) throw new Error("No activities returned")
+
+      // First activity updates the current item
+      const first = acts[0]
+      onChange({
+        title: first.title ?? item.title,
+        config: { ...cfg, content: first.content, ai_generated: true, difficulty: first.difficulty },
+      })
+
+      // Extra activities (count > 1) get inserted as new items after this one
+      if (acts.length > 1 && onInsertMore) {
+        const extras: PackageItem[] = acts.slice(1).map(act => ({
+          ...defaultItem("activity"),
+          title: act.title ?? "Activity",
+          config: {
+            activity_type: act.type ?? cfg.activity_type ?? "mcq",
+            difficulty: act.difficulty ?? cfg.difficulty ?? "medium",
+            ai_generated: true,
+            content: act.content ?? {},
+          },
+        }))
+        onInsertMore(extras)
       }
+
+      toast.success(`${acts.length} activit${acts.length === 1 ? "y" : "ies"} generated`)
     } catch (e: any) {
       toast.error(e.message ?? "Generation failed")
     }
@@ -756,14 +779,55 @@ function ActivityItemEditor({
             <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">3</span>
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Generate with AI</p>
           </div>
+
+          {/* Count + language row */}
+          <div className="flex gap-3 mb-3">
+            <div className="flex-1">
+              <p className="text-[11px] text-slate-500 font-semibold mb-1.5">How many activities?</p>
+              <div className="flex gap-1.5">
+                {[1,2,3,5,10].map(n => (
+                  <button key={n} onClick={() => setGenCount(n)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all",
+                      genCount === n
+                        ? "border-[#1B4F8A] bg-[#E6F1FB] text-[#1B4F8A]"
+                        : "border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300"
+                    )}>{n}</button>
+                ))}
+              </div>
+            </div>
+            <div className="w-32">
+              <p className="text-[11px] text-slate-500 font-semibold mb-1.5">Language</p>
+              <select value={genLang} onChange={e => setGenLang(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 font-medium focus:outline-none focus:border-[#1B4F8A]">
+                <option value="English">English</option>
+                <option value="French">French</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Spanish">Spanish</option>
+              </select>
+            </div>
+          </div>
+
           <button onClick={generateActivity} disabled={generating}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1B4F8A] hover:bg-[#0C447C] text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {generating ? "AI is generating content…" : hasContent ? "Regenerate with AI" : "Generate activity content"}
+            {generating
+              ? `Generating ${genCount} activit${genCount === 1 ? "y" : "ies"}…`
+              : hasContent
+              ? `Regenerate (×${genCount})`
+              : `Generate ${genCount === 1 ? "activity" : `${genCount} activities`}`
+            }
           </button>
-          <p className="text-[11px] text-slate-400 mt-2 text-center">
-            AI will use the module's Expert analysis to generate relevant content
-          </p>
+          {genCount > 1 && (
+            <p className="text-[11px] text-amber-600 mt-2 text-center">
+              {genCount - 1} extra activit{genCount - 1 === 1 ? "y" : "ies"} will be added as new items in the sidebar
+            </p>
+          )}
+          {genCount === 1 && (
+            <p className="text-[11px] text-slate-400 mt-2 text-center">
+              AI uses the module's Expert analysis to create relevant content
+            </p>
+          )}
         </div>
 
         {/* Content status */}
@@ -841,9 +905,12 @@ function ActivityItemEditor({
 }
 
 function ItemEditor({
-  item, onChange, moduleId,
+  item, onChange, moduleId, onInsertMore,
 }: {
-  item: PackageItem; onChange: (patch: Partial<PackageItem>) => void; moduleId: string
+  item: PackageItem
+  onChange: (patch: Partial<PackageItem>) => void
+  moduleId: string
+  onInsertMore?: (items: PackageItem[]) => void
 }) {
   const cfg = item.config
 
@@ -1142,7 +1209,7 @@ function ItemEditor({
 
   // ── activity ───────────────────────────────────────────────────
   if (item.type === "activity") {
-    return <ActivityItemEditor item={item} onChange={onChange} moduleId={moduleId} />
+    return <ActivityItemEditor item={item} onChange={onChange} moduleId={moduleId} onInsertMore={onInsertMore} />
   }
 
   return null
@@ -1630,6 +1697,16 @@ export default function PackageEditor({
                   item={currentItem}
                   onChange={patch => updateItem(currentItem.id, patch)}
                   moduleId={moduleId}
+                  onInsertMore={extras => {
+                    setItems(prev => {
+                      const idx = prev.findIndex(it => it.id === currentItem.id)
+                      const next = [...prev]
+                      next.splice(idx + 1, 0, ...extras)
+                      setCurrentIdx(idx) // stay on current item
+                      return next
+                    })
+                    mark()
+                  }}
                 />
               </div>
             </>
