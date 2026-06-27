@@ -640,12 +640,12 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
 type PlacementMode = "ai_topic" | "end" | "evenly"
 
 function ActivityItemEditor({
-  item, onChange, moduleId, onInsertMore, currentItemIdx, totalItems,
+  item, onChange, moduleId, onReplaceAll, currentItemIdx, totalItems,
 }: {
   item: PackageItem
   onChange: (patch: Partial<PackageItem>) => void
   moduleId: string
-  onInsertMore?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
+  onReplaceAll?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
   currentItemIdx: number
   totalItems: number
 }) {
@@ -739,48 +739,45 @@ function ActivityItemEditor({
 
       if (allActs.length === 0) throw new Error("No activities returned")
 
-      // Sort by placement_slide
+      // Sort by placement_slide (ascending)
       const sorted = [...allActs].sort((a, b) => (a.placement_slide ?? 0) - (b.placement_slide ?? 0))
 
-      // First activity → update current item
-      const first = sorted[0]
-      onChange({
-        title: first.title ?? item.title,
-        config: {
-          ...cfg,
-          activity_type: first.type ?? "mcq",
-          content: first.content,
-          ai_generated: true,
-          difficulty: first.difficulty ?? difficulty,
-        },
+      // Build ALL activities as new items with target indices
+      // (current item will be removed from its original position and replaced correctly)
+      const allItems: Array<PackageItem & { _targetIdx?: number }> = sorted.map((act, i) => {
+        let targetIdx: number
+        if (placement === "end") {
+          targetIdx = totalItems + i
+        } else if (placement === "evenly") {
+          targetIdx = Math.round(((i + 1) / (sorted.length + 1)) * totalItems)
+        } else {
+          // ai_topic — use placement_slide proportionally
+          const ratio = (act.placement_slide ?? 1) / totalSlideCount
+          targetIdx = Math.max(1, Math.min(totalItems, Math.round(ratio * totalItems)))
+        }
+        return {
+          ...defaultItem("activity"),
+          id: i === 0 ? item.id : defaultItem("activity").id, // keep same id for first
+          title: act.title ?? "Activity",
+          config: {
+            activity_type: act.type ?? "mcq",
+            difficulty: act.difficulty ?? difficulty,
+            ai_generated: true,
+            content: act.content ?? {},
+          },
+          required: item.required,
+          _targetIdx: targetIdx,
+        }
       })
 
-      // Extra activities → new items with placement-based target indices
-      if (sorted.length > 1 && onInsertMore) {
-        const extras: Array<PackageItem & { _targetIdx?: number }> = sorted.slice(1).map(act => {
-          let targetIdx: number
-          if (placement === "ai_topic") {
-            const ratio = (act.placement_slide ?? 1) / totalSlideCount
-            targetIdx = Math.max(currentItemIdx + 1, Math.min(totalItems, Math.round(ratio * totalItems)))
-          } else if (placement === "end") {
-            targetIdx = totalItems
-          } else {
-            // evenly
-            targetIdx = currentItemIdx + 1
-          }
-          return {
-            ...defaultItem("activity"),
-            title: act.title ?? "Activity",
-            config: {
-              activity_type: act.type ?? "mcq",
-              difficulty: act.difficulty ?? difficulty,
-              ai_generated: true,
-              content: act.content ?? {},
-            },
-            _targetIdx: targetIdx,
-          }
+      if (onReplaceAll) {
+        onReplaceAll(allItems, placement)
+      } else {
+        // Fallback: just update current item with first activity
+        onChange({
+          title: allItems[0].title,
+          config: allItems[0].config,
         })
-        onInsertMore(extras, placement)
       }
 
       toast.success(`${allActs.length} activit${allActs.length === 1 ? "y" : "ies"} generated`)
@@ -809,6 +806,19 @@ function ActivityItemEditor({
           </p>
         )}
       </div>
+
+      {/* No analysis warning */}
+      {!analysisLoading && slideCount === 0 && topicCount === 0 && (
+        <div className="mx-6 mt-4 flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 shrink-0">
+          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-amber-800">Expert AI Analysis required</p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              Run the Expert Analysis on this module first. Without it, the AI cannot suggest activity counts, recommend types, or place activities intelligently.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Scrollable config */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
@@ -983,12 +993,12 @@ function ActivityItemEditor({
 }
 
 function ItemEditor({
-  item, onChange, moduleId, onInsertMore, currentItemIdx, totalItems,
+  item, onChange, moduleId, onReplaceAll, currentItemIdx, totalItems,
 }: {
   item: PackageItem
   onChange: (patch: Partial<PackageItem>) => void
   moduleId: string
-  onInsertMore?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
+  onReplaceAll?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
   currentItemIdx: number
   totalItems: number
 }) {
@@ -1294,7 +1304,7 @@ function ItemEditor({
         item={item}
         onChange={onChange}
         moduleId={moduleId}
-        onInsertMore={onInsertMore}
+        onReplaceAll={onReplaceAll}
         currentItemIdx={currentItemIdx}
         totalItems={totalItems}
       />
@@ -1788,35 +1798,38 @@ export default function PackageEditor({
                   moduleId={moduleId}
                   currentItemIdx={currentIdx}
                   totalItems={items.length}
-                  onInsertMore={(extras, mode) => {
+                  onReplaceAll={(allNewItems, mode) => {
                     setItems(prev => {
-                      const anchorIdx = prev.findIndex(it => it.id === currentItem.id)
-                      const next = [...prev]
+                      // Remove the original activity item (it will be re-inserted at the correct position)
+                      const without = prev.filter(it => it.id !== currentItem.id)
+                      const n = without.length
 
                       if (mode === "end") {
-                        next.push(...extras)
+                        return [...without, ...allNewItems]
                       } else if (mode === "evenly") {
-                        // Distribute evenly across the full items list
-                        // Insert in reverse so earlier insertions don't shift later indices
-                        const total = next.length + extras.length
-                        const withIdx = extras.map((ex, i) =>
-                          ({ ex, at: Math.round(((i + 1) / (extras.length + 1)) * total) })
-                        ).sort((a, b) => b.at - a.at)
+                        // Distribute evenly across the full list
+                        const next = [...without]
+                        const total = next.length + allNewItems.length
+                        const withIdx = allNewItems.map((ex, i) =>
+                          ({ ex, at: Math.round(((i + 1) / (allNewItems.length + 1)) * total) })
+                        ).sort((a, b) => b.at - a.at) // reverse order so indices stay valid
                         for (const { ex, at } of withIdx) {
                           next.splice(Math.min(at, next.length), 0, ex)
                         }
+                        return next
                       } else {
-                        // ai_topic — each extra has _targetIdx; insert in reverse order so indices stay valid
-                        const sorted = [...extras].sort((a, b) => (b._targetIdx ?? 0) - (a._targetIdx ?? 0))
+                        // ai_topic — use _targetIdx, insert in reverse order
+                        const next = [...without]
+                        const sorted = [...allNewItems].sort((a, b) => (b._targetIdx ?? 0) - (a._targetIdx ?? 0))
                         for (const ex of sorted) {
-                          const at = Math.max(anchorIdx + 1, Math.min(next.length, ex._targetIdx ?? anchorIdx + 1))
+                          const at = Math.max(0, Math.min(next.length, ex._targetIdx ?? n))
                           next.splice(at, 0, ex)
                         }
+                        return next
                       }
-
-                      setCurrentIdx(anchorIdx) // stay on current item
-                      return next
                     })
+                    // Select the first generated item
+                    setCurrentIdx(prev => Math.max(0, prev))
                     mark()
                   }}
                 />
