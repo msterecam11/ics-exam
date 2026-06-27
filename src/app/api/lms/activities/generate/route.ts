@@ -256,5 +256,5 @@ CONTENT RULES:
     }
   })
 
-  return NextResponse.json({ activities: normalized })
+  return NextResponse.json({ activities: normalized, slideCount })
 }

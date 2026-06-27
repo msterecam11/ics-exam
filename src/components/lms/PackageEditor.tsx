@@ -637,19 +637,24 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
   { type: "rapid_fire",    label: "Rapid Fire",     icon: Zap,          color: "#4A0000", bg: "#FFEBEE" },
 ]
 
+type PlacementMode = "smart" | "here" | "before"
+
 function ActivityItemEditor({
-  item, onChange, moduleId, onInsertMore,
+  item, onChange, moduleId, onInsertMore, currentItemIdx, totalItems,
 }: {
   item: PackageItem
   onChange: (patch: Partial<PackageItem>) => void
   moduleId: string
-  onInsertMore?: (items: PackageItem[]) => void
+  onInsertMore?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
+  currentItemIdx: number
+  totalItems: number
 }) {
   const cfg = item.config
   const setConfig = (patch: Record<string, any>) => onChange({ config: { ...cfg, ...patch } })
-  const [generating, setGenerating] = useState(false)
-  const [genCount, setGenCount]     = useState(1)
-  const [genLang,  setGenLang]      = useState("English")
+  const [generating,    setGenerating]    = useState(false)
+  const [genCount,      setGenCount]      = useState(1)
+  const [genLang,       setGenLang]       = useState("English")
+  const [genPlacement,  setGenPlacement]  = useState<PlacementMode>("smart")
 
   const selectedType = ACTIVITY_TYPES.find(t => t.type === cfg.activity_type) ?? ACTIVITY_TYPES[0]
   const hasContent = cfg.content && Object.keys(cfg.content).length > 0
@@ -665,7 +670,7 @@ function ActivityItemEditor({
           count: genCount,
           types: [cfg.activity_type ?? "mcq"],
           difficulty: cfg.difficulty ?? "medium",
-          placement: "ai_topic",
+          placement: genPlacement === "smart" ? "ai_topic" : genPlacement === "before" ? "evenly" : "evenly",
           language: genLang,
         }),
       })
@@ -673,27 +678,54 @@ function ActivityItemEditor({
       if (!res.ok) throw new Error(data.error ?? "Generation failed")
       const acts: any[] = data.activities ?? []
       if (acts.length === 0) throw new Error("No activities returned")
+      const slideCount: number = data.slideCount ?? 1
 
-      // First activity updates the current item
-      const first = acts[0]
+      // Sort all activities by placement_slide (AI smart order)
+      const sorted = [...acts].sort((a, b) => (a.placement_slide ?? 0) - (b.placement_slide ?? 0))
+
+      // First in sorted order updates the current item
+      const first = sorted[0]
       onChange({
         title: first.title ?? item.title,
-        config: { ...cfg, content: first.content, ai_generated: true, difficulty: first.difficulty },
+        config: {
+          ...cfg,
+          activity_type: first.type ?? cfg.activity_type,
+          content: first.content,
+          ai_generated: true,
+          difficulty: first.difficulty,
+        },
       })
 
-      // Extra activities (count > 1) get inserted as new items after this one
-      if (acts.length > 1 && onInsertMore) {
-        const extras: PackageItem[] = acts.slice(1).map(act => ({
-          ...defaultItem("activity"),
-          title: act.title ?? "Activity",
-          config: {
-            activity_type: act.type ?? cfg.activity_type ?? "mcq",
-            difficulty: act.difficulty ?? cfg.difficulty ?? "medium",
-            ai_generated: true,
-            content: act.content ?? {},
-          },
-        }))
-        onInsertMore(extras)
+      // Extra activities become new items with computed target positions
+      if (sorted.length > 1 && onInsertMore) {
+        const extras: Array<PackageItem & { _targetIdx?: number }> = sorted.slice(1).map(act => {
+          let targetIdx: number
+          if (genPlacement === "smart") {
+            // Proportional: place after the slide % of total items
+            const ratio = (act.placement_slide ?? 1) / slideCount
+            targetIdx = Math.max(currentItemIdx + 1, Math.min(totalItems - 1, Math.round(ratio * totalItems)))
+          } else if (genPlacement === "before") {
+            // Distribute evenly before the current item
+            targetIdx = Math.max(0, currentItemIdx - 1)
+          } else {
+            // "here" — stack right after current item
+            targetIdx = currentItemIdx + 1
+          }
+
+          const pi: PackageItem & { _targetIdx?: number } = {
+            ...defaultItem("activity"),
+            title: act.title ?? "Activity",
+            config: {
+              activity_type: act.type ?? cfg.activity_type ?? "mcq",
+              difficulty: act.difficulty ?? cfg.difficulty ?? "medium",
+              ai_generated: true,
+              content: act.content ?? {},
+            },
+            _targetIdx: targetIdx,
+          }
+          return pi
+        })
+        onInsertMore(extras, genPlacement)
       }
 
       toast.success(`${acts.length} activit${acts.length === 1 ? "y" : "ies"} generated`)
@@ -773,10 +805,54 @@ function ActivityItemEditor({
           </div>
         </div>
 
-        {/* Step 3 — Generate */}
+        {/* Step 3 — Placement */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">3</span>
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Placement</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {([
+              {
+                mode: "smart" as PlacementMode,
+                label: "AI chooses position",
+                desc: "AI reads the module flow and places each activity after students have seen the relevant slides — never before the prerequisite content.",
+                icon: Sparkles,
+              },
+              {
+                mode: "here" as PlacementMode,
+                label: "At current position",
+                desc: "All activities are inserted right here in the sidebar, stacked at the current item's position.",
+                icon: Target,
+              },
+              {
+                mode: "before" as PlacementMode,
+                label: "Before current position",
+                desc: "Activities are placed before this item — useful as a recap or warm-up before the upcoming slides.",
+                icon: ChevronUp,
+              },
+            ] as const).map(({ mode, label, desc, icon: Icon }) => (
+              <button key={mode} onClick={() => setGenPlacement(mode)}
+                className={cn(
+                  "flex items-start gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all",
+                  genPlacement === mode
+                    ? "border-[#1B4F8A] bg-[#E6F1FB]"
+                    : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                )}>
+                <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", genPlacement === mode ? "text-[#1B4F8A]" : "text-slate-400")} />
+                <div>
+                  <p className={cn("text-xs font-bold", genPlacement === mode ? "text-[#1B4F8A]" : "text-slate-700")}>{label}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Step 4 — Generate */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-5 h-5 rounded-full bg-[#1B4F8A] text-white text-[10px] font-bold flex items-center justify-center">4</span>
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Generate with AI</p>
           </div>
 
@@ -905,12 +981,14 @@ function ActivityItemEditor({
 }
 
 function ItemEditor({
-  item, onChange, moduleId, onInsertMore,
+  item, onChange, moduleId, onInsertMore, currentItemIdx, totalItems,
 }: {
   item: PackageItem
   onChange: (patch: Partial<PackageItem>) => void
   moduleId: string
-  onInsertMore?: (items: PackageItem[]) => void
+  onInsertMore?: (items: Array<PackageItem & { _targetIdx?: number }>, mode: PlacementMode) => void
+  currentItemIdx: number
+  totalItems: number
 }) {
   const cfg = item.config
 
@@ -1209,7 +1287,16 @@ function ItemEditor({
 
   // ── activity ───────────────────────────────────────────────────
   if (item.type === "activity") {
-    return <ActivityItemEditor item={item} onChange={onChange} moduleId={moduleId} onInsertMore={onInsertMore} />
+    return (
+      <ActivityItemEditor
+        item={item}
+        onChange={onChange}
+        moduleId={moduleId}
+        onInsertMore={onInsertMore}
+        currentItemIdx={currentItemIdx}
+        totalItems={totalItems}
+      />
+    )
   }
 
   return null
@@ -1697,12 +1784,29 @@ export default function PackageEditor({
                   item={currentItem}
                   onChange={patch => updateItem(currentItem.id, patch)}
                   moduleId={moduleId}
-                  onInsertMore={extras => {
+                  currentItemIdx={currentIdx}
+                  totalItems={items.length}
+                  onInsertMore={(extras, mode) => {
                     setItems(prev => {
-                      const idx = prev.findIndex(it => it.id === currentItem.id)
+                      const anchorIdx = prev.findIndex(it => it.id === currentItem.id)
                       const next = [...prev]
-                      next.splice(idx + 1, 0, ...extras)
-                      setCurrentIdx(idx) // stay on current item
+
+                      if (mode === "here") {
+                        // Stack right after anchor
+                        next.splice(anchorIdx + 1, 0, ...extras)
+                      } else if (mode === "before") {
+                        // Insert before the anchor item
+                        next.splice(anchorIdx, 0, ...extras)
+                      } else {
+                        // smart — each extra has _targetIdx; insert in reverse order so indices stay valid
+                        const sorted = [...extras].sort((a, b) => (b._targetIdx ?? 0) - (a._targetIdx ?? 0))
+                        for (const ex of sorted) {
+                          const at = Math.max(anchorIdx + 1, Math.min(next.length, ex._targetIdx ?? anchorIdx + 1))
+                          next.splice(at, 0, ex)
+                        }
+                      }
+
+                      setCurrentIdx(anchorIdx) // stay on current item
                       return next
                     })
                     mark()
