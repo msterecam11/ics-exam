@@ -24,6 +24,8 @@ const TYPE_LABELS: Record<string, string> = {
   drag_match:    "Drag & Drop Matching",
   fill_blank:    "Fill in the Blank",
   rapid_fire:    "Rapid Fire Quiz",
+  true_false:    "True / False Statement",
+  short_answer:  "Short Answer (AI-scored)",
 }
 
 // POST /api/lms/activities/generate
@@ -186,6 +188,8 @@ CONTENT RULES — EXACT FIELD NAMES (use these exactly, no variations):
 - drag_match: "pairs":[{"left":"term","right":"definition"}] — 4-6 pairs
 - fill_blank: "sentence":"The ___ must be completed before ___.", "blanks":[{"answer":"flight plan"},{"answer":"departure"}]
 - rapid_fire: "questions":[{"q":"Question text?","options":[{"text":"...","is_correct":false}]}], "time_per_question_s":10 — 5 questions each with 4 options
+- true_false: "statement":"A factual claim that is either true or false.", "answer":true, "explanation":"Why it is true or false."
+- short_answer: "question":"An open-ended question requiring explanation.", "rubric":"What a full-mark answer should include (2-3 key points)."
 
 DIFFICULTY RULES for "${difficulty}":
 ${difficulty === "easy"

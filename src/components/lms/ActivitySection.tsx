@@ -6,7 +6,7 @@ import {
   Loader2, MapPin, Eye, Pencil, RotateCcw, Check, X,
   Puzzle, Zap, BookOpen, ListOrdered, AlertTriangle,
   TextCursorInput, AlignLeft, GitBranch, Layers3,
-  WholeWord, BarChart3, Dices, ArrowUpDown,
+  WholeWord, BarChart3, Dices, ArrowUpDown, ToggleLeft, MessageSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -16,6 +16,7 @@ export type ActivityType =
   | "mcq" | "flashcard" | "ordering" | "error_spotter"
   | "gap_fill" | "word_scramble" | "scenario" | "concept_sorter"
   | "acronym" | "drag_match" | "fill_blank" | "rapid_fire"
+  | "true_false" | "short_answer"
 
 export interface Activity {
   id?: string
@@ -50,6 +51,8 @@ const TYPE_META: Record<ActivityType, { label: string; icon: React.ElementType; 
   drag_match:    { label: "Drag & match",   icon: Puzzle,         color: "#1A0033", bg: "#F3E5F5", dot: "#9C27B0" },
   fill_blank:    { label: "Fill in blank",  icon: AlignLeft,      color: "#002244", bg: "#E3F2FD", dot: "#1565C0" },
   rapid_fire:    { label: "Rapid fire",     icon: Zap,            color: "#4A0000", bg: "#FFEBEE", dot: "#C62828" },
+  true_false:    { label: "True / False",   icon: ToggleLeft,     color: "#003333", bg: "#E0F7FA", dot: "#00838F" },
+  short_answer:  { label: "Short answer",   icon: MessageSquare,  color: "#1A0040", bg: "#EDE7F6", dot: "#6A1B9A" },
 }
 
 const ALL_TYPES = Object.keys(TYPE_META) as ActivityType[]

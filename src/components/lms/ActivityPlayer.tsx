@@ -6,7 +6,7 @@ import {
   Lightbulb, Zap, Clock, Star, ArrowRight, Check, X,
   BookOpen, ListOrdered, AlertTriangle, TextCursorInput,
   AlignLeft, GitBranch, Layers3, WholeWord, BarChart3,
-  Puzzle, ArrowUpDown, Sparkles,
+  Puzzle, ArrowUpDown, Sparkles, ToggleLeft, MessageSquare, Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Activity, ActivityType } from "@/components/lms/ActivitySection"
@@ -25,6 +25,8 @@ const THEME: Record<ActivityType, { primary: string; light: string; text: string
   drag_match:    { primary: "#9C27B0", light: "#F3E5F5", text: "#1A0033", icon: Puzzle          },
   fill_blank:    { primary: "#1565C0", light: "#E3F2FD", text: "#002244", icon: AlignLeft       },
   rapid_fire:    { primary: "#C62828", light: "#FFEBEE", text: "#4A0000", icon: Zap             },
+  true_false:    { primary: "#00838F", light: "#E0F7FA", text: "#003333", icon: ToggleLeft      },
+  short_answer:  { primary: "#6A1B9A", light: "#EDE7F6", text: "#1A0040", icon: MessageSquare  },
 }
 
 // ─── Shared result screen ──────────────────────────────────────────
@@ -1113,6 +1115,158 @@ function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: numb
   )
 }
 
+// ─── 13. True / False ──────────────────────────────────────────────
+function TrueFalsePlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
+  const statement: string = content.statement ?? content.question ?? ""
+  const answer: boolean   = content.answer ?? content.correct ?? true
+  const explanation: string = content.explanation ?? ""
+  const [chosen, setChosen] = useState<boolean | null>(null)
+
+  function pick(val: boolean) {
+    if (chosen !== null) return
+    setChosen(val)
+    onScore(val === answer ? 1 : 0, 1)
+  }
+
+  const submitted = chosen !== null
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gradient-to-br from-[#00838F] to-[#006064] rounded-2xl p-5 text-white">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300 block mb-2">True or False?</span>
+        <p className="text-base font-semibold leading-snug">{statement}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {([true, false] as const).map(val => {
+          const label    = val ? "True" : "False"
+          const isChosen = chosen === val
+          const correct  = submitted && val === answer
+          const wrong    = submitted && isChosen && val !== answer
+          return (
+            <button key={String(val)} onClick={() => pick(val)}
+              className={cn(
+                "py-5 rounded-2xl border-2 text-lg font-bold transition-all",
+                !submitted && "border-slate-200 bg-white text-slate-600 hover:border-[#00838F] hover:bg-[#E0F7FA]",
+                correct && "border-emerald-500 bg-emerald-50 text-emerald-700",
+                wrong   && "border-red-400 bg-red-50 text-red-600",
+                submitted && !isChosen && !correct && "border-slate-200 bg-white opacity-40",
+              )}>
+              {submitted && correct ? <Check className="inline h-5 w-5 mr-1" /> :
+               submitted && wrong   ? <X     className="inline h-5 w-5 mr-1" /> : null}
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      {submitted && explanation && (
+        <div className="flex items-start gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
+          <Lightbulb className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">{explanation}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── 14. Short Answer (AI-scored) ──────────────────────────────────
+function ShortAnswerPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
+  const question: string    = content.question ?? ""
+  const rubric: string      = content.rubric ?? content.model_answer ?? content.expected_answer ?? ""
+  const [answer, setAnswer] = useState("")
+  const [submitted, setSubmitted] = useState(false)
+  const [scoring, setScoring]     = useState(false)
+  const [feedback, setFeedback]   = useState<{ score: number; comment: string } | null>(null)
+
+  async function submit() {
+    if (!answer.trim()) return
+    setSubmitted(true)
+    setScoring(true)
+    try {
+      const res = await fetch("/api/lms/activities/score-short-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, rubric, answer: answer.trim() }),
+      })
+      const data = await res.json()
+      setFeedback({ score: data.score ?? 0, comment: data.comment ?? "" })
+      onScore(data.score ?? 0, 10)
+    } catch {
+      setFeedback({ score: 0, comment: "Could not score your answer at this time." })
+      onScore(0, 10)
+    }
+    setScoring(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gradient-to-br from-[#6A1B9A] to-[#4A148C] rounded-2xl p-5 text-white">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-purple-300 block mb-2">Short Answer</span>
+        <p className="text-base font-semibold leading-snug">{question}</p>
+      </div>
+
+      <textarea
+        value={answer}
+        onChange={e => setAnswer(e.target.value)}
+        disabled={submitted}
+        placeholder="Type your answer here…"
+        rows={4}
+        className={cn(
+          "w-full rounded-xl border-2 p-3 text-sm text-slate-700 outline-none resize-none transition-all",
+          submitted ? "border-slate-200 bg-slate-50 text-slate-500" : "border-[#6A1B9A]/40 focus:border-[#6A1B9A] bg-white"
+        )}
+      />
+
+      {!submitted && (
+        <button onClick={submit} disabled={!answer.trim()}
+          className="w-full py-2.5 rounded-xl bg-[#6A1B9A] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#560d84] transition-colors">
+          Submit answer
+        </button>
+      )}
+
+      {submitted && (
+        <div className={cn(
+          "rounded-2xl border-2 p-4 space-y-2",
+          scoring ? "border-slate-200 bg-slate-50" :
+          feedback && feedback.score >= 7 ? "border-emerald-300 bg-emerald-50" :
+          feedback && feedback.score >= 4 ? "border-amber-300 bg-amber-50" :
+          "border-red-300 bg-red-50"
+        )}>
+          {scoring ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              AI is reviewing your answer…
+            </div>
+          ) : feedback && (
+            <>
+              <div className="flex items-center justify-between">
+                <p className={cn("text-sm font-bold",
+                  feedback.score >= 7 ? "text-emerald-800" :
+                  feedback.score >= 4 ? "text-amber-800" : "text-red-800"
+                )}>
+                  {feedback.score >= 7 ? "Good answer!" : feedback.score >= 4 ? "Partially correct" : "Needs improvement"}
+                </p>
+                <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full",
+                  feedback.score >= 7 ? "bg-emerald-200 text-emerald-900" :
+                  feedback.score >= 4 ? "bg-amber-200 text-amber-900" : "bg-red-200 text-red-900"
+                )}>{feedback.score}/10</span>
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed">{feedback.comment}</p>
+              {rubric && (
+                <div className="mt-2 pt-2 border-t border-slate-200">
+                  <p className="text-xs font-semibold text-slate-400 mb-1">Model answer</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">{rubric}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Activity Player Wrapper ───────────────────────────────────────
 type Phase = "intro" | "play" | "result"
 
@@ -1159,6 +1313,7 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
     error_spotter: "Error Spotter", gap_fill: "Gap Fill", word_scramble: "Word Scramble",
     scenario: "Scenario", concept_sorter: "Concept Sorter", acronym: "Acronym",
     drag_match: "Drag & Match", fill_blank: "Fill in Blank", rapid_fire: "Rapid Fire",
+    true_false: "True / False", short_answer: "Short Answer",
   }
 
   return (
@@ -1218,6 +1373,8 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
               {activity.type === "drag_match"    && <DragMatchPlayer     content={activity.content} onScore={handleScore} />}
               {activity.type === "fill_blank"    && <FillBlankPlayer     content={activity.content} onScore={handleScore} />}
               {activity.type === "rapid_fire"    && <RapidFirePlayer     content={activity.content} onScore={handleScore} />}
+              {activity.type === "true_false"    && <TrueFalsePlayer     content={activity.content} onScore={handleScore} />}
+              {activity.type === "short_answer"  && <ShortAnswerPlayer   content={activity.content} onScore={handleScore} />}
             </div>
 
             {/* Action bar — appears after answering, stays until student decides */}

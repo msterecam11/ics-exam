@@ -636,6 +636,8 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
   { type: "drag_match",    label: "Drag & Match",   icon: Puzzle,       color: "#1A0033", bg: "#F3E5F5" },
   { type: "fill_blank",    label: "Fill in Blank",  icon: AlignLeft,    color: "#002244", bg: "#E3F2FD" },
   { type: "rapid_fire",    label: "Rapid Fire",     icon: Zap,          color: "#4A0000", bg: "#FFEBEE" },
+  { type: "true_false",    label: "True / False",   icon: SkipForward,  color: "#003333", bg: "#E0F7FA" },
+  { type: "short_answer",  label: "Short Answer",   icon: AlignLeft,    color: "#1A0040", bg: "#EDE7F6" },
 ]
 
 type PlacementMode = "ai_topic" | "end" | "evenly"
