@@ -1124,22 +1124,35 @@ interface PlayerProps {
 }
 
 export default function ActivityPlayer({ activity, onComplete, onNext, className }: PlayerProps) {
-  const [phase, setPhase] = useState<Phase>("intro")
-  const [score, setScore] = useState(0)
-  const [total, setTotal] = useState(1)
-  const [key, setKey]     = useState(0)
+  const [phase, setPhase]       = useState<Phase>("intro")
+  const [score, setScore]       = useState(0)
+  const [total, setTotal]       = useState(1)
+  const [key, setKey]           = useState(0)
+  const [answered, setAnswered] = useState(false) // waiting for student to Continue or Retry
 
   const t = THEME[activity.type] ?? THEME.mcq
   const Icon = t.icon
 
+  // Called by each player when the student finishes answering.
+  // We stay in "play" phase so feedback remains visible; show action bar instead.
   function handleScore(s: number, tot: number) {
     setScore(s); setTotal(tot)
-    setTimeout(() => { setPhase("result"); onComplete?.(Math.round((s / tot) * 100)) }, 900)
+    setAnswered(true)
+  }
+
+  function handleContinue() {
+    setAnswered(false)
+    setPhase("result")
+    onComplete?.(Math.round((score / total) * 100))
   }
 
   function handleRetry() {
-    setScore(0); setTotal(1); setKey(k => k + 1); setPhase("play")
+    setScore(0); setTotal(1); setKey(k => k + 1)
+    setAnswered(false)
+    setPhase("play")
   }
+
+  const isPerfect = total > 0 && score === total
 
   const TYPE_LABEL: Record<ActivityType, string> = {
     mcq: "Multiple Choice", flashcard: "Flashcard", ordering: "Ordering",
@@ -1191,19 +1204,61 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
         )}
 
         {phase === "play" && (
-          <div key={key}>
-            {activity.type === "mcq"           && <McqPlayer           content={activity.content} onScore={handleScore} />}
-            {activity.type === "flashcard"     && <FlashcardPlayer     content={activity.content} onScore={handleScore} />}
-            {activity.type === "ordering"      && <OrderingPlayer      content={activity.content} onScore={handleScore} />}
-            {activity.type === "error_spotter" && <ErrorSpotterPlayer  content={activity.content} onScore={handleScore} />}
-            {activity.type === "gap_fill"      && <GapFillPlayer       content={activity.content} onScore={handleScore} />}
-            {activity.type === "word_scramble" && <WordScramblePlayer  content={activity.content} onScore={handleScore} />}
-            {activity.type === "scenario"      && <ScenarioPlayer      content={activity.content} onScore={handleScore} />}
-            {activity.type === "concept_sorter"&& <ConceptSorterPlayer content={activity.content} onScore={handleScore} />}
-            {activity.type === "acronym"       && <AcronymPlayer       content={activity.content} onScore={handleScore} />}
-            {activity.type === "drag_match"    && <DragMatchPlayer     content={activity.content} onScore={handleScore} />}
-            {activity.type === "fill_blank"    && <FillBlankPlayer     content={activity.content} onScore={handleScore} />}
-            {activity.type === "rapid_fire"    && <RapidFirePlayer     content={activity.content} onScore={handleScore} />}
+          <div className="space-y-4">
+            <div key={key}>
+              {activity.type === "mcq"           && <McqPlayer           content={activity.content} onScore={handleScore} />}
+              {activity.type === "flashcard"     && <FlashcardPlayer     content={activity.content} onScore={handleScore} />}
+              {activity.type === "ordering"      && <OrderingPlayer      content={activity.content} onScore={handleScore} />}
+              {activity.type === "error_spotter" && <ErrorSpotterPlayer  content={activity.content} onScore={handleScore} />}
+              {activity.type === "gap_fill"      && <GapFillPlayer       content={activity.content} onScore={handleScore} />}
+              {activity.type === "word_scramble" && <WordScramblePlayer  content={activity.content} onScore={handleScore} />}
+              {activity.type === "scenario"      && <ScenarioPlayer      content={activity.content} onScore={handleScore} />}
+              {activity.type === "concept_sorter"&& <ConceptSorterPlayer content={activity.content} onScore={handleScore} />}
+              {activity.type === "acronym"       && <AcronymPlayer       content={activity.content} onScore={handleScore} />}
+              {activity.type === "drag_match"    && <DragMatchPlayer     content={activity.content} onScore={handleScore} />}
+              {activity.type === "fill_blank"    && <FillBlankPlayer     content={activity.content} onScore={handleScore} />}
+              {activity.type === "rapid_fire"    && <RapidFirePlayer     content={activity.content} onScore={handleScore} />}
+            </div>
+
+            {/* Action bar — appears after answering, stays until student decides */}
+            {answered && (
+              <div className={cn(
+                "rounded-2xl border-2 p-4 space-y-3",
+                isPerfect
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-amber-300 bg-amber-50"
+              )}>
+                <div className="flex items-center gap-2">
+                  {isPerfect
+                    ? <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                    : <XCircle      className="h-5 w-5 text-amber-600 shrink-0" />
+                  }
+                  <div>
+                    <p className={cn("text-sm font-bold",
+                      isPerfect ? "text-emerald-800" : "text-amber-800"
+                    )}>
+                      {isPerfect ? "Well done!" : `${score} / ${total} correct`}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {isPerfect
+                        ? "You got everything right."
+                        : "Review the feedback above, then retry or continue."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleRetry}
+                    className="flex-1 py-2.5 rounded-xl border-2 border-slate-300 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1.5 transition-colors">
+                    <RotateCcw className="h-3.5 w-3.5" /> Try Again
+                  </button>
+                  <button onClick={handleContinue}
+                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                    style={{ background: isPerfect ? "#16a34a" : t.primary }}>
+                    Continue <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
