@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<string, string> = {
   rapid_fire:    "Rapid Fire Quiz",
   true_false:    "True / False Statement",
   short_answer:  "Short Answer (AI-scored)",
+  simulator:     "Operational Scenario Simulator",
 }
 
 // POST /api/lms/activities/generate
@@ -190,6 +191,32 @@ CONTENT RULES — EXACT FIELD NAMES (use these exactly, no variations):
 - rapid_fire: "questions":[{"q":"Question text?","options":[{"text":"...","is_correct":false}]}], "time_per_question_s":10 — 5 questions each with 4 options
 - true_false: "statement":"A factual claim that is either true or false.", "answer":true, "explanation":"Why it is true or false."
 - short_answer: "question":"An open-ended question requiring explanation.", "rubric":"What a full-mark answer should include (2-3 key points)."
+- simulator: a branching role-based decision simulation. EXACT shape:
+  "domain":"<the airport department this module trains: RFFS, OPS, MAINTENANCE, SAFETY, ATC, GROUND, or SECURITY>",
+  "briefing":"2-3 sentences putting the trainee in role at the start of a realistic operational situation",
+  "objectives":["goal 1","goal 2","goal 3"],
+  "meters":[{"id":"safety","label":"Safety","value":100,"min":0,"max":100,"good":"high"},{"id":"time","label":"Elapsed (min)","value":0,"min":0,"max":30,"good":"low"},{"id":"compliance","label":"Compliance","value":100,"min":0,"max":100,"good":"high"}],
+  "start":"n1",
+  "nodes":[
+    {"id":"n1","situation":"The first decision point described in detail.","choices":[
+      {"text":"The optimal action","correct":true,"feedback":"Why this is right.","effects":{},"next":"n2"},
+      {"text":"A plausible but wrong action","correct":false,"feedback":"What goes wrong and why.","effects":{"safety":-30,"time":3},"next":"n2"}
+    ]},
+    {"id":"n2","situation":"The next decision point, which follows from n1.","choices":[
+      {"text":"Correct action","correct":true,"feedback":"...","effects":{},"next":"end_good"},
+      {"text":"Wrong action","correct":false,"feedback":"...","effects":{"compliance":-40},"next":"end_bad"}
+    ]},
+    {"id":"end_good","situation":"Closing narration for a well-handled outcome.","terminal":true,"outcome":"success"},
+    {"id":"end_bad","situation":"Closing narration describing the consequences of poor decisions.","terminal":true,"outcome":"partial"}
+  ]
+  SIMULATOR RULES:
+  1. 3-5 decision nodes (not counting terminal nodes), each with 2-4 choices
+  2. EXACTLY ONE choice per decision node has "correct":true
+  3. Every "next" value MUST match an existing node "id" — never reference a node that does not exist
+  4. "effects" keys MUST match a meter "id" you defined; values are integer deltas (negative = penalty)
+  5. End with 1-2 terminal nodes ("terminal":true) — at least one "outcome":"success" path
+  6. The scenario must reflect the real procedures and decisions of the "domain" role, grounded in the module content
+  7. Make wrong choices genuinely tempting (the kind of mistake a real trainee makes under pressure)
 
 DIFFICULTY RULES for "${difficulty}":
 ${difficulty === "easy"
@@ -211,7 +238,7 @@ MCQ AND SCENARIO RULE: The correct answer must NOT be the longest option. Mix an
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
-      max_tokens: 4000,
+      max_tokens: 6000,
     })
     raw = completion.choices[0]?.message?.content?.trim() ?? ""
   } catch (err: any) {

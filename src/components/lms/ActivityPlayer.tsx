@@ -7,6 +7,7 @@ import {
   BookOpen, ListOrdered, AlertTriangle, TextCursorInput,
   AlignLeft, GitBranch, Layers3, WholeWord, BarChart3,
   Puzzle, ArrowUpDown, Sparkles, ToggleLeft, MessageSquare, Loader2,
+  Gauge, Flag, Radio,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Activity, ActivityType } from "@/components/lms/ActivitySection"
@@ -27,6 +28,7 @@ const THEME: Record<ActivityType, { primary: string; light: string; text: string
   rapid_fire:    { primary: "#C62828", light: "#FFEBEE", text: "#4A0000", icon: Zap             },
   true_false:    { primary: "#00838F", light: "#E0F7FA", text: "#003333", icon: ToggleLeft      },
   short_answer:  { primary: "#6A1B9A", light: "#EDE7F6", text: "#1A0040", icon: MessageSquare  },
+  simulator:     { primary: "#1A237E", light: "#E8EAF6", text: "#0A0E2E", icon: Gauge           },
 }
 
 // ─── Shared result screen ──────────────────────────────────────────
@@ -1267,6 +1269,299 @@ function ShortAnswerPlayer({ content, onScore }: { content: any; onScore: (s: nu
   )
 }
 
+// ─── 15. Operational Scenario Simulator ────────────────────────────
+// Universal branching simulator: works for RFFS, OPS, MAINTENANCE, SAFETY,
+// ATC, GROUND, SECURITY — any role-based decision training. The AI fills a
+// domain-agnostic state-machine spec; this single engine renders all of them.
+type SimMeter = { id: string; label: string; value: number; min: number; max: number; good: "high" | "low" }
+type SimChoice = { text: string; correct: boolean; feedback: string; next: string | null; effects: Record<string, number> }
+type SimNode = { id: string; situation: string; choices: SimChoice[]; terminal: boolean; outcome: string }
+
+function meterHealth(m: SimMeter, value: number): number {
+  const span = m.max - m.min || 1
+  const ratio = Math.max(0, Math.min(1, (value - m.min) / span))
+  return m.good === "low" ? 1 - ratio : ratio
+}
+
+function SimulatorPlayer({ content, onScore }: { content: any; onScore: (s: number, t: number) => void }) {
+  // ── Normalize schema (tolerant of AI field-name drift) ──
+  const domain: string = content.domain ?? content.department ?? content.role ?? ""
+  const briefing: string = content.briefing ?? content.scenario ?? content.situation ?? content.intro ?? ""
+  const objectives: string[] = Array.isArray(content.objectives) ? content.objectives
+    : Array.isArray(content.goals) ? content.goals : []
+
+  const meterDefs: SimMeter[] = (content.meters ?? content.gauges ?? []).map((m: any, i: number) => ({
+    id:    String(m.id ?? m.key ?? m.label ?? `m${i}`),
+    label: String(m.label ?? m.name ?? m.id ?? `Meter ${i + 1}`),
+    value: Number(m.value ?? m.start ?? m.initial ?? 100),
+    min:   Number(m.min ?? 0),
+    max:   Number(m.max ?? 100),
+    good:  (m.good ?? m.direction ?? "high") === "low" ? "low" : "high",
+  }))
+
+  const nodesRaw: any[] = content.nodes ?? content.steps ?? content.stages ?? []
+  const nodes: SimNode[] = nodesRaw.map((n: any, i: number) => {
+    const rawChoices: any[] = n.choices ?? n.options ?? n.actions ?? []
+    return {
+      id: String(n.id ?? n.node_id ?? i),
+      situation: n.situation ?? n.prompt ?? n.text ?? n.description ?? "",
+      choices: rawChoices.map((c: any): SimChoice => ({
+        text:     c.text ?? c.label ?? c.action ?? String(c),
+        correct:  c.correct ?? c.is_correct ?? c.optimal ?? false,
+        feedback: c.feedback ?? c.consequence ?? c.result ?? c.explanation ?? "",
+        next:     c.next ?? c.goto ?? c.next_node ?? c.next_id ?? null,
+        effects:  (c.effects ?? c.impact ?? c.meters ?? {}) as Record<string, number>,
+      })),
+      terminal: n.terminal ?? n.end ?? n.is_end ?? (rawChoices.length === 0),
+      outcome:  n.outcome ?? n.result ?? "",
+    }
+  })
+
+  const nodeById = (id: string | null) => nodes.find(n => n.id === id) ?? null
+  const startId = String(content.start ?? content.start_node ?? content.first ?? (nodes[0]?.id ?? "0"))
+  const hasCorrectFlags = nodes.some(n => n.choices.some(c => c.correct))
+
+  // ── Runtime state ──
+  const [started, setStarted]   = useState(false)
+  const [currentId, setCurrentId] = useState(startId)
+  const [meters, setMeters]     = useState<Record<string, number>>(
+    () => Object.fromEntries(meterDefs.map(m => [m.id, m.value]))
+  )
+  const [revealed, setRevealed] = useState<number | null>(null) // chosen choice index for current node
+  const [decisions, setDecisions] = useState<{ correct: boolean }[]>([])
+  const [finished, setFinished] = useState(false)
+  const scoredRef = useRef(false)
+
+  const current = nodeById(currentId)
+
+  // Report score once when the run terminates
+  useEffect(() => {
+    if (!finished || scoredRef.current) return
+    scoredRef.current = true
+    const correctCount = decisions.filter(d => d.correct).length
+    if (hasCorrectFlags && decisions.length > 0) {
+      onScore(correctCount, decisions.length)
+    } else {
+      // No optimal flags — grade on final meter health (0–100)
+      const avg = meterDefs.length
+        ? meterDefs.reduce((s, m) => s + meterHealth(m, meters[m.id] ?? m.value), 0) / meterDefs.length
+        : 1
+      onScore(Math.round(avg * 100), 100)
+    }
+  }, [finished]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!nodes.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center">
+        <Gauge className="h-10 w-10 mb-3 opacity-30" />
+        <p className="text-sm">This simulator has no scenario steps yet. Regenerate the activity.</p>
+      </div>
+    )
+  }
+
+  // ── Briefing screen ──
+  if (!started) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-gradient-to-br from-[#1A237E] to-[#0A0E2E] rounded-2xl p-5 text-white">
+          <div className="flex items-center gap-2 mb-3">
+            <Radio className="h-4 w-4 text-indigo-300" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">
+              {domain ? `${domain} · Mission Briefing` : "Mission Briefing"}
+            </span>
+          </div>
+          <p className="text-sm leading-relaxed text-indigo-50">{briefing || "Respond to the unfolding situation."}</p>
+        </div>
+
+        {objectives.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Flag className="h-3.5 w-3.5 text-[#1A237E]" /> Your objectives
+            </p>
+            <ul className="space-y-1.5">
+              {objectives.map((o, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                  <span className="text-[#1A237E] font-bold">{i + 1}.</span> {o}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button onClick={() => setStarted(true)}
+          className="w-full py-3 rounded-xl bg-[#1A237E] text-white text-sm font-semibold hover:bg-[#0A0E2E] flex items-center justify-center gap-2 transition-colors">
+          Begin simulation <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
+  // ── Meter dashboard (always visible during the run) ──
+  const Dashboard = () => (
+    meterDefs.length > 0 ? (
+      <div className="grid gap-2 mb-1" style={{ gridTemplateColumns: `repeat(${Math.min(meterDefs.length, 3)}, 1fr)` }}>
+        {meterDefs.map(m => {
+          const val = meters[m.id] ?? m.value
+          const health = meterHealth(m, val)
+          const span = m.max - m.min || 1
+          const fillPct = Math.max(0, Math.min(100, ((val - m.min) / span) * 100))
+          const color = health >= 0.66 ? "#16a34a" : health >= 0.33 ? "#d97706" : "#dc2626"
+          return (
+            <div key={m.id} className="rounded-xl border border-slate-200 bg-white p-2.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{m.label}</span>
+                <span className="text-xs font-bold tabular-nums" style={{ color }}>{Math.round(val)}</span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${fillPct}%`, background: color }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    ) : null
+  )
+
+  // ── Terminal / debrief screen ──
+  if (finished && current) {
+    const correctCount = decisions.filter(d => d.correct).length
+    const success = current.outcome === "success" ||
+      (hasCorrectFlags ? correctCount === decisions.length && decisions.length > 0
+        : meterDefs.every(m => meterHealth(m, meters[m.id] ?? m.value) >= 0.5))
+    return (
+      <div className="space-y-4">
+        <Dashboard />
+        <div className={cn(
+          "rounded-2xl border-2 p-5 text-center",
+          success ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"
+        )}>
+          <div className="text-3xl mb-2">{success ? "🎯" : "⚠️"}</div>
+          <p className={cn("text-base font-bold mb-1", success ? "text-emerald-800" : "text-amber-800")}>
+            {success ? "Situation resolved" : "Situation contained — with issues"}
+          </p>
+          <p className="text-sm text-slate-600 leading-relaxed">{current.situation}</p>
+          {hasCorrectFlags && decisions.length > 0 && (
+            <p className="text-xs text-slate-500 mt-3">
+              Optimal decisions: <span className="font-bold">{correctCount} / {decisions.length}</span>
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active scenario node ──
+  if (!current) {
+    return <p className="text-sm text-slate-400 py-8 text-center">Scenario path broken — regenerate the activity.</p>
+  }
+
+  function pick(idx: number) {
+    if (revealed !== null || !current) return
+    const choice = current.choices[idx]
+    setRevealed(idx)
+    setDecisions(d => [...d, { correct: !!choice.correct }])
+    // Apply meter effects
+    if (choice.effects && typeof choice.effects === "object") {
+      setMeters(prev => {
+        const next = { ...prev }
+        for (const [id, delta] of Object.entries(choice.effects)) {
+          const def = meterDefs.find(m => m.id === id)
+          const cur = next[id] ?? def?.value ?? 0
+          const v = cur + Number(delta || 0)
+          next[id] = def ? Math.max(def.min, Math.min(def.max, v)) : v
+        }
+        return next
+      })
+    }
+  }
+
+  function advance() {
+    if (revealed === null || !current) return
+    const choice = current.choices[revealed]
+    const nextNode = choice.next ? nodeById(choice.next) : null
+    setRevealed(null)
+    if (nextNode && !nextNode.terminal) {
+      setCurrentId(nextNode.id)
+    } else if (nextNode && nextNode.terminal) {
+      setCurrentId(nextNode.id); setFinished(true)
+    } else {
+      // No valid next → end the run on current
+      setFinished(true)
+    }
+  }
+
+  const chosen = revealed !== null ? current.choices[revealed] : null
+
+  return (
+    <div className="space-y-4">
+      <Dashboard />
+
+      {/* Situation */}
+      <div className="bg-gradient-to-br from-[#1A237E] to-[#283593] rounded-2xl p-5 text-white">
+        <div className="flex items-center gap-2 mb-2">
+          <Gauge className="h-3.5 w-3.5 text-indigo-300" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">
+            {domain ? `${domain} · Decision` : "Decision"} {decisions.length + 1}
+          </span>
+        </div>
+        <p className="text-sm leading-relaxed">{current.situation}</p>
+      </div>
+
+      {/* Choices */}
+      <div className="space-y-2">
+        {current.choices.map((c, i) => {
+          const isChosen = revealed === i
+          const showCorrect = revealed !== null && c.correct
+          const showWrong   = isChosen && !c.correct
+          return (
+            <div key={i}>
+              <button onClick={() => pick(i)} disabled={revealed !== null}
+                className={cn(
+                  "w-full text-left flex items-start gap-3 px-4 py-3.5 rounded-xl border-2 text-sm transition-all",
+                  revealed === null && "border-slate-200 bg-white hover:border-[#1A237E] hover:bg-[#E8EAF6]",
+                  showCorrect && "border-emerald-500 bg-emerald-50",
+                  showWrong   && "border-red-400 bg-red-50",
+                  revealed !== null && !isChosen && !showCorrect && "border-slate-200 bg-white opacity-50",
+                )}>
+                <span className={cn(
+                  "w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5",
+                  showCorrect ? "border-emerald-500 bg-emerald-500 text-white" :
+                  showWrong   ? "border-red-400 bg-red-400 text-white" :
+                  "border-slate-300 text-slate-400"
+                )}>
+                  {showCorrect ? <Check className="h-3 w-3" /> : showWrong ? <X className="h-3 w-3" /> : ["A","B","C","D","E"][i]}
+                </span>
+                <span className={cn("font-medium",
+                  showCorrect ? "text-emerald-700" : showWrong ? "text-red-700" : "text-slate-700"
+                )}>{c.text}</span>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Consequence + advance */}
+      {chosen && (
+        <div className="space-y-3">
+          {chosen.feedback && (
+            <div className={cn(
+              "px-4 py-3 rounded-xl text-sm border",
+              chosen.correct ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                             : "bg-amber-50 border-amber-200 text-amber-800"
+            )}>
+              {chosen.correct ? "✓ " : "→ "}{chosen.feedback}
+            </div>
+          )}
+          <button onClick={advance}
+            className="w-full py-2.5 rounded-xl bg-[#1A237E] text-white text-sm font-semibold hover:bg-[#0A0E2E] flex items-center justify-center gap-1.5 transition-colors">
+            Continue <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Activity Player Wrapper ───────────────────────────────────────
 type Phase = "intro" | "play" | "result"
 
@@ -1313,7 +1608,7 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
     error_spotter: "Error Spotter", gap_fill: "Gap Fill", word_scramble: "Word Scramble",
     scenario: "Scenario", concept_sorter: "Concept Sorter", acronym: "Acronym",
     drag_match: "Drag & Match", fill_blank: "Fill in Blank", rapid_fire: "Rapid Fire",
-    true_false: "True / False", short_answer: "Short Answer",
+    true_false: "True / False", short_answer: "Short Answer", simulator: "Simulator",
   }
 
   return (
@@ -1375,6 +1670,7 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
               {activity.type === "rapid_fire"    && <RapidFirePlayer     content={activity.content} onScore={handleScore} />}
               {activity.type === "true_false"    && <TrueFalsePlayer     content={activity.content} onScore={handleScore} />}
               {activity.type === "short_answer"  && <ShortAnswerPlayer   content={activity.content} onScore={handleScore} />}
+              {activity.type === "simulator"     && <SimulatorPlayer     content={activity.content} onScore={handleScore} />}
             </div>
 
             {/* Action bar — appears after answering, stays until student decides */}

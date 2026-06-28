@@ -17,7 +17,7 @@ import {
   ChevronDown, ChevronUp, Square, CheckSquare, Play,
   Globe, Music, Database, Search, Check, Sparkles, Puzzle,
   BookOpen, ArrowUpDown, AlertTriangle, TextCursor, WholeWord,
-  GitBranch, Layers3, Zap, ListOrdered,
+  GitBranch, Layers3, Zap, ListOrdered, Gauge,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -638,6 +638,7 @@ const ACTIVITY_TYPES: { type: string; label: string; icon: React.ElementType; co
   { type: "rapid_fire",    label: "Rapid Fire",     icon: Zap,          color: "#4A0000", bg: "#FFEBEE" },
   { type: "true_false",    label: "True / False",   icon: SkipForward,  color: "#003333", bg: "#E0F7FA" },
   { type: "short_answer",  label: "Short Answer",   icon: AlignLeft,    color: "#1A0040", bg: "#EDE7F6" },
+  { type: "simulator",     label: "Simulator",      icon: Gauge,        color: "#0A0E2E", bg: "#E8EAF6" },
 ]
 
 type PlacementMode = "ai_topic" | "end" | "evenly"
