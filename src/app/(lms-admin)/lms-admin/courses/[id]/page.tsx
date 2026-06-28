@@ -3019,7 +3019,10 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
         {/* Action buttons */}
         <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs hidden sm:flex"
-            onClick={() => window.open(`/lms-admin/courses/${courseId}/preview`, "_blank")}>
+            onClick={() => {
+              const moduleParam = activeModule ? `?module=${activeModule.id}` : ""
+              window.open(`/lms-admin/courses/${courseId}/preview${moduleParam}`, "_blank")
+            }}>
             <Smartphone className="h-3.5 w-3.5" /> Preview
           </Button>
           <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs hidden sm:flex" onClick={() => setEnrollModal(true)}>

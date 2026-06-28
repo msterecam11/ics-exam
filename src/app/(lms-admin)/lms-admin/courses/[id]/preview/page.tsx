@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, use, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   ChevronLeft, ChevronRight, BookOpen, Video, FileText,
   Globe, HelpCircle, ClipboardList, GraduationCap, FlaskConical,
@@ -946,6 +946,7 @@ function ModuleContent({
 export default function CoursePreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: courseId } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [course,       setCourse]       = useState<Course | null>(null)
   const [modules,      setModules]      = useState<Module[]>([])
@@ -956,6 +957,7 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
   const [moduleKey,    setModuleKey]    = useState(0)
 
   useEffect(() => {
+    const startModuleId = searchParams.get("module")
     async function load() {
       const [cRes, mRes] = await Promise.all([
         fetch(`/api/lms/courses`),
@@ -967,11 +969,16 @@ export default function CoursePreviewPage({ params }: { params: Promise<{ id: st
       setCourse(allCourses.find((c: Course) => c.id === courseId) ?? null)
       const mods = Array.isArray(mData) ? mData : []
       setModules(mods)
-      if (mods.length) setActive(mods[0].id)
+      if (mods.length) {
+        const initial = startModuleId && mods.find((m: Module) => m.id === startModuleId)
+          ? startModuleId
+          : mods[0].id
+        setActive(initial)
+      }
       setLoading(false)
     }
     load()
-  }, [courseId])
+  }, [courseId, searchParams])
 
   const markCompleted = useCallback((moduleId: string) => {
     setCompletedIds(prev => new Set([...prev, moduleId]))
