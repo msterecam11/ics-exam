@@ -260,6 +260,8 @@ function QuizPlayer({
   // Quizzes have no pass mark — submission always counts as passed (completion-only)
   const qPassMark = isExam ? (cfg.pass_mark ?? passMark) : 0
   const maxAttempts = cfg.max_attempts ?? (isExam ? 1 : 3)
+  // Anti-cheat applies to exams only, when the toggle is on, and never in preview
+  const antiCheat = isExam && (cfg.anti_cheat ?? true) && !previewMode
 
   const [answers,         setAnswers]         = useState<Record<string, any>>(() => initAnswers(questions))
   const [phase,           setPhase]           = useState<QuizPhase>("taking")
@@ -273,6 +275,39 @@ function QuizPlayer({
     cfg.time_limit_minutes ? cfg.time_limit_minutes * 60 : null
   )
   const [urgent, setUrgent] = useState(false)
+
+  // ── Anti-cheat: track tab switches, block copy / right-click (exam, when enabled) ──
+  const secRef = useRef({ tabs: 0, copyAttempts: 0, rightClicks: 0 })
+  const [tabWarn, setTabWarn] = useState(false)
+
+  useEffect(() => {
+    if (!antiCheat || phase !== "taking") return
+    function onVis() {
+      if (document.visibilityState === "hidden") secRef.current.tabs++
+      else { setTabWarn(true); setTimeout(() => setTabWarn(false), 4000) }
+    }
+    function onCtx(e: MouseEvent) { e.preventDefault(); secRef.current.rightClicks++ }
+    function onCopy(e: ClipboardEvent) { e.preventDefault(); secRef.current.copyAttempts++ }
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && ["c", "x", "v", "a"].includes(e.key.toLowerCase())) {
+        e.preventDefault(); secRef.current.copyAttempts++
+      }
+    }
+    document.addEventListener("visibilitychange", onVis)
+    document.addEventListener("contextmenu", onCtx)
+    document.addEventListener("copy", onCopy)
+    document.addEventListener("cut", onCopy)
+    document.addEventListener("paste", onCopy)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("visibilitychange", onVis)
+      document.removeEventListener("contextmenu", onCtx)
+      document.removeEventListener("copy", onCopy)
+      document.removeEventListener("cut", onCopy)
+      document.removeEventListener("paste", onCopy)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [antiCheat, phase])
 
   useEffect(() => {
     if (!timeLeft) return
@@ -535,6 +570,14 @@ function QuizPlayer({
         <div className={cn("sticky top-0 flex items-center justify-center gap-2 py-2 text-sm font-mono font-bold z-10",
           urgent ? "bg-red-600 text-white animate-pulse" : "bg-slate-800 text-white")}>
           <Clock className="h-4 w-4" /> {fmtTime(timeLeft)}
+        </div>
+      )}
+      {antiCheat && (
+        <div className={cn("flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium",
+          tabWarn ? "bg-red-600 text-white" : "bg-slate-100 text-slate-500")}>
+          {tabWarn
+            ? <><AlertTriangle className="h-3.5 w-3.5" /> Leaving the exam is recorded</>
+            : <><Shield className="h-3.5 w-3.5" /> Protected exam — copy and right-click are disabled</>}
         </div>
       )}
       <div className="max-w-2xl mx-auto p-6 space-y-4">

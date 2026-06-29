@@ -86,7 +86,7 @@ function defaultItem(type: ItemType): PackageItem {
     video:       { file_id: null, file_url: null, file_name: null, must_watch_pct: 80, allow_skip: false },
     youtube:     { url: "", must_watch_pct: 80, allow_skip: false },
     audio:       { file_id: null, file_url: null, file_name: null },
-    quiz:        { questions: [], max_attempts: 3, show_correct: true, required_to_proceed: true },
+    quiz:        { questions: [], show_correct: true },
     exam:        { questions: [], time_limit_minutes: null, pass_mark: 70, max_attempts: 1, anti_cheat: true },
     text:        { html: "" },
     image:       { file_id: null, file_url: null, file_name: null },
@@ -1195,12 +1195,13 @@ function ItemEditor({
                 <span className="text-xs text-slate-400">%</span>
               </div>
             )}
+            {isExam && (
             <div className="flex items-center gap-2">
               <Label className="text-xs text-slate-500">Max attempts</Label>
               {(cfg.max_attempts ?? 0) >= 99 ? (
                 <span className="text-xs font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded-md">Unlimited</span>
               ) : (
-                <Input type="number" min={1} max={98} value={cfg.max_attempts ?? (isExam ? 1 : 3)}
+                <Input type="number" min={1} max={98} value={cfg.max_attempts ?? 1}
                   onChange={e => setConfig({ max_attempts: +e.target.value })}
                   className="w-16 h-7 text-xs" />
               )}
@@ -1208,11 +1209,12 @@ function ItemEditor({
                 <input
                   type="checkbox"
                   checked={(cfg.max_attempts ?? 0) >= 99}
-                  onChange={e => setConfig({ max_attempts: e.target.checked ? 99 : (isExam ? 1 : 3) })}
+                  onChange={e => setConfig({ max_attempts: e.target.checked ? 99 : 1 })}
                 />
                 <span className="text-xs text-slate-500">Unlimited</span>
               </label>
             </div>
+            )}
             {isExam && (
               <>
                 <div className="flex items-center gap-2">
