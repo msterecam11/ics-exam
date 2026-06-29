@@ -323,7 +323,6 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
   const text: string = content.text ?? ""
   const [selected, setSelected] = useState<Set<number>>(new Set()) // selected token indices
   const [submitted, setSubmitted]  = useState(false)
-  const [decoy, setDecoy]          = useState<number | null>(null)
 
   // Tokenize entire text into word-level tokens so ALL words are equally clickable
   // Each token is either a word or whitespace/punctuation between words
@@ -353,34 +352,32 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
     })
   })
 
+  // Any word can be selected — clicking never reveals whether it's an error,
+  // so the student can't brute-force by watching which words "stick".
   function clickToken(tok: { text: string; tokenIdx: number }) {
     if (submitted) return
-    const isWord = /[a-zA-Z0-9]/.test(tok.text)
-    if (!isWord) return
-    if (tokenErrorMap[tok.tokenIdx] !== undefined) {
-      // It's part of an error phrase — toggle selection
-      setSelected(prev => {
-        const n = new Set(prev)
-        n.has(tok.tokenIdx) ? n.delete(tok.tokenIdx) : n.add(tok.tokenIdx)
-        return n
-      })
-    } else {
-      // Decoy — brief visual feedback then reset
-      setDecoy(tok.tokenIdx)
-      setTimeout(() => setDecoy(null), 400)
-    }
+    if (!/[a-zA-Z0-9]/.test(tok.text)) return
+    setSelected(prev => {
+      const n = new Set(prev)
+      n.has(tok.tokenIdx) ? n.delete(tok.tokenIdx) : n.add(tok.tokenIdx)
+      return n
+    })
   }
 
-  // Count how many distinct errors the student found (at least one token from each error)
+  // Distinct errors the student caught (≥1 of the error's tokens selected)
   const foundErrorIndices = new Set(
     [...selected].map(ti => tokenErrorMap[ti]).filter(ei => ei !== undefined)
   )
+  // Selected words that aren't part of any error (false positives)
+  const wrongPicks = [...selected].filter(ti => tokenErrorMap[ti] === undefined).length
 
   function submit() {
     setSubmitted(true)
     // A malformed activity with no valid errors must not trap the student — pass it through.
     if (errors.length === 0) { onScore(1, 1); return }
-    onScore(foundErrorIndices.size, errors.length)
+    // Reward errors found, penalise wrong guesses so selecting everything ≠ full marks.
+    const net = Math.max(0, foundErrorIndices.size - wrongPicks)
+    onScore(net, errors.length)
   }
 
   const isWord = (t: string) => /[a-zA-Z0-9]/.test(t)
@@ -399,19 +396,17 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
           if (!isWord(tok.text)) return <span key={tok.tokenIdx}>{tok.text}</span>
           const isSelected  = selected.has(tok.tokenIdx)
           const isErrorTok  = tokenErrorMap[tok.tokenIdx] !== undefined
-          const isDecoy     = decoy === tok.tokenIdx
-          const isRevealedOk = submitted && isErrorTok
-          const isRevealedBad = submitted && isSelected && !isErrorTok
+          const isRevealedOk  = submitted && isErrorTok                 // a real error — always revealed
+          const isRevealedBad = submitted && isSelected && !isErrorTok  // wrong guess
           return (
             <span key={tok.tokenIdx}
               onClick={() => clickToken(tok)}
               className={cn(
                 "cursor-pointer rounded px-0.5 transition-all",
-                // Before submit: all words look the same; selected errors highlighted; decoy flashes
-                !submitted && !isSelected && !isDecoy && "hover:bg-slate-100",
-                !submitted && isSelected  && "bg-red-200 text-red-800 underline",
-                !submitted && isDecoy     && "bg-slate-300",
-                // After submit
+                // Before submit: selected words look neutral — no hint of correctness
+                !submitted && !isSelected && "hover:bg-slate-100",
+                !submitted && isSelected  && "bg-amber-200 text-amber-900 underline",
+                // After submit: every real error turns green; wrong guesses turn red
                 isRevealedOk  && "bg-emerald-200 text-emerald-800 font-semibold",
                 isRevealedBad && "bg-red-100 text-red-600 line-through",
               )}
@@ -435,11 +430,11 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
       )}
 
       {!submitted && (
-        <button onClick={submit} disabled={errors.length > 0 && foundErrorIndices.size === 0}
+        <button onClick={submit} disabled={errors.length > 0 && selected.size === 0}
           className="w-full py-2.5 rounded-xl bg-[#D63B3B] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#b52e2e] transition-colors">
           {errors.length === 0
             ? "Continue"
-            : `I found ${foundErrorIndices.size} error${foundErrorIndices.size !== 1 ? "s" : ""} — check`}
+            : `Check ${selected.size} selected word${selected.size !== 1 ? "s" : ""}`}
         </button>
       )}
     </div>

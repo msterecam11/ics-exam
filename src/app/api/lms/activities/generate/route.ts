@@ -180,16 +180,17 @@ CONTENT RULES — EXACT FIELD NAMES (use these exactly, no variations):
 - mcq: "question":"...", "options":[{"text":"...","is_correct":false}] x4 exactly 1 correct, "explanation":"..."
 - ordering: "question":"...", "items":[{"id":"1","text":"..."}], "correct_order":["1","2","3","4"]
 - error_spotter: see CRITICAL RULES above — "text":"...", "errors":[{"wrong":"...","correct":"..."}]
-- gap_fill: "paragraph":"... [BLANK_1] ... [BLANK_2] ...", "blanks":[{"answer":"..."}]
+- gap_fill: "paragraph":"... [BLANK_1] ... [BLANK_2] ...", "blanks":[{"answer":"the exact word"}] — EVERY blank MUST have a non-empty "answer", and the number of [BLANK_n] tokens MUST equal the number of blanks
 - word_scramble: "word":"SINGLEWORD", "hint":"definition"
 - scenario: "situation":"...", "choices":[{"text":"...","is_correct":false,"consequence":"..."}]
 - concept_sorter: "categories":[{"name":"Category A"},{"name":"Category B"}], "items":[{"text":"...","category":"Category A"}]
-- acronym: "acronym":"ICAO", "letters":[{"letter":"I","expansion":"International"},{"letter":"C","expansion":"Civil"},...]
+- acronym: "acronym":"ICAO", "letters":[{"letter":"I","expansion":"International"},{"letter":"C","expansion":"Civil"},{"letter":"A","expansion":"Aviation"},{"letter":"O","expansion":"Organization"}] — the "letters" array MUST contain exactly ONE object for EVERY letter of the acronym, in order (ICAO = 4 letters → 4 objects). Never omit a letter.
 - drag_match: "pairs":[{"left":"term","right":"definition"}] — 4-6 pairs
 - fill_blank: "sentence":"The ___ must be completed before ___.", "blanks":[{"answer":"flight plan"},{"answer":"departure"}]
 - rapid_fire: "questions":[{"q":"Question text?","options":[{"text":"...","is_correct":false}]}], "time_per_question_s":10 — 5 questions each with 4 options
 - true_false: "statement":"A factual claim that is either true or false.", "answer":true, "explanation":"Why it is true or false."
 - short_answer: "question":"An open-ended question requiring explanation.", "rubric":"What a full-mark answer should include (2-3 key points)."
+- [BLANK_n] tokens are ONLY allowed in gap_fill and fill_blank. NEVER put them in error_spotter, mcq, scenario, true_false, or any other type — write complete sentences there.
 
 DIFFICULTY RULES for "${difficulty}":
 ${difficulty === "easy"
@@ -269,5 +270,55 @@ MCQ AND SCENARIO RULE: The correct answer must NOT be the longest option. Mix an
     }
   })
 
-  return NextResponse.json({ activities: normalized, slideCount })
+  // Repair common field drift — the AI sometimes names a blank's answer
+  // "word"/"value"/"text" instead of "answer", leaving the player blank.
+  const answerOf = (b: any): string => {
+    if (typeof b === "string") return b
+    if (!b || typeof b !== "object") return ""
+    const v = b.answer ?? b.word ?? b.value ?? b.text ?? b.correct ?? b.solution
+    if (typeof v === "string") return v
+    const found = Object.values(b).find((x): x is string => typeof x === "string" && x.trim().length > 0)
+    return found ?? ""
+  }
+  for (const act of normalized) {
+    const c: any = act.content ?? {}
+    if ((act.type === "gap_fill" || act.type === "fill_blank") && Array.isArray(c.blanks)) {
+      c.blanks = c.blanks.map((b: any) => ({ ...b, answer: answerOf(b) }))
+    }
+  }
+
+  // Drop activities that are still structurally broken so a student never sees them
+  // (e.g. an acronym missing a letter, blanks with no answers, [BLANK] inside an error_spotter).
+  const isAlpha = (s: string) => s.replace(/[^a-zA-Z]/g, "")
+  const valid = normalized.filter((act) => {
+    const c: any = act.content ?? {}
+    switch (act.type) {
+      case "acronym": {
+        const ac = isAlpha(c.acronym ?? "")
+        return ac.length > 0 && Array.isArray(c.letters) && c.letters.length === ac.length
+      }
+      case "gap_fill":
+        return typeof c.paragraph === "string" && /\[BLANK_\d+\]/.test(c.paragraph)
+          && Array.isArray(c.blanks) && c.blanks.length > 0
+          && c.blanks.every((b: any) => (b.answer ?? "").trim().length > 0)
+      case "fill_blank":
+        return typeof c.sentence === "string"
+          && (c.sentence.includes("___") || /\[BLANK_\d+\]/.test(c.sentence))
+          && Array.isArray(c.blanks) && c.blanks.length > 0
+          && c.blanks.every((b: any) => (b.answer ?? "").trim().length > 0)
+      case "error_spotter":
+        return typeof c.text === "string" && !c.text.includes("[BLANK")
+          && Array.isArray(c.errors) && c.errors.length > 0
+      case "mcq":
+        return Array.isArray(c.options) && c.options.some((o: any) => o.is_correct)
+      case "rapid_fire":
+        return Array.isArray(c.questions) && c.questions.length > 0
+      case "true_false":
+        return typeof c.statement === "string" && c.statement.trim().length > 0
+      default:
+        return true
+    }
+  })
+
+  return NextResponse.json({ activities: valid, slideCount, dropped: normalized.length - valid.length })
 }
