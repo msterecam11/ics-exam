@@ -368,6 +368,8 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
 
   function submit() {
     setSubmitted(true)
+    // A malformed activity with no valid errors must not trap the student — pass it through.
+    if (errors.length === 0) { onScore(1, 1); return }
     onScore(foundErrorIndices.size, errors.length)
   }
 
@@ -423,9 +425,11 @@ function ErrorSpotterPlayer({ content, onScore }: { content: any; onScore: (s: n
       )}
 
       {!submitted && (
-        <button onClick={submit} disabled={foundErrorIndices.size === 0}
+        <button onClick={submit} disabled={errors.length > 0 && foundErrorIndices.size === 0}
           className="w-full py-2.5 rounded-xl bg-[#D63B3B] text-white text-sm font-semibold disabled:opacity-40 hover:bg-[#b52e2e] transition-colors">
-          I found {foundErrorIndices.size} error{foundErrorIndices.size !== 1 ? "s" : ""} — check
+          {errors.length === 0
+            ? "Continue"
+            : `I found ${foundErrorIndices.size} error${foundErrorIndices.size !== 1 ? "s" : ""} — check`}
         </button>
       )}
     </div>
@@ -978,16 +982,17 @@ function FillBlankPlayer({ content, onScore }: { content: any; onScore: (s: numb
           </span>
         ))}
       </div>
-      {submitted && blanks.some((b, i) => values[i]?.trim().toLowerCase() !== b.answer.toLowerCase()) && (
+      {submitted && blanks.some((b, i) => values[i]?.trim().toLowerCase() !== (b.answer ?? "").toLowerCase()) && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1">
           <p className="text-xs font-bold text-emerald-700 mb-2">Correct answers:</p>
           {blanks.map((b, i) => {
-            const correct = values[i]?.trim().toLowerCase() === b.answer.toLowerCase()
+            const ans = b.answer ?? ""
+            const correct = values[i]?.trim().toLowerCase() === ans.toLowerCase()
             if (correct) return null
             return (
               <div key={i} className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400">Blank {i + 1}:</span>
-                <span className="font-bold text-emerald-700">{b.answer}</span>
+                <span className="font-bold text-emerald-700">{ans}</span>
               </div>
             )
           })}
@@ -1012,42 +1017,65 @@ function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: numb
   const [answered, setAnswered] = useState<boolean | null>(null) // null=pending, true=correct, false=wrong
   const [timeLeft, setTimeLeft] = useState(timePerQ)
   const [done, setDone]       = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const idxRef      = useRef(0)   // mirrors qIdx so the timer callback never reads a stale index
+  const scoreRef    = useRef(0)   // authoritative running score
+  const finishedRef = useRef(false)
 
-  const startTimer = useCallback(() => {
+  // Advance to the next question, or finish. Uses idxRef (not qIdx) so a timer
+  // that fires from a memoized closure still sees the current question.
+  const goNext = useCallback(() => {
+    setAnswered(null)
+    if (idxRef.current < questions.length - 1) {
+      idxRef.current += 1
+      setQIdx(idxRef.current)
+    } else {
+      setDone(true)
+    }
+  }, [questions.length])
+
+  // Report the final score exactly once when the round ends.
+  useEffect(() => {
+    if (done && !finishedRef.current) {
+      finishedRef.current = true
+      onScore(scoreRef.current, questions.length || 1)
+    }
+  }, [done, onScore, questions.length])
+
+  // Per-question countdown — re-created each question so its closure is fresh.
+  useEffect(() => {
+    if (done || !questions.length) return
     setTimeLeft(timePerQ)
-    timerRef.current = setInterval(() => {
+    const id = setInterval(() => {
       setTimeLeft(t => {
-        if (t <= 1) {
-          clearInterval(timerRef.current!)
-          nextQ(false)
-          return 0
-        }
+        if (t <= 1) { clearInterval(id); goNext(); return 0 }
         return t - 1
       })
     }, 1000)
-  }, [timePerQ])
-
-  useEffect(() => { startTimer(); return () => clearInterval(timerRef.current!) }, [qIdx])
+    timerRef.current = id
+    return () => clearInterval(id)
+  }, [qIdx, done, timePerQ, goNext, questions.length])
 
   function answer(isCorrect: boolean) {
-    clearInterval(timerRef.current!)
+    if (answered !== null) return
+    if (timerRef.current) clearInterval(timerRef.current)
     setAnswered(isCorrect)
-    if (isCorrect) setScores(s => s + 1)
-    setTimeout(() => nextQ(isCorrect), 800)
-  }
-
-  function nextQ(_: boolean) {
-    setAnswered(null)
-    if (qIdx < questions.length - 1) {
-      setQIdx(i => i + 1)
-    } else {
-      setDone(true)
-      onScore(scores + (_ ? 1 : 0), questions.length)
-    }
+    if (isCorrect) { scoreRef.current += 1; setScores(scoreRef.current) }
+    setTimeout(goNext, 800)
   }
 
   if (done) return null
+  if (!questions.length) {
+    return (
+      <div className="text-center py-8 space-y-3">
+        <p className="text-sm text-slate-400">No questions in this activity.</p>
+        <button onClick={() => onScore(1, 1)}
+          className="px-4 py-2 rounded-xl bg-[#C62828] text-white text-sm font-semibold hover:bg-[#b71c1c] transition-colors">
+          Continue
+        </button>
+      </div>
+    )
+  }
 
   const q = questions[qIdx]
   // AI may use "q", "question", or "text" as the question field
@@ -1297,7 +1325,9 @@ export default function ActivityPlayer({ activity, onComplete, onNext, className
   function handleContinue() {
     setAnswered(false)
     setPhase("result")
-    onComplete?.(Math.round((score / total) * 100))
+    // total can be 0 for degenerate/empty content — don't emit NaN; treat as complete.
+    const pct = total > 0 ? Math.round((score / total) * 100) : 100
+    onComplete?.(pct)
   }
 
   function handleRetry() {
