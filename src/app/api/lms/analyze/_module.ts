@@ -43,6 +43,17 @@ async function analyzePackage(mod: any): Promise<ModuleAnalysis> {
         const text = (it.config?.html ?? "").replace(/<[^>]+>/g, " ").slice(0, 150)
         return text ? `${base} — ${text}` : base
       }
+      if (it.type === "activity") {
+        const c  = it.config?.content ?? {}
+        const at = it.config?.activity_type ?? "activity"
+        const cards = Array.isArray(c.cards)     ? c.cards.map((x: any) => x.front).filter(Boolean).join(", ")        : ""
+        const rapid = Array.isArray(c.questions) ? c.questions.map((x: any) => x.q ?? x.question).filter(Boolean).join("; ") : ""
+        const gist  = [c.question, c.statement, c.situation, c.paragraph, c.sentence, c.text, c.acronym, c.word, cards, rapid]
+          .find((v: any) => typeof v === "string" && v.trim().length > 0)
+        return gist
+          ? `${base} (${at}) — ${String(gist).replace(/<[^>]+>/g, " ").slice(0, 140)}`
+          : `${base} (${at})`
+      }
       return base
     })
     .join("\n")
@@ -63,7 +74,7 @@ Based on these items, produce a structured analysis of this module. Respond ONLY
 
 - topics: 3-8 specific subject areas covered (e.g. "Ramp Safety", "Aircraft Pushback Procedures")
 - key_concepts: 4-12 specific terms, regulations, or procedures a student learns
-- skills_assessed: knowledge or skills tested by any quizzes in this package (empty array if no quizzes)`
+- skills_assessed: knowledge or skills tested by the quizzes or interactive activities in this package (empty array if none)`
 
   try {
     const res = await groq.chat.completions.create({
