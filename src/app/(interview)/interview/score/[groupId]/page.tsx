@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   ArrowLeft, Loader2, CheckCircle2, Lock, ChevronDown, ChevronUp,
-  AlertCircle, ClipboardCheck, Users,
+  AlertCircle, ClipboardCheck, Users, LogIn, Clock,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -236,6 +236,7 @@ export default function ScoringPage() {
   const [selected,  setSelected]  = useState<Candidate | null>(null)
   const [qualForm,  setQualForm]  = useState({ remarks: "", gap_analysis: "", recommendation: "" })
   const [confirming, setConfirming] = useState(false)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   /* ── Load ── */
   useEffect(() => {
@@ -248,6 +249,15 @@ export default function ScoringPage() {
       })
       .catch(() => { toast.error("Failed to load scoring data"); setLoading(false) })
   }, [groupId])
+
+  // When any save/confirm hits an expired session (401), show the friendly
+  // re-login prompt instead of a cryptic "Unauthorized". The page stays open,
+  // so nothing the assessor has typed is lost — they re-login in a new tab and
+  // come back to confirm.
+  const isSessionExpired = useCallback((res: Response) => {
+    if (res.status === 401) { setSessionExpired(true); return true }
+    return false
+  }, [])
 
   /* ── Helpers ── */
   const snapshot  = data?.group?.config_snapshot
@@ -329,6 +339,7 @@ export default function ScoringPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ candidate_id: candidateId, competency_id: compId, value, evidence }),
     })
+    if (isSessionExpired(res)) return
     if (!res.ok) toast.error("Failed to save score")
   }
 
@@ -355,11 +366,12 @@ export default function ScoringPage() {
     })
 
     // Background save (don't confirm on auto-save)
-    await fetch(`/api/interview/score/${groupId}`, {
+    const res = await fetch(`/api/interview/score/${groupId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ candidate_id: candidateId, ...updated, confirmed: false }),
     })
+    isSessionExpired(res)
   }
 
   /* ── Confirm assessment ── */
@@ -399,6 +411,7 @@ export default function ScoringPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ candidate_id: selected.id, ...qualForm, confirmed: true }),
     })
+    if (isSessionExpired(res)) { setConfirming(false); return }
     const result = await res.json()
     setConfirming(false)
 
@@ -440,12 +453,46 @@ export default function ScoringPage() {
   const candidates = data.candidates.filter(c => getApplicablePillars(c).length > 0)
   const confirmedCount = candidates.filter(c => getStatus(c) === "confirmed").length
 
+  /* ── Session-expired prompt (shown over any view; keeps this page intact) ── */
+  const sessionModal = sessionExpired ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-6">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+            <Clock className="h-5 w-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-slate-800 text-base mb-1">Your session expired</p>
+            <p className="text-sm text-slate-500 leading-relaxed mb-4">
+              For security, you&apos;re signed out after 8 hours. Sign in again in a new tab,
+              then come back here and confirm — everything you typed is still here.
+              <span className="block mt-1 font-medium text-slate-600">Don&apos;t refresh or close this page.</span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.open("/auth/login", "_blank", "noopener")}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1B4F8A] text-white text-sm font-semibold hover:bg-[#163f6f] transition-colors">
+                <LogIn className="h-4 w-4" /> Sign in again
+              </button>
+              <button
+                onClick={() => setSessionExpired(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   /* ══════════════════════════════════════════════════════════════════════════
      CANDIDATE LIST VIEW
   ══════════════════════════════════════════════════════════════════════════ */
   if (mode === "list") {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
+        {sessionModal}
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link href="/interview/groups">
@@ -599,6 +646,7 @@ export default function ScoringPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
+      {sessionModal}
       {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <button
