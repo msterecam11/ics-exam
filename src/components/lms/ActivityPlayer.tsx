@@ -172,7 +172,17 @@ function FlashcardPlayer({ content, onScore }: { content: any; onScore: (s: numb
     else { setDone(true); onScore(k.size, cards.length) }
   }
 
-  if (done) return null // handled by parent result
+  if (done) {
+    return (
+      <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+          <Check className="h-6 w-6 text-emerald-600" />
+        </div>
+        <p className="text-sm font-semibold text-slate-700">All {cards.length} cards reviewed</p>
+        <p className="text-xs text-slate-400">You marked {known.size} as known</p>
+      </div>
+    )
+  }
 
   const card = cards[idx]
   return (
@@ -1064,7 +1074,17 @@ function RapidFirePlayer({ content, onScore }: { content: any; onScore: (s: numb
     setTimeout(goNext, 800)
   }
 
-  if (done) return null
+  if (done) {
+    return (
+      <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+        <div className="w-12 h-12 rounded-full bg-[#FFEBEE] flex items-center justify-center">
+          <Zap className="h-6 w-6 text-[#C62828]" />
+        </div>
+        <p className="text-sm font-semibold text-slate-700">Quiz complete</p>
+        <p className="text-xs text-slate-400">{scores} of {questions.length} correct</p>
+      </div>
+    )
+  }
   if (!questions.length) {
     return (
       <div className="text-center py-8 space-y-3">
