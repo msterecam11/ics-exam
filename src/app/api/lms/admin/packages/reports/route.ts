@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     .from("lms_packages")
     .select(`
       id, module_id, title, pass_mark,
-      lms_package_blocks(id)
+      lms_package_items(id)
     `)
     .eq("course_id", courseId)
     .order("created_at", { ascending: true })
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     .from("lms_package_progress")
     .select(`
       id, package_id, student_id, status, score,
-      completed_blocks, block_scores, time_spent,
+      completed_items, time_spent,
       started_at, completed_at, updated_at,
       lms_students(id, name, email, company)
     `)
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
     module_id:   pkg.module_id,
     title:       pkg.title,
     pass_mark:   pkg.pass_mark,
-    block_count: (pkg.lms_package_blocks ?? []).length,
+    block_count: (pkg.lms_package_items ?? []).length,
     students:    (progressByPackage[pkg.id] ?? []).map(row => ({
       student_id:       row.student_id,
       name:             (row.lms_students as any)?.name ?? "Unknown",
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
       company:          (row.lms_students as any)?.company ?? null,
       status:           row.status,
       score:            row.score,
-      blocks_completed: (row.completed_blocks ?? []).length,
+      blocks_completed: (row.completed_items ?? []).length,
       time_spent:       row.time_spent ?? 0,
       started_at:       row.started_at,
       completed_at:     row.completed_at,
