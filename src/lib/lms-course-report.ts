@@ -10,6 +10,7 @@ export interface ReportItem {
   ai?: string | null            // per-item Expert evaluation (if stored)
   answer?: string | null        // learner's answer (if stored)
 }
+export interface ModuleAI { summary: string; strengths: string[]; weaknesses: string[]; development: string[] }
 export interface ReportModule {
   id: string
   title: string
@@ -23,6 +24,7 @@ export interface ReportModule {
   startedAt: string | null
   completedAt: string | null
   items: ReportItem[]
+  ai?: ModuleAI | null          // AI analysis of this module (from the expert assessment)
 }
 export interface TopicMastery { topic: string; pct: number; level: "strong" | "developing" | "weak" }
 export interface CourseReport {
@@ -34,7 +36,13 @@ export interface CourseReport {
   exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number } | null
   assignments: { title: string; status: string; score: number | null; maxScore: number | null; note: string | null }[]
   topicMastery: TopicMastery[]
-  assessment: { narrative: string; strengths: string[]; development: string[]; generated_at: string } | null
+  assessment: {
+    executiveSummary: string
+    strengths: string[]
+    weaknesses: string[]
+    recommendations: { area: string; score: number | null; action: string }[]
+    generated_at: string
+  } | null
 }
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
@@ -157,16 +165,31 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
   const overallScore = scorePool.length ? Math.round(scorePool.reduce((a, b) => a + b, 0) / scorePool.length) : null
   const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0)
 
-  // ── Expert assessment ──
+  // ── Expert assessment (AI-driven, exam-style structure) ──
   const aRaw: any = assessmentRes.data?.assessment
-  const assessment = aRaw && (aRaw.narrative || aRaw.summary)
+  const assessment = aRaw && (aRaw.executive_summary || aRaw.narrative)
     ? {
-        narrative: aRaw.narrative ?? aRaw.summary ?? "",
+        executiveSummary: aRaw.executive_summary ?? aRaw.narrative ?? "",
         strengths: Array.isArray(aRaw.strengths) ? aRaw.strengths : [],
-        development: Array.isArray(aRaw.development) ? aRaw.development : (Array.isArray(aRaw.development_areas) ? aRaw.development_areas : []),
+        weaknesses: Array.isArray(aRaw.improvements) ? aRaw.improvements : (Array.isArray(aRaw.weaknesses) ? aRaw.weaknesses : []),
+        recommendations: Array.isArray(aRaw.recommendations)
+          ? aRaw.recommendations.map((r: any) => ({ area: String(r.area ?? ""), score: typeof r.score === "number" ? r.score : null, action: String(r.action ?? "") }))
+          : [],
         generated_at: assessmentRes.data!.generated_at,
       }
     : null
+
+  // Attach per-module AI analysis (keyed by module title) — the exam's "section_analyses" equivalent
+  const modAnalyses: Record<string, any> = (aRaw?.module_analyses && typeof aRaw.module_analyses === "object") ? aRaw.module_analyses : {}
+  for (const rm of reportModules) {
+    const a = modAnalyses[rm.title]
+    rm.ai = a ? {
+      summary: a.summary ?? "",
+      strengths: Array.isArray(a.strengths) ? a.strengths : [],
+      weaknesses: Array.isArray(a.weaknesses) ? a.weaknesses : [],
+      development: Array.isArray(a.development) ? a.development : [],
+    } : null
+  }
 
   return {
     student: studentRes.data as any,

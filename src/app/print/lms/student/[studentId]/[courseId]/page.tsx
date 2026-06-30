@@ -183,20 +183,23 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
             <div className="avoid-break">
               <p className={`${SECTION} mb-3`}>Expert Assessment</p>
               {assessment ? (
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700">Expert Assessment · AI generated</span>
+                <div className="space-y-3">
+                  <div className="bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-xl p-4">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-1">Executive Summary</p>
+                    <p className="text-xs text-slate-700 leading-relaxed">{assessment.executiveSummary}</p>
                   </div>
-                  <p className="text-xs text-blue-900 leading-relaxed">{assessment.narrative}</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Strengths</p>
-                      <div className="flex flex-wrap gap-1.5">{assessment.strengths.map((s, i) => <span key={i} className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">{s}</span>)}</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Key Strengths</p>
+                      {assessment.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">• {s}</p>)}
                     </div>
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Development areas</p>
-                      <div className="flex flex-wrap gap-1.5">{assessment.development.map((s, i) => <span key={i} className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{s}</span>)}</div>
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-red-600 mb-1.5">Weakness Areas</p>
+                      {assessment.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-red-800 leading-relaxed mb-1">• {s}</p>)}
+                    </div>
+                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1.5">Development Areas</p>
+                      {assessment.recommendations.map((r, i) => <p key={i} className="text-[10px] text-purple-800 leading-relaxed mb-1">• {r.action}</p>)}
                     </div>
                   </div>
                 </div>
@@ -255,6 +258,18 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                       <p className="text-[9px] font-bold uppercase tracking-wider text-[#1B4F8A] mb-1.5">Module overview</p>
                       {m.summary && <p className="text-[11px] text-slate-500 leading-relaxed mb-2 italic">{m.summary}</p>}
                       <div className="flex flex-wrap gap-1">{m.topics.slice(0, 6).map(t => <span key={t} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{t}</span>)}</div>
+                    </div>
+                  )}
+                  {/* AI analysis of this module */}
+                  {m.ai && (
+                    <div className="px-4 py-3 border-b border-dashed border-slate-100" style={{ background: "#faf5ff" }}>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1">Expert analysis</p>
+                      {m.ai.summary && <p className="text-[11px] text-slate-600 leading-relaxed mb-1.5">{m.ai.summary}</p>}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">Strengths</p>{m.ai.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-snug">• {s}</p>)}</div>
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-red-600 mb-0.5">Weaknesses</p>{m.ai.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-red-800 leading-snug">• {s}</p>)}</div>
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-purple-700 mb-0.5">Development</p>{m.ai.development.map((s, i) => <p key={i} className="text-[10px] text-purple-800 leading-snug">• {s}</p>)}</div>
+                      </div>
                     </div>
                   )}
                   {/* What the learner did */}

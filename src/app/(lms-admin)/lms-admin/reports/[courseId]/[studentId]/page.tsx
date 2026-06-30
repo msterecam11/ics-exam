@@ -4,7 +4,8 @@ import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft, Printer, BrainCircuit, RefreshCw, Loader2,
-  CheckCircle2, XCircle, MinusCircle, Sparkles, Award,
+  CheckCircle2, XCircle, MinusCircle, Sparkles,
+  Trophy, Target, Lightbulb, TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -135,20 +136,27 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
         </div>
         {assessment ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-700 leading-relaxed">{assessment.narrative}</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-lg p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-1.5">Executive summary</p>
+              <p className="text-sm text-slate-700 leading-relaxed">{assessment.executiveSummary}</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Strengths</p>
-                <div className="flex flex-wrap gap-1.5">{assessment.strengths.map((s, i) => <span key={i} className="text-[11px] bg-white text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">{s}</span>)}</div>
+                <div className="flex items-center gap-1.5 mb-2"><Trophy className="h-3.5 w-3.5 text-emerald-600" /><p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">Key strengths</p></div>
+                {assessment.strengths.map((s, i) => <div key={i} className="flex items-start gap-1.5 mb-1.5"><CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" /><p className="text-[11px] text-emerald-800 leading-relaxed">{s}</p></div>)}
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-2"><Target className="h-3.5 w-3.5 text-red-500" /><p className="text-[9px] font-bold uppercase tracking-wider text-red-600">Weakness areas</p></div>
+                {assessment.weaknesses.map((s, i) => <div key={i} className="flex items-start gap-1.5 mb-1.5"><XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" /><p className="text-[11px] text-red-800 leading-relaxed">{s}</p></div>)}
               </div>
               <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 mb-1.5">Development areas</p>
-                <div className="flex flex-wrap gap-1.5">{assessment.development.map((s, i) => <span key={i} className="text-[11px] bg-white text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">{s}</span>)}</div>
+                <div className="flex items-center gap-1.5 mb-2"><Lightbulb className="h-3.5 w-3.5 text-purple-600" /><p className="text-[9px] font-bold uppercase tracking-wider text-purple-700">Development areas</p></div>
+                {assessment.recommendations.map((r, i) => <div key={i} className="flex items-start gap-1.5 mb-1.5"><TrendingUp className="h-3 w-3 text-purple-500 shrink-0 mt-0.5" /><p className="text-[11px] text-purple-800 leading-relaxed">{r.action}</p></div>)}
               </div>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-400">No expert assessment yet. Click <span className="text-purple-600 font-medium">Generate AI assessment</span> to produce an AI summary grounded in this learner&apos;s results.</p>
+          <p className="text-sm text-slate-400">No expert assessment yet. Click <span className="text-purple-600 font-medium">Generate AI assessment</span> to produce a full AI analysis — executive summary, per-module insights, strengths, weaknesses, and recommendations — grounded in this learner&apos;s results.</p>
         )}
       </div>
 
@@ -185,6 +193,17 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#1B4F8A] mb-1.5">Module overview</p>
                 {m.summary && <p className="text-xs text-slate-500 leading-relaxed mb-2 italic">{m.summary}</p>}
                 <div className="flex flex-wrap gap-1">{m.topics.slice(0, 6).map(t => <span key={t} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{t}</span>)}</div>
+              </div>
+            )}
+            {m.ai && (
+              <div className="px-4 py-3 border-b border-dashed border-slate-100 bg-purple-50/30">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 mb-1.5 flex items-center gap-1.5"><BrainCircuit className="h-3.5 w-3.5" /> Expert analysis</p>
+                {m.ai.summary && <p className="text-xs text-slate-600 leading-relaxed mb-2">{m.ai.summary}</p>}
+                <div className="grid grid-cols-3 gap-3 text-[11px]">
+                  <div><p className="font-bold text-emerald-700 mb-1 uppercase tracking-wider text-[9px]">Strengths</p>{m.ai.strengths.map((s, i) => <p key={i} className="text-emerald-800 leading-snug mb-1">• {s}</p>)}</div>
+                  <div><p className="font-bold text-red-600 mb-1 uppercase tracking-wider text-[9px]">Weaknesses</p>{m.ai.weaknesses.map((s, i) => <p key={i} className="text-red-800 leading-snug mb-1">• {s}</p>)}</div>
+                  <div><p className="font-bold text-purple-700 mb-1 uppercase tracking-wider text-[9px]">Development</p>{m.ai.development.map((s, i) => <p key={i} className="text-purple-800 leading-snug mb-1">• {s}</p>)}</div>
+                </div>
               </div>
             )}
             <div className="px-4 py-3">
