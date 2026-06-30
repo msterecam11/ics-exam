@@ -302,8 +302,48 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                       <p className="text-[10px] text-slate-300 italic">No graded items recorded for this module.</p>
                     )}
                   </div>
+                  {m.examSection && m.examSection.questions.length > 0 && (
+                    <div className="px-4 py-3 border-t border-slate-100">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#1B4F8A] mb-2">Final Exam — this module&apos;s section</p>
+                      <div className="flex gap-2 flex-wrap mb-2">
+                        {[
+                          { label: "Questions", val: m.examSection.questions.length },
+                          { label: "Correct", val: m.examSection.correct },
+                          { label: "Zero", val: m.examSection.zero },
+                          { label: "Points", val: `${m.examSection.earned}/${m.examSection.possible}` },
+                        ].map(s => <div key={s.label} className="px-2.5 py-1 rounded-lg text-center bg-slate-100 text-slate-700"><p className="text-[11px] font-bold">{s.val}</p><p className="text-[8px] uppercase tracking-wide opacity-70">{s.label}</p></div>)}
+                        <div className="px-2.5 py-1 rounded-lg text-center" style={{ background: scoreColor(m.examSection.pct), color: "#fff" }}><p className="text-[11px] font-bold">{m.examSection.pct}%</p><p className="text-[8px] uppercase tracking-wide opacity-90">Section</p></div>
+                      </div>
+                      <div className="rounded-lg border border-slate-100 overflow-hidden">
+                        {m.examSection.questions.map((q, qi) => {
+                          const full = q.scoreAchieved >= q.points && q.points > 0
+                          return (
+                            <div key={qi} className={`flex items-start gap-2 px-3 py-1.5 border-b border-slate-50 last:border-0 ${qi % 2 ? "bg-slate-50/60" : ""}`}>
+                              {full ? <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" /> : <XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" />}
+                              <p className="flex-1 text-[10px] text-slate-600 leading-snug">{q.text}</p>
+                              <span className="text-[10px] font-bold text-slate-700 shrink-0">{q.scoreAchieved}<span className="text-slate-300 font-normal">/{q.points}</span></span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
+              {assessment && assessment.recommendations.length > 0 && (
+                <div className="avoid-break space-y-2 pt-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Personalized Recommendations</p>
+                  {assessment.recommendations.map((rec, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 border border-slate-100 rounded-xl bg-slate-50/80">
+                      <div className="w-6 h-6 rounded-full bg-[#1B4F8A] flex items-center justify-center text-white text-[11px] font-bold shrink-0">{i + 1}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2"><p className="text-xs font-semibold text-slate-700">{rec.area}</p>{rec.score !== null && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: scoreColor(rec.score) }}>{rec.score}%</span>}</div>
+                        <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">{rec.action}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="avoid-break border-t border-slate-100 pt-5 flex flex-col items-center gap-2 text-center">
                 <Image src="/logo/logo-dark-blue.png" alt="ICS" width={80} height={22} className="object-contain opacity-20" />
                 <p className="text-[10px] text-slate-300 uppercase tracking-widest">ICS Aviation · Integrated Consulting Services</p>

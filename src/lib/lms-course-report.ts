@@ -11,6 +11,11 @@ export interface ReportItem {
   answer?: string | null        // learner's answer (if stored)
 }
 export interface ModuleAI { summary: string; strengths: string[]; weaknesses: string[]; development: string[] }
+export interface ExamSectionQuestion { text: string; points: number; scoreAchieved: number }
+export interface ExamSection {
+  pct: number; correct: number; partial: number; zero: number
+  earned: number; possible: number; questions: ExamSectionQuestion[]
+}
 export interface ReportModule {
   id: string
   title: string
@@ -25,6 +30,7 @@ export interface ReportModule {
   completedAt: string | null
   items: ReportItem[]
   ai?: ModuleAI | null          // AI analysis of this module (from the expert assessment)
+  examSection?: ExamSection | null  // this module's slice of the final exam, graded
 }
 export interface TopicMastery { topic: string; pct: number; level: "strong" | "developing" | "weak" }
 export interface CourseReport {
@@ -47,6 +53,24 @@ export interface CourseReport {
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
 
+// Grade one exam question against the learner's answer → points earned
+function gradeQuestion(q: any, ans: any): number {
+  const pts = Number(q?.points ?? 0)
+  if (!q || ans === undefined || ans === null) return 0
+  if (q.type === "mcq_single") {
+    const correct = (q.options ?? []).find((o: any) => o.correct)
+    return correct && ans === correct.id ? pts : 0
+  }
+  if (q.type === "mcq_multiple") {
+    const correctIds = new Set((q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id))
+    const chosen = new Set(Array.isArray(ans) ? ans : [ans])
+    const exact = chosen.size === correctIds.size && [...correctIds].every(id => chosen.has(id))
+    return exact ? pts : 0
+  }
+  // ordering / matching / open_ended are not auto-graded in the section view
+  return 0
+}
+
 // ── Builder ────────────────────────────────────────────────────────
 export async function buildCourseReport(studentId: string, courseId: string): Promise<CourseReport | null> {
   const [studentRes, courseRes, enrollRes] = await Promise.all([
@@ -58,11 +82,11 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
 
   // Modules + analysis, packages + items, progress, exam attempts, assignments, attendance
   const [modulesRes, analysisRes, packagesRes, progressRes, attemptsRes, assignRes, sessionsRes, assessmentRes] = await Promise.all([
-    db.from("lms_modules").select("id, title, module_type, order_index, activity_settings").eq("course_id", courseId).order("order_index"),
+    db.from("lms_modules").select("id, title, module_type, order_index, activity_settings, questions").eq("course_id", courseId).order("order_index"),
     db.from("lms_module_analysis").select("module_id, analysis").eq("course_id", courseId),
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status").eq("student_id", studentId).eq("course_id", courseId),
+    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers").eq("student_id", studentId).eq("course_id", courseId),
     db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("student_id", studentId),
     db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
@@ -126,6 +150,34 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
         attempts: examAttempts.length, maxAttempts,
       }
     }
+  }
+
+  // ── Final-exam performance by module-section (graded from the learner's answers) ──
+  if (examMod) {
+    const examQuestions: any[] = Array.isArray((examMod as any).questions) ? (examMod as any).questions : []
+    const qById = new Map(examQuestions.map((q: any) => [q.id, q]))
+    const sections: any[] = Array.isArray(analysisBy.get(examMod.id)?.sections) ? analysisBy.get(examMod.id)!.sections : []
+    const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
+    const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
+    const answers: any = best?.answers && typeof best.answers === "object" && !Array.isArray(best.answers) ? best.answers : {}
+    const sectionByMod = new Map<string, ExamSection>()
+    for (const s of sections) {
+      const qs = ((s.question_ids ?? []) as string[]).map((qid: string) => {
+        const q = qById.get(qid); if (!q) return null
+        const pts = Number(q.points ?? 0)
+        return { text: q.text ?? "", points: pts, scoreAchieved: gradeQuestion(q, answers[qid]) }
+      }).filter(Boolean) as ExamSectionQuestion[]
+      if (!qs.length) continue
+      const earned = qs.reduce((a, b) => a + b.scoreAchieved, 0)
+      const possible = qs.reduce((a, b) => a + b.points, 0)
+      const correct = qs.filter(q => q.points > 0 && q.scoreAchieved >= q.points).length
+      const zero = qs.filter(q => q.scoreAchieved === 0).length
+      sectionByMod.set(s.module_id, {
+        pct: possible > 0 ? Math.round((earned / possible) * 100) : 0,
+        correct, partial: qs.length - correct - zero, zero, earned, possible, questions: qs,
+      })
+    }
+    for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
   }
 
   // ── Assignments ──
