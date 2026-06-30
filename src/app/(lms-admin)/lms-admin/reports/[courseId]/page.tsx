@@ -237,8 +237,8 @@ export default async function LmsCourseReportPage({ params }: Props) {
                               <GraduationCap className={cn("h-3.5 w-3.5 shrink-0", e.bestExam.passed ? "text-emerald-500" : "text-red-400")} />
                               <span className={cn("text-xs font-medium", e.bestExam.passed ? "text-emerald-600" : "text-red-500")}>
                                 {e.bestExam.passed ? "Passed" : "Failed"}
-                                {e.bestExam.score != null && e.bestExam.max_score != null
-                                  ? ` · ${e.bestExam.score}/${e.bestExam.max_score}`
+                                {e.bestExam.score != null && e.bestExam.max_score
+                                  ? ` · ${Math.round((e.bestExam.score / e.bestExam.max_score) * 100)}%`
                                   : ""}
                               </span>
                             </div>

@@ -47,7 +47,7 @@ export default function LmsStudentReportButton({ studentId, courseId, studentNam
 
   return (
     <div className="flex items-center gap-1">
-      <Link href={`/print/lms/student/${studentId}/${courseId}`} target="_blank">
+      <Link href={`/lms-admin/reports/${courseId}/${studentId}`}>
         <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" title="View report">
           <Eye className="h-4 w-4" />
         </Button>
