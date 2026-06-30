@@ -29,9 +29,8 @@ export default async function LmsCourseReportPage({ params }: Props) {
       .single(),
     db.from("lms_enrollments")
       .select(`
-        id, status, enrolled_at, completed_at,
-        lms_students(id, name, email, company, job_title),
-        lms_progress(status, course_id)
+        id, status, enrolled_at, completed_at, progress_pct,
+        lms_students(id, name, email, company, job_title)
       `)
       .eq("course_id", courseId)
       .order("enrolled_at", { ascending: false }),
@@ -65,19 +64,9 @@ export default async function LmsCourseReportPage({ params }: Props) {
   const examModule       = assessmentModules.find(m => m.module_type === "final_exam")
   const assignmentModules = assessmentModules.filter(m => m.module_type === "assignment")
 
-  // Get total mandatory content items for the course
-  const { data: contentItems } = await db
-    .from("lms_content_items")
-    .select("id, is_mandatory, lms_modules!inner(course_id)")
-    .eq("lms_modules.course_id", courseId)
-    .eq("is_mandatory", true)
-
-  const mandatoryTotal = (contentItems ?? []).length
-
   const enriched = enrollments.map((e: any) => {
-    const progress    = (e.lms_progress ?? []).filter((p: any) => p.course_id === courseId)
-    const completed   = progress.filter((p: any) => p.status === "completed").length
-    const progressPct = mandatoryTotal > 0 ? Math.round((completed / mandatoryTotal) * 100) : 0
+    // progress_pct is maintained by syncEnrollmentProgress — use it directly (package model)
+    const progressPct = Math.round(e.progress_pct ?? 0)
 
     // Attendance: count sessions attended
     const attended  = sessions.filter((s: any) =>
