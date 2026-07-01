@@ -19,7 +19,7 @@ function sc(p: number | null) {
   if (p >= 60) return { text: "#D97706", bg: "#fef3c7", border: "#fde68a" }
   return { text: "#DC2626", bg: "#fee2e2", border: "#fca5a5" }
 }
-function statusLabel(s: string) { return ({ passed: "Passed", failed: "Failed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s }
+function statusLabel(s: string) { return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s }
 function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
 
 function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
@@ -240,7 +240,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
               <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
                 {[
                   { label: "Overall Score", value: overall.score !== null ? `${overall.score}%` : "—", color: sc(overall.score).text, sub: completed ? "Completed" : "In progress" },
-                  { label: "Completion", value: `${overall.completionPct}%`, color: "#1B4F8A", sub: `${modules.filter(m => m.status === "passed").length}/${modules.length} modules passed` },
+                  { label: "Completion", value: `${overall.completionPct}%`, color: "#1B4F8A", sub: `${modules.filter(m => ["passed", "completed"].includes(m.status)).length}/${modules.length} modules completed` },
                   { label: "Final Exam", value: exam?.pct != null ? `${exam.pct}%` : "—", color: exam ? (exam.passed ? "#059669" : "#DC2626") : "#94a3b8", sub: exam ? `${exam.passed ? "Passed" : "Not passed"} · ${exam.attempts}/${exam.maxAttempts}` : "Not attempted" },
                 ].map(s => (
                   <div key={s.label} className="py-4 px-3 text-center">

@@ -59,7 +59,7 @@ function CoverRing({ score, completed }: { score: number; completed: boolean }) 
 const SECTION = "text-[10px] font-bold uppercase tracking-widest text-slate-400"
 function scoreColor(p: number | null) { return p === null ? "#94a3b8" : p >= 80 ? "#059669" : p >= 60 ? "#D97706" : "#DC2626" }
 function statusLabel(s: string) {
-  return ({ passed: "Passed", failed: "Failed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s
+  return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s
 }
 function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
 
@@ -167,7 +167,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
               <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
                 {[
                   { label: "Overall Score", value: overall.score !== null ? `${overall.score}%` : "—", color: scoreColor(overall.score), sub: completed ? "Completed" : "In progress" },
-                  { label: "Completion", value: `${overall.completionPct}%`, color: "#1B4F8A", sub: `${modules.filter(m => m.status === "passed").length}/${modules.length} modules passed` },
+                  { label: "Completion", value: `${overall.completionPct}%`, color: "#1B4F8A", sub: `${modules.filter(m => ["passed", "completed"].includes(m.status)).length}/${modules.length} modules completed` },
                   { label: "Final Exam", value: exam?.pct != null ? `${exam.pct}%` : "—", color: exam ? (exam.passed ? "#059669" : "#DC2626") : "#94a3b8", sub: exam ? `${exam.passed ? "Passed" : "Not passed"} · ${exam.attempts}/${exam.maxAttempts}` : "Not attempted" },
                 ].map(({ label, value, color, sub }) => (
                   <div key={label} className="py-4 px-3 text-center">
