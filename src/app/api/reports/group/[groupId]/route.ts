@@ -21,7 +21,7 @@ async function fetchGroupData(groupId: string) {
   const courseDataArr = await Promise.all(
     courses.map(async (course: any) => {
       const examsRes = await db.from("exams")
-        .select("id, title, passing_score, created_at")
+        .select("id, title, passing_score, created_at, duration_minutes")
         .eq("course_id", course.id)
         .order("created_at")
       const exams = (examsRes.data ?? []) as any[]
@@ -91,10 +91,14 @@ async function fetchGroupData(groupId: string) {
           examId: exam.id,
           courseName: course.name,
           courseId: course.id,
-          timeSpentMin:
-            c.started_at && c.submitted_at
-              ? Math.round((new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000)
-              : null,
+          timeSpentMin: (() => {
+            if (!c.started_at || !c.submitted_at) return null
+            // Elapsed wall-clock, capped at the exam's time limit — a learner can't
+            // actively spend more than the allotted time on a timed exam (the excess
+            // is idle/away time before an auto-submit on return).
+            const mins = Math.round((new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000)
+            return exam.duration_minutes ? Math.min(mins, exam.duration_minutes) : mins
+          })(),
         }))
       )
 

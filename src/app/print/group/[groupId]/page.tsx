@@ -213,7 +213,7 @@ export default async function PrintGroupPage({
   // Per-course full data fetch
   const courseDataArr = await Promise.all(
     courses.map(async (course: any) => {
-      const examsRes = await db.from("exams").select("id, title, passing_score, created_at").eq("course_id", course.id).order("created_at")
+      const examsRes = await db.from("exams").select("id, title, passing_score, created_at, duration_minutes").eq("course_id", course.id).order("created_at")
       const exams = (examsRes.data ?? []) as any[]
 
       const examDataArr = await Promise.all(exams.map(async (exam: any) => {
@@ -256,8 +256,11 @@ export default async function PrintGroupPage({
       const allCourseSubmissions = examDataArr.flatMap(({ exam, candidates }: any) =>
         candidates.map((c: any) => ({
           ...c, examTitle: exam.title, courseName: course.name,
-          timeSpentMin: c.started_at && c.submitted_at
-            ? Math.round((new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000) : null,
+          timeSpentMin: (() => {
+            if (!c.started_at || !c.submitted_at) return null
+            const mins = Math.round((new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000)
+            return exam.duration_minutes ? Math.min(mins, exam.duration_minutes) : mins
+          })(),
         }))
       )
 

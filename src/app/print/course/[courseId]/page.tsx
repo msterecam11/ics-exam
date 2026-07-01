@@ -314,12 +314,11 @@ export default async function PrintCoursePage({
       candidates.map((c: any) => ({
         ...c,
         examTitle: exam.title,
-        timeSpentMin:
-          c.started_at && c.submitted_at
-            ? Math.round(
-                (new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000
-              )
-            : null,
+        timeSpentMin: (() => {
+          if (!c.started_at || !c.submitted_at) return null
+          const mins = Math.round((new Date(c.submitted_at).getTime() - new Date(c.started_at).getTime()) / 60000)
+          return exam.duration_minutes ? Math.min(mins, exam.duration_minutes) : mins
+        })(),
       }))
     )
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
