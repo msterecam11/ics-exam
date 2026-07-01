@@ -31,6 +31,7 @@ export interface ReportModule {
   items: ReportItem[]
   ai?: ModuleAI | null          // AI analysis of this module (from the expert assessment)
   examSection?: ExamSection | null  // this module's slice of the final exam, graded
+  masteryScore: number | null   // exam-weighted mastery (the real measure), used for topics/overall
 }
 export interface TopicMastery { topic: string; pct: number; level: "strong" | "developing" | "weak" }
 export interface CourseReport {
@@ -137,6 +138,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       startedAt: prog?.started_at ?? null,
       completedAt: prog?.completed_at ?? null,
       items,
+      masteryScore: null,
     })
   }
 
@@ -186,6 +188,17 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
   }
 
+  // Effective mastery per module — the final exam is the real assessment, so weight it.
+  // A module that was "completed" but failed on the exam should read as weak, not strong.
+  for (const rm of reportModules) {
+    const cw = rm.score
+    const ex = rm.examSection?.pct ?? null
+    const hasGradedCoursework = rm.items.length > 0
+    rm.masteryScore = ex !== null
+      ? (hasGradedCoursework && cw !== null ? Math.round(cw * 0.4 + ex * 0.6) : ex)
+      : cw
+  }
+
   // ── Assignments ──
   const assignments = (assignRes.data ?? [])
     .filter((a: any) => (a.lms_modules as any)?.course_id === courseId)
@@ -201,13 +214,13 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
   ).length
   const attendancePct = sessions.length ? Math.round((presentCount / sessions.length) * 100) : null
 
-  // ── Topic mastery (module score → its topics, averaged) ──
+  // ── Topic mastery (exam-weighted module mastery → its topics, averaged) ──
   const topicAgg = new Map<string, { sum: number; n: number }>()
   for (const rm of reportModules) {
-    if (rm.score === null) continue
+    if (rm.masteryScore === null) continue
     for (const t of rm.topics) {
       const cur = topicAgg.get(t) ?? { sum: 0, n: 0 }
-      cur.sum += rm.score; cur.n += 1; topicAgg.set(t, cur)
+      cur.sum += rm.masteryScore; cur.n += 1; topicAgg.set(t, cur)
     }
   }
   const topicMastery: TopicMastery[] = [...topicAgg.entries()]
@@ -217,10 +230,9 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     })
     .sort((a, b) => a.pct - b.pct)
 
-  // ── Overall ──
-  const moduleScores = reportModules.map(m => m.score).filter((s): s is number => s !== null)
-  const scorePool = [...moduleScores, ...(exam?.pct != null ? [exam.pct] : [])]
-  const overallScore = scorePool.length ? Math.round(scorePool.reduce((a, b) => a + b, 0) / scorePool.length) : null
+  // ── Overall (exam-weighted mastery across modules) ──
+  const masteryScores = reportModules.map(m => m.masteryScore).filter((s): s is number => s !== null)
+  const overallScore = masteryScores.length ? Math.round(masteryScores.reduce((a, b) => a + b, 0) / masteryScores.length) : null
   const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0)
 
   // ── Expert assessment (AI-driven, exam-style structure) ──

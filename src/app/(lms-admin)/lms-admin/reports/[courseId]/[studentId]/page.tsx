@@ -294,7 +294,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
 
         {/* PAGES 3–N — MODULES */}
         {modules.map((m, mi) => {
-          const col = sc(m.score)
+          const col = sc(m.masteryScore)
           const es = m.examSection
           return (
             <Page key={m.id}>
@@ -307,8 +307,8 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                     <p className="text-[10px] font-bold uppercase mt-1" style={{ color: col.text }}>{statusLabel(m.status)}{m.timeSpent > 0 ? ` · ${fmtTime(m.timeSpent)}` : ""}</p>
                   </div>
                   <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
-                    <span className="text-xl font-extrabold" style={{ color: col.text }}>{m.score !== null ? `${m.score}%` : "—"}</span>
-                    <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Module</span>
+                    <span className="text-xl font-extrabold" style={{ color: col.text }}>{m.masteryScore !== null ? `${m.masteryScore}%` : "—"}</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Mastery</span>
                   </div>
                 </div>
 

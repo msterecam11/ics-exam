@@ -45,23 +45,29 @@ export async function POST(req: Request, { params }: Params) {
 
   // Grounded per-module metrics — the model writes an analysis per module (like the exam's per-section analysis)
   const moduleLines = report.modules
-    .map(m => `  - ${m.title}: ${m.score ?? "—"}% (${m.status}); topics: ${m.topics.slice(0, 5).join(", ")}`)
+    .map(m => {
+      const cw = m.items.length > 0 && m.score !== null ? `coursework ${m.score}%` : "coursework completed (not graded)"
+      const ex = m.examSection ? `exam ${m.examSection.pct}% (${m.examSection.correct}/${m.examSection.questions.length} correct)` : "no exam questions"
+      return `  - ${m.title}: mastery ${m.masteryScore ?? "—"}% [${cw}; ${ex}]; topics: ${m.topics.slice(0, 5).join(", ")}`
+    })
     .join("\n")
   const examLine = report.exam
-    ? `Final exam: ${report.exam.pct ?? "—"}% — ${report.exam.passed ? "passed" : "not passed"} (${report.exam.attempts}/${report.exam.maxAttempts} attempts)`
+    ? `Final exam overall: ${report.exam.pct ?? "—"}% — ${report.exam.passed ? "passed" : "not passed"} (${report.exam.attempts}/${report.exam.maxAttempts} attempts)`
     : "Final exam: not attempted"
 
   const moduleSkeleton = report.modules
-    .map(m => `"${m.title}": {"summary":"one sentence assessing this module (score ${m.score ?? "—"}%)","strengths":["specific strength in this module"],"weaknesses":["specific weakness based on the score"],"development":["one concrete action to improve this module"]}`)
+    .map(m => `"${m.title}": {"summary":"one sentence assessing this module (mastery ${m.masteryScore ?? "—"}%)","strengths":["specific strength, or note none if the exam score is low"],"weaknesses":["specific weakness grounded in the exam score"],"development":["one concrete action to improve this module"]}`)
     .join(",\n    ")
 
   const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this learner's course performance and return a detailed JSON report. Use ONLY the data below — base every insight strictly on these numbers, do not invent facts.
 
+IMPORTANT: The FINAL EXAM is the true measure of whether the learner mastered the material. "Coursework completed" only means they went through the content — it is NOT evidence of mastery. If a learner completed the coursework but scored poorly on a module's exam questions, that is a SIGNIFICANT WEAKNESS, not a strength. Base strengths and weaknesses primarily on the exam scores.
+
 LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.job_title})` : ""}
 COURSE: ${report.course.title}
-OVERALL SCORE: ${report.overall.score ?? "—"}% · COMPLETION: ${report.overall.completionPct}%
+OVERALL MASTERY: ${report.overall.score ?? "—"}% · COMPLETION: ${report.overall.completionPct}%
 ${examLine}
-MODULE PERFORMANCE:
+MODULE PERFORMANCE (mastery is exam-weighted):
 ${moduleLines}
 
 Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
@@ -73,8 +79,8 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
   "strengths": ["overall strength 1", "overall strength 2"],
   "improvements": ["overall weak area 1 with context", "overall weak area 2"],
   "recommendations": [
-    {"area": "module or topic name", "score": ${report.modules[0]?.score ?? 0}, "action": "specific actionable step"},
-    {"area": "module or topic name", "score": ${report.modules[1]?.score ?? 0}, "action": "specific actionable step"}
+    {"area": "module or topic name", "score": ${report.modules[0]?.masteryScore ?? 0}, "action": "specific actionable step"},
+    {"area": "module or topic name", "score": ${report.modules[1]?.masteryScore ?? 0}, "action": "specific actionable step"}
   ]
 }
 
