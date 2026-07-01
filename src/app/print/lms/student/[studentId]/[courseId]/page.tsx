@@ -38,19 +38,20 @@ function PageFooter({ page, total }: { page: number; total: number }) {
     </div>
   )
 }
-function CoverRing({ score, completed }: { score: number; completed: boolean }) {
+function CoverRing({ score }: { score: number }) {
   const size = 160, sw = 12, r = (size - sw) / 2, circ = 2 * Math.PI * r
   const offset = circ * (1 - Math.min(score, 100) / 100)
-  const col = completed ? "#34d399" : "#60a5fa"
+  const band = score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 60 ? { label: "Developing", col: "#fbbf24" } : { label: "Weak", col: "#f87171" }
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={sw} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={band.col} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-3xl font-extrabold text-white leading-none">{score}%</span>
-        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: col }}>{completed ? "● Completed" : "● In Progress"}</span>
+        <span className="text-[9px] font-bold tracking-widest uppercase text-white/50 mt-1.5">Overall Mastery</span>
+        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: band.col }}>{band.label}</span>
       </div>
     </div>
   )
@@ -115,7 +116,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                 <p className="text-white/50 text-sm mt-2">{[student.job_title, student.company].filter(Boolean).join(" · ")}</p>
               )}
             </div>
-            <CoverRing score={overallScore} completed={completed} />
+            <CoverRing score={overallScore} />
             <div className="flex items-center gap-10">
               <div className="text-center"><p className="text-2xl font-bold text-white">{overall.completionPct}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completion</p></div>
               {overall.timeSpent > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(overall.timeSpent)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Time Spent</p></div></>}
@@ -123,6 +124,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
             </div>
             <div className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 space-y-1 text-center">
               <p className="text-white/80 text-sm font-semibold">{course.title}</p>
+              <div><span className="inline-block text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full" style={{ background: completed ? "rgba(52,211,153,0.18)" : "rgba(96,165,250,0.18)", color: completed ? "#6ee7b7" : "#93c5fd" }}>{completed ? "● Completed" : "● In progress"}</span></div>
               {course.delivery_mode && <p className="text-white/40 text-xs capitalize">{course.delivery_mode}</p>}
               <p className="text-white/30 text-[10px]">
                 Enrolled {new Date(enrollment.enrolled_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
