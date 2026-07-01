@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 // POST — generate (or regenerate) the expert assessment from the real report metrics
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
@@ -37,6 +37,8 @@ export async function POST(_req: Request, { params }: Params) {
     return res429(retryAfterSeconds)
   }
 
+  const body = await req.json().catch(() => ({}))
+  const includeSecurity = !!body.includeSecurity
   const { studentId, courseId } = await params
   const report = await buildCourseReport(studentId, courseId)
   if (!report) return NextResponse.json({ error: "Report data not found" }, { status: 404 })
@@ -102,7 +104,7 @@ Be specific, professional, and constructive.`
     return NextResponse.json({ error: "AI returned an invalid response" }, { status: 500 })
   }
 
-  const assessment = {
+  const assessment: any = {
     executive_summary: String(parsed.executive_summary ?? parsed.narrative ?? ""),
     module_analyses: (parsed.module_analyses && typeof parsed.module_analyses === "object") ? parsed.module_analyses : {},
     strengths:    Array.isArray(parsed.strengths)       ? parsed.strengths.map(String).slice(0, 5)    : [],
@@ -110,6 +112,37 @@ Be specific, professional, and constructive.`
     recommendations: Array.isArray(parsed.recommendations)
       ? parsed.recommendations.slice(0, 5).map((r: any) => ({ area: String(r.area ?? ""), score: typeof r.score === "number" ? r.score : null, action: String(r.action ?? "") }))
       : [],
+  }
+
+  // Optional security / integrity analysis (from the exam attempt's captured events)
+  if (includeSecurity && report.security) {
+    const s = report.security
+    const secPrompt = `You are a forensic exam integrity analyst at ICS Aviation. Analyze the behavioral events recorded during ${report.student.name}'s final exam for the course "${report.course.title}".
+
+Exam result: ${report.exam?.pct ?? "—"}% (${report.exam?.passed ? "passed" : "not passed"})
+Behavioral events recorded:
+- Tab switches (left the exam window): ${s.tabs}
+- Fullscreen exits: ${s.fs}
+- Right-click attempts: ${s.rightClicks}
+- Copy/cut/paste attempts: ${s.copyAttempts}
+
+Write a professional 3-4 sentence behavioral assessment describing the pattern objectively, correlating it with the result where relevant, and stating the overall integrity risk. Return ONLY valid JSON:
+{"risk_level":"${s.riskLevel}","behavioral_assessment":"your 3-4 sentence assessment"}`
+    try {
+      const secCompletion = await groq.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: secPrompt }],
+        temperature: 0.4, max_tokens: 400,
+      })
+      const secRaw = secCompletion.choices[0]?.message?.content?.trim() ?? ""
+      const secM = secRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").match(/\{[\s\S]*\}/)
+      const parsedSec = JSON.parse(secM ? secM[0] : secRaw)
+      assessment.security_analysis = {
+        risk_level: s.riskLevel,
+        tabs: s.tabs, fs: s.fs, right_clicks: s.rightClicks, copy_paste: s.copyAttempts,
+        behavioral_assessment: String(parsedSec.behavioral_assessment ?? ""),
+      }
+    } catch { /* security analysis is optional — skip on failure */ }
   }
 
   const { data, error } = await db

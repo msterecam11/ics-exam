@@ -6,7 +6,7 @@ import Image from "next/image"
 import {
   ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2,
   CheckCircle2, XCircle, MinusCircle, Sparkles,
-  Trophy, Target, Lightbulb, TrendingUp,
+  Trophy, Target, Lightbulb, TrendingUp, ShieldAlert,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import ScoreBar from "@/components/reports/ScoreBar"
@@ -75,6 +75,8 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [showOptIn, setShowOptIn] = useState(true)
+  const [includeSecurity, setIncludeSecurity] = useState(false)
 
   useEffect(() => {
     fetch(`/api/lms/reports/student/${studentId}/${courseId}`)
@@ -86,7 +88,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   async function generateAssessment() {
     setGenerating(true)
     try {
-      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/expert-assessment`, { method: "POST" })
+      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/expert-assessment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ includeSecurity }) })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error ?? "Failed to generate"); return }
       // re-fetch so per-module AI is attached server-side
@@ -121,15 +123,42 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     </div>
   )
 
-  const { student, course, enrollment, overall, modules, exam, topicMastery, assessment } = report
+  const { student, course, enrollment, overall, modules, exam, topicMastery, assessment, security } = report
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!assessment
-  const totalPages = 2 + modules.length + (hasAI ? 1 : 0)
+  const showSecurity = includeSecurity && !!security
+  const totalPages = 2 + modules.length + (hasAI ? 1 : 0) + (showSecurity ? 1 : 0)
+  const riskColor = (r: string) => r === "clean" ? { t: "#059669", b: "#d1fae5" } : r === "medium" ? { t: "#D97706", b: "#fef3c7" } : { t: "#DC2626", b: "#fee2e2" }
 
   return (
     <>
+      {/* ── Report options popup ── */}
+      {showOptIn && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldAlert className="h-5 w-5 text-[#1B4F8A]" />
+              <p className="font-bold text-slate-800 text-base">Report options</p>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Choose what to include before viewing the report.</p>
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+              <input type="checkbox" checked={includeSecurity} onChange={e => setIncludeSecurity(e.target.checked)} className="mt-0.5 accent-[#1B4F8A]" />
+              <div>
+                <p className="text-sm font-medium text-slate-700">Include security &amp; integrity analysis</p>
+                <p className="text-xs text-slate-400 mt-0.5">Adds the final-exam behavioral events (tab switches, fullscreen exits, right-clicks, copy attempts) and an AI integrity assessment.</p>
+              </div>
+            </label>
+            <div className="flex justify-end gap-2 mt-5">
+              <Button size="sm" onClick={() => setShowOptIn(false)} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-1.5">
+                <CheckCircle2 className="h-4 w-4" /> View report
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .page-break { break-before: page; }
         .avoid-break { break-inside: avoid; }
@@ -385,6 +414,40 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                 <Image src="/logo/logo-dark-blue.png" alt="ICS" width={80} height={22} className="object-contain opacity-20" />
                 <p className="text-[10px] text-slate-300 uppercase tracking-widest">ICS Aviation · Integrated Consulting Services</p>
               </div>
+            </div>
+            <PageFooter page={2 + modules.length + 1} total={totalPages} />
+          </Page>
+        )}
+
+        {/* SECURITY PAGE */}
+        {showSecurity && security && (
+          <Page>
+            <PageHeader title="Security & Integrity" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-5">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0" style={{ background: riskColor(security.riskLevel).b }}>
+                  <ShieldAlert className="h-7 w-7" style={{ color: riskColor(security.riskLevel).t }} />
+                </div>
+                <div>
+                  <p className={SECTION}>Integrity Risk</p>
+                  <p className="text-2xl font-bold capitalize" style={{ color: riskColor(security.riskLevel).t }}>{security.riskLevel}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {[["Tab switches", security.tabs], ["Fullscreen exits", security.fs], ["Right-clicks", security.rightClicks], ["Copy / paste", security.copyAttempts]].map(([l, v]) => (
+                  <div key={l as string} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-center"><p className="text-lg font-bold">{v as number}</p><p className="text-[9px] uppercase tracking-wide opacity-70">{l as string}</p></div>
+                ))}
+              </div>
+              {security.analysis ? (
+                <div className="rounded-xl overflow-hidden border border-blue-100">
+                  <div className="bg-[#1B4F8A] px-4 py-2 flex items-center gap-2"><BrainCircuit className="h-3.5 w-3.5 text-white/70" /><p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Expert Integrity Assessment</p></div>
+                  <div className="bg-blue-50/60 px-4 py-3"><p className="text-sm text-blue-900 leading-relaxed">{security.analysis}</p></div>
+                </div>
+              ) : (
+                <div className="no-print flex items-center gap-2 text-sm text-slate-400 bg-slate-50 rounded-xl p-4">
+                  <Sparkles className="h-4 w-4 shrink-0 text-purple-400" /> Click <strong className="mx-1 text-purple-600">Generate Expert Report</strong> (with the security option enabled) to add the AI integrity assessment.
+                </div>
+              )}
             </div>
             <PageFooter page={totalPages} total={totalPages} />
           </Page>

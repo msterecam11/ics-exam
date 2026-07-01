@@ -75,7 +75,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  const { student, course, enrollment, overall, modules, exam, assignments, topicMastery, assessment } = report
+  const { student, course, enrollment, overall, modules, exam, assignments, topicMastery, assessment, security } = report
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
@@ -342,6 +342,16 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {security?.analysis && (
+                <div className="avoid-break pt-2 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Security &amp; Integrity</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <div className="px-2.5 py-1 rounded-lg text-center text-white" style={{ background: security.riskLevel === "clean" ? "#059669" : security.riskLevel === "medium" ? "#D97706" : "#DC2626" }}><p className="text-[11px] font-bold capitalize">{security.riskLevel}</p><p className="text-[8px] uppercase tracking-wide opacity-90">Risk</p></div>
+                    {[["Tabs", security.tabs], ["Fullscreen", security.fs], ["Right-clicks", security.rightClicks], ["Copy", security.copyAttempts]].map(([l, v]) => (<div key={l as string} className="px-2.5 py-1 rounded-lg text-center bg-slate-100 text-slate-700"><p className="text-[11px] font-bold">{v as number}</p><p className="text-[8px] uppercase tracking-wide opacity-70">{l as string}</p></div>))}
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-blue-700 mb-0.5">Expert Integrity Assessment</p><p className="text-[11px] text-blue-800 leading-relaxed">{security.analysis}</p></div>
                 </div>
               )}
               <div className="avoid-break border-t border-slate-100 pt-5 flex flex-col items-center gap-2 text-center">

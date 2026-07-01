@@ -49,6 +49,12 @@ export interface CourseReport {
     recommendations: { area: string; score: number | null; action: string }[]
     generated_at: string
   } | null
+  security: {
+    tabs: number; fs: number; rightClicks: number; copyAttempts: number
+    totalEvents: number
+    riskLevel: "clean" | "medium" | "high"
+    analysis: string | null
+  } | null
 }
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
@@ -86,7 +92,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     db.from("lms_module_analysis").select("module_id, analysis").eq("course_id", courseId),
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers").eq("student_id", studentId).eq("course_id", courseId),
+    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback").eq("student_id", studentId).eq("course_id", courseId),
     db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("student_id", studentId),
     db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
@@ -243,6 +249,22 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     } : null
   }
 
+  // ── Security / integrity (from the exam attempt's captured events) ──
+  let security: CourseReport["security"] = null
+  if (examMod) {
+    const best2 = attempts.filter((a: any) => a.module_id === examMod.id).slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
+    const sec: any = best2?.ai_feedback?.security_events
+    if (sec) {
+      const tabs = Number(sec.tabs ?? 0), fs = Number(sec.fs ?? 0), rc = Number(sec.rightClicks ?? 0), cp = Number(sec.copyAttempts ?? 0)
+      const totalEvents = tabs + fs
+      security = {
+        tabs, fs, rightClicks: rc, copyAttempts: cp, totalEvents,
+        riskLevel: totalEvents === 0 ? "clean" : totalEvents <= 2 ? "medium" : "high",
+        analysis: aRaw?.security_analysis?.behavioral_assessment ?? null,
+      }
+    }
+  }
+
   return {
     student: studentRes.data as any,
     course: courseRes.data as any,
@@ -257,5 +279,6 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     assignments,
     topicMastery,
     assessment,
+    security,
   }
 }
