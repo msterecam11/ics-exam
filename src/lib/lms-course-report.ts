@@ -188,15 +188,19 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
   }
 
-  // Effective mastery per module — the final exam is the real assessment, so weight it.
-  // A module that was "completed" but failed on the exam should read as weak, not strong.
+  // Effective mastery per module. Mastery is measured by ASSESSMENTS, never by completion:
+  //   - coursework counts only when it was actually graded (has item scores); a bare
+  //     "completed" package score (e.g. 100% with no graded items) is NOT mastery.
+  //   - when a final-exam section exists it is the real test and dominates.
+  //   - if nothing was assessed (no exam, no graded coursework), mastery is null →
+  //     the module shows completion, not a misleading score.
   for (const rm of reportModules) {
-    const cw = rm.score
     const ex = rm.examSection?.pct ?? null
-    const hasGradedCoursework = rm.items.length > 0
-    rm.masteryScore = ex !== null
-      ? (hasGradedCoursework && cw !== null ? Math.round(cw * 0.4 + ex * 0.6) : ex)
-      : cw
+    const cw = rm.items.length > 0 ? rm.score : null   // graded coursework only
+    rm.masteryScore =
+      ex !== null && cw !== null ? Math.round(cw * 0.4 + ex * 0.6) // graded coursework + exam
+      : ex !== null              ? ex                              // exam only
+      : cw                                                         // graded coursework only, else null
   }
 
   // ── Assignments ──
