@@ -93,7 +93,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     db.from("lms_module_analysis").select("module_id, analysis").eq("course_id", courseId),
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback").eq("student_id", studentId).eq("course_id", courseId),
+    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s").eq("student_id", studentId).eq("course_id", courseId),
     db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("student_id", studentId),
     db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
@@ -237,7 +237,8 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
   // ── Overall (exam-weighted mastery across modules) ──
   const masteryScores = reportModules.map(m => m.masteryScore).filter((s): s is number => s !== null)
   const overallScore = masteryScores.length ? Math.round(masteryScores.reduce((a, b) => a + b, 0) / masteryScores.length) : null
-  const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0)
+  const examTime = examMod ? attempts.filter((a: any) => a.module_id === examMod.id).reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0) : 0
+  const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0) + examTime
 
   // ── Expert assessment (AI-driven, exam-style structure) ──
   const aRaw: any = assessmentRes.data?.assessment

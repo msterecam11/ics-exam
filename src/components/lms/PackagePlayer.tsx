@@ -794,9 +794,35 @@ export default function PackagePlayer({
   const [pkgResult,     setPkgResult]     = useState<{ passed: boolean; score: number } | null>(null)
   const [reviewItemId,  setReviewItemId]  = useState<string | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
+  const activeSecRef = useRef(0)
 
   const currentItem = items[currentIdx] ?? null
+
+  // ── Active time tracking — counts only while the tab is visible, flushed
+  //    periodically and on unload via sendBeacon so it survives navigation. ──
+  useEffect(() => {
+    if (previewMode) return
+    const tick = setInterval(() => { if (!document.hidden) activeSecRef.current += 1 }, 1000)
+    const flush = () => {
+      const secs = activeSecRef.current
+      if (secs <= 0) return
+      activeSecRef.current = 0
+      try {
+        const payload = JSON.stringify({ module_id: moduleId, course_id: courseId, time_spent: secs })
+        navigator.sendBeacon(`/api/lms/packages/${packageId}/progress`, new Blob([payload], { type: "application/json" }))
+      } catch { activeSecRef.current += secs }
+    }
+    const flushTimer = setInterval(flush, 30000)
+    const onVis = () => { if (document.hidden) flush() }
+    document.addEventListener("visibilitychange", onVis)
+    window.addEventListener("beforeunload", flush)
+    return () => {
+      clearInterval(tick); clearInterval(flushTimer)
+      document.removeEventListener("visibilitychange", onVis)
+      window.removeEventListener("beforeunload", flush)
+      flush()
+    }
+  }, [previewMode, packageId, moduleId, courseId])
 
   // ── Autosave (debounced) ─────────────────────────────────────
   const saveProgress = useCallback(async (opts: {
