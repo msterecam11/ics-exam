@@ -116,7 +116,7 @@ function BlockRenderer({ block }: { block: HCBlock }) {
       const style = CALLOUT_STYLES[block.color ?? "blue"] ?? CALLOUT_STYLES.blue
       return (
         <div className={cn("flex gap-3 p-4 rounded-xl border", style.bg, style.border)}>
-          <span className="text-xl shrink-0">{block.icon ?? "ðŸ’¡"}</span>
+          <span className="text-xl shrink-0">{block.icon ?? "💡"}</span>
           <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{block.html}</p>
         </div>
       )
@@ -155,7 +155,6 @@ export default async function HubCraftViewerPage({
     .eq("id", moduleId)
     .eq("course_id", courseId)
     .single()
-  if (!module || !["hubcraft"].includes("hubcraft")) notFound()
   if (!module) notFound()
 
   // Fetch course for header

@@ -48,7 +48,7 @@ export default async function PackagePlayerPage({
   const { data: pkg } = await db
     .from("lms_packages")
     .select(`
-      id, title, pass_mark,
+      id, title, pass_mark, free_navigation,
       lms_package_items (
         id, order_index, type, title, config, required
       )

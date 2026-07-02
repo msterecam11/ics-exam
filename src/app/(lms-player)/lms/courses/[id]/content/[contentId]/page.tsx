@@ -26,7 +26,7 @@ export default async function ContentPage({
   const { data: item } = await db
     .from("lms_content_items")
     .select(`
-      id, title, type, content, download_allowed, is_mandatory, completion_rule,
+      id, title, type, content, order_index, download_allowed, is_mandatory, completion_rule,
       lms_modules!inner(id, course_id, title)
     `)
     .eq("id", contentId)

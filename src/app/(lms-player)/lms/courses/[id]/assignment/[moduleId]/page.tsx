@@ -81,7 +81,7 @@ export default async function AssignmentPage({
           {/* Title */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-xs text-green-600 font-semibold uppercase tracking-wider mb-1">
-              ðŸ“¤ Assignment
+              📤 Assignment
             </div>
             <h1 className="text-2xl font-bold text-slate-900">{module.title}</h1>
             {module.description && (
