@@ -209,7 +209,7 @@ MCQ AND SCENARIO RULE: The correct answer must NOT be the longest option. Mix an
   let raw = ""
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
       max_tokens: 4000,
