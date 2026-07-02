@@ -75,7 +75,7 @@ export default async function PrintCourseLmsReport({ params, searchParams }: Pro
 
   const [enrollRes, modulesRes, sessionsRes] = await Promise.all([
     db.from("lms_enrollments")
-      .select("id, status, enrolled_at, completed_at, student_id, lms_students(name, email, company, job_title)")
+      .select("id, status, enrolled_at, completed_at, student_id, progress_pct, lms_students(name, email, company, job_title)")
       .eq("course_id", courseId)
       .order("enrolled_at", { ascending: false }),
     db.from("lms_modules")
@@ -90,32 +90,16 @@ export default async function PrintCourseLmsReport({ params, searchParams }: Pro
   const modules     = (modulesRes.data ?? []) as any[]
   const sessions    = (sessionsRes.data ?? []) as any[]
 
-  const studentIds = enrollments.map((e: any) => e.student_id)
-
-  // Fetch all progress
-  const { data: allProgress } = studentIds.length
-    ? await db.from("lms_progress")
-        .select("student_id, content_item_id, status, time_spent")
-        .eq("course_id", courseId)
-        .in("student_id", studentIds)
-    : { data: [] }
-
-  const totalMandatory = modules.reduce((s: number, m: any) =>
-    s + (m.lms_content_items ?? []).filter((i: any) => i.is_mandatory).length, 0)
-
-  const mandatoryIds = modules.flatMap((m: any) =>
-    (m.lms_content_items ?? []).filter((i: any) => i.is_mandatory).map((i: any) => i.id))
-
-  // Build per-student summary
+  // Build per-student summary — progress comes from the maintained enrollment.progress_pct
+  // (works for both package courses and legacy content-item courses; the old model
+  // counted lms_progress content items and returned 0% for package-based courses).
   const studentRows = enrollments.map((e: any) => {
-    const prog = (allProgress ?? []).filter((p: any) => p.student_id === e.student_id)
-    const completed = prog.filter((p: any) => mandatoryIds.includes(p.content_item_id) && p.status === "completed").length
-    const pct       = totalMandatory > 0 ? Math.round((completed / totalMandatory) * 100) : 0
+    const pct       = Math.round(e.progress_pct ?? 0)
     const attended  = sessions.filter((s: any) =>
       (s.lms_attendance ?? []).some((a: any) => a.student_id === e.student_id && ["present","late"].includes(a.status))
     ).length
     const attPct = sessions.length > 0 ? Math.round((attended / sessions.length) * 100) : null
-    return { ...e, student: e.lms_students, pct, completed, attended, attPct }
+    return { ...e, student: e.lms_students, pct, attended, attPct }
   })
 
   const totalEnrolled  = enrollments.length

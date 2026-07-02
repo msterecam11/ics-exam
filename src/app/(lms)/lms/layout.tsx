@@ -2,6 +2,7 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import LmsStudentShell from "@/components/lms/LmsStudentShell"
+import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
 
 export default async function LmsLayout({ children }: { children: React.ReactNode }) {
   const student = await getStudentSession()
@@ -45,6 +46,7 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
       upcomingSessions={upcomingSessions}
       pendingAssignments={pendingCount ?? 0}
     >
+      <SessionExpiredGuard loginUrl="/lms/login" reason="For security, your learning session has timed out." />
       {children}
     </LmsStudentShell>
   )
