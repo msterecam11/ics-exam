@@ -84,12 +84,15 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
   ]
 }
 
-Be specific, professional, and constructive.`
+Be specific, professional, and constructive. Each recommendation must target a DIFFERENT module or topic and must not repeat the same phrasing — reference the concrete topics listed above rather than generic advice like "review key concepts". Strengths must be genuine: if the exam scores are uniformly low, say so honestly rather than inventing strengths.`
 
   let raw = ""
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      // 70b gives far sharper, less repetitive analysis than 8b-instant; a report
+      // is a single on-demand call (rate-limited per user), so free-tier throughput
+      // is fine. If the free-tier limit is hit, the catch below returns a friendly 429.
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
       max_tokens: 2200,
@@ -136,7 +139,7 @@ Write a professional 3-4 sentence behavioral assessment describing the pattern o
 {"risk_level":"${s.riskLevel}","behavioral_assessment":"your 3-4 sentence assessment"}`
     try {
       const secCompletion = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
+        model: "llama-3.3-70b-versatile",
         messages: [{ role: "user", content: secPrompt }],
         temperature: 0.4, max_tokens: 400,
       })
