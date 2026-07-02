@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import LmsCourseReportButton from "@/components/lms/LmsCourseReportButton"
 import LmsStudentReportButton from "@/components/lms/LmsStudentReportButton"
+import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -141,7 +142,10 @@ export default async function LmsCourseReportPage({ params }: Props) {
             <p className="text-muted-foreground text-sm capitalize">{course.delivery_mode}</p>
           </div>
         </div>
-        <LmsCourseReportButton courseId={courseId} courseTitle={course.title} />
+        <div className="flex items-center gap-2">
+          <LmsReleaseCertsButton courseId={courseId} />
+          <LmsCourseReportButton courseId={courseId} courseTitle={course.title} />
+        </div>
       </div>
 
       {/* Summary stats */}

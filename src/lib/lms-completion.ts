@@ -11,7 +11,7 @@ function generateCertificateNumber(): string {
 
 // ── Issue certificate (deduped) ────────────────────────────────
 async function issueCertificate({
-  studentId, courseId, title, type, sourceId, sourceTitle,
+  studentId, courseId, title, type, sourceId, sourceTitle, autoRelease = true,
 }: {
   studentId:    string
   courseId?:    string | null
@@ -19,6 +19,7 @@ async function issueCertificate({
   type:         "course" | "learning_path" | "cohort"
   sourceId?:    string
   sourceTitle?: string
+  autoRelease?: boolean   // when true, the certificate is released to the student immediately
 }): Promise<string | null> {
   // Dedup: check if already issued
   if (type === "course" && courseId) {
@@ -51,6 +52,7 @@ async function issueCertificate({
       source_id:         sourceId    ?? null,
       source_title:      sourceTitle ?? null,
       issued_at:         new Date().toISOString(),
+      released_at:       autoRelease ? new Date().toISOString() : null,
     })
     if (!error) return verificationCode
     if (!error.message.includes("unique")) break
@@ -99,7 +101,7 @@ export async function checkCourseCompletion(studentId: string, courseId: string)
     // Fetch course
     const { data: course } = await db
       .from("lms_courses")
-      .select("title, certificate_enabled")
+      .select("title, certificate_enabled, certificate_auto_release")
       .eq("id", courseId)
       .single()
 
@@ -110,6 +112,7 @@ export async function checkCourseCompletion(studentId: string, courseId: string)
 
     const certNumber = await issueCertificate({
       studentId, courseId, title: course.title, type: "course",
+      autoRelease: (course as any).certificate_auto_release === true,
     })
 
     if (certNumber) {

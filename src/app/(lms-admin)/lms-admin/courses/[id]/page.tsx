@@ -1091,6 +1091,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     feedback_anonymous:  !!course.feedback_anonymous,
     progress_enforcement: !!course.progress_enforcement,
     certificate_enabled:  !!course.certificate_enabled,
+    certificate_auto_release: !!(course as any).certificate_auto_release,
   })
   const [saving, setSaving] = useState(false)
   const set = (k: keyof typeof form, v: any) => setForm(prev => ({ ...prev, [k]: v }))
@@ -1099,7 +1100,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     setSaving(true)
     const res = await fetch("/api/lms/courses", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: course.id, title: form.title, description: form.description, course_code: form.course_code, category: form.category, delivery_mode: form.delivery_mode, progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
+      body: JSON.stringify({ id: course.id, title: form.title, description: form.description, course_code: form.course_code, category: form.category, delivery_mode: form.delivery_mode, progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
     })
     const data = await res.json(); setSaving(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
@@ -1130,7 +1131,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><GraduationCap className="h-4 w-4 text-[#1B4F8A]" /> Learning & Completion</h3>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.progress_enforcement} onChange={e => set("progress_enforcement", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Sequential progress enforcement</p><p className="text-xs text-slate-500 mt-0.5">Students must complete each item before the next</p></div></label>
-        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.certificate_enabled} onChange={e => set("certificate_enabled", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Issue certificate on completion</p><p className="text-xs text-slate-500 mt-0.5">Students receive a certificate automatically when they pass the final exam</p></div></label>
+        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.certificate_enabled} onChange={e => set("certificate_enabled", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Issue certificate on completion</p><p className="text-xs text-slate-500 mt-0.5">Students receive a certificate when they pass the final exam</p></div></label>
+        {form.certificate_enabled && (
+          <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>
+        )}
         <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={form.final_exam_pass_mark ?? 70} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /></div>
       </div>
       <div className="bg-white rounded-xl border p-5 space-y-4">

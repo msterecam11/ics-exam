@@ -13,11 +13,12 @@ export default async function CertificatesPage() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Earned certificates from lms_certificates table
+  // Earned certificates — only those released to the student (held certificates stay hidden)
   const { data: certs } = await db
     .from("lms_certificates")
     .select("id, course_id, verification_code, type, source_title, issued_at, lms_courses(title)")
     .eq("student_id", student.id)
+    .not("released_at", "is", null)
     .order("issued_at", { ascending: false })
 
   // In-progress enrollments (active, not yet completed)
