@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import {
   ChevronLeft, ChevronRight, BookOpen, Video, FileText,
   Globe, HelpCircle, ClipboardList, GraduationCap, FlaskConical,
-  File, Loader2, Download, CheckCircle2, Lock, AlertCircle,
+  File, Loader2, CheckCircle2, Lock, AlertCircle,
   RotateCcw, Award,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -64,7 +64,6 @@ interface Course {
 // ── Module type meta ───────────────────────────────────────────
 function moduleIcon(type: string) {
   switch (type) {
-    case "hubcraft":      return BookOpen
     case "content":       return FileText
     case "web":           return Globe
     case "video":         return Video
@@ -81,156 +80,12 @@ function moduleIcon(type: string) {
 
 function moduleLabel(type: string) {
   const map: Record<string, string> = {
-    hubcraft: "Lesson", content: "Content", web: "Web Page",
+    content: "Content", web: "Web Page",
     video: "Video", presentation: "Slides", document: "Document",
     quiz: "Quiz", progress_test: "Progress Test", test: "Test",
     final_exam: "Final Exam", assignment: "Assignment",
   }
   return map[type] ?? type
-}
-
-// ── HubCraft block renderer (read-only) ────────────────────────
-interface HCBlock {
-  id: string; type: string; html?: string
-  fileId?: string; fileName?: string; fileUrl?: string; fileMime?: string
-  url?: string; caption?: string; icon?: string; color?: string
-}
-
-const CALLOUT_STYLES: Record<string, { bg: string; border: string }> = {
-  blue:   { bg: "bg-blue-50",   border: "border-blue-200"   },
-  green:  { bg: "bg-green-50",  border: "border-green-200"  },
-  yellow: { bg: "bg-amber-50",  border: "border-amber-200"  },
-  red:    { bg: "bg-red-50",    border: "border-red-200"    },
-  purple: { bg: "bg-violet-50", border: "border-violet-200" },
-}
-
-function toEmbed(url: string) {
-  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vm = url.match(/vimeo\.com\/(\d+)/)
-  if (vm) return `https://player.vimeo.com/video/${vm[1]}`
-  return url
-}
-
-function BlockRenderer({ block }: { block: HCBlock }) {
-  switch (block.type) {
-    case "text":
-      return (
-        <div
-          className="
-            prose prose-slate max-w-none
-            [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 [&_h1]:my-3
-            [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-slate-800 [&_h2]:my-2
-            [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-700 [&_h3]:my-2
-            [&_p]:text-slate-700 [&_p]:leading-relaxed [&_p]:my-2
-            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
-            [&_li]:text-slate-700 [&_li]:my-1
-            [&_strong]:font-bold [&_em]:italic
-            [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono [&_code]:text-pink-600
-            [&_a]:text-[#1B4F8A] [&_a]:underline
-            [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-500
-          "
-          dangerouslySetInnerHTML={{ __html: block.html || "" }}
-        />
-      )
-    case "pdf":
-      if (!block.fileUrl) return null
-      return (
-        <div className="space-y-2">
-          <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 600 }}>
-            <iframe src={block.fileUrl} className="w-full h-full border-0" title={block.fileName ?? "PDF"} />
-          </div>
-          {block.caption && <p className="text-xs text-center text-slate-400">{block.caption}</p>}
-        </div>
-      )
-    case "video": {
-      const src = block.fileUrl ?? block.url ?? ""
-      if (!src) return null
-      const isDirect = block.fileMime?.startsWith("video/") || /\.(mp4|webm|ogg)(\?|$)/i.test(src)
-      return (
-        <div className="space-y-2">
-          <div className="rounded-xl overflow-hidden bg-slate-900 aspect-video">
-            {isDirect
-              ? <video src={src} controls className="w-full h-full" />
-              : <iframe src={toEmbed(src)} className="w-full h-full border-0" allow="fullscreen" allowFullScreen />}
-          </div>
-          {block.caption && <p className="text-xs text-center text-slate-400">{block.caption}</p>}
-        </div>
-      )
-    }
-    case "image": {
-      const src = block.fileUrl ?? block.url ?? ""
-      if (!src) return null
-      return (
-        <div className="space-y-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={block.caption ?? block.fileName ?? ""} className="w-full rounded-xl object-cover max-h-[500px]" />
-          {block.caption && <p className="text-xs text-center text-slate-400">{block.caption}</p>}
-        </div>
-      )
-    }
-    case "embed":
-      if (!block.url) return null
-      return (
-        <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 420 }}>
-          <iframe src={block.url} className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation" />
-        </div>
-      )
-    case "file":
-      if (!block.fileUrl) return null
-      return (
-        <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0">
-            <File className="h-5 w-5 text-slate-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-slate-800 truncate">{block.fileName}</p>
-          </div>
-          <a href={block.fileUrl} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#1B4F8A] text-white text-xs font-medium rounded-lg hover:bg-[#163f6f] transition-colors shrink-0">
-            <Download className="h-3.5 w-3.5" /> Download
-          </a>
-        </div>
-      )
-    case "callout": {
-      const style = CALLOUT_STYLES[block.color ?? "blue"]
-      return (
-        <div className={cn("flex gap-3 p-4 rounded-xl border", style.bg, style.border)}>
-          <span className="text-xl shrink-0">{block.icon ?? "💡"}</span>
-          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{block.html}</p>
-        </div>
-      )
-    }
-    case "divider":
-      return <hr className="border-slate-200" />
-    default:
-      return null
-  }
-}
-
-function HubCraftRenderer({ contentBody }: { contentBody: unknown }) {
-  const blocks: HCBlock[] = (() => {
-    if (contentBody && typeof contentBody === "object") {
-      const r = contentBody as Record<string, unknown>
-      if (Array.isArray(r.blocks)) return r.blocks as HCBlock[]
-    }
-    return []
-  })()
-
-  if (!blocks.length) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400">
-        <BookOpen className="h-10 w-10 mb-3 opacity-30" />
-        <p className="text-sm">This module has no content yet.</p>
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-5">
-      {blocks.map(block => <BlockRenderer key={block.id} block={block} />)}
-    </div>
-  )
 }
 
 function EmptyModuleState() {
@@ -812,23 +667,6 @@ function ModuleContent({
         moduleType={type}
         onPass={onComplete}
       />
-    )
-  }
-
-  if (type === "hubcraft") {
-    return (
-      <div className="space-y-6">
-        <HubCraftRenderer contentBody={module.content_body} />
-        {checks.length > 0 && <CompletionCheckBlock checks={checks} onPass={onComplete} />}
-        {checks.length === 0 && (
-          <div className="pt-4 border-t border-slate-100">
-            <button onClick={onComplete}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition-colors">
-              <CheckCircle2 className="h-4 w-4" /> Mark Complete
-            </button>
-          </div>
-        )}
-      </div>
     )
   }
 
