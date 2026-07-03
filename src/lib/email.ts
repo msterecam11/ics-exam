@@ -8,18 +8,18 @@
  * The Azure app's Mail.Send application permission covers all mailboxes
  * in the tenant — no extra configuration needed.
  *
- * Only one env var to add:
- *   LMS_EMAIL=lms@ics-aviation.com
- *
- * (falls back to MICROSOFT_USER_EMAIL if LMS_EMAIL is not set)
+ * Sender defaults to lms@ics-aviation.com. Set LMS_EMAIL only to override
+ * with a different shared mailbox.
  */
 
 import { sendGraphMailAs } from "@/lib/ms-graph"
 import { db } from "@/lib/db"
 
 const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics-exam.vercel.app"
-// The "from" mailbox — lms@ shared box, falls back to the existing alep@ if not set
-const LMS_EMAIL = process.env.LMS_EMAIL ?? process.env.MICROSOFT_USER_EMAIL ?? "lms@ics-aviation.com"
+// The "from" mailbox. Always defaults to the lms@ shared box — deliberately
+// does NOT fall back to MICROSOFT_USER_EMAIL (alep@), which caused LMS mail to
+// send from the wrong account whenever LMS_EMAIL wasn't set in the environment.
+const LMS_EMAIL = process.env.LMS_EMAIL ?? "lms@ics-aviation.com"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type EmailType = "enrollment" | "session_reminder" | "completion" | "password_reset"
