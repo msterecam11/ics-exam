@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import Image from "next/image"
 import { Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -86,6 +87,12 @@ export default function LmsLoginPage() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
+                </div>
+                <div className="text-right">
+                  <Link href="/lms/forgot-password"
+                    className="text-xs text-[#1B4F8A] font-medium hover:underline">
+                    Forgot password?
+                  </Link>
                 </div>
               </div>
 

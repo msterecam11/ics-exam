@@ -22,7 +22,7 @@ const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics-exam.vercel.ap
 const LMS_EMAIL = process.env.LMS_EMAIL ?? process.env.MICROSOFT_USER_EMAIL ?? "lms@ics-aviation.com"
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type EmailType = "enrollment" | "session_reminder" | "completion"
+export type EmailType = "enrollment" | "session_reminder" | "completion" | "password_reset"
 
 interface SendOptions {
   type:       EmailType
@@ -291,6 +291,37 @@ export function buildCompletionEmail(opts: {
   `
   return {
     subject: `${kindLabel} Complete: "${courseTitle}" — ICS Aviation LMS`,
+    html:    baseTemplate(body),
+  }
+}
+
+/** Sent when a student requests a password reset */
+export function buildPasswordResetEmail(opts: {
+  studentName: string
+  resetUrl:    string
+  expiresMin:  number
+}) {
+  const { studentName, resetUrl, expiresMin } = opts
+  const body = `
+    <div style="text-align:center;padding:10px 0 20px;">
+      <div style="display:inline-block;background:#eff6ff;border-radius:50%;padding:20px;">
+        <span style="font-size:36px;">🔑</span>
+      </div>
+    </div>
+    <h2 style="margin:0 0 6px;color:${BLUE};font-size:22px;text-align:center;">Reset your password</h2>
+    <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
+      Hi ${studentName}, we received a request to reset your ICS Aviation Learning Portal password.
+      Click the button below to choose a new one.
+    </p>
+    <p style="text-align:center;">
+      ${btn("Reset Password →", resetUrl)}
+    </p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6;text-align:center;margin-top:24px;">
+      This link expires in ${expiresMin} minutes. If you didn't request this, you can safely ignore
+      this email — your password won't change.
+    </p>`
+  return {
+    subject: "Reset your password — ICS Aviation LMS",
     html:    baseTemplate(body),
   }
 }
