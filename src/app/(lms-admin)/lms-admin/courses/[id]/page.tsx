@@ -586,7 +586,9 @@ function EnrollModal({ open, onClose, courseId, onEnrolled }: {
       fetch(`/api/lms/enrollments?course_id=${courseId}`).then(r => r.json()),
     ]).then(([s, e]) => {
       setStudents(s.students ?? [])
-      setEnrolled(new Set((e ?? []).map((en: any) => en.lms_students?.id).filter(Boolean)))
+      // Only currently-active/completed students are locked as "Enrolled".
+      // Unenrolled (dropped) students stay selectable so they can be re-enrolled.
+      setEnrolled(new Set((e ?? []).filter((en: any) => en.status !== "dropped").map((en: any) => en.lms_students?.id).filter(Boolean)))
       setLoading(false)
     })
   }, [open, courseId])
@@ -1001,13 +1003,22 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
       .then(data => { setEnrollments(Array.isArray(data) ? data : []); setLoading(false) })
   }, [courseId, refreshKey])
 
-  async function dropStudent(enrollmentId: string) {
-    if (!confirm("Drop this student?")) return; setDropping(enrollmentId)
+  async function unenrollStudent(enrollmentId: string) {
+    if (!confirm("Unenroll this student from the course? Their progress is kept and they can be re-enrolled anytime.")) return; setDropping(enrollmentId)
     const res = await fetch("/api/lms/enrollments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: enrollmentId, status: "dropped" }) })
     setDropping(null)
     if (!res.ok) { toast.error("Failed"); return }
     setEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, status: "dropped" } : e))
-    toast.success("Student dropped")
+    toast.success("Student unenrolled")
+  }
+
+  async function reEnrollStudent(enrollmentId: string) {
+    setDropping(enrollmentId)
+    const res = await fetch("/api/lms/enrollments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: enrollmentId, status: "active" }) })
+    setDropping(null)
+    if (!res.ok) { toast.error("Failed"); return }
+    setEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, status: "active" } : e))
+    toast.success("Student re-enrolled")
   }
 
   const filtered = enrollments.filter(e => !search || e.lms_students?.name?.toLowerCase().includes(search.toLowerCase()) || e.lms_students?.email?.toLowerCase().includes(search.toLowerCase()))
@@ -1056,7 +1067,7 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
                     </div>
                     <span className="text-xs font-semibold text-slate-600 w-8 text-right">{enr.progress_pct}%</span>
                   </div>
-                  <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full inline-block", { "bg-emerald-100 text-emerald-700": enr.status === "completed", "bg-blue-100 text-blue-700": enr.status === "active", "bg-red-50 text-red-500": enr.status === "dropped", "bg-slate-100 text-slate-500": !["completed","active","dropped"].includes(enr.status) })}>{enr.status}</span>
+                  <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full inline-block", { "bg-emerald-100 text-emerald-700": enr.status === "completed", "bg-blue-100 text-blue-700": enr.status === "active", "bg-slate-100 text-slate-500": enr.status === "dropped" || !["completed","active","dropped"].includes(enr.status) })}>{enr.status === "dropped" ? "unenrolled" : enr.status}</span>
                   <p className="text-xs text-slate-500">{new Date(enr.enrolled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</p>
                   <p className="text-xs text-slate-500">{enr.completed_at ? new Date(enr.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" }) : "—"}</p>
                   <div className="flex justify-end gap-1">
@@ -1065,8 +1076,12 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
                         <Eye className="h-3.5 w-3.5" />
                       </Link>
                     )}
-                    {enr.status !== "dropped" && (
-                      <button onClick={() => dropStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Remove from course">
+                    {enr.status === "dropped" ? (
+                      <button onClick={() => reEnrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Re-enroll in course">
+                        {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                      </button>
+                    ) : (
+                      <button onClick={() => unenrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Unenroll from course">
                         {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
                       </button>
                     )}

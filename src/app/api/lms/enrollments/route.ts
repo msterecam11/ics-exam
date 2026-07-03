@@ -137,7 +137,7 @@ export async function GET(req: Request) {
             sumPct += items.length > 0 ? (completed / items.length) * 100 : 0
           }
         }
-        progressPctMap[sid] = Math.round(sumPct / mods.length)
+        progressPctMap[sid] = Math.min(100, Math.round(sumPct / mods.length))
       }
     }
 
