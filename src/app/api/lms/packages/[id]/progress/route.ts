@@ -104,11 +104,14 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  if (isTerminal && course_id) {
+  // Keep the stored course progress current: refresh on every item
+  // completion (so the admin roster/dashboard climb live as the student
+  // works), and on package terminal. Skip pure time-only beacon saves.
+  if (course_id && (isTerminal || completed_item_id)) {
     await syncEnrollmentProgress(student.id, course_id)
-    if (status === "passed") {
-      await checkCourseCompletion(student.id, course_id)
-    }
+  }
+  if (isTerminal && course_id && status === "passed") {
+    await checkCourseCompletion(student.id, course_id)
   }
 
   return NextResponse.json(data)
