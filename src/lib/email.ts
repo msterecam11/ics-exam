@@ -257,10 +257,12 @@ export async function sendStudentCredentialsEmail(opts: {
 export function buildCompletionEmail(opts: {
   studentName: string
   courseTitle: string
-  courseId:    string
+  courseId?:   string   // unused in the body; kept for callers that pass it
   completedAt: string
+  kind?:       "course" | "learning path" | "programme"   // label for subject line
 }) {
-  const { studentName, courseTitle, courseId, completedAt } = opts
+  const { studentName, courseTitle, completedAt, kind = "course" } = opts
+  const kindLabel = kind === "course" ? "Course" : kind === "learning path" ? "Learning Path" : "Programme"
   const dateStr = new Date(completedAt).toLocaleDateString("en-GB", {
     day: "numeric", month: "long", year: "numeric",
   })
@@ -288,7 +290,7 @@ export function buildCompletionEmail(opts: {
     </p>
   `
   return {
-    subject: `Course Complete: "${courseTitle}" — ICS Aviation LMS`,
+    subject: `${kindLabel} Complete: "${courseTitle}" — ICS Aviation LMS`,
     html:    baseTemplate(body),
   }
 }

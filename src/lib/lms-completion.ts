@@ -201,12 +201,27 @@ export async function checkLearningPathCompletion(studentId: string, courseId: s
 
       if (!path || (path as any).certificate_enabled === false) continue
 
-      await issueCertificate({
+      const certNumber = await issueCertificate({
         studentId,
         title:    path.title,
         type:     "learning_path",
         sourceId: path_id,
       })
+
+      // Notify the student — only when a new certificate was actually issued
+      if (certNumber) {
+        const { data: student } = await db
+          .from("lms_students").select("name, email").eq("id", studentId).single()
+        if (student?.email) {
+          const { subject, html } = buildCompletionEmail({
+            studentName: student.name,
+            courseTitle: path.title,
+            completedAt: new Date().toISOString(),
+            kind: "learning path",
+          })
+          sendEmail({ type: "completion", to: student.email, subject, html, studentId }).catch(() => {})
+        }
+      }
     }
   } catch { /* non-critical */ }
 }
@@ -288,13 +303,29 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
       if ((passedCount ?? 0) < finalExams.length) continue
 
       // All passed — issue cohort certificate
-      await issueCertificate({
+      const certNumber = await issueCertificate({
         studentId,
         title:       (cohort as any).name,
         type:        "cohort",
         sourceId:    cohort_id,
         sourceTitle: trackName,
       })
+
+      // Notify the student — only when a new certificate was actually issued
+      if (certNumber) {
+        const { data: student } = await db
+          .from("lms_students").select("name, email").eq("id", studentId).single()
+        if (student?.email) {
+          const title = trackName ? `${(cohort as any).name} — ${trackName}` : (cohort as any).name
+          const { subject, html } = buildCompletionEmail({
+            studentName: student.name,
+            courseTitle: title,
+            completedAt: new Date().toISOString(),
+            kind: "programme",
+          })
+          sendEmail({ type: "completion", to: student.email, subject, html, studentId }).catch(() => {})
+        }
+      }
     }
   } catch { /* non-critical */ }
 }
