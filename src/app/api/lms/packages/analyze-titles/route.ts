@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import Groq from "groq-sdk"
-import { spawn } from "child_process"
-import path from "path"
+import { extractPdfPageTexts } from "@/lib/pdf-extract"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -23,97 +22,6 @@ function cleanFilename(name: string): string {
     .replace(/\b\w/g, c => c.toUpperCase()) // Title Case
 }
 
-// ── Parse Supabase storage URL → bucket + path ────────────────────
-function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } | null {
-  // https://*.supabase.co/storage/v1/object/public/{bucket}/{path}
-  // https://*.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=...
-  const m = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/?]+)\/(.+?)(?:\?|$)/)
-  if (!m) return null
-  return { bucket: m[1], path: decodeURIComponent(m[2]) }
-}
-
-// ── PDF text extraction via subprocess ────────────────────────────
-// pdfjs cannot run inside the Next.js/Turbopack bundle (worker setup
-// fails in bundled environments). We spawn scripts/extract-pdf-text.js
-// as a plain Node.js subprocess so it loads pdfjs natively.
-async function extractPdfPageTexts(url: string): Promise<string[]> {
-  try {
-    // Download the PDF — try plain fetch first, fall back to Supabase storage client
-    let rawBuffer: Buffer | null = null
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-    if (res.ok) {
-      rawBuffer = Buffer.from(await res.arrayBuffer())
-    } else {
-      console.warn(`[analyze-titles] PDF fetch ${res.status} — trying Supabase storage client`)
-      const parsed = parseSupabaseStorageUrl(url)
-      if (parsed) {
-        const { data } = await db.storage.from(parsed.bucket).download(parsed.path)
-        if (data) rawBuffer = Buffer.from(await (data as Blob).arrayBuffer())
-      }
-    }
-
-    if (!rawBuffer) {
-      console.warn(`[analyze-titles] Could not download PDF: ${url.slice(0, 80)}`)
-      return []
-    }
-
-    // Spawn the extraction script as a subprocess (unbundled native Node.js)
-    const scriptPath = path.join(process.cwd(), "scripts", "extract-pdf-text.js")
-    const buf = rawBuffer
-
-    const texts = await new Promise<string[]>((resolve) => {
-      const proc = spawn(process.execPath, [scriptPath], { timeout: 30_000 })
-      const out: Buffer[] = []
-      const err: Buffer[] = []
-
-      proc.stdout.on("data", d => out.push(d))
-      proc.stderr.on("data", d => {
-        err.push(d)
-        process.stdout.write(d) // forward subprocess diagnostics to Render logs
-      })
-
-      proc.on("close", code => {
-        const rawOut = Buffer.concat(out)
-        console.log(`[analyze-titles] subprocess exit code=${code} stdout_bytes=${rawOut.length}`)
-        if (code !== 0) {
-          console.error("[analyze-titles] PDF subprocess error:", Buffer.concat(err).toString().slice(0, 300))
-          resolve([])
-          return
-        }
-        try {
-          // pdfjs may write warning lines before the JSON — skip to first '['
-          const rawStr = rawOut.toString()
-          const jsonStart = rawStr.indexOf("[")
-          if (jsonStart === -1) {
-            console.error("[analyze-titles] No JSON array in subprocess stdout, preview:", rawStr.slice(0, 300))
-            resolve([])
-            return
-          }
-          const parsed = JSON.parse(rawStr.slice(jsonStart))
-          resolve(Array.isArray(parsed) ? parsed : [])
-        } catch (e: any) {
-          console.error("[analyze-titles] JSON.parse failed:", e.message, "stdout preview:", rawOut.toString().slice(0, 200))
-          resolve([])
-        }
-      })
-
-      proc.on("error", e => {
-        console.error("[analyze-titles] PDF subprocess spawn failed:", e.message)
-        resolve([])
-      })
-
-      proc.stdin.write(buf)
-      proc.stdin.end()
-    })
-
-    const withText = texts.filter(t => t.length > 10).length
-    console.log(`[analyze-titles] PDF extracted: ${texts.length} pages, ${withText} have text`)
-    return texts
-  } catch (err) {
-    console.error(`[analyze-titles] PDF extraction failed:`, err)
-    return []
-  }
-}
 
 // ── Groq: generate titles for all pages of one PDF (single call) ──
 async function titlesForPdfPages(

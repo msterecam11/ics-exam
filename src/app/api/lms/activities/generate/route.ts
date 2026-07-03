@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import Groq from "groq-sdk"
+import { extractPdfPageTexts } from "@/lib/pdf-extract"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -63,6 +64,43 @@ export async function POST(req: Request) {
   const skillsAssessed = (a.skills_assessed ?? []).join(", ")
   const slideCount    = a.content_breakdown?.slides ?? a.content_breakdown?.pages ?? 20
 
+  // ── Gather the ACTUAL source content so activities are grounded in the
+  //    real training material, not the model's own (often wrong) aviation
+  //    knowledge. This is the core fix for inaccurate generated activities.
+  const { data: pkgForContent } = await db
+    .from("lms_packages")
+    .select("lms_package_items(type, title, config, order_index)")
+    .eq("module_id", module_id)
+    .single()
+
+  const srcItems: any[] = ((pkgForContent?.lms_package_items ?? []) as any[])
+    .sort((x: any, y: any) => x.order_index - y.order_index)
+
+  // Extract text from each distinct slide PDF once, then map page → text
+  const pdfUrls = Array.from(new Set(
+    srcItems.filter(it => it.type === "slide_pdf" && it.config?.file_url).map(it => it.config.file_url as string)
+  ))
+  const pdfPagesByUrl: Record<string, string[]> = {}
+  await Promise.all(pdfUrls.map(async (u) => { pdfPagesByUrl[u] = await extractPdfPageTexts(u) }))
+
+  // Build an ordered source-content string from slides + text blocks
+  const contentParts: string[] = []
+  for (const it of srcItems) {
+    if (it.type === "slide_pdf" && it.config?.file_url) {
+      const pages = pdfPagesByUrl[it.config.file_url] ?? []
+      const pageNo = it.config.page_number ?? 1
+      const txt = String(it.config.page_text ?? pages[pageNo - 1] ?? "").replace(/\s+/g, " ").trim()
+      if (txt.length > 15) contentParts.push(`[Slide ${pageNo}] ${txt}`)
+    } else if (it.type === "text" && it.config?.html) {
+      const txt = String(it.config.html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      if (txt.length > 15) contentParts.push(txt)
+    }
+  }
+  let sourceContent = contentParts.join("\n\n")
+  const CONTENT_BUDGET = 9000  // ~2.2k tokens of source, leaves room for output
+  if (sourceContent.length > CONTENT_BUDGET) sourceContent = sourceContent.slice(0, CONTENT_BUDGET) + "\n…(truncated)"
+  const hasSource = sourceContent.length > 100
+
   const enabledTypes = types.length > 0 ? types : Object.keys(TYPE_LABELS)
   const typeList = enabledTypes
     .map((t: string) => `- ${t}: ${TYPE_LABELS[t] ?? t}`)
@@ -93,7 +131,20 @@ TOTAL SLIDES: ${slideCount}
 LANGUAGE: ${language}
 DIFFICULTY: ${difficulty} — ${difficultyGuide}
 PLACEMENT RULE: ${placementGuide}
+${hasSource ? `
+═══ SOURCE CONTENT — the actual training material for this module ═══
+"""
+${sourceContent}
+"""
 
+GROUNDING RULES (CRITICAL — this is how accuracy is achieved):
+- Base EVERY question, option, answer, and fact strictly on the SOURCE CONTENT above.
+- Do NOT use outside aviation knowledge or invent regulations, numbers, or facts that are not present in the source.
+- Every "correct" answer MUST be directly verifiable in the source text. If you cannot verify it from the source, do not write that question.
+- If the source doesn't cover enough for ${count} activities, generate fewer rather than inventing content.
+` : `
+NOTE: No extracted source text is available for this module, so rely on the topics/summary above and well-established, universally-accepted aviation facts only. Prefer conceptual questions over specific numbers you cannot verify.
+`}
 AVAILABLE ACTIVITY TYPES (use only these):
 ${typeList}
 
@@ -201,7 +252,9 @@ ${difficulty === "easy"
 MCQ AND SCENARIO RULE: The correct answer must NOT be the longest option. Mix answer lengths deliberately.
 
 - All content must be directly relevant to "${moduleTitle}" and the topics listed
-- Use real aviation terminology and accurate facts (GCAA, ICAO, EASA regulations where applicable)
+${hasSource
+  ? "- Use ONLY facts, terms, and numbers stated in the SOURCE CONTENT above — do not add anything from outside knowledge"
+  : "- Use real aviation terminology and accurate facts (GCAA, ICAO, EASA regulations where applicable)"}
 - Placement slide must be between 1 and ${slideCount}
 - ${language !== "English" ? `Write all content in ${language}` : "Write in English"}
 - Return ONLY the JSON array, starting with [ and ending with ]`
