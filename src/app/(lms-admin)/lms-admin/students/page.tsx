@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   Plus, Search, MoreHorizontal, Trash2, Edit,
-  Mail, Eye, EyeOff, Loader2, Upload,
+  Mail, Eye, EyeOff, Loader2, Upload, Download,
   User, Building2, RefreshCw, BarChart2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -213,6 +213,25 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 
   function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true) }
 
+  function downloadTemplate() {
+    // Header matches the columns the import parser understands. Two sample
+    // rows show the format; password left blank = auto-generated + emailed.
+    const csv = [
+      "name,email,password,job_title,company,department,language",
+      "John Smith,john.smith@example.com,,Ramp Agent,ICS Aviation,Ground Operations,en",
+      "Sara Ali,sara.ali@example.com,,Air Traffic Controller,ICS Aviation,ATC,en",
+    ].join("\r\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href = url
+    a.download = "ics-student-import-template.csv"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) { onClose(); reset() } }}>
       <DialogContent className="max-w-lg">
@@ -222,6 +241,13 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 
         {!result ? (
           <form onSubmit={handleUpload} className="space-y-4 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-[#1B4F8A]/5 border border-[#1B4F8A]/15 px-3 py-2.5">
+              <span className="text-xs text-slate-600">Not sure of the format? Start from our template.</span>
+              <button type="button" onClick={downloadTemplate}
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#1B4F8A] hover:underline shrink-0">
+                <Download className="h-3.5 w-3.5" /> Download template
+              </button>
+            </div>
             <div className="space-y-1">
               <Label>CSV File <span className="text-red-500">*</span></Label>
               <input
