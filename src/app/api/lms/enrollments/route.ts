@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     const { data, error } = await db
       .from("lms_enrollments")
       .select(`
-        id, status, enrolled_at, completed_at, progress_pct,
+        id, status, enrolled_at, completed_at, progress_pct, time_spent_s,
         lms_students(id, name, email, company, job_title)
       `)
       .eq("course_id", courseId)

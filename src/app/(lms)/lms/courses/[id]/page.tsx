@@ -68,7 +68,7 @@ export default async function StudentCoursePage({
   // Verify enrollment
   const { data: enrollment } = await db
     .from("lms_enrollments")
-    .select("id, status, enrolled_at, completed_at, progress_pct")
+    .select("id, status, enrolled_at, completed_at, progress_pct, time_spent_s")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
     .single()
@@ -360,6 +360,12 @@ export default async function StudentCoursePage({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">{overallPct}% complete</p>
+                {((enrollment as any).time_spent_s ?? 0) >= 60 && (
+                  <p className="text-[11px] text-slate-400 mt-0.5 flex items-center justify-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {(() => { const s = (enrollment as any).time_spent_s ?? 0; const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return h > 0 ? `${h}h${m>0?` ${m}m`:""}` : `${m}m` })()}
+                  </p>
+                )}
               </div>
             </div>
           </div>

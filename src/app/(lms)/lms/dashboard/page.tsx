@@ -18,7 +18,7 @@ export default async function StudentDashboard() {
   const { data: enrollments } = await db
     .from("lms_enrollments")
     .select(`
-      id, status, enrolled_at, completed_at, progress_pct,
+      id, status, enrolled_at, completed_at, progress_pct, time_spent_s,
       lms_courses(id, title, description, delivery_mode, thumbnail_url, end_date, start_date)
     `)
     .eq("student_id", student.id)
@@ -244,12 +244,13 @@ export default async function StudentDashboard() {
       ))}
 
       {/* ── Stat cards ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
-          { label: "Enrolled",     value: (enrollments ?? []).length, icon: BookOpen,       color: "text-[#1B4F8A]",   bg: "bg-[#1B4F8A]/6",  border: "border-[#1B4F8A]/12", iconBg: "bg-[#1B4F8A]/10" },
-          { label: "In Progress",  value: active.length,              icon: TrendingUp,     color: "text-amber-600",   bg: "bg-amber-50",      border: "border-amber-100",    iconBg: "bg-amber-100"    },
-          { label: "Completed",    value: completed.length,           icon: CheckCircle2,   color: "text-emerald-600", bg: "bg-emerald-50",    border: "border-emerald-100",  iconBg: "bg-emerald-100"  },
-          { label: "Certificates", value: completed.length,           icon: GraduationCap,  color: "text-purple-600",  bg: "bg-purple-50",     border: "border-purple-100",   iconBg: "bg-purple-100"   },
+          { label: "Enrolled",      value: (enrollments ?? []).length, icon: BookOpen,       color: "text-[#1B4F8A]",   bg: "bg-[#1B4F8A]/6",  border: "border-[#1B4F8A]/12", iconBg: "bg-[#1B4F8A]/10" },
+          { label: "In Progress",   value: active.length,              icon: TrendingUp,     color: "text-amber-600",   bg: "bg-amber-50",      border: "border-amber-100",    iconBg: "bg-amber-100"    },
+          { label: "Completed",     value: completed.length,           icon: CheckCircle2,   color: "text-emerald-600", bg: "bg-emerald-50",    border: "border-emerald-100",  iconBg: "bg-emerald-100"  },
+          { label: "Certificates",  value: completed.length,           icon: GraduationCap,  color: "text-purple-600",  bg: "bg-purple-50",     border: "border-purple-100",   iconBg: "bg-purple-100"   },
+          { label: "Learning time", value: (() => { const s = (enrollments ?? []).reduce((a: number, e: any) => a + (e.time_spent_s ?? 0), 0); const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return s < 60 ? "—" : h > 0 ? `${h}h${m>0?` ${m}m`:""}` : `${m}m` })(), icon: Clock, color: "text-sky-600", bg: "bg-sky-50", border: "border-sky-100", iconBg: "bg-sky-100" },
         ].map(s => {
           const Icon = s.icon
           return (

@@ -425,8 +425,19 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     const pct = Math.min(100, Math.round(sumPct / (modules as any[]).length))
 
+    // Total active time-on-task for the whole course (all packages + all exam/
+    // assignment attempts, incl. optional modules). Stored so the roster,
+    // dashboard, and reports read one number instead of re-summing.
+    const [allPkgTime, allAttemptTime] = await Promise.all([
+      db.from("lms_package_progress").select("time_spent").eq("student_id", studentId).eq("course_id", courseId).then(r => r.data ?? []),
+      db.from("lms_module_attempts").select("time_spent_s").eq("student_id", studentId).eq("course_id", courseId).then(r => r.data ?? []),
+    ])
+    const timeSpentS =
+      (allPkgTime as any[]).reduce((s, p) => s + (p.time_spent ?? 0), 0) +
+      (allAttemptTime as any[]).reduce((s, a) => s + (a.time_spent_s ?? 0), 0)
+
     await db.from("lms_enrollments")
-      .update({ progress_pct: pct })
+      .update({ progress_pct: pct, time_spent_s: timeSpentS })
       .eq("student_id", studentId)
       .eq("course_id", courseId)
 

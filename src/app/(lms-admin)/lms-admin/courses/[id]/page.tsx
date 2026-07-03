@@ -157,8 +157,17 @@ interface Module {
 }
 interface Enrollment {
   id: string; status: string; enrolled_at: string
-  completed_at: string | null; progress_pct: number
+  completed_at: string | null; progress_pct: number; time_spent_s?: number
   lms_students: { id: string; name: string; email: string; company?: string }
+}
+
+// Seconds → compact "2h 15m" / "45m" / "30s" / "—"
+function fmtTime(s?: number) {
+  if (!s || s < 1) return "—"
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h}h${m > 0 ? ` ${m}m` : ""}`
+  if (m > 0) return `${m}m`
+  return `${s}s`
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -1059,14 +1068,14 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
         </div>
       ) : (
         <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="grid grid-cols-[1fr_140px_100px_110px_110px_60px] gap-0 border-b bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            <span>Student</span><span>Progress</span><span>Status</span><span>Enrolled</span><span>Completed</span><span />
+          <div className="grid grid-cols-[1fr_140px_70px_90px_100px_100px_72px] gap-0 border-b bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <span>Student</span><span>Progress</span><span>Time</span><span>Status</span><span>Enrolled</span><span>Completed</span><span />
           </div>
           <div className="divide-y divide-slate-50">
             {filtered.map(enr => {
               const s = enr.lms_students
               return (
-                <div key={enr.id} className="grid grid-cols-[1fr_140px_100px_110px_110px_60px] gap-0 px-4 py-3 items-center hover:bg-slate-50/50">
+                <div key={enr.id} className="grid grid-cols-[1fr_140px_70px_90px_100px_100px_72px] gap-0 px-4 py-3 items-center hover:bg-slate-50/50">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] font-bold text-xs flex items-center justify-center shrink-0">{s?.name?.[0]?.toUpperCase() ?? "?"}</div>
                     <div className="min-w-0"><p className="text-sm font-medium truncate">{s?.name}</p><p className="text-xs text-slate-400 truncate">{s?.email}</p></div>
@@ -1077,6 +1086,7 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
                     </div>
                     <span className="text-xs font-semibold text-slate-600 w-8 text-right">{enr.progress_pct}%</span>
                   </div>
+                  <span className="text-xs text-slate-500 tabular-nums" title="Total active time on this course">{fmtTime(enr.time_spent_s)}</span>
                   <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full inline-block", { "bg-emerald-100 text-emerald-700": enr.status === "completed", "bg-blue-100 text-blue-700": enr.status === "active", "bg-slate-100 text-slate-500": enr.status === "dropped" || !["completed","active","dropped"].includes(enr.status) })}>{enr.status === "dropped" ? "unenrolled" : enr.status}</span>
                   <p className="text-xs text-slate-500">{new Date(enr.enrolled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</p>
                   <p className="text-xs text-slate-500">{enr.completed_at ? new Date(enr.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" }) : "—"}</p>
