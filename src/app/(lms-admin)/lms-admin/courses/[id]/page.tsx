@@ -1021,6 +1021,16 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
     toast.success("Student re-enrolled")
   }
 
+  async function resetStudent(enrollmentId: string, studentId: string, name: string) {
+    if (!confirm(`Remove ${name} from this course and DELETE all their progress (packages, exams, assignments)? Their certificate is kept. This cannot be undone. If you enroll them again, they start from scratch.`)) return
+    setDropping(enrollmentId)
+    const res = await fetch("/api/lms/enrollments/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ course_id: courseId, student_id: studentId }) })
+    setDropping(null)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error ?? "Failed"); return }
+    setEnrollments(prev => prev.filter(e => e.id !== enrollmentId))
+    toast.success(`${name} removed and progress reset`)
+  }
+
   const filtered = enrollments.filter(e => !search || e.lms_students?.name?.toLowerCase().includes(search.toLowerCase()) || e.lms_students?.email?.toLowerCase().includes(search.toLowerCase()))
   const stats = { total: enrollments.length, active: enrollments.filter(e => e.status === "active").length, completed: enrollments.filter(e => e.status === "completed").length, avg: enrollments.length > 0 ? Math.round(enrollments.reduce((a, e) => a + e.progress_pct, 0) / enrollments.length) : 0 }
 
@@ -1077,12 +1087,17 @@ function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnro
                       </Link>
                     )}
                     {enr.status === "dropped" ? (
-                      <button onClick={() => reEnrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Re-enroll in course">
+                      <button onClick={() => reEnrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Re-enroll (keeps progress)">
                         {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
                       </button>
                     ) : (
-                      <button onClick={() => unenrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Unenroll from course">
+                      <button onClick={() => unenrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Unenroll (keeps progress, can resume)">
                         {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
+                    {s?.id && (
+                      <button onClick={() => resetStudent(enr.id, s.id, s.name ?? "this student")} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors" title="Remove & reset progress (start from scratch)">
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
