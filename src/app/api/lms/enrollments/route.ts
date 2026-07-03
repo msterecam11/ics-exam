@@ -197,24 +197,53 @@ export async function POST(req: Request) {
       )
   }
 
-  // Upsert enrollments (skip duplicates)
-  const rows = student_ids.map((sid: string) => ({
-    student_id:  sid,
-    course_id,
-    enrolled_by: session.user.id,
-    status:      "active",
-  }))
-
-  const { data, error } = await db
+  // Split requested students into: already-active (skip), previously
+  // dropped/removed (reactivate), and brand-new (insert). This makes
+  // re-enrolling a dropped student work — an upsert with ignoreDuplicates
+  // used to silently skip the leftover "dropped" row.
+  const { data: existing } = await db
     .from("lms_enrollments")
-    .upsert(rows, { onConflict: "student_id,course_id", ignoreDuplicates: true })
-    .select()
+    .select("id, student_id, status")
+    .eq("course_id", course_id)
+    .in("student_id", student_ids)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const existingByStudent = new Map((existing ?? []).map((e: any) => [e.student_id, e]))
+  const toInsert     = student_ids.filter((sid: string) => !existingByStudent.has(sid))
+  const toReactivate = (existing ?? []).filter((e: any) => e.status !== "active")
+
+  // Reactivate dropped/completed enrollments back to active
+  if (toReactivate.length) {
+    const { error: reErr } = await db
+      .from("lms_enrollments")
+      .update({ status: "active", completed_at: null })
+      .in("id", toReactivate.map((e: any) => e.id))
+    if (reErr) return NextResponse.json({ error: reErr.message }, { status: 500 })
+  }
+
+  // Insert brand-new enrollments
+  let inserted: any[] = []
+  if (toInsert.length) {
+    const rows = toInsert.map((sid: string) => ({
+      student_id:  sid,
+      course_id,
+      enrolled_by: session.user.id,
+      status:      "active",
+    }))
+    const { data, error } = await db.from("lms_enrollments").insert(rows).select()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    inserted = data ?? []
+  }
+
+  // Notify only the newly-enrolled and the reactivated (not already-active) students
+  const notifyIds = new Set<string>([
+    ...toInsert,
+    ...toReactivate.map((e: any) => e.student_id),
+  ])
+  const enrolledCount = inserted.length + toReactivate.length
 
   // Send enrollment emails (fire & forget — don't block response)
   const sendEmails = body.send_email !== false  // default true
-  if (sendEmails && (data?.length ?? 0) > 0) {
+  if (sendEmails && notifyIds.size > 0) {
     const { data: courseRow } = await db
       .from("lms_courses")
       .select("title")
@@ -224,7 +253,7 @@ export async function POST(req: Request) {
     const { data: students } = await db
       .from("lms_students")
       .select("id, name, email")
-      .in("id", student_ids)
+      .in("id", [...notifyIds])
 
     const courseTitle = courseRow?.title ?? "your course"
     for (const student of students ?? []) {
@@ -239,7 +268,7 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ enrolled: data?.length ?? 0 }, { status: 201 })
+  return NextResponse.json({ enrolled: enrolledCount }, { status: 201 })
 }
 
 // PATCH — update enrollment status (active / completed / dropped)
