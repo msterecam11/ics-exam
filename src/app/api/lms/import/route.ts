@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
+import { sendEmail, buildEnrollmentEmail, sendStudentCredentialsEmail } from "@/lib/email"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
 
   const file          = formData.get("file") as File | null
   const enrollCourseId = (formData.get("enroll_course_id") as string) || null
+  const sendEmails     = (formData.get("send_emails") as string) !== "false"  // default true
 
   if (!file) return NextResponse.json({ error: "file required" }, { status: 400 })
   if (!file.name.endsWith(".csv"))
@@ -46,6 +48,9 @@ export async function POST(req: Request) {
 
   const results: { row: number; email: string; status: "created" | "exists" | "error"; error?: string }[] = []
   const createdIds: string[] = []
+  // Track the raw (unhashed) password per created student so we can email
+  // them their login. Never persisted — used only for the credentials email.
+  const created: { id: string; name: string; email: string; rawPass: string }[] = []
 
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i])
@@ -86,6 +91,7 @@ export async function POST(req: Request) {
 
     results.push({ row: i + 1, email, status: "created" })
     createdIds.push(data.id)
+    created.push({ id: data.id, name, email, rawPass })
   }
 
   // Enroll newly created students if course_id provided
@@ -99,6 +105,24 @@ export async function POST(req: Request) {
     await db
       .from("lms_enrollments")
       .upsert(rows, { onConflict: "student_id,course_id", ignoreDuplicates: true })
+  }
+
+  // Emails — mirror the individual flow: every new student gets their login
+  // credentials; if enrolled into a course, they also get the enrollment
+  // email. Fire-and-forget (same pattern as the enroll endpoint).
+  if (sendEmails && created.length) {
+    let courseTitle = ""
+    if (enrollCourseId) {
+      const { data: c } = await db.from("lms_courses").select("title").eq("id", enrollCourseId).single()
+      courseTitle = c?.title ?? ""
+    }
+    for (const c of created) {
+      sendStudentCredentialsEmail({ studentName: c.name, studentEmail: c.email, password: c.rawPass }).catch(() => {})
+      if (enrollCourseId && courseTitle) {
+        const { subject, html } = buildEnrollmentEmail({ studentName: c.name, courseTitle, courseId: enrollCourseId })
+        sendEmail({ type: "enrollment", to: c.email, subject, html, studentId: c.id, courseId: enrollCourseId }).catch(() => {})
+      }
+    }
   }
 
   const total   = results.length

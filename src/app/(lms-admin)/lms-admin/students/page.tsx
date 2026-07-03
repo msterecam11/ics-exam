@@ -184,6 +184,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
   const [courseId,   setCourseId]   = useState("")
   const [courses,    setCourses]    = useState<{ id: string; title: string }[]>([])
   const [uploading,  setUploading]  = useState(false)
+  const [sendEmails, setSendEmails] = useState(true)
   const [result,     setResult]     = useState<{
     total: number; success: number; errors: number; skipped: number;
     results: { row: number; email: string; status: string; error?: string }[]
@@ -201,6 +202,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     const fd = new FormData()
     fd.append("file", file)
     if (courseId) fd.append("enroll_course_id", courseId)
+    fd.append("send_emails", sendEmails ? "true" : "false")
     const res  = await fetch("/api/lms/import", { method: "POST", body: fd })
     const data = await res.json()
     setUploading(false)
@@ -209,7 +211,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     if (data.success > 0) onDone()
   }
 
-  function reset() { setFile(null); setCourseId(""); setResult(null) }
+  function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true) }
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) { onClose(); reset() } }}>
@@ -250,6 +252,15 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
                 {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
               </select>
             </div>
+            <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+              <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} className="mt-0.5" />
+              <span className="text-sm text-slate-700">
+                Email login details to each new student
+                <span className="block text-xs text-slate-400 mt-0.5">
+                  Sends their email + password{courseId ? ", plus an enrollment notice for the selected course" : ""}. Recommended so students can sign in.
+                </span>
+              </span>
+            </label>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { onClose(); reset() }}>Cancel</Button>
               <Button type="submit" disabled={uploading} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
