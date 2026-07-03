@@ -17,7 +17,7 @@ import {
   ChevronDown, ChevronUp, Square, CheckSquare, Play,
   Globe, Music, Database, Search, Check, Sparkles, Puzzle,
   BookOpen, ArrowUpDown, AlertTriangle, TextCursor, WholeWord,
-  GitBranch, Layers3, Zap, ListOrdered,
+  GitBranch, Layers3, Zap, ListOrdered, Pencil,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -27,6 +27,9 @@ import { Label } from "@/components/ui/label"
 import LibraryPicker, { LibraryFile } from "@/components/lms/LibraryPicker"
 import { RichTextEditor } from "@/components/lms/RichTextEditor"
 import ActivityPlayer from "@/components/lms/ActivityPlayer"
+import ActivityContentEditor, {
+  EDITABLE_ACTIVITY_TYPES, isEditableActivityType, blankActivityContent,
+} from "@/components/lms/ActivityContentEditor"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -671,12 +674,31 @@ function ActivityItemEditor({
   const [generating,   setGenerating]   = useState(false)
 
   const hasContent = !!(cfg.content && Object.keys(cfg.content).length > 0)
-  const [activeTab, setActiveTab] = useState<"preview" | "generate">(hasContent ? "preview" : "generate")
+  const canEdit    = isEditableActivityType(cfg.activity_type ?? "mcq")
+  const [activeTab, setActiveTab] = useState<"preview" | "edit" | "generate">(hasContent ? "preview" : "generate")
 
   // Reset tab whenever the item changes (clicking a different activity in sidebar)
   useEffect(() => {
     setActiveTab(hasContent ? "preview" : "generate")
   }, [item.id])
+
+  // ── Manual edit helpers ────────────────────────────────────────
+  function updateContent(newContent: Record<string, any>) {
+    onChange({ config: { ...cfg, content: newContent, ai_generated: false } })
+  }
+  function changeActivityType(newType: string) {
+    onChange({ config: { ...cfg, activity_type: newType, content: blankActivityContent(newType), ai_generated: false } })
+  }
+
+  // Seed a blank template the first time an empty activity is opened in the Edit tab
+  useEffect(() => {
+    if (activeTab !== "edit") return
+    const empty = !cfg.content || Object.keys(cfg.content).length === 0
+    if (empty && isEditableActivityType(cfg.activity_type ?? "mcq")) {
+      updateContent(blankActivityContent(cfg.activity_type ?? "mcq"))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   // ── Load Expert analysis on mount ──────────────────────────────
   useEffect(() => {
@@ -822,6 +844,15 @@ function ActivityItemEditor({
               <span className="flex items-center gap-1.5"><Eye className="h-3 w-3" /> Preview</span>
             </button>
           )}
+          <button onClick={() => setActiveTab("edit")}
+            className={cn(
+              "px-4 py-2 text-xs font-semibold rounded-t-lg border border-b-0 transition-colors",
+              activeTab === "edit"
+                ? "bg-white border-slate-200 text-[#1B4F8A]"
+                : "bg-slate-50 border-transparent text-slate-400 hover:text-slate-600"
+            )}>
+            <span className="flex items-center gap-1.5"><Pencil className="h-3 w-3" /> Edit</span>
+          </button>
           <button onClick={() => setActiveTab("generate")}
             className={cn(
               "px-4 py-2 text-xs font-semibold rounded-t-lg border border-b-0 transition-colors",
@@ -852,6 +883,44 @@ function ActivityItemEditor({
               ai_generated: cfg.ai_generated ?? false,
             }}
           />
+        </div>
+      )}
+
+      {/* ── Edit tab (manual authoring) ─────────────────────────────── */}
+      {activeTab === "edit" && (
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Type + title */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</label>
+              <select value={cfg.activity_type ?? "mcq"}
+                onChange={e => changeActivityType(e.target.value)}
+                className="text-sm rounded-lg border border-slate-200 px-2.5 py-1.5 outline-none focus:border-[#1B4F8A] bg-white">
+                {EDITABLE_ACTIVITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {!canEdit && <option value={cfg.activity_type}>{cfg.activity_type} (AI only)</option>}
+              </select>
+              {cfg.ai_generated && (
+                <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  AI-generated — editing marks it manual
+                </span>
+              )}
+              <span className="text-[11px] text-slate-400 ml-auto">Changes save automatically</span>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Title</label>
+              <input value={item.title ?? ""} onChange={e => onChange({ title: e.target.value })}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-[#1B4F8A] focus:ring-1 focus:ring-[#1B4F8A] outline-none"
+                placeholder="Activity title" />
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-4">
+            <ActivityContentEditor
+              type={cfg.activity_type ?? "mcq"}
+              content={cfg.content ?? {}}
+              onChange={updateContent}
+            />
+          </div>
         </div>
       )}
 
