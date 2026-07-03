@@ -68,7 +68,7 @@ export default async function StudentCoursePage({
   // Verify enrollment
   const { data: enrollment } = await db
     .from("lms_enrollments")
-    .select("id, status, enrolled_at, completed_at")
+    .select("id, status, enrolled_at, completed_at, progress_pct")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
     .single()
@@ -263,9 +263,11 @@ export default async function StudentCoursePage({
     return { ...mod, isModuleLocked: !prevDone }
   })
 
-  const overallPct = modsWithLock.length > 0
-    ? Math.round(modsWithLock.reduce((acc: number, m: any) => acc + m.pct, 0) / modsWithLock.length)
-    : 0
+  // Overall % uses the stored enrollment.progress_pct (maintained by
+  // syncEnrollmentProgress, mandatory-modules-only) so the ring matches the
+  // dashboard, admin roster, and reports. Per-module bars below still show
+  // live per-module detail (including optional modules).
+  const overallPct = Math.min(100, Math.round((enrollment as any).progress_pct ?? 0))
 
   // Check if student already submitted feedback
   let alreadySubmittedFeedback = false

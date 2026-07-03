@@ -411,7 +411,9 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         const done  = prog?.status === "passed" || prog?.status === "completed"
         const completed = Array.isArray(prog?.completed_items) ? (prog.completed_items as any[]).length : 0
         const total = pkgId ? (totalItemsByPkg[pkgId] ?? 0) : 0
-        sumPct += done ? 100 : total > 0 ? Math.round((completed / total) * 100) : 0
+        // Cap per module: completed_items can exceed total if items were
+        // removed from the package after the student finished them.
+        sumPct += done ? 100 : total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
       } else if (mod.module_type === "final_exam") {
         sumPct += examPassedSet.has(mod.id) ? 100 : examAttemptedSet.has(mod.id) ? 30 : 0
       } else {
@@ -421,7 +423,7 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
       }
     }
 
-    const pct = Math.round(sumPct / (modules as any[]).length)
+    const pct = Math.min(100, Math.round(sumPct / (modules as any[]).length))
 
     await db.from("lms_enrollments")
       .update({ progress_pct: pct })
