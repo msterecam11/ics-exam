@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { createStudentSession, setStudentCookie, deleteStudentSession } from "@/lib/lms-auth"
+import { verifyTurnstile } from "@/lib/turnstile"
 import bcrypt from "bcryptjs"
 
 const MAX_ATTEMPTS = 5
@@ -8,10 +9,19 @@ const LOCK_MINUTES = 15
 
 // POST /api/lms/auth — login
 export async function POST(req: Request) {
-  const { email, password } = await req.json().catch(() => ({}))
+  const { email, password, turnstileToken } = await req.json().catch(() => ({}))
 
   if (!email || !password)
     return NextResponse.json({ error: "Email and password required" }, { status: 400 })
+
+  // Cloudflare Turnstile CAPTCHA (production only — bypassed in dev)
+  if (process.env.NODE_ENV === "production") {
+    if (!turnstileToken)
+      return NextResponse.json({ error: "Please complete the captcha." }, { status: 400 })
+    const captchaOk = await verifyTurnstile(turnstileToken)
+    if (!captchaOk)
+      return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+  }
 
   const { data: student } = await db
     .from("lms_students")

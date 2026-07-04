@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server"
 import Groq from "groq-sdk"
+import { getStudentSession } from "@/lib/lms-auth"
+import { auth } from "@/lib/auth"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
 })
 
 export async function POST(req: Request) {
+  // Require a logged-in student (real usage) or admin/instructor (preview).
+  // Prevents anonymous abuse of this AI endpoint (cost / prompt-injection).
+  const student = await getStudentSession()
+  if (!student) {
+    const session = await auth().catch(() => null)
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const { question, rubric, answer } = await req.json().catch(() => ({}))
 
   if (!question || !answer)

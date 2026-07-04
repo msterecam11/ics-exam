@@ -1,13 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
+import Script from "next/script"
 import { Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
+declare global {
+  interface Window { onLmsTurnstileSuccess?: (token: string) => void }
+}
 
 export default function LmsLoginPage() {
   const router = useRouter()
@@ -16,26 +21,46 @@ export default function LmsLoginPage() {
   const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState("")
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+
+  // In development the captcha is bypassed (server also bypasses in dev)
+  const isDev = process.env.NODE_ENV === "development"
+  const canSubmit = (isDev || !!turnstileToken) && !!email && !!password
+
+  // Global callback Turnstile invokes when the challenge is solved
+  useEffect(() => {
+    window.onLmsTurnstileSuccess = (token: string) => setTurnstileToken(token)
+    return () => { window.onLmsTurnstileSuccess = undefined }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canSubmit) return
     setError("")
     setLoading(true)
 
     const res = await fetch("/api/lms/auth", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ email, password }),
+      body:    JSON.stringify({ email, password, turnstileToken: turnstileToken ?? "" }),
     })
     const data = await res.json()
     setLoading(false)
 
-    if (!res.ok) { setError(data.error ?? "Login failed"); return }
+    if (!res.ok) {
+      setError(data.error ?? "Login failed")
+      // Reset the widget so a fresh token is required next attempt
+      if (typeof (window as any).turnstile !== "undefined") (window as any).turnstile.reset()
+      setTurnstileToken(null)
+      return
+    }
     window.location.href = "/lms/dashboard"
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1B4F8A] via-[#1a4578] to-[#0f2d50] flex items-center justify-center p-4">
+      {/* Load Turnstile script (async, non-blocking) */}
+      <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="lazyOnload" />
       <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-10 pointer-events-none"
         style={{ background: "radial-gradient(circle, #60a5fa, transparent)", transform: "translate(30%, -30%)" }} />
       <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-10 pointer-events-none"
@@ -102,7 +127,19 @@ export default function LmsLoginPage() {
                 </div>
               )}
 
-              <Button type="submit" disabled={loading || !email || !password}
+              {/* Cloudflare Turnstile — renders automatically via data-* attrs */}
+              {!isDev && (
+                <div className="flex justify-center">
+                  <div
+                    className="cf-turnstile"
+                    data-sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+                    data-callback="onLmsTurnstileSuccess"
+                    data-theme="light"
+                  />
+                </div>
+              )}
+
+              <Button type="submit" disabled={loading || !canSubmit}
                 className="w-full h-11 bg-[#1B4F8A] hover:bg-[#163f6e] text-white font-semibold text-sm rounded-xl">
                 {loading
                   ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Signing in…</>
