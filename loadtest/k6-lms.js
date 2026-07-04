@@ -41,6 +41,10 @@ import { Rate } from "k6/metrics"
 const BASE      = __ENV.BASE_URL   || "http://localhost:3000"
 const COOKIE    = __ENV.LMS_COOKIE || ""
 const COURSE_ID = __ENV.COURSE_ID  || ""
+// Optional — makes the test navigate REAL course content like a student:
+const MODULE_ID  = __ENV.MODULE_ID  || ""   // a package module's id (from /lms/courses/<c>/package/<THIS>)
+const PACKAGE_ID = __ENV.PACKAGE_ID || ""   // that module's package id — enables progress SAVES (writes data!)
+const WRITE      = __ENV.WRITE === "1" && PACKAGE_ID // only save progress when explicitly enabled
 
 const errors = new Rate("errors")
 
@@ -102,5 +106,26 @@ export default function () {
     res = http.get(`${BASE}/lms/courses/${COURSE_ID}`, params)
     check(res, { "course ok": (r) => r.status === 200 }) || errors.add(1)
     pause(2)
+  }
+
+  // 4) Open the actual content — the package player page (heavy SSR: package
+  //    + items + progress). This is what a student sees inside a module.
+  if (MODULE_ID && COURSE_ID) {
+    res = http.get(`${BASE}/lms/courses/${COURSE_ID}/package/${MODULE_ID}`, params)
+    check(res, { "package player ok": (r) => r.status === 200 }) || errors.add(1)
+    pause(2)
+
+    // 5) Save progress — the WRITE path (accumulate study time, like the
+    //    30-second beacon a real player sends). Only runs when WRITE=1.
+    //    NOTE: this writes to the account whose cookie you used — use a
+    //    throwaway test student, not your own, if you enable it.
+    if (WRITE) {
+      const payload = JSON.stringify({ module_id: MODULE_ID, course_id: COURSE_ID, time_spent: 30 })
+      res = http.post(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, payload, {
+        headers: { Cookie: `lms_session=${COOKIE}`, "Content-Type": "application/json" },
+      })
+      check(res, { "progress save ok": (r) => r.status === 200 }) || errors.add(1)
+      pause(1)
+    }
   }
 }
