@@ -105,7 +105,8 @@ const writeParams = { headers: { Cookie: `lms_session=${COOKIE}`, "Content-Type"
 
 function visit(path, name) {
   const res = http.get(`${BASE}${path}`, params)
-  check(res, { [`${name} ok`]: (r) => r.status === 200 }) || errors.add(1)
+  const ok = check(res, { [`${name} ok`]: (r) => r.status === 200 })
+  errors.add(!ok) // record EVERY request (true rate), not just failures
   return res
 }
 
@@ -132,7 +133,8 @@ export default function () {
       const body = { module_id: MODULE_ID, course_id: COURSE_ID, time_spent: 30 }
       if (ITEM_IDS.length) body.completed_item_id = ITEM_IDS[Math.floor(Math.random() * ITEM_IDS.length)]
       const res = http.post(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, JSON.stringify(body), writeParams)
-      check(res, { "progress save ok": (r) => r.status === 200 }) || errors.add(1)
+      const ok = check(res, { "progress save ok": (r) => r.status === 200 })
+      errors.add(!ok)
       pause(1)
     }
   }
