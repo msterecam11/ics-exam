@@ -11,14 +11,22 @@
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
 import { sendEmail, buildSessionReminderEmail } from "@/lib/email"
 
 export const maxDuration = 60
 
 export async function GET(req: Request) {
+  // Allow EITHER the scheduled cron job (x-cron-secret header) OR a logged-in
+  // admin/instructor (the manual "trigger" button). Requiring one of the two
+  // also closes the gap where the endpoint was open if CRON_SECRET was unset.
   const secret = req.headers.get("x-cron-secret")
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const validSecret = !!process.env.CRON_SECRET && secret === process.env.CRON_SECRET
+  if (!validSecret) {
+    const session = await auth().catch(() => null)
+    const isMgr = !!session && (session.user.role === "admin" || session.user.role === "instructor")
+    if (!isMgr) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   // Tomorrow's date
   const tomorrow = new Date()

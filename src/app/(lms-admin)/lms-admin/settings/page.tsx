@@ -515,10 +515,9 @@ function NotificationsTab() {
   async function triggerReminders() {
     setSending(true); setResult("")
     try {
-      const secret = process.env.NEXT_PUBLIC_CRON_SECRET ?? ""
-      const res  = await fetch("/api/cron/session-reminders", {
-        headers: secret ? { authorization: `Bearer ${secret}` } : {},
-      })
+      // Authenticated via the admin session cookie — the cron route accepts a
+      // logged-in admin. No client-side secret needed.
+      const res  = await fetch("/api/cron/session-reminders")
       const data = await res.json()
       if (!res.ok) { setResult(`Error: ${data.error ?? "Failed"}`); return }
       setResult(`✓ Sent ${data.sent} reminder${data.sent !== 1 ? "s" : ""} for ${data.sessions} session${data.sessions !== 1 ? "s" : ""} (${data.skipped} skipped)`)
