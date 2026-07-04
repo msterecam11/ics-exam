@@ -21,17 +21,18 @@ export type GroupAssessment = {
 }
 export type GroupReportData = {
   course: { id: string; title: string; delivery_mode: string; description: string; status: string }
+  meta: { startDate: string | null; endDate: string | null; instructor: string | null; preparedBy: string }
   stats: { enrolled: number; completed: number; avgProgress: number; completionRate: number; examPass: number; examExists: boolean; pendingGrades: number; avgTimeS: number; totalTimeS: number }
   buckets: { label: string; count: number }[]
   bucketMax: number
-  moduleStats: { title: string; type: string; avg: number | null; done: number | null; total: number }[]
+  moduleStats: { title: string; type: string; avg: number | null; done: number | null; total: number; avgTimeS: number }[]
   atRisk: { name: string; email: string; id: string; progressPct: number; reasons: string[] }[]
   charts: {
     examScoreBuckets: { label: string; count: number }[]
     passFail: { passed: number; failed: number; notAttempted: number }
     statusCounts: { active: number; completed: number; dropped: number }
   }
-  examAnalysis: { hardestQuestions: { text: string; correctPct: number; n: number }[]; difficulty: { mastered: number; mixed: number; struggled: number; total: number } }
+  examAnalysis: { hardestQuestions: { text: string; correctPct: number; n: number }[]; difficulty: { mastered: number; mixed: number; struggled: number; total: number }; topicRadar: { label: string; value: number }[] }
   certificates: { issued: number; released: number }
   attendance: { overallPct: number; perSession: { title: string; date: string; presentPct: number }[] } | null
   feedbackRatings: { label: string; value: number }[]
@@ -111,6 +112,29 @@ function Donut({ segments, size = 116 }: { segments: { value: number; color: str
         ))}
       </div>
     </div>
+  )
+}
+
+function RadarChart({ data, size = 280 }: { data: { label: string; value: number }[]; size?: number }) {
+  const cx = size / 2, cy = size / 2, R = size / 2 - 52
+  const n = data.length
+  if (n < 3) return null
+  const angle = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2
+  const point = (i: number, r: number): [number, number] => [cx + Math.cos(angle(i)) * r, cy + Math.sin(angle(i)) * r]
+  const poly = data.map((d, i) => point(i, (R * Math.min(d.value, 100)) / 100).join(",")).join(" ")
+  return (
+    <svg width={size} height={size}>
+      {[0.25, 0.5, 0.75, 1].map((f, k) => (
+        <polygon key={k} points={data.map((_, i) => point(i, R * f).join(",")).join(" ")} fill="none" stroke="#e2e8f0" strokeWidth={1} />
+      ))}
+      {data.map((_, i) => { const [x, y] = point(i, R); return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e2e8f0" strokeWidth={1} /> })}
+      <polygon points={poly} fill="rgba(27,79,138,0.15)" stroke="#1B4F8A" strokeWidth={2} />
+      {data.map((d, i) => { const [x, y] = point(i, R + 18); return (
+        <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8.5} fill="#475569">
+          {d.label.length > 20 ? d.label.slice(0, 19) + "…" : d.label} {d.value}%
+        </text>
+      ) })}
+    </svg>
   )
 }
 
@@ -235,6 +259,15 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               <div className="text-center"><p className="text-2xl font-bold text-white">{stats.completed}/{stats.enrolled}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completed</p></div>
               {stats.examExists && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{stats.examPass}/{stats.enrolled}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exam Pass</p></div></>}
               {stats.avgTimeS > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(stats.avgTimeS)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Time</p></div></>}
+            </div>
+
+            {/* Metadata strip */}
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[11px] text-white/45 pt-2">
+              {(data.meta.startDate || data.meta.endDate) && (
+                <span>{data.meta.startDate ? new Date(data.meta.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}{data.meta.endDate ? ` → ${new Date(data.meta.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}</span>
+              )}
+              {data.meta.instructor && <span>Instructor: <span className="text-white/70">{data.meta.instructor}</span></span>}
+              <span>Prepared by <span className="text-white/70">{data.meta.preparedBy}</span></span>
             </div>
           </div>
           <div className="px-12 py-6 border-t border-white/10 flex items-center justify-between shrink-0">
@@ -383,6 +416,7 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
                         {m.avg !== null ? `${m.avg}%` : "—"}
                         {m.type === "final_exam" && m.done !== null ? ` · ${m.done}/${m.total} passed` : ""}
                         {m.type === "package" && m.done !== null ? ` · ${m.done}/${m.total} done` : ""}
+                        {m.type === "package" && m.avgTimeS > 0 ? ` · ${fmtTime(m.avgTimeS)} avg` : ""}
                       </span>
                     </div>
                     <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${barColor(m.avg ?? 0)}`} style={{ width: `${m.avg ?? 0}%` }} /></div>
@@ -430,6 +464,15 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">{data.examAnalysis.difficulty.total} questions graded across the cohort.</p>
               </div>
+              {data.examAnalysis.topicRadar.length >= 3 && (
+                <div>
+                  <p className={SECTION + " mb-3"}>Performance by Topic</p>
+                  <div className="flex justify-center">
+                    <RadarChart data={data.examAnalysis.topicRadar} />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 text-center">Cohort average correct-rate per exam topic. Low points show weak areas.</p>
+                </div>
+              )}
               <div>
                 <p className={SECTION + " mb-3"}>Hardest Questions — most missed by the cohort</p>
                 <div className="space-y-2">

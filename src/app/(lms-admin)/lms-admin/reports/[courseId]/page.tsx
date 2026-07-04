@@ -15,7 +15,7 @@ export default async function LmsCourseReportPage({ params }: Props) {
 
   const [courseRes, enrollmentsRes, sessionsRes, modulesRes] = await Promise.all([
     db.from("lms_courses")
-      .select("id, title, delivery_mode, status, description")
+      .select("id, title, delivery_mode, status, description, start_date, end_date, lms_course_instructors(admin_users(name))")
       .eq("id", courseId)
       .single(),
     db.from("lms_enrollments")
@@ -152,7 +152,7 @@ export default async function LmsCourseReportPage({ params }: Props) {
   const [pkgItemsRes, pkgProgRes] = await Promise.all([
     pkgIds.length ? db.from("lms_package_items").select("package_id").in("package_id", pkgIds) : Promise.resolve({ data: [] }),
     pkgIds.length && studentIds.length
-      ? db.from("lms_package_progress").select("package_id, student_id, completed_items, status").in("package_id", pkgIds).in("student_id", studentIds)
+      ? db.from("lms_package_progress").select("package_id, student_id, completed_items, status, time_spent").in("package_id", pkgIds).in("student_id", studentIds)
       : Promise.resolve({ data: [] }),
   ])
   const totalByPkg: Record<string, number> = {}
@@ -165,23 +165,24 @@ export default async function LmsCourseReportPage({ params }: Props) {
     if (m.module_type === "package") {
       const pkgId = pkgIdByMod.get(m.id)
       const total = pkgId ? (totalByPkg[pkgId] ?? 0) : 0
-      let sum = 0, done = 0
+      let sum = 0, done = 0, timeSum = 0
       for (const sid of studentIds) {
         const pp = pkgId ? progByKey[`${pkgId}:${sid}`] : null
         const isDone = pp?.status === "passed" || pp?.status === "completed"
         const comp = Array.isArray(pp?.completed_items) ? pp.completed_items.length : 0
         const pct = isDone ? 100 : total > 0 ? Math.min(100, Math.round((comp / total) * 100)) : 0
         sum += pct; if (pct >= 100) done++
+        timeSum += pp?.time_spent ?? 0
       }
-      return { title: m.title, type: "package", avg: studentIds.length ? Math.round(sum / studentIds.length) : 0, done, total: studentIds.length }
+      return { title: m.title, type: "package", avg: studentIds.length ? Math.round(sum / studentIds.length) : 0, done, total: studentIds.length, avgTimeS: studentIds.length ? Math.round(timeSum / studentIds.length) : 0 }
     }
     if (m.module_type === "final_exam") {
       const avg = totalEnrolled
         ? Math.round(enriched.reduce((s, e) => s + (e.bestExam?.score != null && e.bestExam?.max_score ? (e.bestExam.score / e.bestExam.max_score) * 100 : 0), 0) / totalEnrolled)
         : 0
-      return { title: m.title, type: "final_exam", avg, done: examPassCount, total: totalEnrolled }
+      return { title: m.title, type: "final_exam", avg, done: examPassCount, total: totalEnrolled, avgTimeS: 0 }
     }
-    return { title: m.title, type: m.module_type, avg: null as number | null, done: null as number | null, total: totalEnrolled }
+    return { title: m.title, type: m.module_type, avg: null as number | null, done: null as number | null, total: totalEnrolled, avgTimeS: 0 }
   })
 
   // ── Charts: exam-score distribution, pass/fail, status ──────────
@@ -203,8 +204,9 @@ export default async function LmsCourseReportPage({ params }: Props) {
     dropped:   enriched.filter(e => e.status === "dropped").length,
   }
 
-  // ── Exam question analysis (hardest questions + difficulty spread) ──
+  // ── Exam question analysis (hardest questions + difficulty spread + topic radar) ──
   let hardestQuestions: { text: string; correctPct: number; n: number }[] = []
+  let topicRadar: { label: string; value: number }[] = []
   const questionDifficulty = { mastered: 0, mixed: 0, struggled: 0, total: 0 }
   if (examModule && studentIds.length) {
     const { data: examFull } = await db.from("lms_modules").select("questions").eq("id", examModule.id).single()
@@ -228,6 +230,20 @@ export default async function LmsCourseReportPage({ params }: Props) {
       questionDifficulty.total = perQ.length
       for (const q of perQ) { if (q.correctPct >= 80) questionDifficulty.mastered++; else if (q.correctPct >= 40) questionDifficulty.mixed++; else questionDifficulty.struggled++ }
       hardestQuestions = [...perQ].sort((a, b) => a.correctPct - b.correctPct).slice(0, 8)
+
+      // Topic radar — grade each analysis section's questions across the cohort
+      const { data: examAnalysisRow } = await db.from("lms_module_analysis")
+        .select("analysis").eq("module_id", examModule.id).maybeSingle()
+      const sections: any[] = Array.isArray((examAnalysisRow?.analysis as any)?.sections) ? (examAnalysisRow!.analysis as any).sections : []
+      const qById = new Map(questions.map((q: any) => [q.id, q]))
+      topicRadar = sections.map((s: any) => {
+        let correct = 0, n = 0
+        for (const qid of (s.question_ids ?? [])) {
+          const q = qById.get(qid); if (!q) continue
+          for (const ans of ansByStudent.values()) { const g = grade(q, ans?.[qid]); if (g !== null) { n++; if (g >= 1) correct++ } }
+        }
+        return { label: String(s.title ?? ""), value: n > 0 ? Math.round((correct / n) * 100) : 0 }
+      }).filter((t: any) => t.label)
     }
   }
 
@@ -270,15 +286,23 @@ export default async function LmsCourseReportPage({ params }: Props) {
   const { data: courseAssessment } = await db.from("lms_course_assessments")
     .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
 
+  const instructorName = (course as any).lms_course_instructors?.[0]?.admin_users?.name ?? null
+
   const reportData = {
     course: { id: courseId, title: course.title, delivery_mode: course.delivery_mode ?? "online", description: course.description ?? "", status: course.status ?? "" },
+    meta: {
+      startDate:  (course as any).start_date ?? null,
+      endDate:    (course as any).end_date ?? null,
+      instructor: instructorName,
+      preparedBy: "ICS Learning Management System",
+    },
     stats: {
       enrolled: totalEnrolled, completed: totalCompleted, avgProgress, completionRate,
       examPass: examPassCount, examExists: !!examModule, pendingGrades, avgTimeS, totalTimeS,
     },
     buckets, bucketMax, moduleStats, atRisk,
     charts: { examScoreBuckets, passFail, statusCounts },
-    examAnalysis: { hardestQuestions, difficulty: questionDifficulty },
+    examAnalysis: { hardestQuestions, difficulty: questionDifficulty, topicRadar },
     certificates,
     attendance,
     feedbackRatings,
