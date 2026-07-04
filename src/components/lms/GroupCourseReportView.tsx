@@ -26,6 +26,16 @@ export type GroupReportData = {
   bucketMax: number
   moduleStats: { title: string; type: string; avg: number | null; done: number | null; total: number }[]
   atRisk: { name: string; email: string; id: string; progressPct: number; reasons: string[] }[]
+  charts: {
+    examScoreBuckets: { label: string; count: number }[]
+    passFail: { passed: number; failed: number; notAttempted: number }
+    statusCounts: { active: number; completed: number; dropped: number }
+  }
+  examAnalysis: { hardestQuestions: { text: string; correctPct: number; n: number }[]; difficulty: { mastered: number; mixed: number; struggled: number; total: number } }
+  certificates: { issued: number; released: number }
+  attendance: { overallPct: number; perSession: { title: string; date: string; presentPct: number }[] } | null
+  feedbackRatings: { label: string; value: number }[]
+  feedbackCount: number
   roster: { id: string; name: string; email: string; status: string; progressPct: number; attendPct: number | null; attended: number; sessionTotal: number; examPassed: boolean | null; examPct: number | null; timeS: number }[]
   assessment: GroupAssessment | null
   generatedAt: string | null
@@ -76,6 +86,34 @@ function CoverRing({ score, label }: { score: number; label: string }) {
   )
 }
 
+function Donut({ segments, size = 116 }: { segments: { value: number; color: string; label: string }[]; size?: number }) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1
+  const sw = 15, r = (size - sw) / 2, circ = 2 * Math.PI * r
+  let offset = 0
+  return (
+    <div className="flex items-center gap-4">
+      <svg width={size} height={size} className="-rotate-90 shrink-0">
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={sw} />
+        {segments.filter(s => s.value > 0).map((s, i) => {
+          const len = (s.value / total) * circ
+          const el = <circle key={i} cx={size/2} cy={size/2} r={r} fill="none" stroke={s.color} strokeWidth={sw} strokeDasharray={`${len} ${circ - len}`} strokeDashoffset={-offset} strokeLinecap="butt" />
+          offset += len
+          return el
+        })}
+      </svg>
+      <div className="space-y-1.5">
+        {segments.map((s, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs min-w-[120px]">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: s.color }} />
+            <span className="text-slate-600">{s.label}</span>
+            <span className="font-semibold text-slate-800 ml-auto">{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function GroupCourseReportView({ data }: { data: GroupReportData }) {
   const { course, stats, buckets, bucketMax, moduleStats, atRisk, roster } = data
   const [assessment, setAssessment] = useState<GroupAssessment | null>(data.assessment)
@@ -85,7 +123,18 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!assessment
-  const totalPages = 6 + (hasAI ? 1 : 0)
+  const hasExam = data.examAnalysis.hardestQuestions.length > 0
+  const hasExtras = !!data.attendance || data.feedbackRatings.length > 0 || data.certificates.issued > 0
+  const pageOrder = [
+    "cover", "course", "cohort", "module",
+    ...(hasExam ? ["exam"] : []),
+    "ranking",
+    ...(hasAI ? ["expert"] : []),
+    ...(hasExtras ? ["extras"] : []),
+    "roster",
+  ]
+  const pageNo = (k: string) => pageOrder.indexOf(k) + 1
+  const totalPages = pageOrder.length
 
   // Ranking (1st → last). Score = exam-weighted where an exam exists, else progress.
   const ranked = roster
@@ -232,7 +281,7 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               </div>
             </div>
           </div>
-          <PageFooter page={2} total={totalPages} />
+          <PageFooter page={pageNo("course")} total={totalPages} />
         </Page>
 
         {/* PAGE 3 — COHORT OVERVIEW */}
@@ -276,8 +325,47 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
                 <div><p className="text-lg font-bold text-slate-800">{fmtTime(stats.totalTimeS)}</p><p className="text-[10px] uppercase tracking-widest text-slate-400">Total learning time</p></div>
               </div>
             </div>
+
+            <div>
+              <p className={SECTION + " mb-3"}>Breakdown</p>
+              <div className="flex flex-wrap gap-10">
+                <div>
+                  <p className="text-[11px] text-slate-500 mb-2 font-medium">Enrollment Status</p>
+                  <Donut segments={[
+                    { value: data.charts.statusCounts.active,    color: "#3b82f6", label: "Active" },
+                    { value: data.charts.statusCounts.completed, color: "#10b981", label: "Completed" },
+                    { value: data.charts.statusCounts.dropped,   color: "#cbd5e1", label: "Unenrolled" },
+                  ]} />
+                </div>
+                {stats.examExists && (
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-2 font-medium">Final Exam</p>
+                    <Donut segments={[
+                      { value: data.charts.passFail.passed,       color: "#10b981", label: "Passed" },
+                      { value: data.charts.passFail.failed,       color: "#ef4444", label: "Failed" },
+                      { value: data.charts.passFail.notAttempted, color: "#cbd5e1", label: "Not attempted" },
+                    ]} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {stats.examExists && data.charts.examScoreBuckets.some(b => b.count > 0) && (
+              <div>
+                <p className={SECTION + " mb-3"}>Exam Score Distribution</p>
+                <div className="space-y-2">
+                  {(() => { const max = Math.max(1, ...data.charts.examScoreBuckets.map(x => x.count)); return data.charts.examScoreBuckets.map(b => (
+                    <div key={b.label} className="flex items-center gap-3 text-xs">
+                      <span className="w-16 text-slate-500 shrink-0">{b.label}</span>
+                      <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-indigo-500/70 rounded" style={{ width: `${(b.count / max) * 100}%` }} /></div>
+                      <span className="w-6 text-right font-semibold text-slate-700">{b.count}</span>
+                    </div>
+                  )) })()}
+                </div>
+              </div>
+            )}
           </div>
-          <PageFooter page={3} total={totalPages} />
+          <PageFooter page={pageNo("cohort")} total={totalPages} />
         </Page>
 
         {/* PAGE 4 — MODULE PERFORMANCE + AT-RISK */}
@@ -318,8 +406,46 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               </div>
             )}
           </div>
-          <PageFooter page={4} total={totalPages} />
+          <PageFooter page={pageNo("module")} total={totalPages} />
         </Page>
+
+        {/* EXAM ANALYSIS (conditional) */}
+        {hasExam && (
+          <Page>
+            <PageHeader title="Exam Analysis" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-7 flex-1">
+              <div>
+                <p className={SECTION + " mb-3"}>Question Difficulty — cohort correct-rate</p>
+                <div className="flex gap-3">
+                  {[
+                    { label: "Mastered ≥80%", value: data.examAnalysis.difficulty.mastered, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
+                    { label: "Mixed 40–79%",  value: data.examAnalysis.difficulty.mixed,    color: "text-amber-600",   bg: "bg-amber-50 border-amber-100" },
+                    { label: "Struggled <40%", value: data.examAnalysis.difficulty.struggled, color: "text-red-600",    bg: "bg-red-50 border-red-100" },
+                  ].map(d => (
+                    <div key={d.label} className={`flex-1 rounded-xl border p-4 text-center ${d.bg}`}>
+                      <p className={`text-2xl font-bold ${d.color}`}>{d.value}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mt-1">{d.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">{data.examAnalysis.difficulty.total} questions graded across the cohort.</p>
+              </div>
+              <div>
+                <p className={SECTION + " mb-3"}>Hardest Questions — most missed by the cohort</p>
+                <div className="space-y-2">
+                  {data.examAnalysis.hardestQuestions.map((q, i) => (
+                    <div key={i} className="flex items-start gap-3 rounded-xl border border-slate-100 px-4 py-2.5 avoid-break">
+                      <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${q.correctPct < 40 ? "bg-red-100 text-red-600" : q.correctPct < 70 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{q.correctPct}%</span>
+                      <p className="text-sm text-slate-700 flex-1">{q.text}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">The % is how many students answered correctly — low values show exactly what to re-teach.</p>
+              </div>
+            </div>
+            <PageFooter page={pageNo("exam")} total={totalPages} />
+          </Page>
+        )}
 
         {/* PAGE 5 — CLASS RANKING */}
         <Page>
@@ -347,7 +473,7 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
             )}
             <p className="text-[11px] text-slate-400 mt-3">Score = {stats.examExists ? "60% final exam + 40% course progress" : "course progress"}. Unenrolled students are excluded.</p>
           </div>
-          <PageFooter page={5} total={totalPages} />
+          <PageFooter page={pageNo("ranking")} total={totalPages} />
         </Page>
 
         {/* PAGE 6 — EXPERT REPORT (if generated) */}
@@ -389,7 +515,53 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               )}
               {generatedAt && <p className="text-[10px] text-slate-300">Generated {new Date(generatedAt).toLocaleString("en-GB")}</p>}
             </div>
-            <PageFooter page={6} total={totalPages} />
+            <PageFooter page={pageNo("expert")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* EXTRAS (conditional): attendance · feedback · certificates */}
+        {hasExtras && (
+          <Page>
+            <PageHeader title="Attendance · Feedback · Certificates" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-7 flex-1">
+              {data.attendance && (
+                <div>
+                  <p className={SECTION + " mb-3"}>Attendance — {data.attendance.overallPct}% overall</p>
+                  <div className="space-y-2">
+                    {data.attendance.perSession.map((s, i) => (
+                      <div key={i} className="flex items-center gap-3 text-xs">
+                        <span className="w-44 truncate text-slate-600 shrink-0">{s.title}</span>
+                        <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden"><div className={`h-full rounded ${s.presentPct >= 70 ? "bg-emerald-500" : s.presentPct >= 40 ? "bg-amber-400" : "bg-red-400"}`} style={{ width: `${s.presentPct}%` }} /></div>
+                        <span className="w-8 text-right font-medium text-slate-700">{s.presentPct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {data.feedbackRatings.length > 0 && (
+                <div>
+                  <p className={SECTION + " mb-3"}>Course Feedback — {data.feedbackCount} response{data.feedbackCount === 1 ? "" : "s"}</p>
+                  <div className="grid grid-cols-5 gap-3">
+                    {data.feedbackRatings.map(r => (
+                      <div key={r.label} className="rounded-xl border border-slate-100 p-3 text-center">
+                        <p className="text-xl font-bold text-[#1B4F8A]">{r.value}<span className="text-xs text-slate-400">/5</span></p>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 mt-1">{r.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {data.certificates.issued > 0 && (
+                <div>
+                  <p className={SECTION + " mb-3"}>Certificates</p>
+                  <div className="flex gap-3">
+                    <div className="flex-1 rounded-xl border border-slate-100 p-4 flex items-center gap-3"><GraduationCap className="h-6 w-6 text-[#1B4F8A]" /><div><p className="text-lg font-bold text-slate-800">{data.certificates.issued}</p><p className="text-[10px] uppercase tracking-widest text-slate-400">Issued</p></div></div>
+                    <div className="flex-1 rounded-xl border border-slate-100 p-4 flex items-center gap-3"><GraduationCap className="h-6 w-6 text-emerald-600" /><div><p className="text-lg font-bold text-slate-800">{data.certificates.released}</p><p className="text-[10px] uppercase tracking-widest text-slate-400">Released to students</p></div></div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("extras")} total={totalPages} />
           </Page>
         )}
 

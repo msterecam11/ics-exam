@@ -184,6 +184,88 @@ export default async function LmsCourseReportPage({ params }: Props) {
     return { title: m.title, type: m.module_type, avg: null as number | null, done: null as number | null, total: totalEnrolled }
   })
 
+  // ── Charts: exam-score distribution, pass/fail, status ──────────
+  const examPct = (e: any) => e.bestExam && e.bestExam.max_score ? (e.bestExam.score / e.bestExam.max_score) * 100 : null
+  const examScoreBuckets = examModule ? [
+    { label: "0–40%",   count: enriched.filter(e => { const p = examPct(e); return p !== null && p < 40 }).length },
+    { label: "40–60%",  count: enriched.filter(e => { const p = examPct(e); return p !== null && p >= 40 && p < 60 }).length },
+    { label: "60–80%",  count: enriched.filter(e => { const p = examPct(e); return p !== null && p >= 60 && p < 80 }).length },
+    { label: "80–100%", count: enriched.filter(e => { const p = examPct(e); return p !== null && p >= 80 }).length },
+  ] : []
+  const passFail = {
+    passed:       enriched.filter(e => e.bestExam?.passed).length,
+    failed:       enriched.filter(e => e.bestExam && !e.bestExam.passed).length,
+    notAttempted: enriched.filter(e => !e.bestExam).length,
+  }
+  const statusCounts = {
+    active:    enriched.filter(e => e.status === "active").length,
+    completed: enriched.filter(e => e.status === "completed").length,
+    dropped:   enriched.filter(e => e.status === "dropped").length,
+  }
+
+  // ── Exam question analysis (hardest questions + difficulty spread) ──
+  let hardestQuestions: { text: string; correctPct: number; n: number }[] = []
+  const questionDifficulty = { mastered: 0, mixed: 0, struggled: 0, total: 0 }
+  if (examModule && studentIds.length) {
+    const { data: examFull } = await db.from("lms_modules").select("questions").eq("id", examModule.id).single()
+    const questions: any[] = Array.isArray((examFull as any)?.questions) ? (examFull as any).questions : []
+    const { data: ansRows } = await db.from("lms_module_attempts")
+      .select("student_id, answers, attempt_no").eq("module_id", examModule.id)
+      .in("student_id", studentIds).not("answers", "is", null).order("attempt_no", { ascending: false })
+    const ansByStudent = new Map<string, any>()
+    for (const r of (ansRows ?? []) as any[]) if (!ansByStudent.has(r.student_id)) ansByStudent.set(r.student_id, r.answers ?? {})
+    const grade = (q: any, ans: any): number | null => {
+      if (q.type === "mcq_single")   { const c = (q.options ?? []).find((o: any) => o.correct); return c && ans === c.id ? 1 : 0 }
+      if (q.type === "mcq_multiple") { const ci = new Set((q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id)); const ch = new Set(Array.isArray(ans) ? ans : []); return ch.size === ci.size && [...ci].every(id => ch.has(id)) ? 1 : 0 }
+      return null
+    }
+    if (ansByStudent.size > 0) {
+      const perQ = questions.map((q: any) => {
+        let correct = 0, n = 0
+        for (const ans of ansByStudent.values()) { const g = grade(q, ans?.[q.id]); if (g !== null) { n++; if (g >= 1) correct++ } }
+        return { text: q.text ?? "", correctPct: n > 0 ? Math.round((correct / n) * 100) : null, n }
+      }).filter((q): q is { text: string; correctPct: number; n: number } => q.correctPct !== null)
+      questionDifficulty.total = perQ.length
+      for (const q of perQ) { if (q.correctPct >= 80) questionDifficulty.mastered++; else if (q.correctPct >= 40) questionDifficulty.mixed++; else questionDifficulty.struggled++ }
+      hardestQuestions = [...perQ].sort((a, b) => a.correctPct - b.correctPct).slice(0, 8)
+    }
+  }
+
+  // ── Certificates ────────────────────────────────────────────────
+  const { data: certRows } = await db.from("lms_certificates").select("id, released_at, revoked_at").eq("course_id", courseId)
+  const certificates = {
+    issued:   (certRows ?? []).filter((c: any) => !c.revoked_at).length,
+    released: (certRows ?? []).filter((c: any) => c.released_at && !c.revoked_at).length,
+  }
+
+  // ── Attendance summary (only if the course has sessions) ────────
+  const attendance = sessions.length > 0 ? {
+    overallPct: (() => {
+      let present = 0, poss = 0
+      for (const s of sessions) for (const e of enriched) { poss++; if ((s.lms_attendance ?? []).some((a: any) => a.student_id === e.student?.id && ["present", "late"].includes(a.status))) present++ }
+      return poss > 0 ? Math.round((present / poss) * 100) : 0
+    })(),
+    perSession: sessions.slice(0, 12).map((s: any) => ({
+      title: s.title, date: s.session_date,
+      presentPct: totalEnrolled > 0 ? Math.round((s.lms_attendance ?? []).filter((a: any) => ["present", "late"].includes(a.status)).length / totalEnrolled * 100) : 0,
+    })),
+  } : null
+
+  // ── Feedback summary (only if any submitted) ────────────────────
+  const { data: fbRows } = await db.from("lms_feedback")
+    .select("rating_overall, rating_content, rating_instructor, rating_pace, rating_materials").eq("course_id", courseId)
+  const feedback = (fbRows ?? []).length > 0 ? {
+    count: (fbRows ?? []).length,
+    avg: (k: string) => { const vals = (fbRows ?? []).map((f: any) => f[k]).filter((v: any) => typeof v === "number"); return vals.length ? Math.round(vals.reduce((s: number, v: number) => s + v, 0) / vals.length * 10) / 10 : null },
+  } : null
+  const feedbackRatings = feedback ? [
+    { label: "Overall",    value: feedback.avg("rating_overall") },
+    { label: "Content",    value: feedback.avg("rating_content") },
+    { label: "Instructor", value: feedback.avg("rating_instructor") },
+    { label: "Pace",       value: feedback.avg("rating_pace") },
+    { label: "Materials",  value: feedback.avg("rating_materials") },
+  ].filter(r => r.value !== null) as { label: string; value: number }[] : []
+
   // Stored cohort expert assessment (AI)
   const { data: courseAssessment } = await db.from("lms_course_assessments")
     .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
@@ -195,6 +277,12 @@ export default async function LmsCourseReportPage({ params }: Props) {
       examPass: examPassCount, examExists: !!examModule, pendingGrades, avgTimeS, totalTimeS,
     },
     buckets, bucketMax, moduleStats, atRisk,
+    charts: { examScoreBuckets, passFail, statusCounts },
+    examAnalysis: { hardestQuestions, difficulty: questionDifficulty },
+    certificates,
+    attendance,
+    feedbackRatings,
+    feedbackCount: feedback?.count ?? 0,
     roster: enriched.map((e: any) => ({
       id:         e.student?.id,
       name:       e.student?.name,
