@@ -189,7 +189,7 @@ export default async function LmsCourseReportPage({ params }: Props) {
     .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
 
   const reportData = {
-    course: { id: courseId, title: course.title, delivery_mode: course.delivery_mode ?? "online" },
+    course: { id: courseId, title: course.title, delivery_mode: course.delivery_mode ?? "online", description: course.description ?? "", status: course.status ?? "" },
     stats: {
       enrolled: totalEnrolled, completed: totalCompleted, avgProgress, completionRate,
       examPass: examPassCount, examExists: !!examModule, pendingGrades, avgTimeS, totalTimeS,

@@ -5,7 +5,8 @@ import Link from "next/link"
 import Image from "next/image"
 import {
   ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2,
-  Users, CheckCircle2, Trophy, TrendingUp, Lightbulb, AlertTriangle, Clock, GraduationCap,
+  Users, Trophy, TrendingUp, Lightbulb, AlertTriangle, Clock,
+  BookOpen, Layers, Medal, GraduationCap, Puzzle, ClipboardList,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
@@ -19,7 +20,7 @@ export type GroupAssessment = {
   at_risk_patterns: string
 }
 export type GroupReportData = {
-  course: { id: string; title: string; delivery_mode: string }
+  course: { id: string; title: string; delivery_mode: string; description: string; status: string }
   stats: { enrolled: number; completed: number; avgProgress: number; completionRate: number; examPass: number; examExists: boolean; pendingGrades: number; avgTimeS: number; totalTimeS: number }
   buckets: { label: string; count: number }[]
   bucketMax: number
@@ -84,7 +85,16 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!assessment
-  const totalPages = 4 + (hasAI ? 1 : 0)
+  const totalPages = 6 + (hasAI ? 1 : 0)
+
+  // Ranking (1st → last). Score = exam-weighted where an exam exists, else progress.
+  const ranked = roster
+    .filter(r => r.status !== "dropped")
+    .map(r => ({ ...r, rankScore: stats.examExists && r.examPct != null ? Math.round(r.examPct * 0.6 + r.progressPct * 0.4) : r.progressPct }))
+    .sort((a, b) => b.rankScore - a.rankScore)
+  const medal = (i: number) => i === 0 ? "#facc15" : i === 1 ? "#94a3b8" : i === 2 ? "#d97706" : null
+
+  const moduleIcon = (t: string) => t === "package" ? Puzzle : t === "final_exam" ? GraduationCap : t === "assignment" ? ClipboardList : Layers
 
   async function generate() {
     setGenerating(true)
@@ -184,7 +194,48 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
           </div>
         </Page>
 
-        {/* PAGE 2 — COHORT OVERVIEW */}
+        {/* PAGE 2 — COURSE OVERVIEW */}
+        <Page>
+          <PageHeader title="Course Overview" subtitle={course.title} today={today} />
+          <div className="px-12 py-7 space-y-7 flex-1">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#1B4F8A]/10 flex items-center justify-center shrink-0"><BookOpen className="h-6 w-6 text-[#1B4F8A]" /></div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">{course.title}</h2>
+                <p className="text-xs text-slate-500 capitalize mt-0.5">{course.delivery_mode}{course.status ? ` · ${course.status}` : ""} · {moduleStats.length} module{moduleStats.length === 1 ? "" : "s"}</p>
+              </div>
+            </div>
+
+            {course.description && (
+              <div>
+                <p className={SECTION + " mb-2"}>About this Course</p>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{course.description}</p>
+              </div>
+            )}
+
+            <div>
+              <p className={SECTION + " mb-3"}>Course Structure</p>
+              <div className="space-y-2">
+                {moduleStats.length === 0 ? (
+                  <p className="text-xs text-slate-400">No modules in this course.</p>
+                ) : moduleStats.map((m, i) => {
+                  const Icon = moduleIcon(m.type)
+                  return (
+                    <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-100 px-4 py-2.5">
+                      <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <Icon className="h-4 w-4 text-[#1B4F8A] shrink-0" />
+                      <span className="text-sm font-medium text-slate-700 flex-1 truncate">{m.title}</span>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 shrink-0">{m.type.replace("_", " ")}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+          <PageFooter page={2} total={totalPages} />
+        </Page>
+
+        {/* PAGE 3 — COHORT OVERVIEW */}
         <Page>
           <PageHeader title="Cohort Overview" subtitle={course.title} today={today} />
           <div className="px-12 py-7 space-y-7 flex-1">
@@ -226,10 +277,10 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               </div>
             </div>
           </div>
-          <PageFooter page={2} total={totalPages} />
+          <PageFooter page={3} total={totalPages} />
         </Page>
 
-        {/* PAGE 3 — MODULE PERFORMANCE + AT-RISK */}
+        {/* PAGE 4 — MODULE PERFORMANCE + AT-RISK */}
         <Page>
           <PageHeader title="Module Performance" subtitle={course.title} today={today} />
           <div className="px-12 py-7 space-y-7 flex-1">
@@ -267,10 +318,39 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               </div>
             )}
           </div>
-          <PageFooter page={3} total={totalPages} />
+          <PageFooter page={4} total={totalPages} />
         </Page>
 
-        {/* PAGE 4 — EXPERT REPORT (if generated) */}
+        {/* PAGE 5 — CLASS RANKING */}
+        <Page>
+          <PageHeader title="Class Ranking" subtitle={course.title} today={today} />
+          <div className="px-12 py-7 flex-1">
+            <p className={SECTION + " mb-3"}>Students ranked by performance{stats.examExists ? " · exam-weighted" : " · by progress"}</p>
+            {ranked.length === 0 ? (
+              <p className="text-xs text-slate-400">No active students to rank.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {ranked.map((r, i) => (
+                  <div key={r.id} className="flex items-center gap-3 rounded-xl border border-slate-100 px-4 py-2.5 avoid-break">
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                      style={medal(i) ? { background: medal(i)!, color: "#fff" } : { background: "#f1f5f9", color: "#64748b" }}>
+                      {medal(i) ? <Medal className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{r.name}</p>
+                      <p className="text-[10px] text-slate-400">{r.progressPct}% progress{stats.examExists && r.examPct != null ? ` · exam ${r.examPct}%` : ""}</p>
+                    </div>
+                    <span className="text-base font-bold text-[#1B4F8A] shrink-0">{r.rankScore}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400 mt-3">Score = {stats.examExists ? "60% final exam + 40% course progress" : "course progress"}. Unenrolled students are excluded.</p>
+          </div>
+          <PageFooter page={5} total={totalPages} />
+        </Page>
+
+        {/* PAGE 6 — EXPERT REPORT (if generated) */}
         {hasAI && assessment && (
           <Page>
             <PageHeader title="Expert Cohort Report" subtitle={course.title} today={today} />
@@ -309,7 +389,7 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               )}
               {generatedAt && <p className="text-[10px] text-slate-300">Generated {new Date(generatedAt).toLocaleString("en-GB")}</p>}
             </div>
-            <PageFooter page={4} total={totalPages} />
+            <PageFooter page={6} total={totalPages} />
           </Page>
         )}
 
