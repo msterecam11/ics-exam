@@ -1,0 +1,358 @@
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import Image from "next/image"
+import {
+  ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2,
+  Users, CheckCircle2, Trophy, TrendingUp, Lightbulb, AlertTriangle, Clock, GraduationCap,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
+import { toast } from "sonner"
+
+export type GroupAssessment = {
+  executive_summary: string
+  strengths: string[]
+  improvements: string[]
+  recommendations: string[]
+  at_risk_patterns: string
+}
+export type GroupReportData = {
+  course: { id: string; title: string; delivery_mode: string }
+  stats: { enrolled: number; completed: number; avgProgress: number; completionRate: number; examPass: number; examExists: boolean; pendingGrades: number; avgTimeS: number; totalTimeS: number }
+  buckets: { label: string; count: number }[]
+  bucketMax: number
+  moduleStats: { title: string; type: string; avg: number | null; done: number | null; total: number }[]
+  atRisk: { name: string; email: string; id: string; progressPct: number; reasons: string[] }[]
+  roster: { id: string; name: string; email: string; status: string; progressPct: number; attendPct: number | null; attended: number; sessionTotal: number; examPassed: boolean | null; examPct: number | null; timeS: number }[]
+  assessment: GroupAssessment | null
+  generatedAt: string | null
+}
+
+const fmtTime = (s: number) => { if (!s || s < 60) return s >= 1 ? `${s}s` : "—"; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+const SECTION = "text-[10px] font-bold uppercase tracking-widest text-slate-400"
+
+function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
+  return <div className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={{ minHeight: first ? 1122 : undefined }}>{children}</div>
+}
+function PageHeader({ title, subtitle, today }: { title: string; subtitle?: string; today: string }) {
+  return (
+    <div className="flex items-center justify-between px-12 pt-8 pb-5 border-b-2 border-[#1B4F8A] shrink-0">
+      <Image src="/logo/logo-dark-blue.png" alt="ICS Aviation" width={110} height={30} className="object-contain" />
+      <div className="text-right">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">{title}</p>
+        {subtitle && <p className="text-[10px] mt-0.5 text-slate-400">{subtitle}</p>}
+        <p className="text-[10px] mt-0.5 text-slate-400">{today}</p>
+      </div>
+    </div>
+  )
+}
+function PageFooter({ page, total }: { page: number; total: number }) {
+  return (
+    <div className="px-12 py-4 border-t border-slate-100 flex items-center justify-between mt-auto shrink-0">
+      <p className="text-[9px] uppercase tracking-widest text-slate-300">ICS Aviation · Integrated Consulting Services · Confidential</p>
+      <p className="text-[9px] text-slate-300">Page {page} of {total}</p>
+    </div>
+  )
+}
+function CoverRing({ score, label }: { score: number; label: string }) {
+  const size = 160, sw = 12, r = (size - sw) / 2, circ = 2 * Math.PI * r
+  const offset = circ * (1 - Math.min(score, 100) / 100)
+  const band = score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 50 ? { label: "Developing", col: "#fbbf24" } : { label: "At Risk", col: "#f87171" }
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={sw} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={band.col} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-3xl font-extrabold text-white leading-none">{score}%</span>
+        <span className="text-[9px] font-bold tracking-widest uppercase text-white/50 mt-1.5">{label}</span>
+        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: band.col }}>{band.label}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function GroupCourseReportView({ data }: { data: GroupReportData }) {
+  const { course, stats, buckets, bucketMax, moduleStats, atRisk, roster } = data
+  const [assessment, setAssessment] = useState<GroupAssessment | null>(data.assessment)
+  const [generatedAt, setGeneratedAt] = useState<string | null>(data.generatedAt)
+  const [generating, setGenerating] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+
+  const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+  const hasAI = !!assessment
+  const totalPages = 4 + (hasAI ? 1 : 0)
+
+  async function generate() {
+    setGenerating(true)
+    try {
+      const res = await fetch(`/api/lms/reports/course/${course.id}/expert-assessment`, { method: "POST" })
+      const d = await res.json()
+      if (!res.ok) { toast.error(d.error ?? "Failed to generate"); return }
+      setAssessment(d.assessment); setGeneratedAt(d.generated_at)
+      toast.success("Expert report generated")
+    } catch { toast.error("Failed to generate report") }
+    finally { setGenerating(false) }
+  }
+  async function downloadPDF() {
+    setDownloading(true); toast.info("Generating PDF…")
+    try {
+      const res = await fetch(`/api/lms/reports/course/${course.id}/pdf`)
+      if (!res.ok) { toast.error("PDF generation failed"); return }
+      const blob = await res.blob(); const url = URL.createObjectURL(blob)
+      const a = document.createElement("a"); a.href = url
+      a.download = `${course.title} - Group Report.pdf`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      toast.success("PDF downloaded")
+    } catch { toast.error("Failed to download PDF") }
+    finally { setDownloading(false) }
+  }
+
+  const barColor = (v: number) => v >= 70 ? "bg-emerald-500" : v >= 40 ? "bg-amber-400" : "bg-red-400"
+
+  return (
+    <>
+      <style>{`
+        .page-break { break-before: page; }
+        .avoid-break { break-inside: avoid; }
+        @page { size: 794px 1122px; margin: 0; }
+        @media print {
+          .no-print { display: none !important; }
+          aside, header { display: none !important; }
+          body { margin: 0; background: white; }
+          body > div { display: block !important; height: auto !important; overflow: visible !important; }
+          main { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+        }
+      `}</style>
+
+      {/* ── Toolbar ── */}
+      <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Link href="/lms-admin/reports" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
+          <Users className="h-4 w-4 text-slate-400" />
+          <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <LmsReleaseCertsButton courseId={course.id} />
+          {assessment ? (
+            <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
+              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate
+            </Button>
+          ) : (
+            <Button size="sm" onClick={generate} disabled={generating} className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+              {generating ? "Generating…" : "Generate Expert Report"}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Print</Button>
+          <Button size="sm" variant="outline" onClick={downloadPDF} disabled={downloading} className="gap-1.5 text-xs">
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
+          </Button>
+        </div>
+      </div>
+
+      <div id="report-root" style={{ width: 794, margin: "0 auto", boxShadow: "0 0 0 1px #e2e8f0", background: "white" }}>
+
+        {/* PAGE 1 — COVER */}
+        <Page dark first>
+          <div className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none opacity-10" style={{ background: "radial-gradient(circle, #60a5fa, transparent)", transform: "translate(35%,-35%)" }} />
+          <div className="flex items-center justify-between px-12 pt-10 shrink-0">
+            <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
+            <p className="text-white/40 text-xs">{today}</p>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center px-12 text-center gap-7">
+            <p className="text-white/50 text-[11px] uppercase tracking-[0.4em]">Group Course Report</p>
+            <div>
+              <h1 className="text-4xl font-extrabold text-white tracking-tight">{course.title}</h1>
+              <p className="text-white/50 text-sm mt-2 capitalize">{course.delivery_mode} · {stats.enrolled} students</p>
+            </div>
+            <CoverRing score={stats.completionRate} label="Completion Rate" />
+            <div className="flex items-center gap-8">
+              <div className="text-center"><p className="text-2xl font-bold text-white">{stats.avgProgress}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Progress</p></div>
+              <div className="h-10 w-px bg-white/15" />
+              <div className="text-center"><p className="text-2xl font-bold text-white">{stats.completed}/{stats.enrolled}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completed</p></div>
+              {stats.examExists && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{stats.examPass}/{stats.enrolled}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exam Pass</p></div></>}
+              {stats.avgTimeS > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(stats.avgTimeS)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Time</p></div></>}
+            </div>
+          </div>
+          <div className="px-12 py-6 border-t border-white/10 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2"><BrainCircuit className="h-3.5 w-3.5 text-purple-300/60" /><p className="text-white/30 text-[10px]">Generated by ICS Expert Analytics</p></div>
+            <p className="text-white/20 text-[9px]">Page 1 of {totalPages}</p>
+          </div>
+        </Page>
+
+        {/* PAGE 2 — COHORT OVERVIEW */}
+        <Page>
+          <PageHeader title="Cohort Overview" subtitle={course.title} today={today} />
+          <div className="px-12 py-7 space-y-7 flex-1">
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Enrolled", value: stats.enrolled }, { label: "Completed", value: stats.completed },
+                { label: "Avg Progress", value: `${stats.avgProgress}%` }, { label: "Completion", value: `${stats.completionRate}%` },
+                { label: stats.examExists ? "Exam Passes" : "Exam", value: stats.examExists ? `${stats.examPass}/${stats.enrolled}` : "—" },
+                { label: "Pending Grades", value: stats.pendingGrades },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl border border-slate-200 p-4 text-center">
+                  <p className="text-2xl font-bold text-[#1B4F8A]">{s.value}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <p className={SECTION + " mb-3"}>Progress Distribution</p>
+              <div className="space-y-2">
+                {buckets.map(b => (
+                  <div key={b.label} className="flex items-center gap-3 text-xs">
+                    <span className="w-16 text-slate-500 shrink-0">{b.label}</span>
+                    <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-[#1B4F8A]/70 rounded" style={{ width: `${(b.count / bucketMax) * 100}%` }} /></div>
+                    <span className="w-6 text-right font-semibold text-slate-700">{b.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex-1 rounded-xl border border-slate-200 p-4 flex items-center gap-3">
+                <Clock className="h-6 w-6 text-sky-600" />
+                <div><p className="text-lg font-bold text-slate-800">{fmtTime(stats.avgTimeS)}</p><p className="text-[10px] uppercase tracking-widest text-slate-400">Avg time / student</p></div>
+              </div>
+              <div className="flex-1 rounded-xl border border-slate-200 p-4 flex items-center gap-3">
+                <TrendingUp className="h-6 w-6 text-emerald-600" />
+                <div><p className="text-lg font-bold text-slate-800">{fmtTime(stats.totalTimeS)}</p><p className="text-[10px] uppercase tracking-widest text-slate-400">Total learning time</p></div>
+              </div>
+            </div>
+          </div>
+          <PageFooter page={2} total={totalPages} />
+        </Page>
+
+        {/* PAGE 3 — MODULE PERFORMANCE + AT-RISK */}
+        <Page>
+          <PageHeader title="Module Performance" subtitle={course.title} today={today} />
+          <div className="px-12 py-7 space-y-7 flex-1">
+            <div>
+              <p className={SECTION + " mb-3"}>Cohort Average by Module</p>
+              <div className="space-y-3">
+                {moduleStats.map((m, i) => (
+                  <div key={i} className="avoid-break">
+                    <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                      <span className="font-medium text-slate-700 truncate">{m.title}</span>
+                      <span className="text-slate-400 shrink-0">
+                        {m.avg !== null ? `${m.avg}%` : "—"}
+                        {m.type === "final_exam" && m.done !== null ? ` · ${m.done}/${m.total} passed` : ""}
+                        {m.type === "package" && m.done !== null ? ` · ${m.done}/${m.total} done` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${barColor(m.avg ?? 0)}`} style={{ width: `${m.avg ?? 0}%` }} /></div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3">Low bars flag modules the whole cohort struggled with — worth reviewing that content.</p>
+            </div>
+
+            {atRisk.length > 0 && (
+              <div className="avoid-break">
+                <p className={SECTION + " mb-3 flex items-center gap-1.5"}><AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> At-Risk Students ({atRisk.length})</p>
+                <div className="space-y-1.5">
+                  {atRisk.map(s => (
+                    <div key={s.id} className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2">
+                      <span className="text-sm font-medium text-slate-700">{s.name}</span>
+                      <span className="text-[11px] text-amber-700">{s.reasons.join(" · ")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <PageFooter page={3} total={totalPages} />
+        </Page>
+
+        {/* PAGE 4 — EXPERT REPORT (if generated) */}
+        {hasAI && assessment && (
+          <Page>
+            <PageHeader title="Expert Cohort Report" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-6 flex-1">
+              {assessment.executive_summary && (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-5">
+                  <p className={SECTION + " mb-2"}>Executive Summary</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{assessment.executive_summary}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {assessment.strengths.length > 0 && (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+                    <p className={SECTION + " mb-2 flex items-center gap-1.5 !text-emerald-600"}><Trophy className="h-3.5 w-3.5" /> Cohort Strengths</p>
+                    <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">{assessment.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                  </div>
+                )}
+                {assessment.improvements.length > 0 && (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4">
+                    <p className={SECTION + " mb-2 flex items-center gap-1.5 !text-rose-600"}><TrendingUp className="h-3.5 w-3.5" /> Needs Attention</p>
+                    <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">{assessment.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+              {assessment.recommendations.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+                  <p className={SECTION + " mb-2 flex items-center gap-1.5 !text-amber-600"}><Lightbulb className="h-3.5 w-3.5" /> Recommendations for the Instructor</p>
+                  <ul className="space-y-1.5 text-sm text-slate-700 list-disc pl-4">{assessment.recommendations.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                </div>
+              )}
+              {assessment.at_risk_patterns && assessment.at_risk_patterns !== "None significant." && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 p-4">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div><p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 mb-0.5">At-Risk Pattern</p><p className="text-sm text-slate-700">{assessment.at_risk_patterns}</p></div>
+                </div>
+              )}
+              {generatedAt && <p className="text-[10px] text-slate-300">Generated {new Date(generatedAt).toLocaleString("en-GB")}</p>}
+            </div>
+            <PageFooter page={4} total={totalPages} />
+          </Page>
+        )}
+
+        {/* LAST PAGE — ROSTER */}
+        <Page>
+          <PageHeader title="Student Roster" subtitle={course.title} today={today} />
+          <div className="px-12 py-7 flex-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
+                  <th className="py-2 font-semibold">Student</th>
+                  <th className="py-2 font-semibold">Status</th>
+                  <th className="py-2 font-semibold">Progress</th>
+                  <th className="py-2 font-semibold">Time</th>
+                  {stats.examExists && <th className="py-2 font-semibold">Exam</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {roster.map(r => (
+                  <tr key={r.id}>
+                    <td className="py-2">
+                      <p className="font-medium text-slate-800">{r.name}</p>
+                      <p className="text-[10px] text-slate-400">{r.email}</p>
+                    </td>
+                    <td className="py-2 capitalize text-slate-600">{r.status === "dropped" ? "unenrolled" : r.status}</td>
+                    <td className="py-2 text-slate-700 font-medium">{r.progressPct}%</td>
+                    <td className="py-2 text-slate-500">{fmtTime(r.timeS)}</td>
+                    {stats.examExists && (
+                      <td className="py-2">
+                        {r.examPassed === null ? <span className="text-slate-400">—</span> :
+                          <span className={r.examPassed ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                            {r.examPassed ? "Passed" : "Failed"}{r.examPct != null ? ` · ${r.examPct}%` : ""}
+                          </span>}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <PageFooter page={totalPages} total={totalPages} />
+        </Page>
+      </div>
+    </>
+  )
+}

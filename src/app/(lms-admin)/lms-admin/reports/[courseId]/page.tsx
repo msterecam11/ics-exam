@@ -1,18 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import { db } from "@/lib/db"
-import Link from "next/link"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  ArrowLeft, ChevronRight, Users, CheckCircle2,
-  Clock, BarChart3, Download, Eye, GraduationCap, ClipboardList, AlertTriangle,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
-import LmsCourseReportButton from "@/components/lms/LmsCourseReportButton"
-import LmsStudentReportButton from "@/components/lms/LmsStudentReportButton"
-import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
-import LmsGroupExpertReport from "@/components/lms/LmsGroupExpertReport"
+import GroupCourseReportView from "@/components/lms/GroupCourseReportView"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -102,6 +91,7 @@ export default async function LmsCourseReportPage({ params }: Props) {
       enrolledAt:     e.enrolled_at,
       completedAt:    e.completed_at,
       progressPct,
+      timeS:          e.time_spent_s ?? 0,
       attendPct,
       attended,
       sessionTotal:   sessions.length,
@@ -198,266 +188,29 @@ export default async function LmsCourseReportPage({ params }: Props) {
   const { data: courseAssessment } = await db.from("lms_course_assessments")
     .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
 
-  return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/lms-admin/reports" className="hover:text-foreground transition-colors">Reports</Link>
-        <ChevronRight className="h-3.5 w-3.5" />
-        <span className="text-foreground font-medium">{course.title}</span>
-      </div>
+  const reportData = {
+    course: { id: courseId, title: course.title, delivery_mode: course.delivery_mode ?? "online" },
+    stats: {
+      enrolled: totalEnrolled, completed: totalCompleted, avgProgress, completionRate,
+      examPass: examPassCount, examExists: !!examModule, pendingGrades, avgTimeS, totalTimeS,
+    },
+    buckets, bucketMax, moduleStats, atRisk,
+    roster: enriched.map((e: any) => ({
+      id:         e.student?.id,
+      name:       e.student?.name,
+      email:      e.student?.email,
+      status:     e.status,
+      progressPct: e.progressPct,
+      attendPct:  e.attendPct,
+      attended:   e.attended,
+      sessionTotal: e.sessionTotal,
+      examPassed: e.bestExam ? !!e.bestExam.passed : null,
+      examPct:    e.bestExam?.score != null && e.bestExam?.max_score ? Math.round((e.bestExam.score / e.bestExam.max_score) * 100) : null,
+      timeS:      e.timeS,
+    })),
+    assessment:  (courseAssessment?.assessment as any) ?? null,
+    generatedAt: (courseAssessment?.generated_at as any) ?? null,
+  }
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <Link href="/lms-admin/reports"
-            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h2 className="text-xl font-bold">{course.title}</h2>
-            <p className="text-muted-foreground text-sm capitalize">{course.delivery_mode}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <LmsReleaseCertsButton courseId={courseId} />
-          <LmsCourseReportButton courseId={courseId} courseTitle={course.title} />
-        </div>
-      </div>
-
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[
-          { label: "Enrolled",       value: totalEnrolled,         color: "text-slate-700"   },
-          { label: "Completed",      value: totalCompleted,        color: "text-emerald-600" },
-          { label: "Avg Progress",   value: `${avgProgress}%`,     color: "text-[#1B4F8A]"  },
-          { label: "Completion",     value: `${completionRate}%`,  color: completionRate >= 60 ? "text-emerald-600" : "text-amber-600" },
-          { label: "Exam Passes",    value: examModule ? `${examPassCount}/${totalEnrolled}` : "—", color: "text-indigo-600" },
-          { label: "Pending Grades", value: pendingGrades,         color: pendingGrades > 0 ? "text-rose-600" : "text-slate-400" },
-        ].map(s => (
-          <Card key={s.label}>
-            <CardContent className="p-4 text-center">
-              <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* ── Expert cohort report (AI) ─────────────────────────────── */}
-      {enriched.length > 0 && (
-        <LmsGroupExpertReport
-          courseId={courseId}
-          initial={(courseAssessment?.assessment as any) ?? null}
-          initialAt={(courseAssessment?.generated_at as any) ?? null}
-        />
-      )}
-
-      {/* ── Module performance + distribution + time ──────────────── */}
-      {enriched.length > 0 && (
-        <div className="grid lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-2">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <BarChart3 className="h-4 w-4 text-[#1B4F8A]" />
-                <h3 className="font-semibold text-sm">Module Performance <span className="text-muted-foreground font-normal">— cohort average</span></h3>
-              </div>
-              {moduleStats.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No modules in this course.</p>
-              ) : (
-                <div className="space-y-3">
-                  {moduleStats.map((m, i) => (
-                    <div key={i}>
-                      <div className="flex items-center justify-between text-xs mb-1 gap-2">
-                        <span className="font-medium text-slate-700 truncate">{m.title}</span>
-                        <span className="text-muted-foreground shrink-0">
-                          {m.avg !== null ? `${m.avg}%` : "—"}
-                          {m.type === "final_exam" && m.done !== null ? ` · ${m.done}/${m.total} passed` : ""}
-                          {m.type === "package"    && m.done !== null ? ` · ${m.done}/${m.total} done` : ""}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={cn("h-full rounded-full", (m.avg ?? 0) >= 70 ? "bg-emerald-500" : (m.avg ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400")}
-                          style={{ width: `${m.avg ?? 0}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-[11px] text-muted-foreground mt-3">Low bars flag modules the whole cohort struggled with — worth reviewing that content.</p>
-            </CardContent>
-          </Card>
-
-          <div className="space-y-4">
-            <Card>
-              <CardContent className="p-5">
-                <h3 className="font-semibold text-sm mb-3">Progress Distribution</h3>
-                <div className="space-y-2">
-                  {buckets.map(b => (
-                    <div key={b.label} className="flex items-center gap-2 text-xs">
-                      <span className="w-14 text-muted-foreground shrink-0">{b.label}</span>
-                      <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden">
-                        <div className="h-full bg-[#1B4F8A]/70 rounded" style={{ width: `${(b.count / bucketMax) * 100}%` }} />
-                      </div>
-                      <span className="w-5 text-right font-medium text-slate-700">{b.count}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center shrink-0"><Clock className="h-5 w-5 text-sky-600" /></div>
-                <div>
-                  <p className="text-lg font-bold text-slate-800">{fmtDur(avgTimeS)} <span className="text-xs font-normal text-muted-foreground">avg</span></p>
-                  <p className="text-xs text-muted-foreground">{fmtDur(totalTimeS)} total learning time</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* ── At-risk students ───────────────────────────────────────── */}
-      {atRisk.length > 0 && (
-        <Card className="border-amber-200">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <h3 className="font-semibold text-sm">At-Risk Students <span className="text-muted-foreground font-normal">({atRisk.length})</span></h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {atRisk.map(s => (
-                <Link key={s.id} href={`/lms-admin/students/${s.id}`}
-                  className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors">
-                  <span className="text-sm font-medium text-slate-700">{s.name}</span>
-                  <span className="text-[11px] text-amber-700">{s.reasons.join(" · ")}</span>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Students table */}
-      {enriched.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <Users className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="text-muted-foreground">No students enrolled in this course yet.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 border-b">
-                  <tr>
-                    <th className="text-left px-5 py-3 font-medium text-muted-foreground">Student</th>
-                    <th className="text-left px-5 py-3 font-medium text-muted-foreground hidden sm:table-cell">Status</th>
-                    <th className="text-left px-5 py-3 font-medium text-muted-foreground hidden md:table-cell">Progress</th>
-                    <th className="text-left px-5 py-3 font-medium text-muted-foreground hidden lg:table-cell">Attendance</th>
-                    {examModule && <th className="text-left px-5 py-3 font-medium text-muted-foreground hidden lg:table-cell">Final Exam</th>}
-                    {assignmentModules.length > 0 && <th className="text-left px-5 py-3 font-medium text-muted-foreground hidden xl:table-cell">Assignments</th>}
-                    <th className="px-5 py-3 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {enriched.map(e => (
-                    <tr key={e.enrollmentId} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] font-bold text-xs flex items-center justify-center shrink-0">
-                            {e.student?.name?.[0]?.toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-800">{e.student?.name}</p>
-                            <p className="text-xs text-muted-foreground">{e.student?.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 hidden sm:table-cell">
-                        <Badge className={cn("text-xs border-0 capitalize", {
-                          "bg-blue-100 text-blue-700":      e.status === "active",
-                          "bg-emerald-100 text-emerald-700": e.status === "completed",
-                          "bg-slate-100 text-slate-500":    e.status === "dropped",
-                        })}>
-                          {e.status}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3 hidden md:table-cell">
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={cn("h-full rounded-full", e.progressPct >= 80 ? "bg-emerald-500" : e.progressPct >= 40 ? "bg-amber-400" : "bg-slate-300")}
-                              style={{ width: `${e.progressPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted-foreground w-8 text-right">{e.progressPct}%</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 hidden lg:table-cell">
-                        {e.attendPct !== null ? (
-                          <span className={cn("text-xs font-medium", e.attendPct >= 80 ? "text-emerald-600" : e.attendPct >= 50 ? "text-amber-600" : "text-red-500")}>
-                            {e.attended}/{e.sessionTotal} ({e.attendPct}%)
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      {examModule && (
-                        <td className="px-5 py-3 hidden lg:table-cell">
-                          {e.bestExam ? (
-                            <div className="flex items-center gap-1.5">
-                              <GraduationCap className={cn("h-3.5 w-3.5 shrink-0", e.bestExam.passed ? "text-emerald-500" : "text-red-400")} />
-                              <span className={cn("text-xs font-medium", e.bestExam.passed ? "text-emerald-600" : "text-red-500")}>
-                                {e.bestExam.passed ? "Passed" : "Failed"}
-                                {e.bestExam.score != null && e.bestExam.max_score
-                                  ? ` · ${Math.round((e.bestExam.score / e.bestExam.max_score) * 100)}%`
-                                  : ""}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Not attempted</span>
-                          )}
-                        </td>
-                      )}
-                      {assignmentModules.length > 0 && (
-                        <td className="px-5 py-3 hidden xl:table-cell">
-                          {e.totalAssign === 0 ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : e.pendingAssign > 0 ? (
-                            <div className="flex items-center gap-1.5">
-                              <ClipboardList className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                              <span className="text-xs text-amber-600 font-medium">{e.pendingAssign} pending</span>
-                            </div>
-                          ) : e.gradedAssign > 0 ? (
-                            <div className="flex items-center gap-1.5">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                              <span className="text-xs text-emerald-600 font-medium">{e.gradedAssign}/{e.totalAssign} graded</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Not submitted</span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-5 py-3">
-                        <LmsStudentReportButton
-                          studentId={e.student?.id}
-                          courseId={courseId}
-                          studentName={e.student?.name ?? "Student"}
-                          courseTitle={course.title}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
+  return <GroupCourseReportView data={reportData} />
 }
