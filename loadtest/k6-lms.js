@@ -67,8 +67,10 @@ const errors = new Rate("errors")
 //                  reading pauses) for a long duration —          (default 45m,
 //                  reveals memory creep / leaks over time:        set $env:DURATION="3h" for a full day)
 //   RAMP mode   →  10→25→50→100 to find the ceiling:          (default, no env var)
-const SMOKE = __ENV.SMOKE === "1"
-const SOAK  = __ENV.SOAK  === "1"
+const SMOKE  = __ENV.SMOKE  === "1"
+const SOAK   = __ENV.SOAK   === "1"
+const STRESS = __ENV.STRESS === "1"          // ramp up to find the ceiling
+const MAXVUS = __ENV.MAXVUS ? parseInt(__ENV.MAXVUS) : 300 // top of the ramp
 const VUS      = __ENV.VUS ? parseInt(__ENV.VUS) : null
 const DURATION = __ENV.DURATION || (SOAK ? "45m" : "2m")
 
@@ -77,8 +79,18 @@ const thresholds = {
   errors:            ["rate<0.03"],  // fewer than 3% errors
 }
 
+// STRESS ramp: climb in steps (each held 90s so you can watch each level on
+// Render), up to MAXVUS. The level where p95 spikes / errors climb / memory
+// hits 512 MB is your ceiling.
+const stressStages = [25, 50, 75, 100, 150, 200, 250, 300, 400, 500]
+  .filter(n => n <= MAXVUS)
+  .map(target => ({ duration: "90s", target }))
+stressStages.push({ duration: "30s", target: 0 })
+
 export const options = SMOKE
   ? { vus: 5, duration: "30s", thresholds: { ...thresholds, errors: ["rate<0.05"] } }
+  : STRESS
+  ? { stages: stressStages, thresholds: { errors: ["rate<0.10"] } } // just observe; don't fail early
   : SOAK
   ? { vus: VUS || 20, duration: DURATION, thresholds: { errors: ["rate<0.03"] } } // stability over speed
   : VUS
@@ -94,10 +106,14 @@ export const options = SMOKE
       thresholds,
     }
 
-// Reading pause: long & random in SOAK (like a real student), short otherwise.
+// Reading pause between clicks:
+//   SOAK   → 20–90s (a real student reading a page)
+//   STRESS → 3–8s   (an ENGAGED student actively working through content)
+//   else   → the passed short value
 function pause(short) {
-  if (SOAK) { sleep(20 + Math.random() * 70) } // 20–90s of "reading"
-  else { sleep(short) }
+  if (SOAK)        { sleep(20 + Math.random() * 70) }
+  else if (STRESS) { sleep(3 + Math.random() * 5) }
+  else             { sleep(short) }
 }
 
 const params      = { headers: { Cookie: `lms_session=${COOKIE}` } }
