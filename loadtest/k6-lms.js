@@ -42,9 +42,11 @@ const BASE      = __ENV.BASE_URL   || "http://localhost:3000"
 const COOKIE    = __ENV.LMS_COOKIE || ""
 const COURSE_ID = __ENV.COURSE_ID  || ""
 // Optional — makes the test navigate REAL course content like a student:
-const MODULE_ID  = __ENV.MODULE_ID  || ""   // a package module's id (from /lms/courses/<c>/package/<THIS>)
-const PACKAGE_ID = __ENV.PACKAGE_ID || ""   // that module's package id — enables progress SAVES (writes data!)
-const WRITE      = __ENV.WRITE === "1" && PACKAGE_ID // only save progress when explicitly enabled
+const MODULE_ID      = __ENV.MODULE_ID  || ""   // a package module's id (/lms/courses/<c>/package/<THIS>)
+const PACKAGE_ID     = __ENV.PACKAGE_ID || ""   // that module's package id — needed for progress calls
+const ITEM_ID        = __ENV.ITEM_ID    || ""   // an item id — completing it triggers the heavy progress sync
+const EXAM_MODULE_ID = __ENV.EXAM_MODULE_ID || "" // the final-exam module id — opens the exam PAGE (no submit)
+const WRITE          = __ENV.WRITE === "1" && PACKAGE_ID // save progress (writes data — use a test student!)
 
 const errors = new Rate("errors")
 
@@ -88,44 +90,51 @@ function pause(short) {
   else { sleep(short) }
 }
 
-const params = { headers: { Cookie: `lms_session=${COOKIE}` } }
+const params      = { headers: { Cookie: `lms_session=${COOKIE}` } }
+const writeParams = { headers: { Cookie: `lms_session=${COOKIE}`, "Content-Type": "application/json" } }
 
+function visit(path, name) {
+  const res = http.get(`${BASE}${path}`, params)
+  check(res, { [`${name} ok`]: (r) => r.status === 200 }) || errors.add(1)
+  return res
+}
+
+// A full, realistic student session — covers the whole student surface.
+// Reads are always safe; the progress WRITE only fires when WRITE=1.
 export default function () {
-  // 1) Dashboard — the heaviest common student page (several DB queries)
-  let res = http.get(`${BASE}/lms/dashboard`, params)
-  check(res, { "dashboard ok": (r) => r.status === 200 }) || errors.add(1)
-  pause(1)
+  // ── 1. Land + navigate the portal ──────────────────────────────
+  visit("/lms/dashboard", "dashboard"); pause(1)
+  visit("/lms/courses",   "courses");   pause(1)
 
-  // 2) My Courses list
-  res = http.get(`${BASE}/lms/courses`, params)
-  check(res, { "courses ok": (r) => r.status === 200 }) || errors.add(1)
-  pause(1)
+  if (COURSE_ID) { visit(`/lms/courses/${COURSE_ID}`, "course"); pause(2) }
 
-  // 3) A specific course page (module list + progress)
-  if (COURSE_ID) {
-    res = http.get(`${BASE}/lms/courses/${COURSE_ID}`, params)
-    check(res, { "course ok": (r) => r.status === 200 }) || errors.add(1)
-    pause(2)
-  }
-
-  // 4) Open the actual content — the package player page (heavy SSR: package
-  //    + items + progress). This is what a student sees inside a module.
+  // ── 2. Enter a module and work through content ─────────────────
   if (MODULE_ID && COURSE_ID) {
-    res = http.get(`${BASE}/lms/courses/${COURSE_ID}/package/${MODULE_ID}`, params)
-    check(res, { "package player ok": (r) => r.status === 200 }) || errors.add(1)
-    pause(2)
+    visit(`/lms/courses/${COURSE_ID}/package/${MODULE_ID}`, "package player"); pause(2)
 
-    // 5) Save progress — the WRITE path (accumulate study time, like the
-    //    30-second beacon a real player sends). Only runs when WRITE=1.
-    //    NOTE: this writes to the account whose cookie you used — use a
-    //    throwaway test student, not your own, if you enable it.
+    // The player loads saved progress on open
+    if (PACKAGE_ID) http.get(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, params)
+
+    // Save progress — the WRITE path. With ITEM_ID it marks an item complete,
+    // which fires syncEnrollmentProgress (the heaviest per-student DB work).
+    // ⚠️ Writes to the cookie's account — use a THROWAWAY test student.
     if (WRITE) {
-      const payload = JSON.stringify({ module_id: MODULE_ID, course_id: COURSE_ID, time_spent: 30 })
-      res = http.post(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, payload, {
-        headers: { Cookie: `lms_session=${COOKIE}`, "Content-Type": "application/json" },
-      })
+      const body = { module_id: MODULE_ID, course_id: COURSE_ID, time_spent: 30 }
+      if (ITEM_ID) body.completed_item_id = ITEM_ID
+      const res = http.post(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, JSON.stringify(body), writeParams)
       check(res, { "progress save ok": (r) => r.status === 200 }) || errors.add(1)
       pause(1)
     }
   }
+
+  // ── 3. Occasionally open the exam page (viewing it, not submitting) ──
+  if (EXAM_MODULE_ID && COURSE_ID && Math.random() < 0.3) {
+    visit(`/lms/courses/${COURSE_ID}/exam/${EXAM_MODULE_ID}`, "exam page"); pause(2)
+  }
+
+  // ── 4. Occasionally check the other student pages (like real browsing) ──
+  if (Math.random() < 0.4) { visit("/lms/schedule",     "schedule");     pause(1) }
+  if (Math.random() < 0.3) { visit("/lms/assignments",  "assignments");  pause(1) }
+  if (Math.random() < 0.3) { visit("/lms/certificates", "certificates"); pause(1) }
+  if (Math.random() < 0.2) { visit("/lms/profile",      "profile");      pause(1) }
 }
