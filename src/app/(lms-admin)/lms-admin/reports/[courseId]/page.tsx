@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import LmsCourseReportButton from "@/components/lms/LmsCourseReportButton"
 import LmsStudentReportButton from "@/components/lms/LmsStudentReportButton"
 import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
+import LmsGroupExpertReport from "@/components/lms/LmsGroupExpertReport"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -193,6 +194,10 @@ export default async function LmsCourseReportPage({ params }: Props) {
     return { title: m.title, type: m.module_type, avg: null as number | null, done: null as number | null, total: totalEnrolled }
   })
 
+  // Stored cohort expert assessment (AI)
+  const { data: courseAssessment } = await db.from("lms_course_assessments")
+    .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
@@ -238,6 +243,15 @@ export default async function LmsCourseReportPage({ params }: Props) {
           </Card>
         ))}
       </div>
+
+      {/* ── Expert cohort report (AI) ─────────────────────────────── */}
+      {enriched.length > 0 && (
+        <LmsGroupExpertReport
+          courseId={courseId}
+          initial={(courseAssessment?.assessment as any) ?? null}
+          initialAt={(courseAssessment?.generated_at as any) ?? null}
+        />
+      )}
 
       {/* ── Module performance + distribution + time ──────────────── */}
       {enriched.length > 0 && (
