@@ -57,6 +57,7 @@ const PACKAGE_ID     = __ENV.PACKAGE_ID || ""   // that module's package id — 
 const ITEM_IDS       = (__ENV.ITEM_ID || "").split(",").map(s => s.trim()).filter(Boolean) // one or more item ids (comma-separated); each save completes one, triggering the heavy progress sync
 const EXAM_MODULE_ID = __ENV.EXAM_MODULE_ID || "" // the final-exam module id — opens the exam PAGE (no submit)
 const WRITE          = __ENV.WRITE === "1" && PACKAGE_ID // save progress (writes data — use a test student!)
+const SCORE          = __ENV.SCORE === "1"        // occasionally hit the short-answer AI scoring endpoint
 
 const errors = new Rate("errors")
 
@@ -158,6 +159,21 @@ export default function () {
   // ── 3. Occasionally open the exam page (viewing it, not submitting) ──
   if (EXAM_MODULE_ID && COURSE_ID && Math.random() < 0.3) {
     visit(`/lms/courses/${COURSE_ID}/exam/${EXAM_MODULE_ID}`, "exam page"); pause(2)
+  }
+
+  // ── 3b. Occasionally submit a short answer for AI scoring (student AI path).
+  //    Low probability — the free Groq tier rate-limits, and a 429 there is
+  //    expected under load, not a server fault, so it isn't counted as an error.
+  if (SCORE && Math.random() < 0.12) {
+    const body = JSON.stringify({
+      question: "Explain the role of GACA in aerodrome certification.",
+      rubric:   "Mentions GACA authority, the Civil Aviation Law, and certification requirements.",
+      answer:   "GACA regulates aerodromes under the Civil Aviation Law and issues their certification.",
+    })
+    const res = http.post(`${BASE}/api/lms/activities/score-short-answer`, body, writeParams)
+    check(res, { "short-answer score ok": (r) => r.status === 200 || r.status === 429 })
+    errors.add(res.status !== 200 && res.status !== 429) // 429 = Groq limit, not a server failure
+    pause(2)
   }
 
   // ── 4. Occasionally check the other student pages (like real browsing) ──
