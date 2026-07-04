@@ -44,7 +44,7 @@ const COURSE_ID = __ENV.COURSE_ID  || ""
 // Optional — makes the test navigate REAL course content like a student:
 const MODULE_ID      = __ENV.MODULE_ID  || ""   // a package module's id (/lms/courses/<c>/package/<THIS>)
 const PACKAGE_ID     = __ENV.PACKAGE_ID || ""   // that module's package id — needed for progress calls
-const ITEM_ID        = __ENV.ITEM_ID    || ""   // an item id — completing it triggers the heavy progress sync
+const ITEM_IDS       = (__ENV.ITEM_ID || "").split(",").map(s => s.trim()).filter(Boolean) // one or more item ids (comma-separated); each save completes one, triggering the heavy progress sync
 const EXAM_MODULE_ID = __ENV.EXAM_MODULE_ID || "" // the final-exam module id — opens the exam PAGE (no submit)
 const WRITE          = __ENV.WRITE === "1" && PACKAGE_ID // save progress (writes data — use a test student!)
 
@@ -120,7 +120,7 @@ export default function () {
     // ⚠️ Writes to the cookie's account — use a THROWAWAY test student.
     if (WRITE) {
       const body = { module_id: MODULE_ID, course_id: COURSE_ID, time_spent: 30 }
-      if (ITEM_ID) body.completed_item_id = ITEM_ID
+      if (ITEM_IDS.length) body.completed_item_id = ITEM_IDS[Math.floor(Math.random() * ITEM_IDS.length)]
       const res = http.post(`${BASE}/api/lms/packages/${PACKAGE_ID}/progress`, JSON.stringify(body), writeParams)
       check(res, { "progress save ok": (r) => r.status === 200 }) || errors.add(1)
       pause(1)
