@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
   ArrowLeft, ChevronRight, Users, CheckCircle2,
-  Clock, BarChart3, Download, Eye, GraduationCap, ClipboardList,
+  Clock, BarChart3, Download, Eye, GraduationCap, ClipboardList, AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import LmsCourseReportButton from "@/components/lms/LmsCourseReportButton"
@@ -30,7 +30,7 @@ export default async function LmsCourseReportPage({ params }: Props) {
       .single(),
     db.from("lms_enrollments")
       .select(`
-        id, status, enrolled_at, completed_at, progress_pct,
+        id, status, enrolled_at, completed_at, progress_pct, time_spent_s,
         lms_students(id, name, email, company, job_title)
       `)
       .eq("course_id", courseId)
@@ -121,6 +121,78 @@ export default async function LmsCourseReportPage({ params }: Props) {
   const examPassCount   = enriched.filter(e => e.bestExam?.passed).length
   const pendingGrades   = enriched.reduce((s, e) => s + e.pendingAssign, 0)
 
+  // ── Time-on-task aggregate ──────────────────────────────────────
+  const totalTimeS = enrollments.reduce((s, e) => s + (e.time_spent_s ?? 0), 0)
+  const avgTimeS   = totalEnrolled > 0 ? Math.round(totalTimeS / totalEnrolled) : 0
+  const fmtDur = (s: number) => { if (!s || s < 60) return s >= 1 ? `${s}s` : "—"; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+
+  // ── Progress distribution (buckets) ─────────────────────────────
+  const buckets = [
+    { label: "0–25%",  count: enriched.filter(e => e.progressPct < 25).length },
+    { label: "25–50%", count: enriched.filter(e => e.progressPct >= 25 && e.progressPct < 50).length },
+    { label: "50–75%", count: enriched.filter(e => e.progressPct >= 50 && e.progressPct < 75).length },
+    { label: "75–99%", count: enriched.filter(e => e.progressPct >= 75 && e.progressPct < 100).length },
+    { label: "100%",   count: enriched.filter(e => e.progressPct >= 100).length },
+  ]
+  const bucketMax = Math.max(1, ...buckets.map(b => b.count))
+
+  // ── At-risk students ────────────────────────────────────────────
+  const atRisk = enriched
+    .filter(e => e.status !== "dropped")
+    .map(e => {
+      const reasons: string[] = []
+      if (e.progressPct < 40) reasons.push("Low progress")
+      if (e.bestExam && !e.bestExam.passed) reasons.push("Failed exam")
+      if (e.attendPct !== null && e.attendPct < 50) reasons.push("Low attendance")
+      if (e.pendingAssign > 0) reasons.push(`${e.pendingAssign} ungraded`)
+      return { name: e.student?.name, email: e.student?.email, id: e.student?.id, progressPct: e.progressPct, reasons }
+    })
+    .filter(e => e.reasons.length > 0)
+
+  // ── Per-module cohort performance ───────────────────────────────
+  const { data: allModules } = await db.from("lms_modules")
+    .select("id, title, module_type, order_index").eq("course_id", courseId).order("order_index")
+  const studentIds = enriched.map(e => e.student?.id).filter(Boolean) as string[]
+  const pkgModIds  = (allModules ?? []).filter((m: any) => m.module_type === "package").map((m: any) => m.id)
+  const { data: pkgRows } = pkgModIds.length
+    ? await db.from("lms_packages").select("id, module_id").in("module_id", pkgModIds)
+    : { data: [] }
+  const pkgIds = (pkgRows ?? []).map((p: any) => p.id)
+  const [pkgItemsRes, pkgProgRes] = await Promise.all([
+    pkgIds.length ? db.from("lms_package_items").select("package_id").in("package_id", pkgIds) : Promise.resolve({ data: [] }),
+    pkgIds.length && studentIds.length
+      ? db.from("lms_package_progress").select("package_id, student_id, completed_items, status").in("package_id", pkgIds).in("student_id", studentIds)
+      : Promise.resolve({ data: [] }),
+  ])
+  const totalByPkg: Record<string, number> = {}
+  for (const it of (pkgItemsRes.data ?? []) as any[]) totalByPkg[it.package_id] = (totalByPkg[it.package_id] ?? 0) + 1
+  const pkgIdByMod = new Map((pkgRows ?? []).map((p: any) => [p.module_id, p.id]))
+  const progByKey: Record<string, any> = {}
+  for (const pp of (pkgProgRes.data ?? []) as any[]) progByKey[`${pp.package_id}:${pp.student_id}`] = pp
+
+  const moduleStats = (allModules ?? []).map((m: any) => {
+    if (m.module_type === "package") {
+      const pkgId = pkgIdByMod.get(m.id)
+      const total = pkgId ? (totalByPkg[pkgId] ?? 0) : 0
+      let sum = 0, done = 0
+      for (const sid of studentIds) {
+        const pp = pkgId ? progByKey[`${pkgId}:${sid}`] : null
+        const isDone = pp?.status === "passed" || pp?.status === "completed"
+        const comp = Array.isArray(pp?.completed_items) ? pp.completed_items.length : 0
+        const pct = isDone ? 100 : total > 0 ? Math.min(100, Math.round((comp / total) * 100)) : 0
+        sum += pct; if (pct >= 100) done++
+      }
+      return { title: m.title, type: "package", avg: studentIds.length ? Math.round(sum / studentIds.length) : 0, done, total: studentIds.length }
+    }
+    if (m.module_type === "final_exam") {
+      const avg = totalEnrolled
+        ? Math.round(enriched.reduce((s, e) => s + (e.bestExam?.score != null && e.bestExam?.max_score ? (e.bestExam.score / e.bestExam.max_score) * 100 : 0), 0) / totalEnrolled)
+        : 0
+      return { title: m.title, type: "final_exam", avg, done: examPassCount, total: totalEnrolled }
+    }
+    return { title: m.title, type: m.module_type, avg: null as number | null, done: null as number | null, total: totalEnrolled }
+  })
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
@@ -166,6 +238,92 @@ export default async function LmsCourseReportPage({ params }: Props) {
           </Card>
         ))}
       </div>
+
+      {/* ── Module performance + distribution + time ──────────────── */}
+      {enriched.length > 0 && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="h-4 w-4 text-[#1B4F8A]" />
+                <h3 className="font-semibold text-sm">Module Performance <span className="text-muted-foreground font-normal">— cohort average</span></h3>
+              </div>
+              {moduleStats.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No modules in this course.</p>
+              ) : (
+                <div className="space-y-3">
+                  {moduleStats.map((m, i) => (
+                    <div key={i}>
+                      <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                        <span className="font-medium text-slate-700 truncate">{m.title}</span>
+                        <span className="text-muted-foreground shrink-0">
+                          {m.avg !== null ? `${m.avg}%` : "—"}
+                          {m.type === "final_exam" && m.done !== null ? ` · ${m.done}/${m.total} passed` : ""}
+                          {m.type === "package"    && m.done !== null ? ` · ${m.done}/${m.total} done` : ""}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={cn("h-full rounded-full", (m.avg ?? 0) >= 70 ? "bg-emerald-500" : (m.avg ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400")}
+                          style={{ width: `${m.avg ?? 0}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-3">Low bars flag modules the whole cohort struggled with — worth reviewing that content.</p>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="p-5">
+                <h3 className="font-semibold text-sm mb-3">Progress Distribution</h3>
+                <div className="space-y-2">
+                  {buckets.map(b => (
+                    <div key={b.label} className="flex items-center gap-2 text-xs">
+                      <span className="w-14 text-muted-foreground shrink-0">{b.label}</span>
+                      <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden">
+                        <div className="h-full bg-[#1B4F8A]/70 rounded" style={{ width: `${(b.count / bucketMax) * 100}%` }} />
+                      </div>
+                      <span className="w-5 text-right font-medium text-slate-700">{b.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center shrink-0"><Clock className="h-5 w-5 text-sky-600" /></div>
+                <div>
+                  <p className="text-lg font-bold text-slate-800">{fmtDur(avgTimeS)} <span className="text-xs font-normal text-muted-foreground">avg</span></p>
+                  <p className="text-xs text-muted-foreground">{fmtDur(totalTimeS)} total learning time</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── At-risk students ───────────────────────────────────────── */}
+      {atRisk.length > 0 && (
+        <Card className="border-amber-200">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <h3 className="font-semibold text-sm">At-Risk Students <span className="text-muted-foreground font-normal">({atRisk.length})</span></h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {atRisk.map(s => (
+                <Link key={s.id} href={`/lms-admin/students/${s.id}`}
+                  className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors">
+                  <span className="text-sm font-medium text-slate-700">{s.name}</span>
+                  <span className="text-[11px] text-amber-700">{s.reasons.join(" · ")}</span>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Students table */}
       {enriched.length === 0 ? (
