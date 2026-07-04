@@ -44,17 +44,29 @@ const COURSE_ID = __ENV.COURSE_ID  || ""
 
 const errors = new Rate("errors")
 
-// SMOKE mode = tiny, safe first run (5 users for 30s) to confirm it works.
-// Full mode  = ramp 10 → 25 → 50 → 100 concurrent users to find the ceiling.
-// Turn smoke on with:  $env:SMOKE="1"
+// FOUR ways to run:
+//   SMOKE mode  →  5 users for 30s (safe first check):        $env:SMOKE="1"
+//   FIXED mode  →  exactly N users hammering for a set time:  $env:VUS="20"
+//   SOAK mode   →  N users pacing like REAL students (long    $env:SOAK="1"
+//                  reading pauses) for a long duration —          (default 45m,
+//                  reveals memory creep / leaks over time:        set $env:DURATION="3h" for a full day)
+//   RAMP mode   →  10→25→50→100 to find the ceiling:          (default, no env var)
 const SMOKE = __ENV.SMOKE === "1"
+const SOAK  = __ENV.SOAK  === "1"
+const VUS      = __ENV.VUS ? parseInt(__ENV.VUS) : null
+const DURATION = __ENV.DURATION || (SOAK ? "45m" : "2m")
+
+const thresholds = {
+  http_req_duration: ["p(95)<2500"], // 95% of requests under 2.5s
+  errors:            ["rate<0.03"],  // fewer than 3% errors
+}
 
 export const options = SMOKE
-  ? {
-      vus: 5,
-      duration: "30s",
-      thresholds: { http_req_duration: ["p(95)<2500"], errors: ["rate<0.05"] },
-    }
+  ? { vus: 5, duration: "30s", thresholds: { ...thresholds, errors: ["rate<0.05"] } }
+  : SOAK
+  ? { vus: VUS || 20, duration: DURATION, thresholds: { errors: ["rate<0.03"] } } // stability over speed
+  : VUS
+  ? { vus: VUS, duration: DURATION, thresholds }
   : {
       stages: [
         { duration: "30s", target: 10 },
@@ -63,11 +75,14 @@ export const options = SMOKE
         { duration: "1m",  target: 100 },
         { duration: "30s", target: 0 },
       ],
-      thresholds: {
-        http_req_duration: ["p(95)<2500"], // 95% of requests under 2.5s
-        errors:            ["rate<0.03"],  // fewer than 3% errors
-      },
+      thresholds,
     }
+
+// Reading pause: long & random in SOAK (like a real student), short otherwise.
+function pause(short) {
+  if (SOAK) { sleep(20 + Math.random() * 70) } // 20–90s of "reading"
+  else { sleep(short) }
+}
 
 const params = { headers: { Cookie: `lms_session=${COOKIE}` } }
 
@@ -75,17 +90,17 @@ export default function () {
   // 1) Dashboard — the heaviest common student page (several DB queries)
   let res = http.get(`${BASE}/lms/dashboard`, params)
   check(res, { "dashboard ok": (r) => r.status === 200 }) || errors.add(1)
-  sleep(1)
+  pause(1)
 
   // 2) My Courses list
   res = http.get(`${BASE}/lms/courses`, params)
   check(res, { "courses ok": (r) => r.status === 200 }) || errors.add(1)
-  sleep(1)
+  pause(1)
 
   // 3) A specific course page (module list + progress)
   if (COURSE_ID) {
     res = http.get(`${BASE}/lms/courses/${COURSE_ID}`, params)
     check(res, { "course ok": (r) => r.status === 200 }) || errors.add(1)
-    sleep(2)
+    pause(2)
   }
 }
