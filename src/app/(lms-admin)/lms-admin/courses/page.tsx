@@ -146,23 +146,12 @@ export default function CoursesPage() {
 
   async function duplicate(course: Course) {
     setDuplicating(course.id)
-    const res = await fetch("/api/lms/courses", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title:                `Copy of ${course.title}`,
-        description:          course.description,
-        course_code:          course.course_code ? `${course.course_code}-COPY` : null,
-        category:             course.category,
-        thumbnail_url:        course.thumbnail_url,
-        language:             course.language,
-        delivery_mode:        course.delivery_mode,
-        progress_enforcement: false,
-        certificate_enabled:  false,
-      }),
-    })
+    // Deep-clone: copies the course AND all its modules, packages, items,
+    // questions and content into a new draft course.
+    const res = await fetch(`/api/lms/courses/${course.id}/duplicate`, { method: "POST" })
     const data = await res.json(); setDuplicating(null)
     if (!res.ok) { toast.error(data.error ?? "Failed to duplicate"); return }
-    toast.success(`"${course.title}" duplicated`)
+    toast.success(`"${course.title}" duplicated${data.modules ? ` — ${data.modules} module${data.modules === 1 ? "" : "s"} copied` : ""}`)
     load()
   }
 
