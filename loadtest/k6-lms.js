@@ -11,27 +11,37 @@
 //   cookie, and this test reuses it to hammer the authenticated pages — which is
 //   the realistic load anyway (SSR page renders + DB reads).
 //
-// ─── HOW TO RUN ──────────────────────────────────────────────────────────────
-// 1. Install k6:  https://k6.io/docs/get-started/installation/
-//      Windows:  winget install k6   (or  choco install k6)
+// ─── SETUP (once) ─────────────────────────────────────────────────────────────
+// 1. Install k6:  winget install k6   (or see https://k6.io/docs)
+// 2. Log in to the LMS as a student → F12 → Application → Cookies →
+//    copy the VALUE of the "lms_session" cookie.
+// 3. Gather the ids for a course (from URLs, or ask an admin/DB):
+//    COURSE_ID, MODULE_ID (a package module), PACKAGE_ID, ITEM_ID(s), EXAM_MODULE_ID
 //
-// 2. Get your session cookie:
-//      - Log in to your deployed LMS as a student in Chrome.
-//      - F12 → Application tab → Cookies → your site → copy the VALUE of
-//        the cookie named "lms_session".
+// ─── RECIPES (PowerShell) ─────────────────────────────────────────────────────
+// Set these once per window:
+//    $env:BASE_URL="https://exam.ics-aviation.com"
+//    $env:LMS_COOKIE="<lms_session value>"
+//    $env:COURSE_ID="<course id>"
+//    $env:MODULE_ID="<package module id>"
+//    $env:PACKAGE_ID="<package id>"
+//    $env:EXAM_MODULE_ID="<exam module id>"
+//    $env:ITEM_ID="<item id>,<another item id>"   # comma-separated
 //
-// 3. Find a real course id (from the URL when you open a course):
-//        /lms/courses/<THIS-PART>
+// A) Safe smoke test (5 users, 30s):
+//      $env:SMOKE="1"; k6 run loadtest/k6-lms.js
 //
-// 4. Run it (PowerShell):
-//      $env:BASE_URL="https://YOUR-APP.onrender.com"
-//      $env:LMS_COOKIE="paste-the-cookie-value"
-//      $env:COURSE_ID="paste-a-course-id"
+// B) Realistic soak, READ-only (20 users, set duration):
+//      $env:SMOKE="0"; $env:SOAK="1"; $env:WRITE="0"; $env:DURATION="20m"
 //      k6 run loadtest/k6-lms.js
 //
-// 5. WHILE it runs, watch Render → your service → Metrics (Memory + CPU).
-//      If memory nears 512 MB or you see "exit code 137" in Logs → that's your
-//      ceiling (the instance ran out of RAM and restarted).
+// C) Realistic soak WITH progress saves (heaviest; ⚠ writes to the cookie's
+//    account — use a THROWAWAY test student):
+//      $env:SOAK="1"; $env:WRITE="1"; $env:DURATION="20m"
+//      k6 run loadtest/k6-lms.js
+//
+// WHILE it runs: watch Render → Metrics (Memory + CPU). Memory nearing 512 MB
+// or "exit code 137" in Logs = the instance ran out of RAM (your ceiling).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import http from "k6/http"
