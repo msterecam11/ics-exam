@@ -62,12 +62,16 @@ async function issueCertificate({
 
 // ── Check if student passed the final exam of a course ─────────
 async function passedFinalExam(studentId: string, courseId: string): Promise<boolean> {
+  // The final exam is the completion gate whether or not it's flagged
+  // mandatory — don't require is_mandatory here (an admin toggling it optional
+  // shouldn't silently break course completion / certificate issuance).
   const { data: examModule } = await db
     .from("lms_modules")
     .select("id")
     .eq("course_id", courseId)
     .eq("module_type", "final_exam")
-    .eq("is_mandatory", true)
+    .order("is_mandatory", { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (!examModule) return false
@@ -338,12 +342,24 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
 //   course % = Math.round(avg of all mandatory module %s)
 export async function syncEnrollmentProgress(studentId: string, courseId: string) {
   try {
-    // 1. All mandatory modules for this course
-    const { data: modules } = await db
+    // 1. Modules that count toward completion. Prefer mandatory modules, but
+    //    if a course has NONE marked mandatory (e.g. every module set optional),
+    //    fall back to ALL modules — otherwise progress freezes at 0% forever
+    //    even after the student completes everything.
+    let modules: { id: string; module_type: string }[] | null = null
+    const mandRes = await db
       .from("lms_modules")
       .select("id, module_type")
       .eq("course_id", courseId)
       .eq("is_mandatory", true)
+    modules = mandRes.data as any
+    if (!modules?.length) {
+      const allRes = await db
+        .from("lms_modules")
+        .select("id, module_type")
+        .eq("course_id", courseId)
+      modules = allRes.data as any
+    }
 
     if (!modules?.length) return
 
