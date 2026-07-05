@@ -121,9 +121,14 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
                     {!r.best ? (
                       <span className="text-muted-foreground">Not attempted</span>
                     ) : (
-                      <span className={r.best.passed ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                      <Link href={`/lms-admin/reports/${courseId}/${r.id}/exam`}
+                        title="View exam answers & attempts"
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          r.best.passed
+                            ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            : "border-red-200 text-red-600 hover:bg-red-50"}`}>
                         {r.best.passed ? "Passed" : "Failed"}{r.best.pct != null ? ` · ${r.best.pct}%` : ""}
-                      </span>
+                      </Link>
                     )}
                   </td>
                   <td className="py-3 px-4 text-right">
