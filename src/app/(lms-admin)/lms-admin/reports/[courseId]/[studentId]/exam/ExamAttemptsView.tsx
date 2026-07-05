@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, ShieldAlert, ShieldCheck, Monitor, MousePointerClick, Copy, Clock } from "lucide-react"
 import LmsAnswerCard from "@/components/lms/LmsAnswerCard"
+import ExamResultPDFButton from "@/components/lms/LmsExamResultPDF"
 
 interface Attempt {
   id: string
@@ -103,6 +104,15 @@ export default function ExamAttemptsView({ courseId, student, courseTitle, examT
                 <Clock className="h-3 w-3" /> {fmtTime(a.timeS)}
                 {a.submittedAt ? ` · ${new Date(a.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}
               </p>
+              <div className="flex justify-end pt-1">
+                <ExamResultPDFButton
+                  student={student}
+                  courseTitle={courseTitle}
+                  examTitle={examTitle}
+                  passMark={passMark}
+                  attempt={a}
+                />
+              </div>
             </div>
           </div>
 
