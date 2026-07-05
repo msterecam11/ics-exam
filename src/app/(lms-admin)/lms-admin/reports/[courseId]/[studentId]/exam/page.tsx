@@ -5,42 +5,48 @@ import ExamAttemptsView from "./ExamAttemptsView"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
-// Map LMS question types to the exam-system AnswerCard's expected types.
-function mapType(t: string) { return t === "mcq_multiple" ? "mcq_multi" : t }
+// Points earned for one question — mirrors FinalExamPlayer.score() exactly,
+// covering every LMS exam type (incl. partial credit for ordering & match_pair).
+function earnedFor(q: any, ans: any, aiScores: any): number {
+  const pts = Number(q.points ?? 1)
+  if (q.type === "mcq_single") {
+    const correctId = (q.options ?? []).find((o: any) => o.correct)?.id
+    const given = Array.isArray(ans) ? ans[0] : ans
+    return correctId && given === correctId ? pts : 0
+  }
+  if (q.type === "mcq_multiple") {
+    const corr = (q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id)
+    const sel: string[] = Array.isArray(ans) ? ans : []
+    return corr.length > 0 && sel.length === corr.length && corr.every((id: string) => sel.includes(id)) ? pts : 0
+  }
+  if (q.type === "ordering") {
+    const correct = (q.items ?? []).map((i: any) => i.id)
+    const given: string[] = Array.isArray(ans) ? ans : []
+    const ok = correct.filter((id: string, i: number) => id === given[i]).length
+    return given.length > 0 && correct.length > 0 ? Math.round((ok / correct.length) * pts) : 0
+  }
+  if (q.type === "match_pair") {
+    const given = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {}
+    const pairs = q.pairs ?? []
+    const ok = pairs.filter((p: any) => given[p.id] === p.right).length
+    return pairs.length > 0 ? Math.round((ok / pairs.length) * pts) : 0
+  }
+  if (q.type === "open_ended") return Number(aiScores?.[q.id]?.score ?? 0)
+  return 0
+}
 
-// Adapt one LMS attempt (module.questions + attempt.answers + ai scores) into
-// the answer[] shape the shared AnswerCard component renders.
-function buildAnswers(questions: any[], answers: any, aiScores: any) {
-  return questions.map((q: any) => {
-    const type = mapType(q.type)
-    const raw  = answers?.[q.id]
-    const opts = (q.options ?? []).map((o: any) => ({ id: o.id, text: o.text, is_correct: !!o.correct }))
-    const pts  = Number(q.points ?? 1)
-
-    let score = 0
-    if (q.type === "mcq_single") {
-      score = opts.find((o: any) => o.is_correct)?.id === raw ? pts : 0
-    } else if (q.type === "mcq_multiple") {
-      const correctIds = new Set(opts.filter((o: any) => o.is_correct).map((o: any) => o.id))
-      const chosen = new Set(Array.isArray(raw) ? raw : [])
-      const exact = chosen.size === correctIds.size && [...correctIds].every(id => chosen.has(id))
-      score = exact ? pts : 0
-    } else if (q.type === "open_ended") {
-      score = Number(aiScores?.[q.id]?.score ?? 0)
-    }
-
-    return {
-      id: q.id,
-      score_achieved: score,
-      answer_text: type === "open_ended" ? (typeof raw === "string" ? raw : "") : undefined,
-      answer_json: {
-        choice_id:  q.type === "mcq_single"   ? raw : undefined,
-        choice_ids: q.type === "mcq_multiple" ? (Array.isArray(raw) ? raw : []) : undefined,
-      },
-      ai_justification: q.type === "open_ended" ? (aiScores?.[q.id]?.justification ?? null) : null,
-      questions: { id: q.id, type, text: q.text, score: pts, choices: opts },
-    }
-  })
+// Build the per-question review items for one attempt (LMS-native shape).
+function buildItems(questions: any[], answers: any, aiScores: any) {
+  return questions.map((q: any) => ({
+    id: q.id,
+    question: {
+      id: q.id, type: q.type, text: q.text, points: Number(q.points ?? 1),
+      options: q.options ?? undefined, items: q.items ?? undefined, pairs: q.pairs ?? undefined,
+    },
+    answer: answers?.[q.id] ?? null,
+    earned: earnedFor(q, answers?.[q.id], aiScores),
+    aiJustification: q.type === "open_ended" ? (aiScores?.[q.id]?.justification ?? null) : null,
+  }))
 }
 
 interface Props { params: Promise<{ courseId: string; studentId: string }> }
@@ -86,7 +92,7 @@ export default async function StudentExamResultsPage({ params }: Props) {
         passed: !!a.passed,
         submittedAt: a.submitted_at ?? a.graded_at ?? null,
         timeS: a.time_spent_s ?? 0,
-        answers: buildAnswers(questions, a.answers ?? {}, aiScores),
+        answers: buildItems(questions, a.answers ?? {}, aiScores),
         security: sec ? {
           tabs: Number(sec.tabs ?? 0), fs: Number(sec.fs ?? 0),
           rightClicks: Number(sec.rightClicks ?? 0), copyAttempts: Number(sec.copyAttempts ?? 0),

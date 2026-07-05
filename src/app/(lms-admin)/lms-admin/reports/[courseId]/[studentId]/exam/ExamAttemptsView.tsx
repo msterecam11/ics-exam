@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, ShieldAlert, ShieldCheck, Monitor, MousePointerClick, Copy, Clock } from "lucide-react"
-import AnswerCard from "@/components/admin/AnswerCard"
+import LmsAnswerCard from "@/components/lms/LmsAnswerCard"
 
 interface Attempt {
   id: string
@@ -141,7 +141,9 @@ export default function ExamAttemptsView({ courseId, student, courseTitle, examT
           {a.answers.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">No answers recorded.</CardContent></Card>
           ) : (
-            a.answers.map((ans, idx) => <AnswerCard key={ans.id} answer={ans} index={idx} readOnly />)
+            a.answers.map((it, idx) => (
+              <LmsAnswerCard key={it.id} index={idx} question={it.question} answer={it.answer} earned={it.earned} aiJustification={it.aiJustification} />
+            ))
           )}
         </div>
       )}
