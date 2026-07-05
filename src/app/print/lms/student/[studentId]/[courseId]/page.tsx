@@ -76,7 +76,8 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  const { student, course, enrollment, overall, modules, exam, assignments, topicMastery, assessment, security } = report
+  const { student, course, enrollment, overall, modules, exam, assignments, topicMastery, assessment, security,
+          cohort, examTrajectory, feedback } = report
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
@@ -181,6 +182,36 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
               </div>
             </div>
 
+            {/* Cohort benchmark + improvement trajectory */}
+            {(cohort || examTrajectory.length > 1) && (
+              <div className="avoid-break grid grid-cols-2 gap-8">
+                {cohort && (
+                  <div>
+                    <p className={`${SECTION} mb-3`}>Cohort Benchmark</p>
+                    <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="py-3 px-2 text-center"><p className="text-[9px] text-slate-400 uppercase">You</p><p className="text-lg font-bold" style={{ color: scoreColor(cohort.selfScore) }}>{cohort.selfScore}%</p></div>
+                      <div className="py-3 px-2 text-center"><p className="text-[9px] text-slate-400 uppercase">Avg</p><p className="text-lg font-bold text-[#1B4F8A]">{cohort.classAvg}%</p></div>
+                      <div className="py-3 px-2 text-center"><p className="text-[9px] text-slate-400 uppercase">Rank</p><p className="text-lg font-bold text-slate-700">#{cohort.rank}<span className="text-slate-300 text-xs">/{cohort.total}</span></p></div>
+                    </div>
+                  </div>
+                )}
+                {examTrajectory.length > 1 && (
+                  <div>
+                    <p className={`${SECTION} mb-3`}>Exam Improvement</p>
+                    <div className="flex items-end gap-3 border border-slate-100 rounded-xl p-3" style={{ height: 92 }}>
+                      {examTrajectory.map((a, i) => (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                          <p className="text-[10px] font-bold mb-0.5" style={{ color: scoreColor(a.pct) }}>{a.pct}%</p>
+                          <div className="w-full rounded-t" style={{ height: `${Math.max(4, a.pct)}%`, background: scoreColor(a.pct) }} />
+                          <p className="text-[8px] text-slate-400 mt-0.5">{i === examTrajectory.length - 1 ? "Final" : `#${a.attemptNo}`}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Expert assessment */}
             <div className="avoid-break">
               <p className={`${SECTION} mb-3`}>Expert Assessment</p>
@@ -236,6 +267,23 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                 </div>
               </div>
             </div>
+
+            {/* Learner feedback — only when the course collects it by name */}
+            {feedback && (feedback.ratings.length > 0 || feedback.comment) && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Learner Feedback</p>
+                <div className="border border-slate-100 rounded-xl p-4 space-y-2">
+                  {feedback.ratings.length > 0 && (
+                    <div className="flex flex-wrap gap-x-6 gap-y-1">
+                      {feedback.ratings.map((r, i) => (
+                        <span key={i} className="text-[11px] text-slate-600">{r.label}: <span className="font-semibold text-amber-500">{r.value}/5</span></span>
+                      ))}
+                    </div>
+                  )}
+                  {feedback.comment && <p className="text-[11px] text-slate-600 italic leading-relaxed border-l-2 border-[#1B4F8A]/30 pl-3">&ldquo;{feedback.comment}&rdquo;</p>}
+                </div>
+              </div>
+            )}
           </div>
           <PageFooter page={2} total={totalPages} />
         </Page>

@@ -7,6 +7,7 @@ import {
   ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2,
   CheckCircle2, XCircle, MinusCircle, Sparkles,
   Trophy, Target, Lightbulb, TrendingUp, ShieldAlert,
+  Medal, Users, Star, Clock, ClipboardList, CalendarCheck, MessageSquareText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import ScoreBar from "@/components/reports/ScoreBar"
@@ -70,6 +71,33 @@ function CoverRing({ score }: { score: number }) {
 
 const SECTION = "text-[10px] font-bold uppercase tracking-widest text-slate-400"
 
+// Compact topic-mastery radar (student values only). Falls back to nothing < 3 axes.
+function TopicRadar({ topics }: { topics: { topic: string; pct: number }[] }) {
+  const pts = topics.slice(0, 6)
+  const n = pts.length
+  if (n < 3) return null
+  const cx = 100, cy = 95, R = 70
+  const coord = (i: number, v: number) => {
+    const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n
+    const r = (Math.max(0, Math.min(100, v)) / 100) * R
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
+  }
+  const grid = [0.25, 0.5, 0.75, 1].map(f =>
+    pts.map((_, i) => coord(i, f * 100).join(",")).join(" ")
+  )
+  const poly = pts.map((t, i) => coord(i, t.pct).join(",")).join(" ")
+  return (
+    <svg viewBox="0 0 200 190" width="100%" style={{ maxWidth: 240 }}>
+      {grid.map((g, i) => <polygon key={i} points={g} fill="none" stroke="#e2e8f0" strokeWidth={0.75} />)}
+      <polygon points={poly} fill="rgba(55,138,221,0.28)" stroke="#185FA5" strokeWidth={1.5} />
+      {pts.map((t, i) => {
+        const [x, y] = coord(i, 116)
+        return <text key={i} x={x} y={y} textAnchor="middle" fontSize={7} fill="#64748b">{t.topic.length > 16 ? t.topic.slice(0, 15) + "…" : t.topic}</text>
+      })}
+    </svg>
+  )
+}
+
 export default function StudentCourseReportView({ params }: { params: Promise<{ courseId: string; studentId: string }> }) {
   const { courseId, studentId } = use(params)
   const [report, setReport] = useState<CourseReport | null>(null)
@@ -124,13 +152,31 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     </div>
   )
 
-  const { student, course, enrollment, overall, modules, exam, topicMastery, assessment, security } = report
+  const { student, course, enrollment, overall, modules, exam, topicMastery, assessment, security,
+          examTrajectory, cohort, feedback, assignments } = report
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!assessment
   const showSecurity = includeSecurity && !!security
-  const totalPages = 2 + modules.length + (hasAI ? 1 : 0) + (showSecurity ? 1 : 0)
+  const hasJourney = modules.length > 0
+  const hasAssignments = assignments.length > 0
+  const hasAttendance = overall.sessionTotal > 0
+  const hasFeedback = !!feedback && (feedback.ratings.length > 0 || !!feedback.comment)
+
+  // Dynamic page order — a page only exists when it has data to show.
+  const pageOrder: string[] = [
+    "cover", "summary",
+    ...(hasJourney ? ["journey"] : []),
+    ...modules.map(m => `mod-${m.id}`),
+    ...(hasAssignments ? ["assignments"] : []),
+    ...(hasAttendance ? ["attendance"] : []),
+    ...(hasFeedback ? ["feedback"] : []),
+    ...(hasAI && assessment ? ["reco"] : []),
+    ...(showSecurity && security ? ["security"] : []),
+  ]
+  const pageNo = (k: string) => pageOrder.indexOf(k) + 1
+  const totalPages = pageOrder.length
   const riskColor = (r: string) => r === "clean" ? { t: "#059669", b: "#d1fae5" } : r === "medium" ? { t: "#D97706", b: "#fef3c7" } : { t: "#DC2626", b: "#fee2e2" }
 
   return (
@@ -218,8 +264,9 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
             <CoverRing score={overallScore} />
             <div className="flex items-center gap-10">
               <div className="text-center"><p className="text-2xl font-bold text-white">{overall.completionPct}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completion</p></div>
-              {overall.timeSpent > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(overall.timeSpent)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Time</p></div></>}
+              {overall.timeSpent > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(overall.timeSpent)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Time on task</p></div></>}
               {exam && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{exam.pct}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Final Exam</p></div></>}
+              {cohort && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white flex items-center gap-1 justify-center"><Medal className="h-5 w-5 text-amber-300" />#{cohort.rank}<span className="text-white/40 text-sm font-normal">/{cohort.total}</span></p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Cohort rank</p></div></>}
             </div>
             <div className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 text-center">
               <p className="text-white/80 text-sm font-semibold">{course.title}</p>
@@ -254,6 +301,17 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
               </div>
             </div>
 
+            {cohort && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Cohort Benchmark</p>
+                <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="py-4 px-3 text-center"><p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Your course score</p><p className="text-xl font-bold" style={{ color: sc(cohort.selfScore).text }}>{cohort.selfScore}%</p></div>
+                  <div className="py-4 px-3 text-center"><p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Cohort average</p><p className="text-xl font-bold text-[#1B4F8A]">{cohort.classAvg}%</p><p className="text-[10px] text-slate-400 mt-1">{cohort.total} students</p></div>
+                  <div className="py-4 px-3 text-center"><p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Rank</p><p className="text-xl font-bold text-slate-700 flex items-center justify-center gap-1"><Medal className="h-4 w-4 text-amber-400" />#{cohort.rank}</p><p className="text-[10px] text-slate-400 mt-1">of {cohort.total}</p></div>
+                </div>
+              </div>
+            )}
+
             <div className="avoid-break">
               <p className={`${SECTION} mb-3`}>Expert Assessment</p>
               {assessment ? (
@@ -285,16 +343,84 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
             </div>
 
             {topicMastery.length > 0 && (
-              <div className="avoid-break space-y-3">
-                <p className={SECTION}>Topic Mastery</p>
-                {topicMastery.slice(0, 10).map(t => <ScoreBar key={t.topic} label={t.topic} score={t.pct} detail={t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} />)}
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Topic Mastery</p>
+                <div className={topicMastery.length >= 3 ? "grid grid-cols-3 gap-5 items-center" : ""}>
+                  <div className="col-span-2 space-y-3">
+                    {topicMastery.slice(0, 10).map(t => <ScoreBar key={t.topic} label={t.topic} score={t.pct} detail={t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} />)}
+                  </div>
+                  {topicMastery.length >= 3 && <div className="flex justify-center"><TopicRadar topics={topicMastery} /></div>}
+                </div>
+              </div>
+            )}
+
+            {examTrajectory.length > 1 && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Final Exam — Improvement Trajectory</p>
+                <div className="flex items-end gap-4 border border-slate-100 rounded-xl p-4" style={{ height: 130 }}>
+                  {examTrajectory.map((a, i) => {
+                    const col = sc(a.pct)
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                        <p className="text-xs font-bold mb-1" style={{ color: col.text }}>{a.pct}%</p>
+                        <div className="w-full rounded-t-md" style={{ height: `${Math.max(4, a.pct)}%`, background: col.text }} />
+                        <p className="text-[9px] text-slate-400 mt-1 uppercase tracking-wide">{i === examTrajectory.length - 1 ? "Final" : `Attempt ${a.attemptNo}`}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+                {(() => { const g = examTrajectory[examTrajectory.length - 1].pct - examTrajectory[0].pct; return g !== 0 ? <p className={`text-[10px] mt-1.5 ${g > 0 ? "text-emerald-600" : "text-red-500"}`}>{g > 0 ? "▲" : "▼"} {Math.abs(g)} pts from first attempt to final</p> : null })()}
               </div>
             )}
           </div>
-          <PageFooter page={2} total={totalPages} />
+          <PageFooter page={pageNo("summary")} total={totalPages} />
         </Page>
 
-        {/* PAGES 3–N — MODULES */}
+        {/* LEARNING JOURNEY — time on task + activities practiced */}
+        {hasJourney && (
+          <Page>
+            <PageHeader title="Learning Journey" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-6">
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Time on Task</p>
+                <div className="rounded-xl border border-slate-100 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-[#1B4F8A]/5 border-b border-slate-100">
+                    <span className="text-xs font-bold text-[#1B4F8A] flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Total time on task</span>
+                    <span className="text-sm font-bold text-[#1B4F8A]">{overall.timeSpent > 0 ? fmtTime(overall.timeSpent) : "—"}</span>
+                  </div>
+                  {modules.map((m, mi) => (
+                    <div key={m.id} className={`flex items-center justify-between px-4 py-2 border-b border-slate-50 last:border-0 ${mi % 2 ? "bg-slate-50/60" : ""}`}>
+                      <span className="text-[11px] text-slate-600">Module {mi + 1} · {m.title}</span>
+                      <span className="text-[11px] font-semibold text-slate-700">{m.timeSpent > 0 ? fmtTime(m.timeSpent) : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {modules.some(m => m.activities.length > 0) && (
+                <div className="avoid-break space-y-3">
+                  <p className={SECTION}>Activities Practiced</p>
+                  {modules.filter(m => m.activities.length > 0).map(m => (
+                    <div key={m.id} className="border border-slate-100 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-slate-700">{m.title}</span>
+                        <span className="text-[10px] text-slate-400">{statusLabel(m.status)}{m.timeSpent > 0 ? ` · ${fmtTime(m.timeSpent)}` : ""}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {m.activities.map((a, ai) => (
+                          <span key={ai} className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{a.type.replace(/_/g, " ")} ×{a.count}{a.avgPct != null ? ` · ${a.avgPct}%` : ""}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("journey")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* PAGES — MODULES */}
         {modules.map((m, mi) => {
           const col = sc(m.masteryScore)
           const es = m.examSection
@@ -386,12 +512,80 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                   </div>
                 )}
               </div>
-              <PageFooter page={3 + mi} total={totalPages} />
+              <PageFooter page={pageNo(`mod-${m.id}`)} total={totalPages} />
             </Page>
           )
         })}
 
-        {/* LAST PAGE — RECOMMENDATIONS */}
+        {/* ASSIGNMENTS */}
+        {hasAssignments && (
+          <Page>
+            <PageHeader title="Assignments" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-4">
+              <p className={SECTION}>Submitted Work &amp; Instructor Feedback</p>
+              {assignments.map((a, i) => {
+                const pct = a.score != null && a.maxScore ? Math.round((a.score / a.maxScore) * 100) : null
+                return (
+                  <div key={i} className="avoid-break border border-slate-100 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-[#1B4F8A]" /><p className="text-sm font-semibold text-slate-700">{a.title}</p></div>
+                      {a.score != null
+                        ? <p className="text-lg font-bold" style={{ color: sc(pct).text }}>{a.score}{a.maxScore ? <span className="text-slate-300 text-sm font-normal">/{a.maxScore}</span> : ""}</p>
+                        : <span className="text-[10px] uppercase tracking-wide text-slate-400 capitalize">{a.status}</span>}
+                    </div>
+                    {a.note && <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2"><p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">Instructor note</p><p className="text-[11px] text-emerald-900 leading-relaxed">{a.note}</p></div>}
+                  </div>
+                )
+              })}
+            </div>
+            <PageFooter page={pageNo("assignments")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* ATTENDANCE */}
+        {hasAttendance && (
+          <Page>
+            <PageHeader title="Attendance" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-5">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0" style={{ background: sc(overall.attendancePct).bg }}>
+                  <span className="text-lg font-extrabold" style={{ color: sc(overall.attendancePct).text }}>{overall.attendancePct ?? 0}%</span>
+                </div>
+                <div>
+                  <p className={SECTION}>Attendance Rate</p>
+                  <p className="text-sm text-slate-600 mt-1 flex items-center gap-1.5"><CalendarCheck className="h-4 w-4 text-slate-400" />{overall.presentCount} of {overall.sessionTotal} sessions attended</p>
+                </div>
+              </div>
+            </div>
+            <PageFooter page={pageNo("attendance")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* LEARNER FEEDBACK — only when the course collects it by name */}
+        {hasFeedback && feedback && (
+          <Page>
+            <PageHeader title="Learner Feedback" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-5">
+              <p className={SECTION}>Course Feedback — in the learner&apos;s words</p>
+              {feedback.ratings.length > 0 && (
+                <div className="space-y-2 max-w-md">
+                  {feedback.ratings.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600">{r.label}</span>
+                      <span className="flex gap-0.5">{[1, 2, 3, 4, 5].map(n => <Star key={n} className={`h-3.5 w-3.5 ${r.value != null && n <= Math.round(r.value) ? "text-amber-400 fill-amber-400" : "text-slate-200"}`} />)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {feedback.comment && (
+                <div className="border-l-2 border-[#1B4F8A]/30 pl-4"><MessageSquareText className="h-4 w-4 text-slate-300 mb-1" /><p className="text-sm text-slate-600 italic leading-relaxed">&ldquo;{feedback.comment}&rdquo;</p></div>
+              )}
+            </div>
+            <PageFooter page={pageNo("feedback")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* RECOMMENDATIONS */}
         {hasAI && assessment && (
           <Page>
             <PageHeader title="Personalized Recommendations" subtitle={course.title} today={today} />
@@ -417,7 +611,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                 <p className="text-[10px] text-slate-300 uppercase tracking-widest">ICS Aviation · Integrated Consulting Services</p>
               </div>
             </div>
-            <PageFooter page={2 + modules.length + 1} total={totalPages} />
+            <PageFooter page={pageNo("reco")} total={totalPages} />
           </Page>
         )}
 
@@ -451,7 +645,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                 </div>
               )}
             </div>
-            <PageFooter page={totalPages} total={totalPages} />
+            <PageFooter page={pageNo("security")} total={totalPages} />
           </Page>
         )}
       </div>

@@ -55,6 +55,15 @@ export async function POST(req: Request, { params }: Params) {
     ? `Final exam overall: ${report.exam.pct ?? "—"}% — ${report.exam.passed ? "passed" : "not passed"} (${report.exam.attempts}/${report.exam.maxAttempts} attempts)`
     : "Final exam: not attempted"
 
+  // Extra grounded signals — improvement across attempts and standing vs the cohort.
+  const traj = report.examTrajectory
+  const trajectoryLine = traj.length > 1
+    ? `Exam attempt trajectory: ${traj.map(a => `${a.pct}%`).join(" → ")} (${(traj[traj.length - 1].pct - traj[0].pct) >= 0 ? "improved" : "declined"} ${Math.abs(traj[traj.length - 1].pct - traj[0].pct)} pts across ${traj.length} attempts)`
+    : ""
+  const cohortLine = report.cohort
+    ? `Cohort standing: rank #${report.cohort.rank} of ${report.cohort.total}, class average ${report.cohort.classAvg}%`
+    : ""
+
   const moduleSkeleton = report.modules
     .map(m => `"${m.title}": {"summary":"one sentence assessing this module (mastery ${m.masteryScore ?? "—"}%)","strengths":["specific strength, or note none if the exam score is low"],"weaknesses":["specific weakness grounded in the exam score"],"development":["one concrete action to improve this module"]}`)
     .join(",\n    ")
@@ -67,8 +76,10 @@ LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.
 COURSE: ${report.course.title}
 OVERALL MASTERY: ${report.overall.score ?? "—"}% · COMPLETION: ${report.overall.completionPct}%
 ${examLine}
-MODULE PERFORMANCE (mastery is exam-weighted):
+${trajectoryLine ? trajectoryLine + "\n" : ""}${cohortLine ? cohortLine + "\n" : ""}MODULE PERFORMANCE (mastery is exam-weighted):
 ${moduleLines}
+
+Where relevant, reference the learner's improvement across attempts and their standing relative to the cohort — but only if that data appears above.
 
 Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 {

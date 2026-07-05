@@ -16,6 +16,7 @@ export interface ExamSection {
   pct: number; correct: number; partial: number; zero: number
   earned: number; possible: number; questions: ExamSectionQuestion[]
 }
+export interface ModuleActivity { type: string; count: number; avgPct: number | null }
 export interface ReportModule {
   id: string
   title: string
@@ -29,6 +30,7 @@ export interface ReportModule {
   startedAt: string | null
   completedAt: string | null
   items: ReportItem[]
+  activities: ModuleActivity[]  // coursework practice aggregated by activity type
   ai?: ModuleAI | null          // AI analysis of this module (from the expert assessment)
   examSection?: ExamSection | null  // this module's slice of the final exam, graded
   masteryScore: number | null   // exam-weighted mastery (the real measure), used for topics/overall
@@ -56,6 +58,12 @@ export interface CourseReport {
     riskLevel: "clean" | "medium" | "high"
     analysis: string | null
   } | null
+  // Final-exam attempt trajectory (attempt 1 → final) — improvement over attempts.
+  examTrajectory: { attemptNo: number; pct: number; passed: boolean }[]
+  // Cohort benchmark within the same course (null when alone / no comparators).
+  cohort: { rank: number; total: number; classAvg: number; selfScore: number } | null
+  // This student's own course feedback — only when the course collects it by name.
+  feedback: { ratings: { label: string; value: number | null }[]; comment: string | null } | null
 }
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
@@ -82,7 +90,7 @@ function gradeQuestion(q: any, ans: any): number {
 export async function buildCourseReport(studentId: string, courseId: string): Promise<CourseReport | null> {
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
-    db.from("lms_courses").select("id, title, delivery_mode").eq("id", courseId).single(),
+    db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
     db.from("lms_enrollments").select("status, enrolled_at, completed_at, progress_pct").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
   ])
   if (!studentRes.data || !courseRes.data || !enrollRes.data) return null
@@ -128,6 +136,19 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       }
     })
 
+    // Aggregate coursework practice by activity type (for the Learning Journey).
+    const actAgg = new Map<string, { count: number; sum: number; n: number }>()
+    for (const it of items) {
+      const key = it.activity_type ?? it.type ?? "activity"
+      const cur = actAgg.get(key) ?? { count: 0, sum: 0, n: 0 }
+      cur.count++
+      if (typeof it.pct === "number") { cur.sum += it.pct; cur.n++ }
+      actAgg.set(key, cur)
+    }
+    const activities = [...actAgg.entries()].map(([type, v]) => ({
+      type, count: v.count, avgPct: v.n ? Math.round(v.sum / v.n) : null,
+    }))
+
     reportModules.push({
       id: m.id, title: m.title, order_index: m.order_index, module_type: m.module_type,
       summary: analysis.summary ?? "",
@@ -138,6 +159,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       startedAt: prog?.started_at ?? null,
       completedAt: prog?.completed_at ?? null,
       items,
+      activities,
       masteryScore: null,
     })
   }
@@ -282,6 +304,74 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     }
   }
 
+  // ── Final-exam improvement trajectory (attempt 1 → final) ──
+  const examTrajectory = examMod
+    ? attempts.filter((a: any) => a.module_id === examMod.id)
+        .slice()
+        .sort((a: any, b: any) => (a.attempt_no ?? 0) - (b.attempt_no ?? 0))
+        .map((a: any) => ({
+          attemptNo: a.attempt_no ?? 0,
+          pct: a.max_score ? Math.round((a.score / a.max_score) * 100) : Math.round(num(a.score) ?? 0),
+          passed: !!a.passed,
+        }))
+    : []
+
+  // ── Cohort benchmark (rank within the course) ──
+  // Comparable proxy = exam-weighted where an exam exists, else completion %.
+  let cohort: CourseReport["cohort"] = null
+  {
+    const { data: cohortEnrolls } = await db
+      .from("lms_enrollments")
+      .select("student_id, progress_pct")
+      .eq("course_id", courseId)
+      .neq("status", "dropped")
+    const rows = cohortEnrolls ?? []
+    if (rows.length >= 2) {
+      let examBest: Record<string, number> = {}
+      if (examMod) {
+        const { data: allAttempts } = await db
+          .from("lms_module_attempts")
+          .select("student_id, score, max_score")
+          .eq("module_id", examMod.id)
+        for (const a of allAttempts ?? []) {
+          const pct = a.max_score ? Math.round((a.score / a.max_score) * 100) : 0
+          if (pct > (examBest[a.student_id] ?? -1)) examBest[a.student_id] = pct
+        }
+      }
+      const scoreOf = (sid: string, prog: number) =>
+        examMod ? Math.round((examBest[sid] ?? 0) * 0.6 + prog * 0.4) : Math.round(prog)
+      const ranked = rows
+        .map((r: any) => ({ sid: r.student_id, val: scoreOf(r.student_id, num(r.progress_pct) ?? 0) }))
+        .sort((a, b) => b.val - a.val)
+      const rank = ranked.findIndex(r => r.sid === studentId) + 1
+      const classAvg = Math.round(ranked.reduce((s, r) => s + r.val, 0) / ranked.length)
+      const self = ranked.find(r => r.sid === studentId)?.val ?? 0
+      if (rank > 0) cohort = { rank, total: ranked.length, classAvg, selfScore: self }
+    }
+  }
+
+  // ── This student's own feedback — only when the course collects it by name ──
+  let feedback: CourseReport["feedback"] = null
+  if ((courseRes.data as any).feedback_anonymous === false) {
+    const { data: fb } = await db
+      .from("lms_feedback")
+      .select("rating_overall, rating_content, rating_instructor, rating_pace, rating_materials, comments, is_anonymous")
+      .eq("student_id", studentId).eq("course_id", courseId).maybeSingle()
+    // Respect a per-submission anonymous flag too — never attribute anonymous feedback.
+    if (fb && (fb as any).is_anonymous !== true) {
+      feedback = {
+        ratings: [
+          { label: "Overall", value: num((fb as any).rating_overall) },
+          { label: "Content", value: num((fb as any).rating_content) },
+          { label: "Instructor", value: num((fb as any).rating_instructor) },
+          { label: "Pace", value: num((fb as any).rating_pace) },
+          { label: "Materials", value: num((fb as any).rating_materials) },
+        ].filter(r => r.value !== null),
+        comment: (fb as any).comments?.trim() || null,
+      }
+    }
+  }
+
   return {
     student: studentRes.data as any,
     course: courseRes.data as any,
@@ -297,5 +387,8 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     topicMastery,
     assessment,
     security,
+    examTrajectory,
+    cohort,
+    feedback,
   }
 }
