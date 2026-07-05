@@ -218,6 +218,18 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
           <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Individual report picker — jump straight to any student's report */}
+          {roster.length > 0 && (
+            <select
+              defaultValue=""
+              onChange={e => { if (e.target.value) window.location.href = `/lms-admin/reports/${course.id}/${e.target.value}` }}
+              title="Open a student's individual report"
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-600 max-w-[190px] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/30"
+            >
+              <option value="">👤 Individual report…</option>
+              {roster.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          )}
           {assessment ? (
             <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate
