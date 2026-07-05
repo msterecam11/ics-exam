@@ -22,7 +22,7 @@ const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics-exam.vercel.ap
 const LMS_EMAIL = process.env.LMS_EMAIL ?? "lms@ics-aviation.com"
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type EmailType = "enrollment" | "session_reminder" | "completion" | "password_reset"
+export type EmailType = "enrollment" | "session_reminder" | "completion" | "password_reset" | "course_reminder"
 
 interface SendOptions {
   type:       EmailType
@@ -205,6 +205,52 @@ export function buildSessionReminderEmail(opts: {
   `
   return {
     subject: `Reminder: "${sessionTitle}" is tomorrow — ICS Aviation LMS`,
+    html:    baseTemplate(body),
+  }
+}
+
+/** Sent to a self-paced student who hasn't made progress in a while (re-engagement) */
+export function buildCourseReminderEmail(opts: {
+  studentName: string
+  courseTitle: string
+  courseId:    string
+  progressPct: number
+}) {
+  const { studentName, courseTitle, courseId, progressPct } = opts
+  const courseUrl = `${APP_URL}/lms/courses/${courseId}`
+  const pct = Math.max(0, Math.min(100, Math.round(progressPct)))
+
+  const body = `
+    <div style="background:${GOLD};border-radius:8px;padding:6px 14px;display:inline-block;margin-bottom:20px;">
+      <span style="color:#1e293b;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Keep Learning</span>
+    </div>
+    <h2 style="margin:0 0 6px;color:#1e293b;font-size:22px;">Pick up where you left off, ${studentName}</h2>
+    <p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.6;">
+      You've made a great start on <strong>${courseTitle}</strong>. Set aside a few minutes today to
+      continue — small steps add up.
+    </p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:18px 20px;width:100%;box-sizing:border-box;">
+      <tr>
+        <td style="padding:0 0 8px;color:#64748b;font-size:13px;">Your progress</td>
+        <td style="padding:0 0 8px;color:${BLUE};font-size:13px;font-weight:700;text-align:right;">${pct}%</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding:0;">
+          <div style="background:#e2e8f0;border-radius:999px;height:10px;width:100%;overflow:hidden;">
+            <div style="background:${BLUE};height:10px;width:${pct}%;border-radius:999px;"></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+    <p style="text-align:center;">
+      ${btn("Resume Course →", courseUrl)}
+    </p>
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:13px;text-align:center;">
+      Log in at <a href="${APP_URL}/lms/dashboard" style="color:${BLUE};">${APP_URL}/lms/dashboard</a> if the button doesn't work.
+    </p>
+  `
+  return {
+    subject: `You're ${pct}% through "${courseTitle}" — keep going · ICS Aviation LMS`,
     html:    baseTemplate(body),
   }
 }

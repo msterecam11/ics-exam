@@ -170,6 +170,22 @@ export async function PATCH(req: Request) {
       .is("revoked_at", null)
   }
 
+  // Keep the exam module's own pass_mark in sync with the course setting so the
+  // exam player displays the same number grading uses (single source of truth).
+  if ("final_exam_pass_mark" in fields && fields.final_exam_pass_mark != null) {
+    const { data: examModules } = await db
+      .from("lms_modules")
+      .select("id, activity_settings")
+      .eq("course_id", id)
+      .eq("module_type", "final_exam")
+
+    for (const m of examModules ?? []) {
+      await db.from("lms_modules")
+        .update({ activity_settings: { ...((m as any).activity_settings ?? {}), pass_mark: fields.final_exam_pass_mark } })
+        .eq("id", (m as any).id)
+    }
+  }
+
   // Update instructors if provided
   if (Array.isArray(instructor_ids)) {
     await db.from("lms_course_instructors").delete().eq("course_id", id)

@@ -610,6 +610,9 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
         <Page>
           <PageHeader title="Student Roster" subtitle={course.title} today={today} />
           <div className="px-12 py-7 flex-1">
+            <p className="text-[10px] text-slate-400 mb-3 print:hidden">
+              Click a student to open their individual report.
+            </p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
@@ -622,10 +625,13 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {roster.map(r => (
-                  <tr key={r.id}>
+                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="py-2">
-                      <p className="font-medium text-slate-800">{r.name}</p>
-                      <p className="text-[10px] text-slate-400">{r.email}</p>
+                      <Link href={`/lms-admin/reports/${course.id}/${r.id}`}
+                        className="group/row inline-block hover:underline underline-offset-2 decoration-[#1B4F8A]/40">
+                        <p className="font-medium text-slate-800 group-hover/row:text-[#1B4F8A]">{r.name}</p>
+                        <p className="text-[10px] text-slate-400">{r.email}</p>
+                      </Link>
                     </td>
                     <td className="py-2 capitalize text-slate-600">{r.status === "dropped" ? "unenrolled" : r.status}</td>
                     <td className="py-2 text-slate-700 font-medium">{r.progressPct}%</td>

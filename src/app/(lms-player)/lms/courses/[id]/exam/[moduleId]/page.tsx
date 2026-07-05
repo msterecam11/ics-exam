@@ -38,6 +38,69 @@ export default async function StudentExamPage({
 
   if (!module || module.module_type !== "final_exam") notFound()
 
+  // ── Server-side lock enforcement ────────────────────────────────────────
+  // Mirror the course page: if this exam has lock_until_previous, the closest
+  // previous mandatory module must be 100% complete. This runs server-side so a
+  // student can't bypass the UI lock by opening the exam URL directly.
+  if ((module as any).lock_until_previous) {
+    const { data: allModules } = await db
+      .from("lms_modules")
+      .select("id, module_type, order_index, is_mandatory, lms_content_items(id, is_mandatory)")
+      .eq("course_id", courseId)
+      .order("order_index", { ascending: true })
+
+    const ordered = allModules ?? []
+    const idx = ordered.findIndex((m: any) => m.id === moduleId)
+    // Closest previous mandatory module
+    const prev = idx > 0
+      ? [...ordered.slice(0, idx)].reverse().find((m: any) => m.is_mandatory !== false)
+      : undefined
+
+    if (prev) {
+      let prevDone = true
+      if ((prev as any).module_type === "package") {
+        const { data: pkgs } = await db.from("lms_packages").select("id").eq("module_id", (prev as any).id)
+        const pkgId = (pkgs ?? [])[0]?.id
+        if (pkgId) {
+          const { data: pp } = await db
+            .from("lms_package_progress")
+            .select("status")
+            .eq("student_id", student.id)
+            .eq("package_id", pkgId)
+            .maybeSingle()
+          prevDone = pp?.status === "passed" || pp?.status === "completed"
+        } else {
+          prevDone = false
+        }
+      } else if ((prev as any).module_type === "final_exam") {
+        const { data: att } = await db
+          .from("lms_module_attempts")
+          .select("passed")
+          .eq("student_id", student.id)
+          .eq("module_id", (prev as any).id)
+          .eq("passed", true)
+          .limit(1)
+          .maybeSingle()
+        prevDone = !!att
+      } else {
+        // content module: every mandatory content item must be completed
+        const mandItems = ((prev as any).lms_content_items ?? []).filter((i: any) => i.is_mandatory)
+        if (mandItems.length > 0) {
+          const { data: prog } = await db
+            .from("lms_progress")
+            .select("content_item_id, status")
+            .eq("student_id", student.id)
+            .eq("course_id", courseId)
+            .in("content_item_id", mandItems.map((i: any) => i.id))
+          const doneSet = new Set((prog ?? []).filter((p: any) => p.status === "completed").map((p: any) => p.content_item_id))
+          prevDone = mandItems.every((i: any) => doneSet.has(i.id))
+        }
+      }
+
+      if (!prevDone) redirect(`/lms/courses/${courseId}`)
+    }
+  }
+
   // Fetch course (for header)
   const { data: course } = await db
     .from("lms_courses")

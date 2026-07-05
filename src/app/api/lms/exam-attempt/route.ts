@@ -31,6 +31,16 @@ export async function POST(req: Request) {
 
   if (!module) return NextResponse.json({ error: "Module not found" }, { status: 404 })
 
+  // Single source of truth for the exam pass mark: the course-level
+  // `final_exam_pass_mark` (edited in Course Settings) governs. We fall back to
+  // the exam module's own `activity_settings.pass_mark`, then 70. This prevents
+  // the two from diverging — grading always agrees with the course setting.
+  const { data: course } = await db
+    .from("lms_courses")
+    .select("final_exam_pass_mark")
+    .eq("id", course_id)
+    .single()
+
   // Count existing attempts
   const { count } = await db
     .from("lms_module_attempts")
@@ -68,17 +78,22 @@ export async function POST(req: Request) {
     }
   }))
 
+  // Authoritative pass mark (course setting → module setting → 70).
+  const passMark = (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70
+
   // Recalculate score with AI results (client sent 0 for open_ended)
-  let correctedScore  = score ?? 0
-  let correctedPct    = pct ?? 0
-  let correctedPassed = passed ?? false
+  let correctedScore = score ?? 0
+  let correctedPct   = pct ?? 0
 
   if (openEndedQs.length > 0 && (max_score ?? 0) > 0) {
     const aiEarned = openEndedQs.reduce((sum: number, q: any) => sum + (aiScores[q.id]?.score ?? 0), 0)
-    correctedScore  = (score ?? 0) + aiEarned
-    correctedPct    = Math.round((correctedScore / max_score) * 100)
-    correctedPassed = correctedPct >= (settings?.pass_mark ?? 70)
+    correctedScore = (score ?? 0) + aiEarned
+    correctedPct   = Math.round((correctedScore / max_score) * 100)
   }
+
+  // Always decide pass/fail server-side against the authoritative mark — never
+  // trust the client's `passed` flag, and apply the same mark to every exam.
+  const correctedPassed = correctedPct >= passMark
 
   const attemptNo = (count ?? 0) + 1
   const now = new Date().toISOString()
