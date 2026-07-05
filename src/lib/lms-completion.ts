@@ -175,13 +175,13 @@ export async function checkLearningPathCompletion(studentId: string, courseId: s
       if (!pathCourses?.length) continue
       const allCourseIds = pathCourses.map((pc: any) => pc.course_id)
 
-      // All courses must have a mandatory final exam
+      // Every course must have a final exam (mandatory or not — the exam is
+      // the completion gate regardless of its is_mandatory flag).
       const { data: finalExams } = await db
         .from("lms_modules")
         .select("id")
         .in("course_id", allCourseIds)
         .eq("module_type", "final_exam")
-        .eq("is_mandatory", true)
 
       // Every course in the path must have a final exam
       if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
@@ -286,13 +286,13 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
         if (!allCourseIds.includes(courseId)) continue
       }
 
-      // All courses must have a mandatory final exam
+      // Every course must have a final exam (mandatory or not — the exam is
+      // the completion gate regardless of its is_mandatory flag).
       const { data: finalExams } = await db
         .from("lms_modules")
         .select("id")
         .in("course_id", allCourseIds)
         .eq("module_type", "final_exam")
-        .eq("is_mandatory", true)
 
       if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
 
