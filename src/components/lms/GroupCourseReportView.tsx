@@ -9,7 +9,6 @@ import {
   BookOpen, Layers, Medal, GraduationCap, Puzzle, ClipboardList,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import LmsReleaseCertsButton from "@/components/lms/LmsReleaseCertsButton"
 import { toast } from "sonner"
 
 export type GroupAssessment = {
@@ -219,7 +218,6 @@ export default function GroupCourseReportView({ data }: { data: GroupReportData 
           <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
         </div>
         <div className="flex items-center gap-2">
-          <LmsReleaseCertsButton courseId={course.id} />
           {assessment ? (
             <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate

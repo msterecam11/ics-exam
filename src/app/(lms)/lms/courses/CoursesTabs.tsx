@@ -135,7 +135,7 @@ function CourseThumbnail({
 // ── Course card ────────────────────────────────────────────────
 function CourseCard({ enrollment }: { enrollment: EnrollmentRow }) {
   const { course, progress, status, lastAccessed, nextContentId, moduleCount, totalMinutes, remainMinutes } = enrollment
-  const done       = status === "completed"
+  const done       = status === "completed" || progress >= 100
   const now        = Date.now()
   const notStarted = course.start_date ? new Date(course.start_date).getTime() > now : false
   const ended      = !done && course.end_date ? new Date(course.end_date).getTime() < now : false

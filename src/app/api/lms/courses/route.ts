@@ -159,6 +159,17 @@ export async function PATCH(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // The "Auto-release certificate" setting is the single control for releasing
+  // certificates. When it's turned ON, release any certs currently held for
+  // this course (so completed students get them without a separate button).
+  if (fields.certificate_auto_release === true) {
+    await db.from("lms_certificates")
+      .update({ released_at: new Date().toISOString(), released_by: session.user.id })
+      .eq("course_id", id)
+      .is("released_at", null)
+      .is("revoked_at", null)
+  }
+
   // Update instructors if provided
   if (Array.isArray(instructor_ids)) {
     await db.from("lms_course_instructors").delete().eq("course_id", id)
