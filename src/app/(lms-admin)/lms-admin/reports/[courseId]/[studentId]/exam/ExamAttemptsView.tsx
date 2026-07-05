@@ -116,20 +116,21 @@ export default function ExamAttemptsView({ courseId, student, courseTitle, examT
             </div>
           </div>
 
-          {/* Attempt selector */}
-          {attempts.length > 1 && (
-            <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
-              <span className="text-xs text-muted-foreground mr-1">Attempts:</span>
-              {attempts.map((at, i) => (
-                <button key={at.id} onClick={() => setSel(i)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    i === sel ? "border-[#1B4F8A] bg-[#1B4F8A] text-white"
-                              : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
-                  #{at.attemptNo} · {at.pct ?? 0}% · {at.passed ? "Pass" : "Fail"}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Attempt selector — always shown, even for a single attempt */}
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t flex-wrap">
+            <span className="text-xs text-muted-foreground mr-1">
+              {attempts.length > 1 ? `Attempts (${attempts.length}):` : "Attempt:"}
+            </span>
+            {attempts.map((at, i) => (
+              <button key={at.id} onClick={() => setSel(i)} disabled={attempts.length === 1}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  i === sel ? "border-[#1B4F8A] bg-[#1B4F8A] text-white"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"} ${
+                  attempts.length === 1 ? "cursor-default" : ""}`}>
+                #{at.attemptNo} · {at.pct ?? 0}% · {at.passed ? "Pass" : "Fail"}
+              </button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
