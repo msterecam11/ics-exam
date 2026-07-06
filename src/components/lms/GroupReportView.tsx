@@ -73,7 +73,7 @@ function heat(pct: number) {
 
 // ── Main ────────────────────────────────────────────────────────────
 export default function GroupReportView({ data, assessment, generatedAt }: { data: GroupReport; assessment: any | null; generatedAt: string | null }) {
-  const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, roster } = data
+  const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -83,12 +83,16 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
   const hasItems   = stats.examExists && itemAnalysis.hardest.length > 0
   const hasRanking = ranking.length > 0
   const hasAtRisk  = atRisk.length > 0
+  const hasAttendance = !!attendance
+  const hasFeedback   = !!feedback && feedback.ratings.length > 0
   const pageOrder = [
     "cover", "overview", "modules",
     ...(hasHeatmap ? ["heatmap"] : []),
     ...(hasItems ? ["items"] : []),
     ...(hasRanking ? ["ranking"] : []),
     ...(hasAtRisk ? ["atrisk"] : []),
+    ...(hasAttendance ? ["attendance"] : []),
+    ...(hasFeedback ? ["feedback"] : []),
     "roster",
   ]
   const pageNo = (k: string) => pageOrder.indexOf(k) + 1
@@ -400,6 +404,72 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
               ))}
             </div>
             <PageFooter page={pageNo("atrisk")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* ATTENDANCE */}
+        {hasAttendance && attendance && (
+          <Page>
+            <PageHeader title="Attendance" subtitle={course.title} today={today} />
+            <div className="px-12 py-7">
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-2xl flex items-center justify-center shrink-0" style={{ background: sc(attendance.overallPct).b }}>
+                  <span className="text-2xl font-extrabold" style={{ color: sc(attendance.overallPct).t }}>{attendance.overallPct}%</span>
+                </div>
+                <div>
+                  <p className={SECTION}>Cohort Attendance Rate</p>
+                  <p className="text-sm text-slate-600 mt-1">Average across all live sessions for the {stats.enrolled} enrolled students.</p>
+                </div>
+              </div>
+            </div>
+            <PageFooter page={pageNo("attendance")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* COHORT FEEDBACK — charts */}
+        {hasFeedback && feedback && (
+          <Page>
+            <PageHeader title="Cohort Feedback" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-6">
+              <p className={SECTION}>Ratings <span className="text-slate-300 font-normal normal-case">· {feedback.count} response{feedback.count !== 1 ? "s" : ""} · anonymized</span></p>
+              <div className="grid grid-cols-3 gap-3 avoid-break">
+                {feedback.ratings.map(r => {
+                  const dmax = Math.max(1, ...r.dist)
+                  return (
+                    <div key={r.label} className="border border-slate-100 rounded-xl p-4">
+                      <div className="flex items-baseline justify-between mb-2">
+                        <span className="text-xs font-medium text-slate-700">{r.label}</span>
+                        <span className="text-lg font-bold text-amber-500">{r.avg}<span className="text-[10px] text-slate-400 font-normal">/5</span></span>
+                      </div>
+                      <div className="flex items-end gap-1.5 h-16">
+                        {r.dist.map((cnt, star) => {
+                          const col = star < 2 ? "#E24B4A" : star === 2 ? "#EF9F27" : "#1D9E75"
+                          return (
+                            <div key={star} className="flex-1 flex flex-col items-center justify-end h-full">
+                              <span className="text-[8px] text-slate-400 leading-none mb-0.5">{cnt || ""}</span>
+                              <div className="w-full rounded-t" style={{ height: `${Math.max(3, (cnt / dmax) * 100)}%`, background: col }} />
+                              <span className="text-[8px] text-slate-400 mt-0.5">{star + 1}★</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {feedback.comments.length > 0 && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-2`}>What students said</p>
+                  <div className="space-y-1.5">
+                    {feedback.comments.map((c, i) => (
+                      <p key={i} className="text-[11px] text-slate-600 italic leading-relaxed border-l-2 border-slate-200 pl-3">&ldquo;{c}&rdquo;</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("feedback")} total={totalPages} />
           </Page>
         )}
 
