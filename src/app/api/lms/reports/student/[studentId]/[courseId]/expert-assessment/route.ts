@@ -89,7 +89,7 @@ export async function POST(req: Request, { params }: Params) {
     : ""
 
   const moduleSkeleton = report.modules
-    .map(m => `"${m.title}": {"summary":"one sentence citing what the learner got right vs wrong in this module","strengths":["a SPECIFIC topic or skill the learner answered CORRECTLY (a full-mark question) — always list the genuine correct areas; only leave empty if they scored zero on essentially every question"],"weaknesses":["a SPECIFIC topic or skill the learner got WRONG (a zero-mark question)"],"development":["one concrete action targeting a specific missed question or skill"]}`)
+    .map(m => `"${m.title}": {"summary":"1-2 sentences on how the learner performed in this module, citing specific topics they got right vs wrong","strengths":["ALWAYS at least one entry — the specific topics/skills answered correctly; if the module was weak overall, cite the least-weak area or any partial understanding shown"],"weaknesses":["ALWAYS at least one entry — the specific topics/skills missed; if the learner scored full marks, write a positive analytical statement such as 'No weaknesses identified — full marks across every topic in this module, demonstrating consistent mastery'"],"development":["ALWAYS at least one concrete next step — for weaker areas target the specific missed skills; for a fully-mastered module suggest how to EXTEND the mastery (advanced scenarios, real-world application, mentoring peers)"]}`)
     .join(",\n    ")
 
   const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this learner's course performance and return a detailed JSON report. Use ONLY the data below — base every insight strictly on these numbers, do not invent facts.
@@ -101,6 +101,7 @@ CRITICAL — reason from the ACTUAL per-question results listed under each modul
 - Do NOT list a topic as a weakness if the learner answered its questions correctly. Name weaknesses using the SPECIFIC questions/skills that were missed.
 - A module can be part strength, part weakness — reflect that nuance rather than labelling the whole module good or bad.
 - When "Topic scores" are given for a module, name strengths using the HIGH-scoring topics and weaknesses using the LOW-scoring topics, using those exact topic names — your analysis must agree with those topic scores.
+- NEVER leave a module's strengths, weaknesses, or development empty. Every one must contain at least one substantive sentence. For a module scored 100%, the weaknesses entry is a positive analytical statement (no gaps found) and development explains how to extend the mastery — not a blank.
 
 LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.job_title})` : ""}
 COURSE: ${report.course.title}
