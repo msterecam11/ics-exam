@@ -43,12 +43,25 @@ export async function POST(req: Request, { params }: Params) {
   const report = await buildCourseReport(studentId, courseId)
   if (!report) return NextResponse.json({ error: "Report data not found" }, { status: 404 })
 
-  // Grounded per-module metrics — the model writes an analysis per module (like the exam's per-section analysis)
+  // Grounded per-module metrics — the model writes an analysis per module (like the exam's per-section analysis).
+  // We include the ACTUAL per-question exam results + practice scores so the AI reasons from real evidence,
+  // not just a single module percentage (which can't tell factual recall from application ability).
   const moduleLines = report.modules
     .map(m => {
-      const cw = m.items.length > 0 && m.score !== null ? `coursework ${m.score}%` : "coursework completed (not graded)"
-      const ex = m.examSection ? `exam ${m.examSection.pct}% (${m.examSection.correct}/${m.examSection.questions.length} correct)` : "no exam questions"
-      return `  - ${m.title}: mastery ${m.masteryScore ?? "—"}% [${cw}; ${ex}]; topics: ${m.topics.slice(0, 5).join(", ")}`
+      const cw = m.items.length > 0 && m.score !== null ? `graded coursework ${m.score}%` : "coursework not graded"
+      const practice = m.activities.length
+        ? "practice: " + m.activities.map(a => `${a.type.replace(/_/g, " ")} ${a.avgPct != null ? a.avgPct + "%" : "×" + a.count}`).join(", ")
+        : ""
+      const ex = m.examSection
+        ? `exam ${m.examSection.pct}% (${m.examSection.correct}/${m.examSection.questions.length} full marks)`
+        : "no exam questions mapped to this module"
+      const qLines = m.examSection
+        ? "\n      Exam questions (score/points):\n      " +
+          m.examSection.questions
+            .map(q => `• [${q.scoreAchieved}/${q.points}] ${(q.text ?? "").replace(/\s+/g, " ").slice(0, 100)}`)
+            .join("\n      ")
+        : ""
+      return `  - ${m.title}: mastery ${m.masteryScore ?? "—"}% [${ex}; ${cw}${practice ? "; " + practice : ""}]; topics: ${m.topics.slice(0, 6).join(", ")}${qLines}`
     })
     .join("\n")
   const examLine = report.exam
@@ -71,6 +84,11 @@ export async function POST(req: Request, { params }: Params) {
   const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this learner's course performance and return a detailed JSON report. Use ONLY the data below — base every insight strictly on these numbers, do not invent facts.
 
 IMPORTANT: The FINAL EXAM is the true measure of whether the learner mastered the material. "Coursework completed" only means they went through the content — it is NOT evidence of mastery. If a learner completed the coursework but scored poorly on a module's exam questions, that is a SIGNIFICANT WEAKNESS, not a strength. Base strengths and weaknesses primarily on the exam scores.
+
+CRITICAL — reason from the ACTUAL per-question results listed under each module, not just the module percentage:
+- If the learner got FULL marks on the factual/multiple-choice questions of a topic but ZERO on its scenario/open-ended questions, they KNOW THE FACTS but CANNOT APPLY THEM — say exactly that; do NOT call the topic a knowledge gap.
+- Do NOT list a topic as a weakness if the learner answered its questions correctly. Name weaknesses using the SPECIFIC questions/skills that were missed.
+- A module can be part strength, part weakness — reflect that nuance rather than labelling the whole module good or bad.
 
 LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.job_title})` : ""}
 COURSE: ${report.course.title}
