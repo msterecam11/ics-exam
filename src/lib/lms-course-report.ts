@@ -75,7 +75,7 @@ const num = (v: any): number | null => (v === null || v === undefined || isNaN(N
 // Points earned for one question — mirrors FinalExamPlayer.score() for every
 // auto-gradable type (incl. partial credit). open_ended is graded by the AI and
 // its score is applied by the caller (aiScores), NOT here.
-function gradeQuestion(q: any, ans: any): number {
+export function gradeQuestion(q: any, ans: any): number {
   const pts = Number(q?.points ?? 0)
   if (!q || ans === undefined || ans === null) return 0
   if (q.type === "mcq_single") {
