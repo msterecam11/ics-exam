@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2, Users } from "lucide-react"
+import { ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
 import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
 
@@ -64,16 +64,33 @@ function sc(p: number | null) {
   return { t: "#DC2626", b: "#fee2e2" }
 }
 function fmtTime(s: number) { if (!s || s < 60) return s >= 1 ? `${s}s` : "—"; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+function heat(pct: number) {
+  if (pct >= 80) return { bg: "#EAF3DE", border: "#C0DD97", text: "#27500A", tag: "#3B6D11" }
+  if (pct >= 60) return { bg: "#E6F1FB", border: "#B5D4F4", text: "#0C447C", tag: "#185FA5" }
+  if (pct >= 40) return { bg: "#FAEEDA", border: "#FAC775", text: "#854F0B", tag: "#854F0B" }
+  return { bg: "#FCEBEB", border: "#F7C1C1", text: "#A32D2D", tag: "#A32D2D" }
+}
 
 // ── Main ────────────────────────────────────────────────────────────
 export default function GroupReportView({ data, assessment, generatedAt }: { data: GroupReport; assessment: any | null; generatedAt: string | null }) {
-  const { course, stats, distribution, passFail, moduleStats, roster } = data
+  const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
-  const pageOrder = ["cover", "overview", "modules", "roster"]
+  const hasHeatmap = topicHeatmap.length > 0
+  const hasItems   = stats.examExists && itemAnalysis.hardest.length > 0
+  const hasRanking = ranking.length > 0
+  const hasAtRisk  = atRisk.length > 0
+  const pageOrder = [
+    "cover", "overview", "modules",
+    ...(hasHeatmap ? ["heatmap"] : []),
+    ...(hasItems ? ["items"] : []),
+    ...(hasRanking ? ["ranking"] : []),
+    ...(hasAtRisk ? ["atrisk"] : []),
+    "roster",
+  ]
   const pageNo = (k: string) => pageOrder.indexOf(k) + 1
   const totalPages = pageOrder.length
   const distMax = Math.max(1, ...distribution.map(d => d.count))
@@ -269,6 +286,122 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
           </div>
           <PageFooter page={pageNo("modules")} total={totalPages} />
         </Page>
+
+        {/* TOPIC HEATMAP */}
+        {hasHeatmap && (
+          <Page>
+            <PageHeader title="Topic Mastery Heatmap" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-4">
+              <p className={SECTION}>Cohort Average by Topic <span className="text-slate-300 font-normal normal-case">· green = strong · red = reteach</span></p>
+              <div className="grid grid-cols-4 gap-2">
+                {topicHeatmap.map((t, i) => {
+                  const c = heat(t.avgPct)
+                  return (
+                    <div key={i} style={{ background: c.bg, borderColor: c.border }} className="border rounded-xl p-2.5 flex flex-col">
+                      <p className="text-[8px] font-bold uppercase tracking-wide truncate" style={{ color: c.tag }}>{t.module.replace(/^Module\s*\d+\s*[-–:]\s*/i, "")}</p>
+                      <p className="text-[10px] leading-tight mt-0.5 mb-1.5 text-slate-700 flex-1">{t.topic}</p>
+                      <p className="text-base font-bold" style={{ color: c.text }}>{t.avgPct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.students} std</span></p>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-slate-400">Each cell is the cohort's average mastery on that topic — the red cells are what the class needs retaught.</p>
+            </div>
+            <PageFooter page={pageNo("heatmap")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* EXAM ITEM ANALYSIS */}
+        {hasItems && (
+          <Page>
+            <PageHeader title="Exam Item Analysis" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-6">
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Question Difficulty</p>
+                <div className="flex gap-2">
+                  {[
+                    { label: "Mastered ≥80%", val: itemAnalysis.difficulty.mastered, cls: "bg-emerald-50 text-emerald-700" },
+                    { label: "Mixed 40–80%", val: itemAnalysis.difficulty.mixed, cls: "bg-amber-50 text-amber-700" },
+                    { label: "Struggled <40%", val: itemAnalysis.difficulty.struggled, cls: "bg-red-50 text-red-600" },
+                  ].map(d => (
+                    <div key={d.label} className={`flex-1 px-3 py-2.5 rounded-xl text-center ${d.cls}`}>
+                      <p className="text-xl font-bold">{d.val}</p>
+                      <p className="text-[9px] uppercase tracking-wide opacity-70">{d.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Hardest Questions <span className="text-slate-300 font-normal normal-case">· lowest cohort score</span></p>
+                <div className="rounded-xl border border-slate-100 overflow-hidden">
+                  {itemAnalysis.hardest.map((q, i) => {
+                    const c = sc(q.avgPct)
+                    return (
+                      <div key={i} className={`flex items-start gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 ${i % 2 ? "bg-slate-50/60" : ""}`}>
+                        <span className="text-[10px] text-slate-400 w-4 mt-0.5">{i + 1}</span>
+                        <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
+                        <div className="w-24 shrink-0">
+                          <div className="flex justify-between text-[9px] mb-0.5"><span className="text-slate-400">{q.correctPct}% full</span><span style={{ color: c.t }} className="font-bold">{q.avgPct}%</span></div>
+                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-1.5 rounded-full" style={{ width: `${q.avgPct}%`, background: c.t }} /></div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">A question the whole cohort missed may signal a teaching gap — or a flawed/ambiguous question worth reviewing.</p>
+              </div>
+            </div>
+            <PageFooter page={pageNo("items")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* CLASS RANKING */}
+        {hasRanking && (
+          <Page>
+            <PageHeader title="Class Ranking" subtitle={course.title} today={today} />
+            <div className="px-12 py-7">
+              <p className={`${SECTION} mb-3`}>Ranked by exam-weighted mastery</p>
+              <div className="space-y-1.5">
+                {ranking.map((r, i) => {
+                  const medal = i === 0 ? "#facc15" : i === 1 ? "#94a3b8" : i === 2 ? "#d97706" : null
+                  const c = sc(r.mastery)
+                  return (
+                    <div key={r.id} className="avoid-break flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-100">
+                      <span className="w-6 flex items-center justify-center text-xs font-bold text-slate-400">{medal ? <Medal className="h-3.5 w-3.5" style={{ color: medal }} /> : i + 1}</span>
+                      <Link href={`/lms-admin/reports/${course.id}/${r.id}`} className="flex-1 text-xs font-medium text-slate-700 hover:text-[#1B4F8A] hover:underline">{r.name}</Link>
+                      {stats.examExists && r.examPct != null && <span className="text-[10px] text-slate-400">exam {r.examPct}%</span>}
+                      <span className="text-xs font-bold w-12 text-right" style={{ color: c.t }}>{r.mastery}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <PageFooter page={pageNo("ranking")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* AT-RISK STUDENTS */}
+        {hasAtRisk && (
+          <Page>
+            <PageHeader title="Students Needing Support" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-3">
+              <p className={SECTION}>{atRisk.length} student{atRisk.length !== 1 ? "s" : ""} flagged for intervention</p>
+              {atRisk.map(a => (
+                <div key={a.id} className="avoid-break flex items-start gap-3 p-3 border border-red-100 bg-red-50/40 rounded-xl">
+                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0"><AlertTriangle className="h-4 w-4 text-red-500" /></div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Link href={`/lms-admin/reports/${course.id}/${a.id}`} className="text-sm font-semibold text-slate-700 hover:text-[#1B4F8A] hover:underline">{a.name}</Link>
+                      {a.mastery !== null && <span className="text-[10px] font-bold" style={{ color: sc(a.mastery).t }}>{a.mastery}% mastery</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">{a.reasons.map((rr, i) => <span key={i} className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{rr}</span>)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <PageFooter page={pageNo("atrisk")} total={totalPages} />
+          </Page>
+        )}
 
         {/* LAST PAGE — ROSTER */}
         <Page>
