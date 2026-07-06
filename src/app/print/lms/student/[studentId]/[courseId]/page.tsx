@@ -344,9 +344,9 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                       <p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1">Expert analysis</p>
                       {m.ai.summary && <p className="text-[11px] text-slate-600 leading-relaxed mb-1.5">{m.ai.summary}</p>}
                       <div className="grid grid-cols-3 gap-2">
-                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">Strengths</p>{m.ai.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-snug">• {s}</p>)}</div>
-                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-red-600 mb-0.5">Weaknesses</p>{m.ai.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-red-800 leading-snug">• {s}</p>)}</div>
-                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-purple-700 mb-0.5">Development</p>{m.ai.development.map((s, i) => <p key={i} className="text-[10px] text-purple-800 leading-snug">• {s}</p>)}</div>
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-emerald-700 mb-0.5">Strengths</p>{m.ai.strengths.length ? m.ai.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-snug">• {s}</p>) : <p className="text-[10px] text-emerald-800/50 italic">{(m.masteryScore ?? 0) < 40 ? "None at this level" : "—"}</p>}</div>
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-red-600 mb-0.5">Weaknesses</p>{m.ai.weaknesses.length ? m.ai.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-red-800 leading-snug">• {s}</p>) : <p className="text-[10px] text-red-800/50 italic">{(m.masteryScore ?? 0) >= 80 ? "None — strong across this module" : "—"}</p>}</div>
+                        <div><p className="text-[8px] font-bold uppercase tracking-wider text-purple-700 mb-0.5">Development</p>{m.ai.development.length ? m.ai.development.map((s, i) => <p key={i} className="text-[10px] text-purple-800 leading-snug">• {s}</p>) : <p className="text-[10px] text-purple-800/50 italic">{(m.masteryScore ?? 0) >= 80 ? "Maintain current level" : "—"}</p>}</div>
                       </div>
                     </div>
                   )}
