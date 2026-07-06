@@ -310,8 +310,8 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                       <div className="flex flex-wrap gap-1">{m.topics.slice(0, 6).map(t => <span key={t} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">{t}</span>)}</div>
                     </div>
                   )}
-                  {/* AI analysis of this module */}
-                  {m.ai && (
+                  {/* AI analysis of this module — only when there's something assessed */}
+                  {m.ai && m.masteryScore !== null && (
                     <div className="px-4 py-3 border-b border-dashed border-slate-100" style={{ background: "#faf5ff" }}>
                       <p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1">Expert analysis</p>
                       {m.ai.summary && <p className="text-[11px] text-slate-600 leading-relaxed mb-1.5">{m.ai.summary}</p>}
@@ -396,7 +396,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
               )}
               {assessment && assessment.recommendations.length > 0 && (
                 <div className="avoid-break space-y-2 pt-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Personalized Recommendations</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recommendations based on results</p>
                   {assessment.recommendations.map((rec, i) => (
                     <div key={i} className="flex items-start gap-3 p-3 border border-slate-100 rounded-xl bg-slate-50/80">
                       <div className="w-6 h-6 rounded-full bg-[#1B4F8A] flex items-center justify-center text-white text-[11px] font-bold shrink-0">{i + 1}</div>

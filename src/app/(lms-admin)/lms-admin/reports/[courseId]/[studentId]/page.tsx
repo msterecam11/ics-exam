@@ -449,14 +449,14 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                   </div>
                 )}
 
-                {m.masteryScore === null && m.items.length === 0 && (
+                {m.masteryScore === null && (
                   <div className="avoid-break flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-xl p-3 border border-slate-100">
                     <Sparkles className="h-3.5 w-3.5 shrink-0 text-purple-400" />
-                    Not yet assessed — run <strong className="mx-1 text-purple-600">Expert Analyze</strong> in the course builder to map the exam questions to this module.
+                    Not assessed by the final exam — no exam questions map to this module. Run <strong className="mx-1 text-purple-600">Expert Analyze</strong> in the course builder if you expect exam coverage here.
                   </div>
                 )}
 
-                {m.ai && (m.masteryScore !== null || m.items.length > 0) && (
+                {m.ai && m.masteryScore !== null && (
                   <div className="avoid-break space-y-2">
                     <div className="rounded-xl overflow-hidden border border-blue-100">
                       <div className="bg-[#1B4F8A] px-4 py-2 flex items-center gap-2"><BrainCircuit className="h-3.5 w-3.5 text-white/70" /><p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Expert Analysis</p></div>
@@ -659,9 +659,9 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
         {/* RECOMMENDATIONS */}
         {hasAI && assessment && (
           <Page>
-            <PageHeader title="Personalized Recommendations" subtitle={course.title} today={today} />
+            <PageHeader title="Recommendations" subtitle={course.title} today={today} />
             <div className="px-12 py-7 space-y-3">
-              <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-[#1B4F8A]" /><p className={SECTION}>Priority Areas to Review</p></div>
+              <div className="flex items-center gap-2 mb-2"><TrendingUp className="h-4 w-4 text-[#1B4F8A]" /><p className={SECTION}>Recommendations based on results</p></div>
               {assessment.recommendations.map((rec, i) => {
                 const col = sc(rec.score)
                 return (

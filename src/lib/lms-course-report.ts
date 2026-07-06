@@ -195,6 +195,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
     const answers: any = best?.answers && typeof best.answers === "object" && !Array.isArray(best.answers) ? best.answers : {}
     const sectionByMod = new Map<string, ExamSection>()
+    const modOrder = new Map<string, number>(modules.map((m: any) => [m.id, m.order_index ?? 999]))
     for (const s of sections) {
       const qs = ((s.question_ids ?? []) as string[]).map((qid: string) => {
         const q = qById.get(qid); if (!q) return null
@@ -211,8 +212,11 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       // Map to its module (for the per-module page) when the section has one.
       if (s.module_id) sectionByMod.set(s.module_id, { pct, correct, partial, zero, earned, possible, questions: qs })
       // Always record it in the flat exam-sections list (for the Final Exam page).
-      examSections.push({ title: s.title ?? "Section", pct, correct, partial, zero, earned, possible, questionCount: qs.length, questions: qs })
+      ;(examSections as any[]).push({ title: s.title ?? "Section", pct, correct, partial, zero, earned, possible, questionCount: qs.length, questions: qs, _ord: s.module_id ? (modOrder.get(s.module_id) ?? 998) : 999 })
     }
+    // Present sections in course-module order (module 1 → 2 → 3 …), unmapped last.
+    examSections.sort((a, b) => ((a as any)._ord ?? 999) - ((b as any)._ord ?? 999))
+    examSections.forEach(s => { delete (s as any)._ord })
     for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
   }
 
