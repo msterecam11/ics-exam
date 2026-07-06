@@ -165,6 +165,70 @@ Rules:
       }
     })
 
+  // ── Phase 5: map each question to a TOPIC within its module (for the report's ──
+  //    topic heatmap). Additive + best-effort: any failure just leaves a question
+  //    untagged, and the whole analysis still succeeds. General for any course —
+  //    it reads each module's own AI-derived topic list, however many there are.
+  const qTextById = new Map<string, string>(questions.map((q: any) => [q.id, String(q.text ?? "")]))
+  const topicsByModuleId = new Map<string, string[]>(
+    analyses.map((a: any) => [a.module_id, Array.isArray(a.analysis?.topics) ? a.analysis.topics : []])
+  )
+  const questionTopics: Record<string, string> = {}
+
+  for (const sec of sections) {
+    const topics = sec.module_id ? (topicsByModuleId.get(sec.module_id) ?? []) : []
+    if (topics.length === 0 || sec.question_ids.length === 0) continue
+
+    // Single topic → every question in this section belongs to it (no AI needed).
+    if (topics.length === 1) {
+      for (const qid of sec.question_ids) questionTopics[qid] = topics[0]
+      continue
+    }
+
+    const topicList = topics.map((t, i) => `${i + 1}. ${t}`).join("\n")
+    const qList = sec.question_ids
+      .map((qid: string, i: number) => `Q${i + 1}: ${(qTextById.get(qid) ?? "").replace(/\s+/g, " ").slice(0, 130)}`)
+      .join("\n")
+
+    const topicPrompt = `You are mapping exam questions to the sub-topic they test, within one course module.
+
+TOPICS (of this module):
+${topicList}
+
+QUESTIONS:
+${qList}
+
+Respond with ONLY the assignments — one line per question, nothing else:
+Q1: [topic number]
+Q2: [topic number]
+...
+Rules:
+- Every question from Q1 to Q${sec.question_ids.length} must appear exactly once
+- Use only topic numbers 1–${topics.length}
+- Pick the single topic each question best tests`
+
+    try {
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: topicPrompt }],
+        temperature: 0.1,
+        max_tokens: 800,
+      })
+      const raw = completion.choices[0]?.message?.content ?? ""
+      for (const line of raw.split("\n")) {
+        const m = line.match(/^Q(\d+):\s*(\d+)/i)
+        if (!m) continue
+        const localIdx = parseInt(m[1]) - 1
+        const topic = topics[parseInt(m[2]) - 1]
+        const qid = sec.question_ids[localIdx]
+        if (qid && topic) questionTopics[qid] = topic
+      }
+    } catch (err: any) {
+      console.error("[exam-analysis] topic mapping failed for section:", sec.title, err?.message)
+      // leave this section's questions untagged — report falls back to module level
+    }
+  }
+
   const allTopics = analyses.flatMap((a: any) => a.analysis?.topics ?? [])
   const uniqueTopics = [...new Set(allTopics)].slice(0, 12)
 
@@ -177,6 +241,7 @@ Rules:
     skills_assessed: [],
     content_breakdown: { questions: totalQ, sections: sections.length },
     sections,
+    question_topics: questionTopics,
   }
 
   const { error: upsertErr } = await db
