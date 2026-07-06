@@ -46,6 +46,14 @@ export async function POST(req: Request, { params }: Params) {
   // Grounded per-module metrics — the model writes an analysis per module (like the exam's per-section analysis).
   // We include the ACTUAL per-question exam results + practice scores so the AI reasons from real evidence,
   // not just a single module percentage (which can't tell factual recall from application ability).
+  // Per-topic scores grouped by module — lets the AI name strengths/weaknesses by
+  // the exact topic and stay consistent with the report's topic heatmap.
+  const topicsByMod = new Map<string, typeof report.topicScores>()
+  for (const t of report.topicScores) {
+    const arr = topicsByMod.get(t.moduleId) ?? []
+    arr.push(t); topicsByMod.set(t.moduleId, arr)
+  }
+
   const moduleLines = report.modules
     .map(m => {
       const cw = m.items.length > 0 && m.score !== null ? `graded coursework ${m.score}%` : "coursework not graded"
@@ -55,13 +63,16 @@ export async function POST(req: Request, { params }: Params) {
       const ex = m.examSection
         ? `exam ${m.examSection.pct}% (${m.examSection.correct}/${m.examSection.questions.length} full marks)`
         : "no exam questions mapped to this module"
+      const topicScoreLine = (topicsByMod.get(m.id) ?? []).length
+        ? "\n      Topic scores: " + (topicsByMod.get(m.id) ?? []).map(t => `${t.topic} ${t.pct}% (${t.correct}/${t.questionCount} full)`).join("; ")
+        : ""
       const qLines = m.examSection
         ? "\n      Exam questions (score/points):\n      " +
           m.examSection.questions
             .map(q => `• [${q.scoreAchieved}/${q.points}] ${(q.text ?? "").replace(/\s+/g, " ").slice(0, 100)}`)
             .join("\n      ")
         : ""
-      return `  - ${m.title}: mastery ${m.masteryScore ?? "—"}% [${ex}; ${cw}${practice ? "; " + practice : ""}]; topics: ${m.topics.slice(0, 6).join(", ")}${qLines}`
+      return `  - ${m.title}: mastery ${m.masteryScore ?? "—"}% [${ex}; ${cw}${practice ? "; " + practice : ""}]; topics: ${m.topics.slice(0, 6).join(", ")}${topicScoreLine}${qLines}`
     })
     .join("\n")
   const examLine = report.exam
@@ -89,6 +100,7 @@ CRITICAL — reason from the ACTUAL per-question results listed under each modul
 - If the learner got FULL marks on the factual/multiple-choice questions of a topic but ZERO on its scenario/open-ended questions, they KNOW THE FACTS but CANNOT APPLY THEM — say exactly that; do NOT call the topic a knowledge gap.
 - Do NOT list a topic as a weakness if the learner answered its questions correctly. Name weaknesses using the SPECIFIC questions/skills that were missed.
 - A module can be part strength, part weakness — reflect that nuance rather than labelling the whole module good or bad.
+- When "Topic scores" are given for a module, name strengths using the HIGH-scoring topics and weaknesses using the LOW-scoring topics, using those exact topic names — your analysis must agree with those topic scores.
 
 LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.job_title})` : ""}
 COURSE: ${report.course.title}
@@ -124,7 +136,9 @@ Be specific, professional, and constructive. Each recommendation must target a D
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
-      max_tokens: 2200,
+      // Scales with module count (a per-module analysis each) — enough headroom so a
+      // large course's JSON isn't truncated (which would fail parsing). Capped for cost.
+      max_tokens: Math.min(8000, 2200 + report.modules.length * 320),
     })
     raw = completion.choices[0]?.message?.content?.trim() ?? ""
   } catch (err: any) {
