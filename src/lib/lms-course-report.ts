@@ -70,22 +70,35 @@ export interface CourseReport {
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
 
-// Grade one exam question against the learner's answer → points earned
+// Points earned for one question — mirrors FinalExamPlayer.score() for every
+// auto-gradable type (incl. partial credit). open_ended is graded by the AI and
+// its score is applied by the caller (aiScores), NOT here.
 function gradeQuestion(q: any, ans: any): number {
   const pts = Number(q?.points ?? 0)
   if (!q || ans === undefined || ans === null) return 0
   if (q.type === "mcq_single") {
-    const correct = (q.options ?? []).find((o: any) => o.correct)
-    return correct && ans === correct.id ? pts : 0
+    const correctId = (q.options ?? []).find((o: any) => o.correct)?.id
+    const given = Array.isArray(ans) ? ans[0] : ans
+    return correctId && given === correctId ? pts : 0
   }
   if (q.type === "mcq_multiple") {
-    const correctIds = new Set((q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id))
-    const chosen = new Set(Array.isArray(ans) ? ans : [ans])
-    const exact = chosen.size === correctIds.size && [...correctIds].every(id => chosen.has(id))
-    return exact ? pts : 0
+    const correctIds = (q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id)
+    const chosen: string[] = Array.isArray(ans) ? ans : (ans != null ? [ans] : [])
+    return correctIds.length > 0 && chosen.length === correctIds.length && correctIds.every((id: string) => chosen.includes(id)) ? pts : 0
   }
-  // ordering / matching / open_ended are not auto-graded in the section view
-  return 0
+  if (q.type === "ordering") {
+    const correct = (q.items ?? []).map((i: any) => i.id)
+    const given: string[] = Array.isArray(ans) ? ans : []
+    const ok = correct.filter((id: string, i: number) => id === given[i]).length
+    return given.length > 0 && correct.length > 0 ? Math.round((ok / correct.length) * pts) : 0
+  }
+  if (q.type === "match_pair") {
+    const given = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {}
+    const pairs = q.pairs ?? []
+    const ok = pairs.filter((p: any) => given[p.id] === p.right).length
+    return pairs.length > 0 ? Math.round((ok / pairs.length) * pts) : 0
+  }
+  return 0  // open_ended — scored by the caller from AI feedback
 }
 
 // ── Builder ────────────────────────────────────────────────────────
@@ -194,13 +207,17 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
     const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
     const answers: any = best?.answers && typeof best.answers === "object" && !Array.isArray(best.answers) ? best.answers : {}
+    // AI-graded open-ended scores from the attempt (so scenario questions aren't scored 0).
+    const aiScores: any = best?.ai_feedback?.open_ended_scores ?? {}
+    const scoreQ = (q: any, qid: string) =>
+      q.type === "open_ended" ? Number(aiScores[qid]?.score ?? 0) : gradeQuestion(q, answers[qid])
     const sectionByMod = new Map<string, ExamSection>()
     const modOrder = new Map<string, number>(modules.map((m: any) => [m.id, m.order_index ?? 999]))
     for (const s of sections) {
       const qs = ((s.question_ids ?? []) as string[]).map((qid: string) => {
         const q = qById.get(qid); if (!q) return null
         const pts = Number(q.points ?? 0)
-        return { text: q.text ?? "", points: pts, scoreAchieved: gradeQuestion(q, answers[qid]) }
+        return { text: q.text ?? "", points: pts, scoreAchieved: scoreQ(q, qid) }
       }).filter(Boolean) as ExamSectionQuestion[]
       if (!qs.length) continue
       const earned = qs.reduce((a, b) => a + b.scoreAchieved, 0)
