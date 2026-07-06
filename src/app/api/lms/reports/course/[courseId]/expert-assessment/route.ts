@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
+import { buildGroupReport } from "@/lib/lms-group-report"
 import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
@@ -9,6 +10,8 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
 type Params = { params: Promise<{ courseId: string }> }
+
+export const maxDuration = 60
 
 // GET — stored course-level (cohort) expert assessment
 export async function GET(_req: Request, { params }: Params) {
@@ -20,7 +23,7 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json(data ?? null)
 }
 
-// POST — generate the cohort expert assessment from real course metrics
+// POST — generate the cohort expert assessment from REAL mastery metrics
 export async function POST(_req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -32,85 +35,51 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   const { courseId } = await params
+  const report = await buildGroupReport(courseId)
+  if (!report) return NextResponse.json({ error: "Course not found" }, { status: 404 })
+  if (report.stats.enrolled === 0) return NextResponse.json({ error: "No students enrolled" }, { status: 400 })
 
-  // ── Gather cohort metrics ──────────────────────────────────────
-  const [{ data: course }, { data: enrollments }, { data: modules }] = await Promise.all([
-    db.from("lms_courses").select("title").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("student_id, status, progress_pct, time_spent_s").eq("course_id", courseId),
-    db.from("lms_modules").select("id, title, module_type, order_index").eq("course_id", courseId).order("order_index"),
-  ])
-  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 })
+  const s = report.stats
+  const dist = report.distribution.map(d => `${d.label}: ${d.count}`).join(", ")
+  const moduleLines = report.moduleStats
+    .map(m => `  - ${m.title}: cohort avg mastery ${m.avgMastery ?? "—"}% (${m.strong} strong, ${m.weak} weak of ${m.assessed} assessed)`)
+    .join("\n")
+  const weakTopics = [...report.topicHeatmap].sort((a, b) => a.avgPct - b.avgPct).slice(0, 10)
+    .map(t => `  - ${t.topic} (${t.module}): cohort avg ${t.avgPct}%`).join("\n")
+  const hardQ = report.itemAnalysis.hardest.slice(0, 8)
+    .map(q => `  - [${q.avgPct}% avg, ${q.correctPct}% full marks] ${q.text.replace(/\s+/g, " ").slice(0, 120)}`).join("\n")
 
-  const enr = (enrollments ?? []) as any[]
-  const total = enr.length
-  if (total === 0) return NextResponse.json({ error: "No students enrolled" }, { status: 400 })
+  const prompt = `You are an expert aviation training analyst at ICS Aviation writing a COHORT report for the instructor. Base every statement strictly on the data below — do not invent facts. Focus on GROUP patterns, never individuals.
 
-  const studentIds = enr.map(e => e.student_id)
-  const completed  = enr.filter(e => e.status === "completed").length
-  const avgProgress = Math.round(enr.reduce((s, e) => s + (e.progress_pct ?? 0), 0) / total)
-  const avgTimeMin  = Math.round(enr.reduce((s, e) => s + (e.time_spent_s ?? 0), 0) / total / 60)
+COURSE: ${report.course.title}
+COHORT: ${s.enrolled} students · ${s.completed} completed (${s.completionRate}%) · avg mastery ${s.avgMastery ?? "—"}% · avg time ${Math.round(s.avgTimeS / 60)} min/student
+FINAL EXAM: ${s.examExists ? `${s.examPassed}/${s.enrolled} passed (pass rate ${s.examPassRate}%)` : "none"}
+MASTERY DISTRIBUTION (students per band): ${dist}
 
-  const examMod = (modules ?? []).find((m: any) => m.module_type === "final_exam")
-  const { data: attempts } = examMod
-    ? await db.from("lms_module_attempts").select("student_id, score, max_score, passed")
-        .eq("module_id", examMod.id).in("student_id", studentIds)
-    : { data: [] }
-  const bestByStudent: Record<string, any> = {}
-  for (const a of (attempts ?? []) as any[]) {
-    const cur = bestByStudent[a.student_id]
-    if (!cur || (a.score ?? 0) > (cur.score ?? 0)) bestByStudent[a.student_id] = a
-  }
-  const examPass = Object.values(bestByStudent).filter((a: any) => a.passed).length
-  const examAttempted = Object.keys(bestByStudent).length
+PER-MODULE COHORT MASTERY (exam-weighted — the real measure, NOT completion):
+${moduleLines || "  (no modules assessed)"}
 
-  // Per-module cohort completion (package modules)
-  const pkgModIds = (modules ?? []).filter((m: any) => m.module_type === "package").map((m: any) => m.id)
-  const { data: pkgRows } = pkgModIds.length
-    ? await db.from("lms_packages").select("id, module_id").in("module_id", pkgModIds) : { data: [] }
-  const pkgIds = (pkgRows ?? []).map((p: any) => p.id)
-  const [{ data: pkgItems }, { data: pkgProg }] = await Promise.all([
-    pkgIds.length ? db.from("lms_package_items").select("package_id").in("package_id", pkgIds) : Promise.resolve({ data: [] }),
-    pkgIds.length ? db.from("lms_package_progress").select("package_id, student_id, completed_items, status").in("package_id", pkgIds).in("student_id", studentIds) : Promise.resolve({ data: [] }),
-  ])
-  const totalByPkg: Record<string, number> = {}
-  for (const it of (pkgItems ?? []) as any[]) totalByPkg[it.package_id] = (totalByPkg[it.package_id] ?? 0) + 1
-  const pkgIdByMod = new Map((pkgRows ?? []).map((p: any) => [p.module_id, p.id]))
-  const progByKey: Record<string, any> = {}
-  for (const pp of (pkgProg ?? []) as any[]) progByKey[`${pp.package_id}:${pp.student_id}`] = pp
+WEAKEST TOPICS ACROSS THE COHORT:
+${weakTopics || "  (topics not analyzed — run Expert Analyze)"}
 
-  const moduleLines = (modules ?? []).map((m: any) => {
-    if (m.module_type === "package") {
-      const pid = pkgIdByMod.get(m.id); const t = pid ? (totalByPkg[pid] ?? 0) : 0
-      let sum = 0
-      for (const sid of studentIds) {
-        const pp = pid ? progByKey[`${pid}:${sid}`] : null
-        const done = pp?.status === "passed" || pp?.status === "completed"
-        const comp = Array.isArray(pp?.completed_items) ? pp.completed_items.length : 0
-        sum += done ? 100 : t > 0 ? Math.min(100, Math.round((comp / t) * 100)) : 0
-      }
-      return `  - ${m.title}: ${Math.round(sum / total)}% avg completion`
-    }
-    if (m.module_type === "final_exam") return `  - ${m.title} (FINAL EXAM): ${examPass}/${total} passed, ${examAttempted} attempted`
-    return `  - ${m.title} (${m.module_type})`
-  }).join("\n")
+HARDEST EXAM QUESTIONS (lowest cohort score):
+${hardQ || "  (no exam)"}
 
-  const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze how this COHORT performed in a course and return a JSON report for the instructor. Base every statement strictly on the data — do not invent facts.
+STUDENTS FLAGGED AT-RISK: ${report.atRisk.length}
 
-COURSE: ${course.title}
-COHORT: ${total} students · ${completed} completed (${Math.round(completed / total * 100)}%) · avg progress ${avgProgress}% · avg time ${avgTimeMin} min/student
-FINAL EXAM: ${examMod ? `${examPass}/${total} passed (${examAttempted} attempted)` : "none"}
-PER-MODULE COHORT PERFORMANCE:
-${moduleLines}
-
-Focus on GROUP patterns, not individuals: which modules the cohort mastered vs struggled with, overall readiness, and what the instructor should do next. If a module has low average completion or the exam pass rate is low, treat that as a cohort weakness worth addressing in teaching.
+Guidance:
+- Mastery is the truth — a module with high completion but low mastery is a COHORT WEAKNESS, say so.
+- Recommendations must be specific and actionable for TEACHING: name the exact topics/modules to reteach (from the weakest topics), the exam questions worth reviewing (a class-wide miss can mean a teaching gap OR a flawed question — flag both possibilities), pacing changes, and whether a remedial session is warranted.
+- If the mastery distribution is bimodal (a strong group and a lost group), call that out — it changes the intervention.
+- NEVER leave any array empty. If the cohort did well, still give at least one strength, one improvement (even minor), and one recommendation to extend/consolidate.
 
 Return ONLY valid JSON (no markdown):
 {
-  "executive_summary": "2-4 sentences on overall cohort performance and readiness",
-  "strengths": ["cohort strength grounded in the data", "..."],
-  "improvements": ["cohort weak area with the module/metric that shows it", "..."],
-  "recommendations": ["concrete action for the instructor", "..."],
-  "at_risk_patterns": "1-2 sentences on the common pattern among struggling students (or 'None significant.')"
+  "executive_summary": "3-4 sentences on overall cohort performance, readiness, and the headline pattern",
+  "strengths": ["cohort strength grounded in a specific module/topic/metric", "..."],
+  "improvements": ["cohort weak area naming the specific module/topic and its score", "..."],
+  "recommendations": ["specific teaching action — reteach X, review question Y, re-pace Z, remedial session for the weak group", "..."],
+  "at_risk_patterns": "1-2 sentences on the common pattern among the struggling students, or 'No significant at-risk pattern.'"
 }`
 
   let raw = ""
@@ -119,7 +88,7 @@ Return ONLY valid JSON (no markdown):
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
-      max_tokens: 1200,
+      max_tokens: Math.min(4000, 1600 + report.moduleStats.length * 120),
     })
     raw = completion.choices[0]?.message?.content?.trim() ?? ""
   } catch (err: any) {

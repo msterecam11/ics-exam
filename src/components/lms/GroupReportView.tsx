@@ -85,6 +85,7 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
   const hasAtRisk  = atRisk.length > 0
   const hasAttendance = !!attendance
   const hasFeedback   = !!feedback && feedback.ratings.length > 0
+  const hasExpert     = !!ai && !!ai.executive_summary
   const pageOrder = [
     "cover", "overview", "modules",
     ...(hasHeatmap ? ["heatmap"] : []),
@@ -93,6 +94,7 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
     ...(hasAtRisk ? ["atrisk"] : []),
     ...(hasAttendance ? ["attendance"] : []),
     ...(hasFeedback ? ["feedback"] : []),
+    ...(hasExpert ? ["expert"] : []),
     "roster",
   ]
   const pageNo = (k: string) => pageOrder.indexOf(k) + 1
@@ -254,10 +256,10 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
               </div>
             </div>
 
-            {/* Expert summary (basic — enhanced in a later phase) */}
+            {/* Expert executive summary (full analysis on the Expert Report page) */}
             {ai?.executive_summary && (
               <div className="avoid-break bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-xl p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-2">Expert Executive Summary <span className="font-normal text-slate-400">· AI</span></p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-2">Expert Executive Summary</p>
                 <p className="text-sm text-slate-700 leading-relaxed">{ai.executive_summary}</p>
               </div>
             )}
@@ -470,6 +472,50 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
               )}
             </div>
             <PageFooter page={pageNo("feedback")} total={totalPages} />
+          </Page>
+        )}
+
+        {/* EXPERT REPORT */}
+        {hasExpert && ai && (
+          <Page>
+            <PageHeader title="Expert Report" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-5">
+              <div className="avoid-break bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-xl p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-2">Executive Summary</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{ai.executive_summary}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 avoid-break">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-2">Cohort Strengths</p>
+                  {(ai.strengths ?? []).map((sTxt: string, i: number) => <p key={i} className="text-[11px] text-emerald-800 leading-relaxed mb-1.5">· {sTxt}</p>)}
+                </div>
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 mb-2">Areas to Improve</p>
+                  {(ai.improvements ?? []).map((sTxt: string, i: number) => <p key={i} className="text-[11px] text-amber-800 leading-relaxed mb-1.5">· {sTxt}</p>)}
+                </div>
+              </div>
+
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Recommendations for the Instructor</p>
+                <div className="space-y-2.5">
+                  {(ai.recommendations ?? []).map((rTxt: string, i: number) => (
+                    <div key={i} className="flex items-start gap-3 p-3 border border-slate-100 rounded-xl bg-slate-50/80">
+                      <div className="w-7 h-7 rounded-full bg-[#1B4F8A] flex items-center justify-center text-white text-xs font-bold shrink-0">{i + 1}</div>
+                      <p className="flex-1 text-xs text-slate-600 leading-relaxed pt-0.5">{rTxt}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {ai.at_risk_patterns && (
+                <div className="avoid-break rounded-xl overflow-hidden border border-red-100">
+                  <div className="bg-red-500/90 px-4 py-2 flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5 text-white/90" /><p className="text-[10px] font-bold uppercase tracking-widest text-white/90">At-Risk Pattern</p></div>
+                  <div className="bg-red-50/60 px-4 py-3"><p className="text-xs text-red-900 leading-relaxed">{ai.at_risk_patterns}</p></div>
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("expert")} total={totalPages} />
           </Page>
         )}
 
