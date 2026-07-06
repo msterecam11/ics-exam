@@ -164,6 +164,13 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   const hasAttendance = overall.sessionTotal > 0
   const hasFeedback = !!feedback && (feedback.ratings.length > 0 || !!feedback.comment)
 
+  // Topic mastery: show strongest → weakest (so strengths aren't hidden by slicing).
+  const topicsSorted = [...topicMastery].sort((a, b) => b.pct - a.pct)
+  // Radar plots per-MODULE mastery (a meaningful spread) rather than same-valued topics.
+  const moduleRadar = modules
+    .filter(m => m.masteryScore !== null)
+    .map(m => ({ topic: m.title.replace(/^Module\s*\d+\s*[-–:]\s*/i, ""), pct: m.masteryScore as number }))
+
   // Dynamic page order — a page only exists when it has data to show.
   const pageOrder: string[] = [
     "cover", "summary",
@@ -345,12 +352,17 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
 
             {topicMastery.length > 0 && (
               <div className="avoid-break">
-                <p className={`${SECTION} mb-3`}>Topic Mastery</p>
-                <div className={topicMastery.length >= 3 ? "grid grid-cols-3 gap-5 items-center" : ""}>
+                <p className={`${SECTION} mb-3`}>Topic Mastery <span className="text-slate-300 font-normal normal-case">· strongest to weakest</span></p>
+                <div className={moduleRadar.length >= 3 ? "grid grid-cols-3 gap-5 items-center" : ""}>
                   <div className="col-span-2 space-y-3">
-                    {topicMastery.slice(0, 10).map(t => <ScoreBar key={t.topic} label={t.topic} score={t.pct} detail={t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} />)}
+                    {topicsSorted.slice(0, 16).map(t => <ScoreBar key={t.topic} label={t.topic} score={t.pct} detail={t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} />)}
                   </div>
-                  {topicMastery.length >= 3 && <div className="flex justify-center"><TopicRadar topics={topicMastery} /></div>}
+                  {moduleRadar.length >= 3 && (
+                    <div className="flex flex-col items-center">
+                      <TopicRadar topics={moduleRadar} />
+                      <p className="text-[9px] text-slate-400 uppercase tracking-wider mt-1">Mastery by module</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

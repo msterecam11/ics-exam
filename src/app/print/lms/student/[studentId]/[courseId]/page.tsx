@@ -248,7 +248,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
               <div>
                 <p className={`${SECTION} mb-3`}>Topic Mastery</p>
                 <div className="space-y-1.5">
-                  {topicMastery.slice(0, 8).map(t => (
+                  {[...topicMastery].sort((a, b) => b.pct - a.pct).slice(0, 12).map(t => (
                     <div key={t.topic} className="flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-600 truncate">{t.topic}</span>
                       <span className="text-[10px] font-bold shrink-0" style={{ color: t.level === "strong" ? "#059669" : t.level === "developing" ? "#D97706" : "#DC2626" }}>
