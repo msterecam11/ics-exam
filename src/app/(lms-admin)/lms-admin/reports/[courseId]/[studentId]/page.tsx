@@ -71,6 +71,14 @@ function CoverRing({ score }: { score: number }) {
 
 const SECTION = "text-[10px] font-bold uppercase tracking-widest text-slate-400"
 
+// Heatmap colour band for a topic score.
+function heat(pct: number) {
+  if (pct >= 80) return { bg: "#EAF3DE", border: "#C0DD97", text: "#27500A", tag: "#3B6D11" }
+  if (pct >= 60) return { bg: "#E6F1FB", border: "#B5D4F4", text: "#0C447C", tag: "#185FA5" }
+  if (pct >= 40) return { bg: "#FAEEDA", border: "#FAC775", text: "#854F0B", tag: "#854F0B" }
+  return { bg: "#FCEBEB", border: "#F7C1C1", text: "#A32D2D", tag: "#A32D2D" }
+}
+
 // Compact topic-mastery radar (student values only). Falls back to nothing < 3 axes.
 function TopicRadar({ topics }: { topics: { topic: string; pct: number }[] }) {
   const pts = topics.slice(0, 6)
@@ -152,7 +160,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     </div>
   )
 
-  const { student, course, enrollment, overall, modules, exam, examSections, topicMastery, assessment, security,
+  const { student, course, enrollment, overall, modules, exam, examSections, topicScores, topicMastery, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
@@ -366,6 +374,24 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                       <p className="text-[9px] text-slate-400 uppercase tracking-wider mt-1">Mastery by module</p>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {topicScores.length > 0 && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Topic Mastery <span className="text-slate-300 font-normal normal-case">· each topic tested by the exam</span></p>
+                <div className="grid grid-cols-4 gap-2">
+                  {topicScores.map((t, i) => {
+                    const c = heat(t.pct)
+                    return (
+                      <div key={i} style={{ background: c.bg, borderColor: c.border }} className="border rounded-xl p-2.5 flex flex-col">
+                        <p className="text-[8px] font-bold uppercase tracking-wide truncate" style={{ color: c.tag }}>{t.module.replace(/^Module\s*\d+\s*[-–:]\s*/i, "")}</p>
+                        <p className="text-[10px] leading-tight mt-0.5 mb-1.5 text-slate-700 flex-1">{t.topic}</p>
+                        <p className="text-base font-bold" style={{ color: c.text }}>{t.pct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.correct}/{t.questionCount}</span></p>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

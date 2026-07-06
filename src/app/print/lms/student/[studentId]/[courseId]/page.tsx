@@ -63,6 +63,12 @@ function statusLabel(s: string) {
   return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s
 }
 function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+function heat(pct: number) {
+  if (pct >= 80) return { bg: "#EAF3DE", border: "#C0DD97", text: "#27500A", tag: "#3B6D11" }
+  if (pct >= 60) return { bg: "#E6F1FB", border: "#B5D4F4", text: "#0C447C", tag: "#185FA5" }
+  if (pct >= 40) return { bg: "#FAEEDA", border: "#FAC775", text: "#854F0B", tag: "#854F0B" }
+  return { bg: "#FCEBEB", border: "#F7C1C1", text: "#A32D2D", tag: "#A32D2D" }
+}
 
 export default async function PrintStudentLmsReport({ params, searchParams }: Props) {
   const { pdf_secret } = await searchParams
@@ -76,7 +82,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  const { student, course, enrollment, overall, modules, exam, examSections, assignments, topicMastery, assessment, security,
+  const { student, course, enrollment, overall, modules, exam, examSections, topicScores, assignments, topicMastery, assessment, security,
           cohort, examTrajectory, feedback } = report
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const completed = enrollment.status === "completed"
@@ -270,6 +276,25 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                 </div>
               </div>
             </div>
+
+            {/* Topic mastery heatmap — per exam topic, grouped by module */}
+            {topicScores.length > 0 && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Topic Mastery — each topic tested by the exam</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {topicScores.map((t, i) => {
+                    const c = heat(t.pct)
+                    return (
+                      <div key={i} style={{ background: c.bg, border: `0.5px solid ${c.border}`, borderRadius: 10, padding: 8 }}>
+                        <p className="text-[8px] font-bold uppercase tracking-wide truncate" style={{ color: c.tag }}>{t.module.replace(/^Module\s*\d+\s*[-–:]\s*/i, "")}</p>
+                        <p className="text-[10px] leading-tight mt-0.5 mb-1 text-slate-700">{t.topic}</p>
+                        <p className="text-sm font-bold" style={{ color: c.text }}>{t.pct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.correct}/{t.questionCount}</span></p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Learner feedback — only when the course collects it by name */}
             {feedback && (feedback.ratings.length > 0 || feedback.comment) && (
