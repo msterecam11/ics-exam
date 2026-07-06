@@ -152,7 +152,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     </div>
   )
 
-  const { student, course, enrollment, overall, modules, exam, topicMastery, assessment, security,
+  const { student, course, enrollment, overall, modules, exam, examSections, topicMastery, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
@@ -169,6 +169,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     "cover", "summary",
     ...(hasJourney ? ["journey"] : []),
     ...modules.map(m => `mod-${m.id}`),
+    ...(exam ? ["exam"] : []),
     ...(hasAssignments ? ["assignments"] : []),
     ...(hasAttendance ? ["attendance"] : []),
     ...(hasFeedback ? ["feedback"] : []),
@@ -448,7 +449,14 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
                   </div>
                 )}
 
-                {m.ai && (
+                {m.masteryScore === null && m.items.length === 0 && (
+                  <div className="avoid-break flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-purple-400" />
+                    Not yet assessed — run <strong className="mx-1 text-purple-600">Expert Analyze</strong> in the course builder to map the exam questions to this module.
+                  </div>
+                )}
+
+                {m.ai && (m.masteryScore !== null || m.items.length > 0) && (
                   <div className="avoid-break space-y-2">
                     <div className="rounded-xl overflow-hidden border border-blue-100">
                       <div className="bg-[#1B4F8A] px-4 py-2 flex items-center gap-2"><BrainCircuit className="h-3.5 w-3.5 text-white/70" /><p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Expert Analysis</p></div>
@@ -516,6 +524,69 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
             </Page>
           )
         })}
+
+        {/* FINAL EXAM — overall result + per-section analysis (from the course-builder sections) */}
+        {exam && (
+          <Page>
+            <PageHeader title="Final Exam Analysis" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-6">
+              <div className="avoid-break flex items-start justify-between gap-4 pb-4 border-b-2 border-slate-100">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] bg-blue-50 px-2 py-0.5 rounded-full">Final Exam</span>
+                  <h2 className="text-xl font-bold text-slate-800 mt-2">{exam.title}</h2>
+                  <p className="text-xs text-slate-400 mt-1">{exam.attempts}/{exam.maxAttempts} attempt(s) · pass mark {exam.passMark}%</p>
+                </div>
+                <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: exam.passed ? "#d1fae5" : "#fee2e2" }}>
+                  <span className="text-xl font-extrabold" style={{ color: exam.passed ? "#059669" : "#DC2626" }}>{exam.pct}%</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: exam.passed ? "#059669" : "#DC2626" }}>{exam.passed ? "Passed" : "Failed"}</span>
+                </div>
+              </div>
+
+              {examSections.length > 0 ? (
+                <div className="avoid-break space-y-4">
+                  <p className={SECTION}>Performance by Section</p>
+                  {examSections.map((s, si) => {
+                    const col = sc(s.pct)
+                    return (
+                      <div key={si} className="border border-slate-100 rounded-xl overflow-hidden">
+                        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                          <span className="text-xs font-bold text-slate-800 flex-1">{s.title}</span>
+                          <div className="flex gap-1.5">
+                            <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">{s.correct} full</span>
+                            {s.partial > 0 && <span className="text-[9px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">{s.partial} partial</span>}
+                            <span className="text-[9px] px-2 py-0.5 rounded bg-red-50 text-red-600">{s.zero} zero</span>
+                          </div>
+                          <span className="text-sm font-bold w-12 text-right" style={{ color: col.text }}>{s.pct}%</span>
+                        </div>
+                        <div className="px-4 py-2">
+                          <ScoreBar label={`${s.correct}/${s.questionCount} correct`} score={s.pct} detail={`${s.earned}/${s.possible} pts`} />
+                          <div className="mt-2 rounded-lg border border-slate-100 overflow-hidden">
+                            {s.questions.map((q, qi) => {
+                              const full = q.scoreAchieved >= q.points && q.points > 0
+                              const part = q.scoreAchieved > 0 && !full
+                              return (
+                                <div key={qi} className={`flex items-start gap-2 px-3 py-1.5 border-b border-slate-50 last:border-0 ${qi % 2 ? "bg-slate-50/60" : ""}`}>
+                                  {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" /> : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" /> : <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />}
+                                  <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
+                                  <span className="text-[11px] font-bold text-slate-700 shrink-0">{q.scoreAchieved}<span className="text-slate-300 font-normal">/{q.points}</span></span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="no-print flex items-center gap-2 text-sm text-slate-400 bg-slate-50 rounded-xl p-4">
+                  <Sparkles className="h-4 w-4 shrink-0 text-purple-400" /> Run <strong className="mx-1 text-purple-600">Expert Analyze</strong> in the course builder to break the exam into sections mapped to the course modules.
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("exam")} total={totalPages} />
+          </Page>
+        )}
 
         {/* ASSIGNMENTS */}
         {hasAssignments && (

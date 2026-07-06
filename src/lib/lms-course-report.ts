@@ -42,7 +42,9 @@ export interface CourseReport {
   enrollment: { status: string; enrolled_at: string; completed_at: string | null; progress_pct: number }
   overall: { score: number | null; completionPct: number; timeSpent: number; attendancePct: number | null; presentCount: number; sessionTotal: number }
   modules: ReportModule[]
-  exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number } | null
+  exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number; passMark: number } | null
+  // Every final-exam section (from the course-builder analysis) scored for THIS student.
+  examSections: { title: string; pct: number; correct: number; partial: number; zero: number; earned: number; possible: number; questionCount: number; questions: ExamSectionQuestion[] }[]
   assignments: { title: string; status: string; score: number | null; maxScore: number | null; note: string | null }[]
   topicMastery: TopicMastery[]
   assessment: {
@@ -178,11 +180,13 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
         score: num(best.score), maxScore: num(best.max_score), pct,
         passed: !!examAttempts.some((a: any) => a.passed),
         attempts: examAttempts.length, maxAttempts,
+        passMark: Number((courseRes.data as any).final_exam_pass_mark ?? (examMod as any).activity_settings?.pass_mark ?? 70),
       }
     }
   }
 
-  // ── Final-exam performance by module-section (graded from the learner's answers) ──
+  // ── Final-exam performance by section (graded from the learner's answers) ──
+  let examSections: CourseReport["examSections"] = []
   if (examMod) {
     const examQuestions: any[] = Array.isArray((examMod as any).questions) ? (examMod as any).questions : []
     const qById = new Map(examQuestions.map((q: any) => [q.id, q]))
@@ -202,10 +206,12 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       const possible = qs.reduce((a, b) => a + b.points, 0)
       const correct = qs.filter(q => q.points > 0 && q.scoreAchieved >= q.points).length
       const zero = qs.filter(q => q.scoreAchieved === 0).length
-      sectionByMod.set(s.module_id, {
-        pct: possible > 0 ? Math.round((earned / possible) * 100) : 0,
-        correct, partial: qs.length - correct - zero, zero, earned, possible, questions: qs,
-      })
+      const pct = possible > 0 ? Math.round((earned / possible) * 100) : 0
+      const partial = qs.length - correct - zero
+      // Map to its module (for the per-module page) when the section has one.
+      if (s.module_id) sectionByMod.set(s.module_id, { pct, correct, partial, zero, earned, possible, questions: qs })
+      // Always record it in the flat exam-sections list (for the Final Exam page).
+      examSections.push({ title: s.title ?? "Section", pct, correct, partial, zero, earned, possible, questionCount: qs.length, questions: qs })
     }
     for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
   }
@@ -383,6 +389,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     },
     modules: reportModules,
     exam,
+    examSections,
     assignments,
     topicMastery,
     assessment,

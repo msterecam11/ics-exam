@@ -76,7 +76,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  const { student, course, enrollment, overall, modules, exam, assignments, topicMastery, assessment, security,
+  const { student, course, enrollment, overall, modules, exam, examSections, assignments, topicMastery, assessment, security,
           cohort, examTrajectory, feedback } = report
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const completed = enrollment.status === "completed"
@@ -380,6 +380,20 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
                   )}
                 </div>
               ))}
+              {exam && examSections.length > 0 && (
+                <div className="avoid-break space-y-2 pt-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Final Exam — Performance by Section ({exam.pct}% · {exam.passed ? "passed" : "not passed"})</p>
+                  <div className="rounded-lg border border-slate-100 overflow-hidden">
+                    {examSections.map((s, si) => (
+                      <div key={si} className={`flex items-center gap-3 px-3 py-2 border-b border-slate-50 last:border-0 ${si % 2 ? "bg-slate-50/60" : ""}`}>
+                        <span className="text-[11px] text-slate-700 flex-1">{s.title}</span>
+                        <span className="text-[9px] text-slate-400">{s.correct}/{s.questionCount} correct · {s.earned}/{s.possible} pts</span>
+                        <span className="text-[11px] font-bold w-10 text-right" style={{ color: scoreColor(s.pct) }}>{s.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {assessment && assessment.recommendations.length > 0 && (
                 <div className="avoid-break space-y-2 pt-2">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Personalized Recommendations</p>
