@@ -18,6 +18,9 @@ export interface GroupReport {
   itemAnalysis: {
     hardest: { text: string; correctPct: number; avgPct: number; n: number }[]
     difficulty: { mastered: number; mixed: number; struggled: number; total: number }
+    // Questions where strong students didn't outperform weak ones (low/negative
+    // discrimination) — likely ambiguous or miskeyed, worth reviewing.
+    flagged: { text: string; discrimination: number; avgPct: number; n: number }[]
   }
   ranking: { id: string; name: string; mastery: number; examPct: number | null; passed: boolean | null; completion: number }[]
   atRisk: { id: string; name: string; mastery: number | null; reasons: string[] }[]
@@ -109,7 +112,7 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
     .map(({ _ord, ...rest }) => rest)
 
   // Exam item analysis — per-question cohort performance (best attempt per student)
-  let itemAnalysis: GroupReport["itemAnalysis"] = { hardest: [], difficulty: { mastered: 0, mixed: 0, struggled: 0, total: 0 } }
+  let itemAnalysis: GroupReport["itemAnalysis"] = { hardest: [], difficulty: { mastered: 0, mixed: 0, struggled: 0, total: 0 }, flagged: [] }
   if (examMod) {
     const questions: any[] = Array.isArray(examMod.questions) ? examMod.questions : []
     const { data: attempts } = await db
@@ -122,22 +125,48 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
       const cur = bestByStu.get(a.student_id)
       if (!cur || (a.score ?? 0) > (cur.score ?? 0)) bestByStu.set(a.student_id, a)
     }
+    // Fraction (0..1) of a question's points a given attempt earned.
+    const fracOf = (q: any, a: any): number => {
+      const pts = Number(q.points ?? 0); if (pts <= 0) return 0
+      const answers = (a.answers && typeof a.answers === "object" && !Array.isArray(a.answers)) ? a.answers : {}
+      const ai = a.ai_feedback?.open_ended_scores ?? {}
+      const earned = q.type === "open_ended" ? Number(ai[q.id]?.score ?? 0) : gradeQuestion(q, answers[q.id])
+      return earned / pts
+    }
     const takers = [...bestByStu.values()]
     const perQ = questions.map(q => {
       const pts = Number(q.points ?? 0)
-      let earnedSum = 0, ptsSum = 0, full = 0, n = 0
-      for (const a of takers) {
-        const answers = (a.answers && typeof a.answers === "object" && !Array.isArray(a.answers)) ? a.answers : {}
-        const ai = a.ai_feedback?.open_ended_scores ?? {}
-        const earned = q.type === "open_ended" ? Number(ai[q.id]?.score ?? 0) : gradeQuestion(q, answers[q.id])
-        n++; ptsSum += pts; earnedSum += earned
-        if (pts > 0 && earned >= pts) full++
-      }
-      return { text: String(q.text ?? ""), correctPct: n ? round((full / n) * 100) : 0, avgPct: ptsSum ? round((earnedSum / ptsSum) * 100) : 0, n }
+      let fracSum = 0, full = 0, n = 0
+      for (const a of takers) { const f = fracOf(q, a); n++; fracSum += f; if (pts > 0 && f >= 1) full++ }
+      return { qid: q.id, text: String(q.text ?? ""), correctPct: n ? round((full / n) * 100) : 0, avgPct: n ? round((fracSum / n) * 100) : 0, n }
     })
     const difficulty = { mastered: 0, mixed: 0, struggled: 0, total: perQ.length }
     for (const q of perQ) { if (q.avgPct >= 80) difficulty.mastered++; else if (q.avgPct >= 40) difficulty.mixed++; else difficulty.struggled++ }
-    itemAnalysis = { hardest: [...perQ].sort((a, b) => a.avgPct - b.avgPct).slice(0, 10), difficulty }
+    const hardest = [...perQ].sort((a, b) => a.avgPct - b.avgPct).slice(0, 10).map(({ qid, ...r }) => r)
+
+    // Discrimination — do top-third students outperform bottom-third on each
+    // question? Low/negative separation flags an ambiguous or miskeyed item.
+    let flagged: GroupReport["itemAnalysis"]["flagged"] = []
+    const masteryByStu = new Map<string, number>(rows.map(x => [x.r.student.id, x.r.overall.score ?? 0]))
+    const takersWithId = [...bestByStu.entries()].map(([sid, a]) => ({ a, mastery: masteryByStu.get(sid) ?? 0 }))
+    if (takersWithId.length >= 6) {
+      const sorted = [...takersWithId].sort((x, y) => y.mastery - x.mastery)
+      const g = Math.max(1, Math.floor(sorted.length / 3))
+      const top = sorted.slice(0, g), bottom = sorted.slice(-g)
+      const grpAvg = (grp: typeof top, q: any) => grp.reduce((s, t) => s + fracOf(q, t.a), 0) / grp.length
+      const statByQid = new Map(perQ.map(p => [p.qid, p]))
+      flagged = questions
+        .filter((q: any) => Number(q.points ?? 0) > 0)
+        .map((q: any) => {
+          const disc = Math.round((grpAvg(top, q) - grpAvg(bottom, q)) * 100) / 100
+          const st = statByQid.get(q.id)
+          return { text: String(q.text ?? ""), discrimination: disc, avgPct: st?.avgPct ?? 0, n: st?.n ?? 0 }
+        })
+        .filter(q => q.discrimination < 0.15)
+        .sort((a, b) => a.discrimination - b.discrimination)
+        .slice(0, 6)
+    }
+    itemAnalysis = { hardest, difficulty, flagged }
   }
 
   // Ranking + at-risk

@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
+import { ArrowLeft, Printer, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
 import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
 
@@ -76,7 +76,6 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
   const [generating, setGenerating] = useState(false)
-  const [downloading, setDownloading] = useState(false)
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
   const hasHeatmap = topicHeatmap.length > 0
@@ -112,19 +111,6 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
     } catch { toast.error("Failed to generate report") }
     finally { setGenerating(false) }
   }
-  async function downloadPDF() {
-    setDownloading(true); toast.info("Generating PDF…")
-    try {
-      const res = await fetch(`/api/lms/reports/course/${course.id}/pdf`)
-      if (!res.ok) { toast.error("PDF generation failed"); return }
-      const blob = await res.blob(); const url = URL.createObjectURL(blob)
-      const a = document.createElement("a"); a.href = url; a.download = `${course.title} - Cohort Report.pdf`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
-      toast.success("PDF downloaded")
-    } catch { toast.error("Failed to download PDF") }
-    finally { setDownloading(false) }
-  }
-
   return (
     <>
       <style>{`
@@ -159,10 +145,7 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
               {generating ? "Generating…" : "Generate Expert Report"}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Print</Button>
-          <Button size="sm" variant="outline" onClick={downloadPDF} disabled={downloading} className="gap-1.5 text-xs">
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
-          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Save as PDF</Button>
         </div>
       </div>
 
@@ -356,6 +339,22 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
                 </div>
                 <p className="text-[10px] text-slate-400 mt-2">A question the whole cohort missed may signal a teaching gap — or a flawed/ambiguous question worth reviewing.</p>
               </div>
+
+              {itemAnalysis.flagged.length > 0 && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-3`}>Questions to Review <span className="text-slate-300 font-normal normal-case">· low discrimination — strong & weak students scored alike</span></p>
+                  <div className="rounded-xl border border-amber-100 overflow-hidden">
+                    {itemAnalysis.flagged.map((q, i) => (
+                      <div key={i} className="flex items-start gap-3 px-4 py-2.5 border-b border-amber-50 last:border-0 bg-amber-50/40">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
+                        <span className="text-[10px] text-amber-700 shrink-0 font-medium" title="discrimination index · cohort avg">D {q.discrimination.toFixed(2)} · {q.avgPct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">Top and bottom students scored similarly here — the item may be ambiguous, miskeyed, or not diagnostic. Worth a review of the question and its correct answer.</p>
+                </div>
+              )}
             </div>
             <PageFooter page={pageNo("items")} total={totalPages} />
           </Page>
