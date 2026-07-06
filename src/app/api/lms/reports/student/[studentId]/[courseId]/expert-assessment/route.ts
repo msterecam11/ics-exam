@@ -78,7 +78,7 @@ export async function POST(req: Request, { params }: Params) {
     : ""
 
   const moduleSkeleton = report.modules
-    .map(m => `"${m.title}": {"summary":"one sentence assessing this module (mastery ${m.masteryScore ?? "—"}%)","strengths":["specific strength, or note none if the exam score is low"],"weaknesses":["specific weakness grounded in the exam score"],"development":["one concrete action to improve this module"]}`)
+    .map(m => `"${m.title}": {"summary":"one sentence citing what the learner got right vs wrong in this module","strengths":["a SPECIFIC topic or skill the learner answered CORRECTLY (a full-mark question) — always list the genuine correct areas; only leave empty if they scored zero on essentially every question"],"weaknesses":["a SPECIFIC topic or skill the learner got WRONG (a zero-mark question)"],"development":["one concrete action targeting a specific missed question or skill"]}`)
     .join(",\n    ")
 
   const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this learner's course performance and return a detailed JSON report. Use ONLY the data below — base every insight strictly on these numbers, do not invent facts.
