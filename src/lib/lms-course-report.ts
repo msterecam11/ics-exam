@@ -45,6 +45,8 @@ export interface CourseReport {
   exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number; passMark: number } | null
   // Every final-exam section (from the course-builder analysis) scored for THIS student.
   examSections: { title: string; pct: number; correct: number; partial: number; zero: number; earned: number; possible: number; questionCount: number; questions: ExamSectionQuestion[] }[]
+  // Per-TOPIC mastery (question→topic tags from Expert Analyze), grouped by module — the heatmap.
+  topicScores: { moduleId: string; module: string; topic: string; pct: number; earned: number; possible: number; questionCount: number; correct: number; zero: number }[]
   assignments: { title: string; status: string; score: number | null; maxScore: number | null; note: string | null }[]
   topicMastery: TopicMastery[]
   assessment: {
@@ -200,10 +202,13 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
 
   // ── Final-exam performance by section (graded from the learner's answers) ──
   let examSections: CourseReport["examSections"] = []
+  let topicScores: CourseReport["topicScores"] = []
   if (examMod) {
     const examQuestions: any[] = Array.isArray((examMod as any).questions) ? (examMod as any).questions : []
     const qById = new Map(examQuestions.map((q: any) => [q.id, q]))
     const sections: any[] = Array.isArray(analysisBy.get(examMod.id)?.sections) ? analysisBy.get(examMod.id)!.sections : []
+    const questionTopics: Record<string, string> = (analysisBy.get(examMod.id) as any)?.question_topics ?? {}
+    const moduleTitleById = new Map<string, string>(modules.map((m: any) => [m.id, m.title]))
     const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
     const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
     const answers: any = best?.answers && typeof best.answers === "object" && !Array.isArray(best.answers) ? best.answers : {}
@@ -235,6 +240,38 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     examSections.sort((a, b) => ((a as any)._ord ?? 999) - ((b as any)._ord ?? 999))
     examSections.forEach(s => { delete (s as any)._ord })
     for (const rm of reportModules) rm.examSection = sectionByMod.get(rm.id) ?? null
+
+    // ── Per-topic mastery (the heatmap) — aggregate each question's score into its
+    //    tagged topic, grouped by module. Empty when Expert Analyze hasn't tagged topics.
+    const topicAgg = new Map<string, { moduleId: string; module: string; topic: string; earned: number; possible: number; count: number; correct: number; zero: number; ord: number }>()
+    for (const s of sections) {
+      for (const qid of (s.question_ids ?? []) as string[]) {
+        const q = qById.get(qid); if (!q) continue
+        const topic = questionTopics[qid]; if (!topic) continue
+        const pts = Number(q.points ?? 0)
+        const earned = scoreQ(q, qid)
+        const key = `${s.module_id}||${topic}`
+        const cur = topicAgg.get(key) ?? {
+          moduleId: s.module_id, module: moduleTitleById.get(s.module_id) ?? s.title ?? "General",
+          topic, earned: 0, possible: 0, count: 0, correct: 0, zero: 0,
+          ord: s.module_id ? (modOrder.get(s.module_id) ?? 998) : 999,
+        }
+        cur.earned += earned; cur.possible += pts; cur.count++
+        if (pts > 0 && earned >= pts) cur.correct++
+        if (earned === 0) cur.zero++
+        topicAgg.set(key, cur)
+      }
+    }
+    topicScores = [...topicAgg.values()]
+      .map(t => ({
+        moduleId: t.moduleId, module: t.module, topic: t.topic,
+        pct: t.possible > 0 ? Math.round((t.earned / t.possible) * 100) : 0,
+        earned: t.earned, possible: t.possible, questionCount: t.count, correct: t.correct, zero: t.zero,
+        _ord: t.ord,
+      }))
+      // Module order (module 1 → 2 → 3 …), then strongest → weakest within a module.
+      .sort((a, b) => a._ord - b._ord || b.pct - a.pct)
+    topicScores.forEach(t => { delete (t as any)._ord })
   }
 
   // Effective mastery per module. Mastery is measured by ASSESSMENTS, never by completion:
@@ -411,6 +448,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     modules: reportModules,
     exam,
     examSections,
+    topicScores,
     assignments,
     topicMastery,
     assessment,
