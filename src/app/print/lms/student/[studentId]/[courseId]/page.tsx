@@ -246,16 +246,19 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
             {/* Topic mastery + Assessment detail */}
             <div className="avoid-break grid grid-cols-2 gap-8">
               <div>
-                <p className={`${SECTION} mb-3`}>Topic Mastery</p>
+                <p className={`${SECTION} mb-3`}>Mastery by Module</p>
                 <div className="space-y-1.5">
-                  {[...topicMastery].sort((a, b) => b.pct - a.pct).slice(0, 12).map(t => (
-                    <div key={t.topic} className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-600 truncate">{t.topic}</span>
-                      <span className="text-[10px] font-bold shrink-0" style={{ color: t.level === "strong" ? "#059669" : t.level === "developing" ? "#D97706" : "#DC2626" }}>
-                        {t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} · {t.pct}%
-                      </span>
-                    </div>
-                  ))}
+                  {modules.filter(m => m.masteryScore !== null).sort((a, b) => (b.masteryScore ?? 0) - (a.masteryScore ?? 0)).map(m => {
+                    const p = m.masteryScore as number
+                    return (
+                      <div key={m.id} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-600 truncate">{m.title}</span>
+                        <span className="text-[10px] font-bold shrink-0" style={{ color: p >= 80 ? "#059669" : p >= 60 ? "#D97706" : "#DC2626" }}>
+                          {p >= 80 ? "Strong" : p >= 60 ? "Developing" : "Weak"} · {p}%
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
               <div>

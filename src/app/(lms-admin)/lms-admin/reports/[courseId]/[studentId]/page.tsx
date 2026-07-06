@@ -164,9 +164,12 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   const hasAttendance = overall.sessionTotal > 0
   const hasFeedback = !!feedback && (feedback.ratings.length > 0 || !!feedback.comment)
 
-  // Topic mastery: show strongest → weakest (so strengths aren't hidden by slicing).
-  const topicsSorted = [...topicMastery].sort((a, b) => b.pct - a.pct)
-  // Radar plots per-MODULE mastery (a meaningful spread) rather than same-valued topics.
+  // Mastery is measured per MODULE (topics just inherit their module's score, so a
+  // topic list is redundant and hides the spread). Show one bar per module + a radar.
+  const moduleBars = modules
+    .filter(m => m.masteryScore !== null)
+    .map(m => ({ label: m.title, pct: m.masteryScore as number }))
+    .sort((a, b) => b.pct - a.pct)
   const moduleRadar = modules
     .filter(m => m.masteryScore !== null)
     .map(m => ({ topic: m.title.replace(/^Module\s*\d+\s*[-–:]\s*/i, ""), pct: m.masteryScore as number }))
@@ -350,12 +353,12 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
               )}
             </div>
 
-            {topicMastery.length > 0 && (
+            {moduleBars.length > 0 && (
               <div className="avoid-break">
-                <p className={`${SECTION} mb-3`}>Topic Mastery <span className="text-slate-300 font-normal normal-case">· strongest to weakest</span></p>
+                <p className={`${SECTION} mb-3`}>Mastery by Module <span className="text-slate-300 font-normal normal-case">· exam-weighted</span></p>
                 <div className={moduleRadar.length >= 3 ? "grid grid-cols-3 gap-5 items-center" : ""}>
                   <div className="col-span-2 space-y-3">
-                    {topicsSorted.slice(0, 16).map(t => <ScoreBar key={t.topic} label={t.topic} score={t.pct} detail={t.level === "strong" ? "Strong" : t.level === "developing" ? "Developing" : "Weak"} />)}
+                    {moduleBars.map(m => <ScoreBar key={m.label} label={m.label} score={m.pct} detail={m.pct >= 80 ? "Strong" : m.pct >= 60 ? "Developing" : "Weak"} />)}
                   </div>
                   {moduleRadar.length >= 3 && (
                     <div className="flex flex-col items-center">
