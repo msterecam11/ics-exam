@@ -30,17 +30,23 @@ async function analyzePackage(mod: any): Promise<ModuleAnalysis> {
     breakdown[item.type] = (breakdown[item.type] ?? 0) + 1
   }
 
+  // Analyze EVERY item — no item cap. To keep the prompt within a sane token
+  // budget for very large packages, the per-item text snippet shrinks as the
+  // item count grows (a few long modules get full snippets; a 200-item module
+  // gets terser ones) — every item is still represented, none are dropped.
+  const TOTAL_SNIPPET_BUDGET = 40_000 // characters across all item snippets
+  const perItemChars = Math.max(60, Math.min(200, Math.floor(TOTAL_SNIPPET_BUDGET / Math.max(1, items.length))))
+
   const itemSummary = items
-    .slice(0, 30)
     .map(it => {
       const base = `[${it.type}] "${it.title}"`
       if (it.type === "quiz" || it.type === "exam") {
         const qs = (it.config?.questions ?? []) as any[]
-        const sample = qs.slice(0, 3).map((q: any) => q.text?.slice(0, 80)).filter(Boolean)
+        const sample = qs.slice(0, 3).map((q: any) => q.text?.slice(0, Math.min(80, perItemChars))).filter(Boolean)
         return sample.length ? `${base} — questions: ${sample.join("; ")}` : base
       }
       if (it.type === "text") {
-        const text = (it.config?.html ?? "").replace(/<[^>]+>/g, " ").slice(0, 150)
+        const text = (it.config?.html ?? "").replace(/<[^>]+>/g, " ").slice(0, perItemChars)
         return text ? `${base} — ${text}` : base
       }
       if (it.type === "activity") {
@@ -51,19 +57,19 @@ async function analyzePackage(mod: any): Promise<ModuleAnalysis> {
         const gist  = [c.question, c.statement, c.situation, c.paragraph, c.sentence, c.text, c.acronym, c.word, cards, rapid]
           .find((v: any) => typeof v === "string" && v.trim().length > 0)
         return gist
-          ? `${base} (${at}) — ${String(gist).replace(/<[^>]+>/g, " ").slice(0, 140)}`
+          ? `${base} (${at}) — ${String(gist).replace(/<[^>]+>/g, " ").slice(0, perItemChars)}`
           : `${base} (${at})`
       }
       return base
     })
     .join("\n")
 
-  const prompt = `You are an aviation training curriculum analyst. Below is a list of content items from a training package module titled "${mod.title}".
+  const prompt = `You are an aviation training curriculum analyst. Below is the COMPLETE list of all ${items.length} content items from a training package module titled "${mod.title}" — every item is included, not a sample.
 
 Content items:
 ${itemSummary || "(no items)"}
 
-Based on these items, produce a structured analysis of this module. Respond ONLY with a JSON object — no markdown, no explanation:
+Based on ALL of these items, produce a structured analysis that reflects the FULL breadth of the module's content — do not focus only on the first few items. Respond ONLY with a JSON object — no markdown, no explanation:
 
 {
   "summary": "2-3 sentence description of what this module teaches",
@@ -72,8 +78,8 @@ Based on these items, produce a structured analysis of this module. Respond ONLY
   "skills_assessed": ["skill 1", ...]
 }
 
-- topics: 3-8 specific subject areas covered (e.g. "Ramp Safety", "Aircraft Pushback Procedures")
-- key_concepts: 4-12 specific terms, regulations, or procedures a student learns
+- topics: specific subject areas covered across the WHOLE module (3-8 for a short module, up to 12-15 for a large one with many distinct items) — every distinct subject area present should get a topic, don't stop at the first few
+- key_concepts: 4-16 specific terms, regulations, or procedures a student learns, drawn from across all items
 - skills_assessed: knowledge or skills tested by the quizzes or interactive activities in this package (empty array if none)`
 
   try {
@@ -81,7 +87,7 @@ Based on these items, produce a structured analysis of this module. Respond ONLY
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 600,
+      max_tokens: 1000,
     })
     const raw = res.choices[0]?.message?.content?.trim() ?? "{}"
     const match = raw.match(/\{[\s\S]*\}/)
