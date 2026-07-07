@@ -22,6 +22,19 @@ function cleanFilename(name: string): string {
     .replace(/\b\w/g, c => c.toUpperCase()) // Title Case
 }
 
+// A page/slide whose text is this short or shorter (e.g. "Thank You",
+// "Questions?") gets labeled verbatim — never sent to the AI — so nothing
+// can be invented for content that isn't actually there.
+const TRIVIAL_WORD_LIMIT = 8
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function titleCaseVerbatim(text: string): string {
+  return text.replace(/\s+/g, " ").trim().replace(/\b\w/g, c => c.toUpperCase())
+}
+
 
 // ── Groq: generate titles for all pages of one PDF (single call) ──
 async function titlesForPdfPages(
@@ -40,7 +53,12 @@ async function titlesForPdfPages(
     .join("\n---\n")
 
   const prompt = `You are an e-learning content specialist. Below are text extracts from each page of a training PDF titled "${filename}".
-For EVERY page, write a concise, descriptive title (4–7 words) that captures the main topic of that page.
+For EVERY page, write a concise title (4–7 words).
+
+RULES:
+- If a page is a COVER/TITLE page (course name, logo, presenter info, little else), an AGENDA/OUTLINE, a LEARNING OBJECTIVES list, a SECTION DIVIDER (a big heading introducing the next part), a REFERENCES/SOURCES page, or a CONTACT/CLOSING/THANK-YOU page — output a short literal label naming what the page IS (its role), e.g. "Cover Page", "Learning Objectives", "Course Agenda", "Section 2 Divider", "References", "Thank You". Do NOT paraphrase or invent a subject-matter topic for these — name the page's role, don't summarize its bullet points into a fake topic.
+- Only write a descriptive subject-matter title for pages with real instructional content (explanations, procedures, data, diagrams, examples).
+- Never invent facts, topics, or content that is not actually present on the page.
 
 ${numbered}
 
@@ -103,10 +121,18 @@ async function titleForText(html: string, defaultTitle: string): Promise<string>
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400)
   if (!text) return defaultTitle
 
+  // Very short slides ("Thank You", "Questions?") — label verbatim, no AI call,
+  // so nothing gets invented for content that isn't actually there.
+  if (wordCount(text) < TRIVIAL_WORD_LIMIT) return titleCaseVerbatim(text)
+
   const prompt = `This is the text content of a training slide:
 "${text}"
 
-Write a concise 4-7 word title for this content. Respond with only the title.`
+Write a concise 4-7 word title for this content.
+
+If this slide is a COVER/TITLE slide, AGENDA, LEARNING OBJECTIVES list, SECTION DIVIDER, REFERENCES, or a CLOSING/THANK-YOU slide, respond with a short literal label for what it IS (e.g. "Learning Objectives", "Course Agenda", "Section Divider", "References", "Thank You") instead of inventing a subject-matter topic.
+
+Respond with only the title.`
 
   try {
     const completion = await groq.chat.completions.create({
@@ -203,10 +229,32 @@ export async function POST(req: Request) {
       group.items.forEach((it: any) => {
         pdfTitleMap.set(it.id, `${base} — Slide ${it.config.page_number}`)
       })
-    } else {
-      const titles = await titlesForPdfPages(relevantTexts, group.filename)
-      group.items.forEach((it: any, idx: number) => {
-        pdfTitleMap.set(it.id, titles[idx])
+      continue
+    }
+
+    // Split pages into "trivial" (very little text — e.g. "Thank You") which
+    // are labeled verbatim with no AI call, and "rich" pages which go to the
+    // AI for a real distilled/structural title. This guarantees a 2-word
+    // closing slide can never come back with invented content.
+    const richIdx: number[] = []
+    const richTexts: string[] = []
+    relevantTexts.forEach((t, idx) => {
+      const wc = wordCount(t)
+      const item = group.items[idx]
+      if (wc === 0) {
+        pdfTitleMap.set(item.id, `${cleanFilename(group.filename)} — Slide ${item.config.page_number}`)
+      } else if (wc < TRIVIAL_WORD_LIMIT) {
+        pdfTitleMap.set(item.id, titleCaseVerbatim(t))
+      } else {
+        richIdx.push(idx)
+        richTexts.push(t)
+      }
+    })
+
+    if (richTexts.length > 0) {
+      const titles = await titlesForPdfPages(richTexts, group.filename)
+      richIdx.forEach((origIdx, i) => {
+        pdfTitleMap.set(group.items[origIdx].id, titles[i])
       })
     }
   }
