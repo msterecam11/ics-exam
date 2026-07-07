@@ -426,7 +426,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="hidden sm:flex gap-1">
-                    {["progress","scores","attendance","assignments","certificates","last_login"].map(k => p[k] && (
+                    {["progress","scores","attendance","assignments","certificates","last_login","reports"].map(k => p[k] && (
                       <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">
                         {k === "last_login" ? "last login" : k}
                       </span>
@@ -531,12 +531,19 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                         )}
 
                         {/* Actions */}
-                        <div className="flex justify-center">
+                        <div className="flex items-center justify-center gap-1">
                           {(p.assignments || p.scores || p.attendance) && (
                             <button onClick={() => setDetail({ s, p })}
                               className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
                               <Eye className="h-3.5 w-3.5" />View
                             </button>
+                          )}
+                          {/* Report — only for a course-scope grant (a report is tied to one specific course) */}
+                          {p.reports && !isCohort && (
+                            <a href={`/viewer/lms/report/${s.id}/${item.resource_id}`} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
+                              <Eye className="h-3.5 w-3.5" />Report
+                            </a>
                           )}
                         </div>
                       </div>
