@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import Groq from "groq-sdk"
-import { extractPdfPageTexts } from "@/lib/pdf-extract"
+import { extractPdfPages } from "@/lib/pdf-extract"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -118,6 +118,16 @@ Respond with only the title.`
 
 // ── Groq: title from HTML text content ────────────────────────────
 async function titleForText(html: string, defaultTitle: string): Promise<string> {
+  // Prefer the author's OWN heading first — if the slide has an explicit
+  // <h1>-<h4> (or a bolded first line), that IS the title the author wrote;
+  // use it verbatim rather than asking the AI to invent a different one.
+  const headingMatch = html.match(/<h[1-4][^>]*>([\s\S]*?)<\/h[1-4]>/i)
+    ?? html.match(/^\s*<(?:strong|b)>([\s\S]*?)<\/(?:strong|b)>/i)
+  if (headingMatch) {
+    const headingText = headingMatch[1].replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim()
+    if (headingText && wordCount(headingText) <= 12) return titleCaseVerbatim(headingText)
+  }
+
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400)
   if (!text) return defaultTitle
 
@@ -215,9 +225,10 @@ export async function POST(req: Request) {
   for (const [url, group] of pdfGroups) {
     const pageNumbers = group.items.map((it: any) => it.config.page_number as number)
 
-    const allTexts = await extractPdfPageTexts(url)
-    // allTexts is 0-indexed; page_number is 1-indexed
-    const relevantTexts = pageNumbers.map(p => allTexts[p - 1] ?? "")
+    const allPages = await extractPdfPages(url)
+    // allPages is 0-indexed; page_number is 1-indexed
+    const relevantPages = pageNumbers.map(p => allPages[p - 1] ?? { text: "", heading: "" })
+    const relevantTexts = relevantPages.map(p => p.text)
 
     const hasAnyText = relevantTexts.some(t => t.length > 20)
 
@@ -232,15 +243,21 @@ export async function POST(req: Request) {
       continue
     }
 
-    // Split pages into "trivial" (very little text — e.g. "Thank You") which
-    // are labeled verbatim with no AI call, and "rich" pages which go to the
-    // AI for a real distilled/structural title. This guarantees a 2-word
-    // closing slide can never come back with invented content.
+    // For each page: prefer the slide's OWN detected heading (the largest-font
+    // text near the top of the page) verbatim — that's the actual title the
+    // author put on the slide, so there's no reason to ask the AI to invent a
+    // different one. Only pages with no detected heading fall through to:
+    // "trivial" (very little text — e.g. "Thank You") labeled verbatim with no
+    // AI call, or "rich" pages that go to the AI for a content-based title.
     const richIdx: number[] = []
     const richTexts: string[] = []
-    relevantTexts.forEach((t, idx) => {
-      const wc = wordCount(t)
+    relevantPages.forEach(({ text: t, heading }, idx) => {
       const item = group.items[idx]
+      if (heading) {
+        pdfTitleMap.set(item.id, titleCaseVerbatim(heading))
+        return
+      }
+      const wc = wordCount(t)
       if (wc === 0) {
         pdfTitleMap.set(item.id, `${cleanFilename(group.filename)} — Slide ${item.config.page_number}`)
       } else if (wc < TRIVIAL_WORD_LIMIT) {

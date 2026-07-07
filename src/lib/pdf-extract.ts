@@ -11,12 +11,20 @@ export function parseSupabaseStorageUrl(url: string): { bucket: string; path: st
   return { bucket: m[1], path: decodeURIComponent(m[2]) }
 }
 
-// ── PDF text extraction via subprocess ────────────────────────────
+export interface PdfPage {
+  text: string
+  // The largest-font text near the top of the page — almost always the
+  // slide's own title when one exists. Empty string when no clear heading
+  // was detected (e.g. a uniform-font bullet list with no distinct title).
+  heading: string
+}
+
+// ── PDF text + heading extraction via subprocess ──────────────────
 // pdfjs cannot run inside the Next.js/Turbopack bundle (worker setup
 // fails in bundled environments). We spawn scripts/extract-pdf-text.js
 // as a plain Node.js subprocess so it loads pdfjs natively.
-// Returns one string per page (empty string for pages with no text).
-export async function extractPdfPageTexts(url: string): Promise<string[]> {
+// Returns one entry per page (empty text for pages with no extractable text).
+export async function extractPdfPages(url: string): Promise<PdfPage[]> {
   try {
     // Download the PDF — try plain fetch first, fall back to Supabase storage client
     let rawBuffer: Buffer | null = null
@@ -39,7 +47,7 @@ export async function extractPdfPageTexts(url: string): Promise<string[]> {
     const scriptPath = path.join(process.cwd(), "scripts", "extract-pdf-text.js")
     const buf = rawBuffer
 
-    const texts = await new Promise<string[]>((resolve) => {
+    const pages = await new Promise<PdfPage[]>((resolve) => {
       const proc = spawn(process.execPath, [scriptPath], { timeout: 30_000 })
       const out: Buffer[] = []
       const err: Buffer[] = []
@@ -71,9 +79,16 @@ export async function extractPdfPageTexts(url: string): Promise<string[]> {
       proc.stdin.end()
     })
 
-    return texts
+    return pages
   } catch (err) {
     console.error(`[pdf-extract] extraction failed:`, err)
     return []
   }
+}
+
+// Backward-compatible plain-text accessor for callers that only need body
+// text (unchanged behavior/shape from before headings were added).
+export async function extractPdfPageTexts(url: string): Promise<string[]> {
+  const pages = await extractPdfPages(url)
+  return pages.map(p => p.text)
 }
