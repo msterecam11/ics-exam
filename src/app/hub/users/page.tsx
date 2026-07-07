@@ -77,6 +77,8 @@ const LMS_PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "attendance",   label: "Attendance",   desc: "Session attendance records" },
   { key: "assignments",  label: "Assignments",  desc: "Submission status and grades" },
   { key: "certificates", label: "Certificates", desc: "Certificate issuance status" },
+  { key: "reports",      label: "Reports",      desc: "Full individual course report with mastery, exam breakdown, and AI analysis" },
+  { key: "last_login",   label: "Last Login",   desc: "When the student last logged in to the LMS" },
 ]
 
 type SystemId = "exam" | "interview" | "lms"

@@ -58,6 +58,16 @@ function fmt(date: string | null) {
   return new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
+function fmtLogin(date: string | null) {
+  if (!date) return "Never"
+  const diff = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (diff < 60) return "Just now"
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)}d ago`
+  return new Date(date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+}
+
 
 // ─── Exam section ─────────────────────────────────────────────────────────────
 function ExamSection({ items }: { items: ExamItem[] }) {
@@ -370,6 +380,7 @@ interface LmsStudent {
   attendance_pct: number | null
   assignments: { submitted: number; graded: number } | null
   certificate: { issued: boolean; released: boolean } | null
+  last_login: string | null
   // cohort scope extras
   courses_enrolled?: number; courses_completed?: number
   certificates_earned?: number | null
@@ -415,9 +426,9 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="hidden sm:flex gap-1">
-                    {["progress","scores","attendance","assignments","certificates"].map(k => p[k] && (
+                    {["progress","scores","attendance","assignments","certificates","last_login"].map(k => p[k] && (
                       <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">
-                        {k}
+                        {k === "last_login" ? "last login" : k}
                       </span>
                     ))}
                   </div>
@@ -432,17 +443,18 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 ) : (
                   <div className="border-t border-slate-100">
                     {/* Column headers */}
-                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto] px-5 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60 border-b border-slate-100">
+                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] px-5 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60 border-b border-slate-100">
                       <span>Student</span>
                       {p.progress     && <span className="text-center px-3">{isCohort ? "Courses" : "Progress"}</span>}
                       {p.scores       && <span className="text-center px-3">Score</span>}
                       {p.attendance   && <span className="text-center px-3">Attend.</span>}
                       {p.certificates && <span className="text-center px-3">Cert.</span>}
+                      {p.last_login   && <span className="text-center px-3">Last Login</span>}
                       <span className="text-center">Actions</span>
                     </div>
 
                     {item.students.map(s => (
-                      <div key={s.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center px-5 py-3 border-b last:border-0 border-slate-50">
+                      <div key={s.id} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] items-center px-5 py-3 border-b last:border-0 border-slate-50">
                         {/* Name */}
                         <div>
                           <p className="text-sm font-medium text-slate-800">{s.name}</p>
@@ -508,6 +520,13 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                             ) : (
                               <span className="text-xs text-slate-300">—</span>
                             )}
+                          </div>
+                        )}
+
+                        {/* Last Login */}
+                        {p.last_login && (
+                          <div className="px-3 text-center">
+                            <span className="text-xs text-slate-500">{fmtLogin(s.last_login)}</span>
                           </div>
                         )}
 

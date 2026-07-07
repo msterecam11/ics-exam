@@ -36,10 +36,12 @@ export async function GET() {
 
 // ── Course scope ──────────────────────────────────────────────────────────────
 async function resolveCourse(courseId: string, row: any, p: Record<string, boolean>) {
-  // Enrollments with student data
+  // Enrollments with student data — progress_pct and last_login are the same
+  // source-of-truth columns the admin dashboard/reports read (kept in sync by
+  // syncEnrollmentProgress), so the viewer sees identical numbers.
   const { data: enrollments } = await db
     .from("lms_enrollments")
-    .select("id, student_id, status, enrolled_at, completed_at, lms_students(id, name, email, company, job_title)")
+    .select("id, student_id, status, enrolled_at, completed_at, progress_pct, lms_students(id, name, email, company, job_title, last_login)")
     .eq("course_id", courseId)
     .neq("status", "dropped")
 
@@ -48,79 +50,23 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     return { access_id: row.id, resource_type: row.resource_type, resource_id: courseId, label: row.label, permissions: p, students: [] }
   }
 
-  // Total content items in course (for progress %)
-  let totalItems = 0
-  if (p.progress) {
-    const { data: modules } = await db
-      .from("lms_modules")
-      .select("id")
-      .eq("course_id", courseId)
-
-    const moduleIds = (modules ?? []).map((m: any) => m.id)
-    if (moduleIds.length > 0) {
-      const { count } = await db
-        .from("lms_content_items")
-        .select("*", { count: "exact", head: true })
-        .in("module_id", moduleIds)
-      totalItems = count ?? 0
-    }
-  }
-
-  // Completed content items per student
-  const completedByStudent: Record<string, number> = {}
-  if (p.progress && totalItems > 0) {
-    const { data: progressRows } = await db
-      .from("lms_progress")
-      .select("student_id")
-      .eq("course_id", courseId)
-      .in("student_id", studentIds)
-      .eq("status", "completed")
-
-    ;(progressRows ?? []).forEach((pr: any) => {
-      completedByStudent[pr.student_id] = (completedByStudent[pr.student_id] ?? 0) + 1
-    })
-  }
-
-  // Avg score per student — combines quiz attempts + module (exam) attempts
+  // Score = the BEST final-exam attempt per student (matches the admin course
+  // report's "bestExam" — not an average across every attempt/retake).
   const quizScoreByStudent: Record<string, number> = {}
   if (p.scores) {
-    const sums: Record<string, { total: number; count: number }> = {}
-
-    const addPct = (sid: string, score: number | null, max: number | null) => {
-      if (score == null) return
-      const pct = max && max > 0 ? Math.round((score / max) * 100) : score
-      if (!sums[sid]) sums[sid] = { total: 0, count: 0 }
-      sums[sid].total += pct
-      sums[sid].count += 1
-    }
-
-    // 1. Quiz attempts (lms_quiz_attempts → lms_quizzes.course_id)
-    const { data: courseQuizzes } = await db
-      .from("lms_quizzes")
-      .select("id")
-      .eq("course_id", courseId)
-
-    const quizIds = (courseQuizzes ?? []).map((q: any) => q.id)
-    if (quizIds.length > 0) {
-      const { data: quizAttempts } = await db
-        .from("lms_quiz_attempts")
-        .select("student_id, score, total_score")
-        .in("quiz_id", quizIds)
-        .in("student_id", studentIds)
-      ;(quizAttempts ?? []).forEach((a: any) => addPct(a.student_id, a.score, a.total_score))
-    }
-
-    // 2. Module (final exam) attempts — column is max_score not total_score
     const { data: modAttempts } = await db
       .from("lms_module_attempts")
       .select("student_id, score, max_score")
       .eq("course_id", courseId)
       .in("student_id", studentIds)
-    ;(modAttempts ?? []).forEach((a: any) => addPct(a.student_id, a.score, a.max_score))
 
-    Object.entries(sums).forEach(([sid, { total, count }]) => {
-      quizScoreByStudent[sid] = Math.round(total / count)
+    const best: Record<string, number> = {}
+    ;(modAttempts ?? []).forEach((a: any) => {
+      if (a.score == null) return
+      const pct = a.max_score && a.max_score > 0 ? Math.round((a.score / a.max_score) * 100) : Math.round(a.score)
+      if (best[a.student_id] === undefined || pct > best[a.student_id]) best[a.student_id] = pct
     })
+    Object.assign(quizScoreByStudent, best)
   }
 
   // Attendance % per student
@@ -185,8 +131,6 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
 
   const students = (enrollments ?? []).map((e: any) => {
     const sid = e.student_id
-    const completed = completedByStudent[sid] ?? 0
-    const progressPct = totalItems > 0 ? Math.min(100, Math.round((completed / totalItems) * 100)) : null
     const att = attendanceByStudent[sid]
 
     return {
@@ -198,13 +142,14 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
       enrollment_status: e.status,
       enrolled_at:       e.enrolled_at,
       completed_at:      e.completed_at,
-      progress_pct:      p.progress ? progressPct : null,
+      progress_pct:      p.progress ? Math.round(e.progress_pct ?? 0) : null,
       quiz_avg_score:    p.scores ? (quizScoreByStudent[sid] ?? null) : null,
       attendance_pct:    p.attendance && att
                            ? Math.round((att.present / att.total) * 100)
                            : null,
       assignments:       p.assignments ? (assignmentsByStudent[sid] ?? { submitted: 0, graded: 0 }) : null,
       certificate:       p.certificates ? (certByStudent[sid] ?? { issued: false, released: false }) : null,
+      last_login:        p.last_login ? (e.lms_students?.last_login ?? null) : null,
     }
   })
 
@@ -222,7 +167,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
 async function resolveCohort(cohortId: string, row: any, p: Record<string, boolean>) {
   const { data: members } = await db
     .from("lms_cohort_members")
-    .select("student_id, lms_students(id, name, email, company, job_title)")
+    .select("student_id, lms_students(id, name, email, company, job_title, last_login)")
     .eq("cohort_id", cohortId)
 
   const studentIds = (members ?? []).map((m: any) => m.student_id)
@@ -230,10 +175,11 @@ async function resolveCohort(cohortId: string, row: any, p: Record<string, boole
     return { access_id: row.id, resource_type: row.resource_type, resource_id: cohortId, label: row.label, permissions: p, students: [] }
   }
 
-  // All enrollments for cohort members
+  // All enrollments for cohort members — progress_pct is the same source-of-truth
+  // column the admin dashboard/reports read (kept in sync by syncEnrollmentProgress).
   const { data: enrollments } = await db
     .from("lms_enrollments")
-    .select("student_id, course_id, status, completed_at")
+    .select("student_id, course_id, status, completed_at, progress_pct")
     .in("student_id", studentIds)
     .neq("status", "dropped")
 
@@ -245,25 +191,20 @@ async function resolveCohort(cohortId: string, row: any, p: Record<string, boole
     if (e.status === "completed" || e.completed_at) byStudent[e.student_id].completed += 1
   })
 
-  // Progress across all their courses (if permission)
+  // Progress across all their courses (if permission) — average of each
+  // enrollment's real progress_pct, not the legacy content-item completion count.
   const progressByStudent: Record<string, number> = {}
-  if (p.progress && studentIds.length > 0) {
-    const { data: progressRows } = await db
-      .from("lms_progress")
-      .select("student_id, status")
-      .in("student_id", studentIds)
-
-    const counts: Record<string, { done: number; total: number }> = {}
-    ;(progressRows ?? []).forEach((pr: any) => {
-      if (!counts[pr.student_id]) counts[pr.student_id] = { done: 0, total: 0 }
-      counts[pr.student_id].total += 1
-      if (pr.status === "completed") counts[pr.student_id].done += 1
+  if (p.progress) {
+    const sums: Record<string, { total: number; count: number }> = {}
+    ;(enrollments ?? []).forEach((e: any) => {
+      if (!sums[e.student_id]) sums[e.student_id] = { total: 0, count: 0 }
+      sums[e.student_id].total += e.progress_pct ?? 0
+      sums[e.student_id].count += 1
     })
-    Object.entries(counts).forEach(([sid, { done, total }]) => {
-      progressByStudent[sid] = total > 0 ? Math.round((done / total) * 100) : 0
+    Object.entries(sums).forEach(([sid, { total, count }]) => {
+      progressByStudent[sid] = count > 0 ? Math.round(total / count) : 0
     })
   }
-
   // Certificates
   const certCountByStudent: Record<string, number> = {}
   if (p.certificates) {
@@ -292,6 +233,7 @@ async function resolveCohort(cohortId: string, row: any, p: Record<string, boole
       courses_completed: agg.completed,
       progress_pct:      p.progress ? (progressByStudent[sid] ?? 0) : null,
       certificates_earned: p.certificates ? (certCountByStudent[sid] ?? 0) : null,
+      last_login:        p.last_login ? (m.lms_students?.last_login ?? null) : null,
     }
   })
 
