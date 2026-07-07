@@ -4,14 +4,14 @@ import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
+import { ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
 import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
 
 // ── Chrome ──────────────────────────────────────────────────────────
 function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
   return (
-    <div className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
+    <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
       style={{ minHeight: first ? 1122 : undefined }}>
       {children}
     </div>
@@ -76,6 +76,7 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
   const [generating, setGenerating] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
   const hasHeatmap = topicHeatmap.length > 0
@@ -111,6 +112,18 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
     } catch { toast.error("Failed to generate report") }
     finally { setGenerating(false) }
   }
+  async function downloadPDF() {
+    setDownloading(true); toast.info("Generating PDF — this may take a few seconds…")
+    try {
+      const res = await fetch(`/api/lms/reports/course/${course.id}/pdf`)
+      if (!res.ok) { toast.error("PDF generation failed"); return }
+      const blob = await res.blob(); const url = URL.createObjectURL(blob)
+      const a = document.createElement("a"); a.href = url; a.download = `${course.title} - Cohort Report.pdf`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+      toast.success("PDF downloaded")
+    } catch { toast.error("Failed to download PDF") }
+    finally { setDownloading(false) }
+  }
   return (
     <>
       <style>{`
@@ -145,7 +158,10 @@ export default function GroupReportView({ data, assessment, generatedAt }: { dat
               {generating ? "Generating…" : "Generate Expert Report"}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Save as PDF</Button>
+          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Print</Button>
+          <Button size="sm" variant="outline" onClick={downloadPDF} disabled={downloading} className="gap-1.5 text-xs">
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
+          </Button>
         </div>
       </div>
 
