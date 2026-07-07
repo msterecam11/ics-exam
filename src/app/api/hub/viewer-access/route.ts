@@ -8,6 +8,7 @@ function isViewer(role?: string) { return role === "viewer" }
 
 const EXAM_PERMISSIONS      = ["scores", "results", "reports"] as const
 const INTERVIEW_PERMISSIONS = ["progress", "scores", "verdicts", "reports"] as const
+const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates", "reports", "last_login"] as const
 
 const AssignSchema = z.object({
   user_id:       z.string().uuid(),
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Target user must be a viewer" }, { status: 400 })
 
   // Validate permissions keys make sense for the system
-  const allowedKeys = system === "exam" ? EXAM_PERMISSIONS : INTERVIEW_PERMISSIONS
+  const allowedKeys = system === "exam" ? EXAM_PERMISSIONS : system === "lms" ? LMS_PERMISSIONS : INTERVIEW_PERMISSIONS
   const cleanPerms = Object.fromEntries(
     allowedKeys.map(k => [k, permissions[k] === true])
   )
