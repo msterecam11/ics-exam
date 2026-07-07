@@ -106,9 +106,19 @@ export async function POST(
 
   // Keep the stored course progress current: refresh on every item
   // completion (so the admin roster/dashboard climb live as the student
-  // works), and on package terminal. Skip pure time-only beacon saves.
+  // works), and on package terminal.
   if (course_id && (isTerminal || completed_item_id)) {
     await syncEnrollmentProgress(student.id, course_id)
+  } else if (course_id && (time_spent ?? 0) > 0) {
+    // Time-only beacon — refresh just the enrollment time (recomputed from
+    // source) so the dashboard/roster stay live without the full progress calc.
+    const [pkgT, attT] = await Promise.all([
+      db.from("lms_package_progress").select("time_spent").eq("student_id", student.id).eq("course_id", course_id),
+      db.from("lms_module_attempts").select("time_spent_s").eq("student_id", student.id).eq("course_id", course_id),
+    ])
+    const total = (pkgT.data ?? []).reduce((s: number, p: any) => s + (p.time_spent ?? 0), 0)
+                + (attT.data ?? []).reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0)
+    await db.from("lms_enrollments").update({ time_spent_s: total }).eq("student_id", student.id).eq("course_id", course_id)
   }
   if (isTerminal && course_id && status === "passed") {
     await checkCourseCompletion(student.id, course_id)
