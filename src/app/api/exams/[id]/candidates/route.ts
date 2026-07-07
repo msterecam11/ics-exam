@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Verify exam exists and is active
   const { data: exam } = await db
     .from("exams")
-    .select("id, status")
+    .select("id, status, question_bank_id, bank_draw_config")
     .eq("id", exam_id)
     .single()
 
@@ -57,7 +57,68 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Question Bank exam — perform the random draw and freeze it for this
+  // candidate. Non-bank exams (question_bank_id null) never enter this
+  // branch, so their behavior is completely unchanged.
+  if (exam.question_bank_id) {
+    await drawCandidateQuestions(exam.question_bank_id, exam.bank_draw_config, data.id)
+  }
+
   return NextResponse.json(data, { status: 201 })
+}
+
+// Fisher-Yates partial shuffle — returns up to n random elements from arr.
+function pickRandom<T>(arr: T[], n: number): T[] {
+  const a = [...arr]
+  const take = Math.min(n, a.length)
+  for (let i = a.length - 1; i > a.length - 1 - take; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a.slice(a.length - take)
+}
+
+// Draw this candidate's frozen question set from the bank and snapshot it
+// into candidate_exam_questions. Stratified by topic when bank_draw_config.by_topic
+// is set; otherwise a flat random count from bank_draw_config.total.
+async function drawCandidateQuestions(
+  bankId: string,
+  drawConfig: { total?: number; by_topic?: Record<string, number> } | null,
+  candidateId: string
+) {
+  const { data: bankQuestions } = await db
+    .from("questions")
+    .select("id, topic")
+    .eq("question_bank_id", bankId)
+
+  if (!bankQuestions?.length) return
+
+  let selected: { id: string }[] = []
+
+  if (drawConfig?.by_topic && Object.keys(drawConfig.by_topic).length > 0) {
+    for (const [topic, count] of Object.entries(drawConfig.by_topic)) {
+      if (!count || count <= 0) continue
+      const pool = bankQuestions.filter(q => (q.topic ?? "Untagged") === topic)
+      selected.push(...pickRandom(pool, count))
+    }
+  } else if (drawConfig?.total && drawConfig.total > 0) {
+    selected = pickRandom(bankQuestions, drawConfig.total)
+  } else {
+    // No valid draw config saved — safety net so registration never produces
+    // a silently empty exam; log for the admin to fix the exam's draw config.
+    console.error(`[candidate draw] Exam bank ${bankId} has no valid bank_draw_config — falling back to 20 random questions`)
+    selected = pickRandom(bankQuestions, 20)
+  }
+
+  // Final shuffle across the combined (possibly topic-grouped) selection.
+  selected = pickRandom(selected, selected.length)
+
+  if (selected.length === 0) return
+
+  await db.from("candidate_exam_questions").insert(
+    selected.map((q, i) => ({ candidate_id: candidateId, question_id: q.id, order_index: i }))
+  )
 }
 
 // Admin: get all candidates for an exam

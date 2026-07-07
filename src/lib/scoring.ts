@@ -15,15 +15,21 @@ export async function recalculateExamScores(examId: string, prevScores?: Record<
 
   if (!candidates?.length) return
 
-  // Get all questions with their current config
-  const { data: questions } = await db
-    .from("questions")
-    .select("*, choices(*), matching_pairs(*), ordering_items(*)")
-    .eq("exam_id", examId)
+  const { data: examRow } = await db.from("exams").select("question_bank_id").eq("id", examId).single()
+
+  // Get all questions with their current config. Question Bank exams pull the
+  // whole bank's pool here (candidates each only answered a subset of it) —
+  // totalPossible is computed per-candidate below from their own draw, never
+  // from this full pool.
+  const { data: questions } = examRow?.question_bank_id
+    ? await db.from("questions").select("*, choices(*), matching_pairs(*), ordering_items(*)").eq("question_bank_id", examRow.question_bank_id)
+    : await db.from("questions").select("*, choices(*), matching_pairs(*), ordering_items(*)").eq("exam_id", examId)
 
   if (!questions?.length) return
 
-  const totalPossible = questions.reduce((s, q) => s + q.score, 0)
+  // Non-bank exams: every candidate shares the same fixed question list, so
+  // totalPossible is the same for everyone and can be computed once.
+  const sharedTotalPossible = examRow?.question_bank_id ? null : questions.reduce((s, q) => s + q.score, 0)
 
   for (const candidate of candidates) {
     const { data: answers } = await db
@@ -32,6 +38,18 @@ export async function recalculateExamScores(examId: string, prevScores?: Record<
       .eq("candidate_id", candidate.id)
 
     if (!answers?.length) continue
+
+    // Bank exams: totalPossible is THIS candidate's own frozen draw, never
+    // the whole bank — same rule as the initial submit-time scoring.
+    let totalPossible = sharedTotalPossible ?? 0
+    if (examRow?.question_bank_id) {
+      const { data: drawn } = await db
+        .from("candidate_exam_questions")
+        .select("question_id")
+        .eq("candidate_id", candidate.id)
+      const drawnIds = new Set((drawn ?? []).map((d: any) => d.question_id))
+      totalPossible = questions.filter(q => drawnIds.has(q.id)).reduce((s, q) => s + q.score, 0)
+    }
 
     let totalEarned = 0
 

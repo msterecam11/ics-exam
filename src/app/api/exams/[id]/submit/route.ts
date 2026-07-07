@@ -26,14 +26,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!candidate) return NextResponse.json({ error: "Candidate not found" }, { status: 404 })
   if (candidate.submitted_at) return NextResponse.json({ error: "Already submitted" }, { status: 400 })
 
-  // Fetch all questions with answers
-  const { data: questions } = await db
-    .from("questions")
-    .select("*, choices(*), matching_pairs(*), ordering_items(*)")
-    .eq("exam_id", exam_id)
-    .order("order_index")
+  const { data: examRow } = await db.from("exams").select("passing_score, question_bank_id").eq("id", exam_id).single()
 
-  if (!questions) return NextResponse.json({ error: "No questions found" }, { status: 400 })
+  // Question pool to score against. Question Bank exams score ONLY the
+  // candidate's own frozen draw (never "every question in the bank") — the
+  // critical correctness rule for randomized exams. Non-bank exams use the
+  // exact same query as before this feature existed.
+  let questions: any[] | null = null
+  if (examRow?.question_bank_id) {
+    const { data: rows } = await db
+      .from("candidate_exam_questions")
+      .select("order_index, questions(*, choices(*), matching_pairs(*), ordering_items(*))")
+      .eq("candidate_id", candidate_id)
+      .order("order_index")
+    questions = (rows ?? []).map((r: any) => r.questions).filter(Boolean)
+  } else {
+    const { data } = await db
+      .from("questions")
+      .select("*, choices(*), matching_pairs(*), ordering_items(*)")
+      .eq("exam_id", exam_id)
+      .order("order_index")
+    questions = data
+  }
+
+  if (!questions?.length) return NextResponse.json({ error: "No questions found" }, { status: 400 })
 
   let totalScore = 0
   const answerRows = []
@@ -128,16 +144,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
   }
 
-  // Get passing score
-  const { data: exam } = await db
-    .from("exams")
-    .select("passing_score")
-    .eq("id", exam_id)
-    .single()
-
+  // totalPossible is always derived from THIS candidate's own question set
+  // (their frozen bank draw, or the exam's full list for a manual exam) —
+  // never the whole bank — so the percentage is always a fair 0-100% score.
   const totalPossible = questions.reduce((sum: number, q: any) => sum + q.score, 0)
   const percentage = totalPossible > 0 ? (totalScore / totalPossible) * 100 : 0
-  const passed = percentage >= (exam?.passing_score ?? 60)
+  const passed = percentage >= (examRow?.passing_score ?? 60)
 
   // Save answers and update candidate
   await db.from("candidate_answers").insert(answerRows)

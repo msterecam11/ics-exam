@@ -35,8 +35,13 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 interface Props {
-  examId: string
+  examId?: string
+  questionBankId?: string
   initialQuestions: Question[]
+  // Exams require questions to sum to exactly 100 points; a question bank
+  // (a large reusable pool) has no such constraint — defaults to the existing
+  // exam behavior so nothing changes for current callers.
+  requireTotal100?: boolean
 }
 
 function blankQuestion(type: string) {
@@ -57,7 +62,8 @@ function blankQuestion(type: string) {
   }
 }
 
-export default function QuestionBuilder({ examId, initialQuestions }: Props) {
+export default function QuestionBuilder({ examId, questionBankId, initialQuestions, requireTotal100 = true }: Props) {
+  const baseUrl = examId ? `/api/exams/${examId}` : `/api/question-banks/${questionBankId}`
   const [questions, setQuestions] = useState<Question[]>(initialQuestions)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingQ, setEditingQ] = useState<Question | null>(null)
@@ -73,7 +79,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
   const [csvErrors, setCsvErrors] = useState<{ row: number; message: string }[]>([])
 
   const totalScore = questions.reduce((s, q) => s + q.score, 0)
-  const scoreOk = Math.abs(totalScore - 100) < 0.01
+  const scoreOk = requireTotal100 ? Math.abs(totalScore - 100) < 0.01 : true
 
   function openNew(type: string) {
     setEditingQ(null)
@@ -104,7 +110,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
         body: JSON.stringify(draft),
       })
     } else {
-      res = await fetch(`/api/exams/${examId}/questions`, {
+      res = await fetch(`${baseUrl}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...draft, order_index: questions.length }),
@@ -127,7 +133,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
   async function handleGIFTImport() {
     if (!giftText.trim()) return
     setImporting(true)
-    const res = await fetch(`/api/exams/${examId}/import-gift`, {
+    const res = await fetch(`${baseUrl}/import-gift`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gift_text: giftText, start_index: questions.length }),
@@ -143,7 +149,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
     setGiftText("")
     setGiftOpen(false)
     // Reload questions from server
-    const qRes = await fetch(`/api/exams/${examId}/questions`)
+    const qRes = await fetch(`${baseUrl}/questions`)
     if (qRes.ok) setQuestions(await qRes.json())
   }
 
@@ -152,7 +158,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
     setCsvImporting(true)
     setCsvErrors([])
     const text = await csvFile.text()
-    const res = await fetch(`/api/exams/${examId}/import-csv`, {
+    const res = await fetch(`${baseUrl}/import-csv`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ csv_text: text, start_index: questions.length }),
@@ -169,7 +175,7 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
     if (data.created > 0) {
       setCsvFile(null)
       setCsvOpen(false)
-      const qRes = await fetch(`/api/exams/${examId}/questions`)
+      const qRes = await fetch(`${baseUrl}/questions`)
       if (qRes.ok) setQuestions(await qRes.json())
     }
   }
@@ -202,12 +208,18 @@ export default function QuestionBuilder({ examId, initialQuestions }: Props) {
   return (
     <div className="space-y-4">
       {/* Score indicator */}
-      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${scoreOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-        {scoreOk
-          ? <><CheckCircle2 className="h-4 w-4" /> Total score: 100 — perfect!</>
-          : <><AlertCircle className="h-4 w-4" /> Total score: {totalScore} / 100 — questions must sum to exactly 100</>
-        }
-      </div>
+      {requireTotal100 ? (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${scoreOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          {scoreOk
+            ? <><CheckCircle2 className="h-4 w-4" /> Total score: 100 — perfect!</>
+            : <><AlertCircle className="h-4 w-4" /> Total score: {totalScore} / 100 — questions must sum to exactly 100</>
+          }
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-50 text-slate-600">
+          <CheckCircle2 className="h-4 w-4" /> {questions.length} question{questions.length !== 1 ? "s" : ""} · {totalScore} points total
+        </div>
+      )}
 
       {/* Question list */}
       {questions.length === 0 ? (

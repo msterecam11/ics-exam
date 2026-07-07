@@ -37,7 +37,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params
   const body = await req.json()
-  const { title, description, duration_minutes, passing_score, show_results, language, status, password } = body
+  const { title, description, duration_minutes, passing_score, show_results, language, status, password,
+          question_bank_id, bank_draw_config } = body
 
   // If a new password is provided, hash it
   const passwordUpdates: Record<string, string> = {}
@@ -46,9 +47,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     passwordUpdates.password_hash = await bcrypt.hash(password, 12)
   }
 
+  // Question Bank link — only touched when explicitly provided, so the
+  // existing exam-settings form (which never sends these) never affects them.
+  const bankUpdates: Record<string, unknown> = {}
+  if (question_bank_id !== undefined) bankUpdates.question_bank_id = question_bank_id
+  if (bank_draw_config !== undefined) bankUpdates.bank_draw_config = bank_draw_config
+
   const { data, error } = await db
     .from("exams")
-    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...passwordUpdates })
+    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...passwordUpdates, ...bankUpdates })
     .eq("id", id)
     .select()
     .single()

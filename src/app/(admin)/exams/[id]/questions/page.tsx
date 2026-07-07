@@ -3,12 +3,12 @@ import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
 import Link from "next/link"
 import { ChevronRight } from "lucide-react"
-import QuestionBuilder from "@/components/admin/QuestionBuilder"
+import ExamQuestionSource from "@/components/admin/ExamQuestionSource"
 
 async function getExam(id: string) {
   const { data } = await db
     .from("exams")
-    .select("id, title, courses(name, groups(name)), questions(*, choices(*), matching_pairs(*), ordering_items(*))")
+    .select("id, title, question_bank_id, bank_draw_config, courses(name, groups(name)), questions(*, choices(*), matching_pairs(*), ordering_items(*))")
     .eq("id", id)
     .single()
   return data
@@ -43,7 +43,12 @@ export default async function QuestionsPage({ params }: { params: Promise<{ id: 
         </p>
       </div>
 
-      <QuestionBuilder examId={id} initialQuestions={questions} />
+      <ExamQuestionSource
+        examId={id}
+        initialQuestionBankId={(exam as any).question_bank_id ?? null}
+        initialBankDrawConfig={(exam as any).bank_draw_config ?? null}
+        initialQuestions={questions}
+      />
     </div>
   )
 }

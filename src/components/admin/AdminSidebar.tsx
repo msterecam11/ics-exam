@@ -11,6 +11,7 @@ import {
   BarChart3,
   ChevronRight,
   LayoutGrid,
+  Library,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/groups", label: "Groups", icon: Users },
   { href: "/courses", label: "Courses", icon: BookOpen },
   { href: "/exams", label: "Exams", icon: FileText },
+  { href: "/question-banks", label: "Question Banks", icon: Library },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ]
 

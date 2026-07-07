@@ -125,8 +125,9 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       setCandidate(candidateData)
       candidateIdRef.current = candidateData.id
 
-      // Fetch questions
-      const res = await fetch(`/api/exam/${id}/questions`)
+      // Fetch questions — candidate_id lets a Question Bank exam return this
+      // candidate's own frozen random draw; harmless/ignored for manual exams.
+      const res = await fetch(`/api/exam/${id}/questions?candidate_id=${candidateData.id}`)
       if (res.ok) {
         const qs = await res.json()
 

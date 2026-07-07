@@ -31,22 +31,25 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, question_bank_id, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const examId = (candidate.exams as any)?.id
+  const isBankExam = !!(candidate.exams as any)?.question_bank_id
 
   const [answersRes, analysisRes, cachedRes, allCandidatesRes] = await Promise.all([
     db.from("candidate_answers")
-      .select("*, questions(id, text, type, score, order_index)")
+      .select("*, questions(id, text, type, score, order_index, topic)")
       .eq("candidate_id", candidateId),
-    db.from("exam_analyses")
-      .select("sections, generated_at")
-      .eq("exam_id", examId)
-      .single(),
+    // Question Bank exams have no per-exam exam_analyses row (topics are
+    // tagged on the bank, not the exam) — the "sections" equivalent is
+    // synthesized below from each answered question's own topic tag.
+    isBankExam
+      ? Promise.resolve({ data: null } as any)
+      : db.from("exam_analyses").select("sections, generated_at").eq("exam_id", examId).single(),
     db.from("report_cache")
       .select("narrative, generated_at")
       .eq("type", "candidate")
@@ -73,16 +76,34 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
     try { narrativeParsed = JSON.parse(cachedRes.data.narrative) } catch { narrativeParsed = null }
   }
 
+  const analysis = isBankExam
+    ? { sections: buildTopicSections(answersRes.data ?? []), generated_at: null }
+    : (analysisRes.data ?? null)
+
   return NextResponse.json({
     candidate,
     answers: answersRes.data ?? [],
-    analysis: analysisRes.data ?? null,
+    analysis,
     narrative: narrativeParsed,
     narrativeGeneratedAt: cachedRes.data?.generated_at ?? null,
     rank,
     totalCandidates: allCandidates.length,
     classAvg: Math.round(classAvg * 10) / 10,
   })
+}
+
+// For a Question Bank exam, builds the same { title, question_ids } shape as
+// exam_analyses.sections, but derived directly from each answered question's
+// own topic tag (set once by the bank's Expert Analyze) — no per-exam
+// analysis needed, since the exam has no fixed question list to analyze.
+function buildTopicSections(answers: any[]): { title: string; question_ids: string[] }[] {
+  const byTopic = new Map<string, string[]>()
+  for (const a of answers) {
+    const topic = (a.questions as any)?.topic ?? "General"
+    if (!byTopic.has(topic)) byTopic.set(topic, [])
+    byTopic.get(topic)!.push(a.question_id)
+  }
+  return [...byTopic.entries()].map(([title, question_ids]) => ({ title, question_ids }))
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ candidateId: string }> }) {
@@ -98,7 +119,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, question_bank_id, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
@@ -106,16 +127,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
 
   const examId = (candidate.exams as any)?.id
   const examTitle = (candidate.exams as any)?.title
+  const isBankExam = !!(candidate.exams as any)?.question_bank_id
 
   const [answersRes, analysisRes] = await Promise.all([
     db.from("candidate_answers")
-      .select("*, questions(id, text, type, score, order_index)")
+      .select("*, questions(id, text, type, score, order_index, topic)")
       .eq("candidate_id", candidateId),
-    db.from("exam_analyses").select("sections").eq("exam_id", examId).single(),
+    isBankExam
+      ? Promise.resolve({ data: null } as any)
+      : db.from("exam_analyses").select("sections").eq("exam_id", examId).single(),
   ])
 
   const answers = answersRes.data ?? []
-  const sections = (analysisRes.data?.sections ?? []) as any[]
+  const sections = isBankExam ? buildTopicSections(answers) : ((analysisRes.data?.sections ?? []) as any[])
   const answerMap = new Map(answers.map((a: any) => [a.question_id, a]))
 
   // Build section performance for AI
