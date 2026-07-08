@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ChevronRight } from "lucide-react"
 import QuestionBuilder from "@/components/admin/QuestionBuilder"
 import BankAnalyzePanel from "@/components/admin/BankAnalyzePanel"
+import BankHeaderActions from "@/components/admin/BankHeaderActions"
 
 async function getBank(id: string) {
   const { data } = await db
@@ -33,9 +34,12 @@ export default async function QuestionBankDetailPage({ params }: { params: Promi
         <span className="text-foreground font-medium truncate max-w-[240px]">{bank.name}</span>
       </div>
 
-      <div>
-        <h2 className="text-xl font-bold">{bank.name}</h2>
-        {bank.description && <p className="text-muted-foreground text-sm">{bank.description}</p>}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{bank.name}</h2>
+          {bank.description && <p className="text-muted-foreground text-sm">{bank.description}</p>}
+        </div>
+        <BankHeaderActions bankId={id} name={bank.name} description={bank.description} />
       </div>
 
       <BankAnalyzePanel bankId={id} questionCount={questions.length} />
