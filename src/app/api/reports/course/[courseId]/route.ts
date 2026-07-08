@@ -13,7 +13,7 @@ async function fetchCourseData(courseId: string) {
   const [courseRes, examsRes] = await Promise.all([
     db.from("courses").select("id, name, groups(name)").eq("id", courseId).single(),
     db.from("exams")
-      .select("id, title, passing_score, duration_minutes, created_at")
+      .select("id, title, passing_score, duration_minutes, created_at, question_bank_id")
       .eq("course_id", courseId)
       .order("created_at"),
   ])
@@ -23,48 +23,89 @@ async function fetchCourseData(courseId: string) {
 
   const examDataArr = await Promise.all(
     exams.map(async (exam: any) => {
-      const [candidatesRes, questionsRes, analysisRes] = await Promise.all([
-        db.from("candidates")
-          .select("id, full_name, job_title, company, started_at, submitted_at, total_score, passed")
-          .eq("exam_id", exam.id)
-          .not("submitted_at", "is", null),
-        db.from("questions").select("id, score").eq("exam_id", exam.id),
-        db.from("exam_analyses").select("sections").eq("exam_id", exam.id).maybeSingle(),
-      ])
+      const candidatesRes = await db.from("candidates")
+        .select("id, full_name, job_title, company, started_at, submitted_at, total_score, passed")
+        .eq("exam_id", exam.id)
+        .not("submitted_at", "is", null)
 
       const candidates = (candidatesRes.data ?? []) as any[]
-      const questions = (questionsRes.data ?? []) as any[]
-      const sections = ((analysisRes.data?.sections ?? []) as any[]).sort(
-        (a: any, b: any) => a.order_index - b.order_index
-      )
-
-      let answers: any[] = []
       const candidateIds = candidates.map((c: any) => c.id)
-      const questionIds = questions.map((q: any) => q.id)
-      if (candidateIds.length > 0 && questionIds.length > 0) {
-        const { data } = await db
-          .from("candidate_answers")
-          .select("candidate_id, question_id, score_achieved")
-          .in("candidate_id", candidateIds)
-          .in("question_id", questionIds)
-        answers = data ?? []
-      }
 
-      // Per-section averages
-      const sectionAvgs = sections.map((section: any) => {
-        const qIds: string[] = section.question_ids ?? []
-        const sQs = questions.filter((q: any) => qIds.includes(q.id))
-        const possible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
-        if (possible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
-        const sAnswers = answers.filter((a: any) => qIds.includes(a.question_id))
-        const cScores = candidates.map((c: any) => {
-          const earned = sAnswers
-            .filter((a: any) => a.candidate_id === c.id)
-            .reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
-          return (earned / possible) * 100
+      let sectionAvgs: { title: string; avg: number }[] = []
+
+      if (exam.question_bank_id) {
+        // Question Bank exam: candidates each answered a different subset,
+        // so there's no shared exam_analyses row and no shared "possible"
+        // denominator per topic — both must be computed per-candidate from
+        // their own frozen draw (candidate_exam_questions).
+        const { data: drawnRows } = candidateIds.length > 0
+          ? await db.from("candidate_exam_questions")
+              .select("candidate_id, question_id, questions(score, topic)")
+              .in("candidate_id", candidateIds)
+          : { data: [] }
+        const allDrawn = (drawnRows ?? []) as any[]
+        const qIds = [...new Set(allDrawn.map((d: any) => d.question_id))]
+
+        let answers: any[] = []
+        if (candidateIds.length > 0 && qIds.length > 0) {
+          const { data } = await db.from("candidate_answers")
+            .select("candidate_id, question_id, score_achieved")
+            .in("candidate_id", candidateIds).in("question_id", qIds)
+          answers = data ?? []
+        }
+
+        const topics = [...new Set(allDrawn.map((d: any) => (d.questions as any)?.topic ?? "General"))]
+        sectionAvgs = topics.map(topic => {
+          const cScores = candidates.map((c: any) => {
+            const myDrawn = allDrawn.filter((d: any) => d.candidate_id === c.id && ((d.questions as any)?.topic ?? "General") === topic)
+            const possible = myDrawn.reduce((s: number, d: any) => s + ((d.questions as any)?.score ?? 0), 0)
+            if (possible === 0) return null
+            const myQIds = new Set(myDrawn.map((d: any) => d.question_id))
+            const earned = answers
+              .filter((a: any) => a.candidate_id === c.id && myQIds.has(a.question_id))
+              .reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            return (earned / possible) * 100
+          }).filter((v): v is number => v !== null)
+          return { title: topic, avg: cScores.length ? cScores.reduce((s, v) => s + v, 0) / cScores.length : 0 }
         })
-        return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
-      })
+      } else {
+        // Manual exam — unchanged from before this feature existed.
+        const [questionsRes, analysisRes] = await Promise.all([
+          db.from("questions").select("id, score").eq("exam_id", exam.id),
+          db.from("exam_analyses").select("sections").eq("exam_id", exam.id).maybeSingle(),
+        ])
+        const questions = (questionsRes.data ?? []) as any[]
+        const sections = ((analysisRes.data?.sections ?? []) as any[]).sort(
+          (a: any, b: any) => a.order_index - b.order_index
+        )
+
+        let answers: any[] = []
+        const questionIds = questions.map((q: any) => q.id)
+        if (candidateIds.length > 0 && questionIds.length > 0) {
+          const { data } = await db
+            .from("candidate_answers")
+            .select("candidate_id, question_id, score_achieved")
+            .in("candidate_id", candidateIds)
+            .in("question_id", questionIds)
+          answers = data ?? []
+        }
+
+        // Per-section averages
+        sectionAvgs = sections.map((section: any) => {
+          const qIds: string[] = section.question_ids ?? []
+          const sQs = questions.filter((q: any) => qIds.includes(q.id))
+          const possible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
+          if (possible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
+          const sAnswers = answers.filter((a: any) => qIds.includes(a.question_id))
+          const cScores = candidates.map((c: any) => {
+            const earned = sAnswers
+              .filter((a: any) => a.candidate_id === c.id)
+              .reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            return (earned / possible) * 100
+          })
+          return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
+        })
+      }
 
       const avgScore =
         candidates.length > 0
@@ -73,7 +114,7 @@ async function fetchCourseData(courseId: string) {
       const passCount = candidates.filter((c: any) => c.passed).length
       const passRate = candidates.length > 0 ? (passCount / candidates.length) * 100 : 0
 
-      return { exam, candidates, questions, sections, answers, avgScore, passCount, passRate, sectionAvgs }
+      return { exam, candidates, avgScore, passCount, passRate, sectionAvgs }
     })
   )
 
