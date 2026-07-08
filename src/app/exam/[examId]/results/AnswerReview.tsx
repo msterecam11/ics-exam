@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react"
+import { formatScore } from "@/lib/scoreDisplay"
 
 function AnswerDetail({ answer }: { answer: any }) {
   const q = answer.questions
@@ -247,7 +248,7 @@ export default function AnswerReview({ answers }: { answers: any[] }) {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className={`font-bold text-sm ${correct ? "text-emerald-600" : partial ? "text-amber-600" : "text-red-500"}`}>
-                          {answer.score_achieved ?? 0}/{q.score}
+                          {formatScore(answer.display_achieved ?? answer.score_achieved ?? 0)}/{formatScore(answer.display_possible ?? q.score)}
                         </p>
                         <p className="text-xs text-muted-foreground">pts</p>
                       </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { scaleToTarget } from "@/lib/scoreDisplay"
 
 // Public — candidate result page. Intentionally unauthenticated.
 // Returns ONLY the minimum data needed; internal fields are never exposed.
@@ -51,6 +52,24 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     } : null,
   }))
 
+  // Same display-only scaling as the take page — the "possible" column
+  // always sums to exactly 100 for this candidate's own question set, and
+  // "achieved" is scaled by the same per-question ratio so the review page
+  // is visually consistent with what was shown while taking the exam.
+  // Grading itself (candidate.total_score) is untouched — already computed
+  // as a percentage at submit time from the real raw question.score values.
+  const rawPossible = sorted.map((a: any) => a.questions?.score ?? 0)
+  const displayPossible = scaleToTarget(rawPossible)
+  const answersWithDisplay = sanitizedAnswers.map((a: any, i: number) => {
+    const raw = rawPossible[i]
+    const ratio = raw > 0 ? displayPossible[i] / raw : 0
+    return {
+      ...a,
+      display_possible: displayPossible[i],
+      display_achieved: Math.round((a.score_achieved ?? 0) * ratio * 100) / 100,
+    }
+  })
+
   return NextResponse.json({
     visible  : true,
     candidate: {
@@ -64,6 +83,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         passing_score: (candidate.exams as any)?.passing_score ?? null,
       },
     },
-    answers: sanitizedAnswers,
+    answers: answersWithDisplay,
   })
 }

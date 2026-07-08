@@ -14,6 +14,7 @@ import MCQMultiQuestion from "@/components/exam/questions/MCQMultiQuestion"
 import OrderingQuestion from "@/components/exam/questions/OrderingQuestion"
 import MatchingQuestion from "@/components/exam/questions/MatchingQuestion"
 import OpenEndedQuestion from "@/components/exam/questions/OpenEndedQuestion"
+import { formatScore } from "@/lib/scoreDisplay"
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60)
@@ -357,7 +358,7 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
               <span className="text-sm text-muted-foreground font-medium">
                 Question {currentIdx + 1} of {questions.length}
               </span>
-              <Badge variant="outline" className="text-xs">{question.score} pts</Badge>
+              <Badge variant="outline" className="text-xs">{formatScore(question.display_score ?? question.score)} pts</Badge>
             </div>
 
             <Card className="shadow-sm">

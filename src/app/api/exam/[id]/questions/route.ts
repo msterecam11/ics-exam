@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { scaleToTarget } from "@/lib/scoreDisplay"
 
 // Public — returns questions WITHOUT is_correct flags (prevents cheating)
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -50,9 +51,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   if (!questions) return NextResponse.json([], { status: 200 })
 
+  // Candidates always see point values that sum to exactly 100 for their
+  // sitting, regardless of the underlying questions' real weights — this is
+  // purely a display transform (computed fresh from this candidate's own
+  // question set) and never touches grading, which still uses the real
+  // question.score values via submit/route.ts.
+  const displayScores = scaleToTarget(questions.map((q: any) => q.score ?? 0))
+
   // Shuffle ordering items so candidates don't see the correct order
-  const sanitized = questions.map((q: any) => ({
+  const sanitized = questions.map((q: any, i: number) => ({
     ...q,
+    display_score: displayScores[i],
     ordering_items: q.ordering_items
       ? [...q.ordering_items].sort(() => Math.random() - 0.5)
       : [],
