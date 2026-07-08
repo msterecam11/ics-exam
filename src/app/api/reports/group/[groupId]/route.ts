@@ -21,7 +21,7 @@ async function fetchGroupData(groupId: string) {
   const courseDataArr = await Promise.all(
     courses.map(async (course: any) => {
       const examsRes = await db.from("exams")
-        .select("id, title, passing_score, created_at, duration_minutes, question_bank_id")
+        .select("id, title, passing_score, created_at, duration_minutes")
         .eq("course_id", course.id)
         .order("created_at")
       const exams = (examsRes.data ?? []) as any[]
@@ -38,17 +38,23 @@ async function fetchGroupData(groupId: string) {
 
           let sectionAvgs: { title: string; avg: number }[] = []
 
-          if (exam.question_bank_id) {
+          // A candidate with rows in candidate_exam_questions has a frozen
+          // random draw (from one bank, several banks — doesn't matter
+          // which). Detecting this from the candidates' own data instead of
+          // an exam-level "question_bank_id" column means this works the
+          // same regardless of how many banks the exam is linked to.
+          const { data: drawnRows } = cIds.length > 0
+            ? await db.from("candidate_exam_questions")
+                .select("candidate_id, question_id, questions(score, topic)")
+                .in("candidate_id", cIds)
+            : { data: [] }
+          const allDrawn = (drawnRows ?? []) as any[]
+
+          if (allDrawn.length > 0) {
             // Question Bank exam: candidates each answered a different subset,
             // so there's no shared exam_analyses row and no shared "possible"
             // denominator per topic — both must be computed per-candidate from
             // their own frozen draw (candidate_exam_questions).
-            const { data: drawnRows } = cIds.length > 0
-              ? await db.from("candidate_exam_questions")
-                  .select("candidate_id, question_id, questions(score, topic)")
-                  .in("candidate_id", cIds)
-              : { data: [] }
-            const allDrawn = (drawnRows ?? []) as any[]
             const qIds = [...new Set(allDrawn.map((d: any) => d.question_id))]
 
             let answers: any[] = []

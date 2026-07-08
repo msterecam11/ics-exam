@@ -45,12 +45,13 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
   // Refuse to delete a bank that's still linked to an exam — force the admin
   // to unlink first so an exam never silently loses its question source.
-  const { count } = await db
-    .from("exams")
-    .select("*", { count: "exact", head: true })
-    .eq("question_bank_id", id)
+  // Checks both the legacy single-bank column and the multi-bank join table.
+  const [{ count: legacyCount }, { count: multiCount }] = await Promise.all([
+    db.from("exams").select("*", { count: "exact", head: true }).eq("question_bank_id", id),
+    db.from("exam_question_banks").select("*", { count: "exact", head: true }).eq("question_bank_id", id),
+  ])
 
-  if ((count ?? 0) > 0) {
+  if ((legacyCount ?? 0) > 0 || (multiCount ?? 0) > 0) {
     return NextResponse.json({ error: "This bank is linked to one or more exams. Unlink it first." }, { status: 409 })
   }
 

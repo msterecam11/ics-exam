@@ -26,20 +26,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!candidate) return NextResponse.json({ error: "Candidate not found" }, { status: 404 })
   if (candidate.submitted_at) return NextResponse.json({ error: "Already submitted" }, { status: 400 })
 
-  const { data: examRow } = await db.from("exams").select("passing_score, question_bank_id").eq("id", exam_id).single()
+  const { data: examRow } = await db.from("exams").select("passing_score").eq("id", exam_id).single()
 
-  // Question pool to score against. Question Bank exams score ONLY the
-  // candidate's own frozen draw (never "every question in the bank") — the
-  // critical correctness rule for randomized exams. Non-bank exams use the
-  // exact same query as before this feature existed.
+  // Question pool to score against. A candidate with rows in
+  // candidate_exam_questions has a frozen random draw (from one bank, several
+  // banks — doesn't matter which) and is scored ONLY against that draw, never
+  // "every question in the exam/bank" — the critical correctness rule for
+  // randomized exams. Detecting this from the candidate's own data (rather
+  // than an exam-level "question_bank_id" column) means this route works the
+  // same regardless of how many banks, if any, the exam is linked to.
+  // Non-bank exams use the exact same query as before this feature existed.
   let questions: any[] | null = null
-  if (examRow?.question_bank_id) {
-    const { data: rows } = await db
-      .from("candidate_exam_questions")
-      .select("order_index, questions(*, choices(*), matching_pairs(*), ordering_items(*))")
-      .eq("candidate_id", candidate_id)
-      .order("order_index")
-    questions = (rows ?? []).map((r: any) => r.questions).filter(Boolean)
+  const { data: drawnRows } = await db
+    .from("candidate_exam_questions")
+    .select("order_index, questions(*, choices(*), matching_pairs(*), ordering_items(*))")
+    .eq("candidate_id", candidate_id)
+    .order("order_index")
+  if (drawnRows?.length) {
+    questions = drawnRows.map((r: any) => r.questions).filter(Boolean)
   } else {
     const { data } = await db
       .from("questions")

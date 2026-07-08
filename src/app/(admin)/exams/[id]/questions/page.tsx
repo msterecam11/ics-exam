@@ -6,12 +6,14 @@ import { ChevronRight } from "lucide-react"
 import ExamQuestionSource from "@/components/admin/ExamQuestionSource"
 
 async function getExam(id: string) {
-  const { data } = await db
-    .from("exams")
-    .select("id, title, question_bank_id, bank_draw_config, courses(name, groups(name)), questions(*, choices(*), matching_pairs(*), ordering_items(*))")
-    .eq("id", id)
-    .single()
-  return data
+  const [{ data }, { count }] = await Promise.all([
+    db.from("exams")
+      .select("id, title, question_bank_id, bank_draw_config, courses(name, groups(name)), questions(*, choices(*), matching_pairs(*), ordering_items(*))")
+      .eq("id", id)
+      .single(),
+    db.from("exam_question_banks").select("*", { count: "exact", head: true }).eq("exam_id", id),
+  ])
+  return data ? { ...data, hasLinkedBanks: (count ?? 0) > 0 } : data
 }
 
 export default async function QuestionsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -45,8 +47,7 @@ export default async function QuestionsPage({ params }: { params: Promise<{ id: 
 
       <ExamQuestionSource
         examId={id}
-        initialQuestionBankId={(exam as any).question_bank_id ?? null}
-        initialBankDrawConfig={(exam as any).bank_draw_config ?? null}
+        initialHasBankLink={!!(exam as any).question_bank_id || !!(exam as any).hasLinkedBanks}
         initialQuestions={questions}
       />
     </div>

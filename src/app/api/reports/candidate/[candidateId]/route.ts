@@ -31,14 +31,25 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, question_bank_id, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const examId = (candidate.exams as any)?.id
-  const isBankExam = !!(candidate.exams as any)?.question_bank_id
+
+  // A candidate with rows in candidate_exam_questions has a frozen random
+  // draw (from one bank, several banks — doesn't matter which). Detecting
+  // this from the candidate's own data instead of an exam-level
+  // "question_bank_id" column means this works the same regardless of how
+  // many banks, if any, the exam is linked to.
+  const { data: drawnCheck } = await db
+    .from("candidate_exam_questions")
+    .select("candidate_id")
+    .eq("candidate_id", candidateId)
+    .limit(1)
+  const isBankExam = (drawnCheck?.length ?? 0) > 0
 
   const [answersRes, analysisRes, cachedRes, allCandidatesRes] = await Promise.all([
     db.from("candidate_answers")
@@ -119,7 +130,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, question_bank_id, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
@@ -127,7 +138,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
 
   const examId = (candidate.exams as any)?.id
   const examTitle = (candidate.exams as any)?.title
-  const isBankExam = !!(candidate.exams as any)?.question_bank_id
+
+  const { data: drawnCheckPost } = await db
+    .from("candidate_exam_questions")
+    .select("candidate_id")
+    .eq("candidate_id", candidateId)
+    .limit(1)
+  const isBankExam = (drawnCheckPost?.length ?? 0) > 0
 
   const [answersRes, analysisRes] = await Promise.all([
     db.from("candidate_answers")

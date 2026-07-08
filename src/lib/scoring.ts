@@ -15,21 +15,33 @@ export async function recalculateExamScores(examId: string, prevScores?: Record<
 
   if (!candidates?.length) return
 
-  const { data: examRow } = await db.from("exams").select("question_bank_id").eq("id", examId).single()
+  // A candidate with rows in candidate_exam_questions has a frozen random
+  // draw (from one bank, several banks — doesn't matter which). Detecting
+  // this from the candidates' own data (fetched once, up front, for all of
+  // them) instead of an exam-level "question_bank_id" column means this
+  // works the same regardless of how many banks the exam is linked to.
+  const candidateIds = candidates.map(c => c.id)
+  const { data: allDrawnRows } = await db
+    .from("candidate_exam_questions")
+    .select("candidate_id, question_id")
+    .in("candidate_id", candidateIds)
 
-  // Get all questions with their current config. Question Bank exams pull the
-  // whole bank's pool here (candidates each only answered a subset of it) —
-  // totalPossible is computed per-candidate below from their own draw, never
-  // from this full pool.
-  const { data: questions } = examRow?.question_bank_id
-    ? await db.from("questions").select("*, choices(*), matching_pairs(*), ordering_items(*)").eq("question_bank_id", examRow.question_bank_id)
+  const isBankExam = (allDrawnRows?.length ?? 0) > 0
+
+  // Get all questions with their current config. Bank exams fetch exactly the
+  // set of questions actually drawn by any candidate (spans any number of
+  // banks) — totalPossible is computed per-candidate below from their own
+  // draw, never from this full pool.
+  const { data: questions } = isBankExam
+    ? await db.from("questions").select("*, choices(*), matching_pairs(*), ordering_items(*)")
+        .in("id", [...new Set(allDrawnRows!.map(d => d.question_id))])
     : await db.from("questions").select("*, choices(*), matching_pairs(*), ordering_items(*)").eq("exam_id", examId)
 
   if (!questions?.length) return
 
   // Non-bank exams: every candidate shares the same fixed question list, so
   // totalPossible is the same for everyone and can be computed once.
-  const sharedTotalPossible = examRow?.question_bank_id ? null : questions.reduce((s, q) => s + q.score, 0)
+  const sharedTotalPossible = isBankExam ? null : questions.reduce((s, q) => s + q.score, 0)
 
   for (const candidate of candidates) {
     const { data: answers } = await db
@@ -40,14 +52,10 @@ export async function recalculateExamScores(examId: string, prevScores?: Record<
     if (!answers?.length) continue
 
     // Bank exams: totalPossible is THIS candidate's own frozen draw, never
-    // the whole bank — same rule as the initial submit-time scoring.
+    // the whole bank/banks — same rule as the initial submit-time scoring.
     let totalPossible = sharedTotalPossible ?? 0
-    if (examRow?.question_bank_id) {
-      const { data: drawn } = await db
-        .from("candidate_exam_questions")
-        .select("question_id")
-        .eq("candidate_id", candidate.id)
-      const drawnIds = new Set((drawn ?? []).map((d: any) => d.question_id))
+    if (isBankExam) {
+      const drawnIds = new Set(allDrawnRows!.filter(d => d.candidate_id === candidate.id).map(d => d.question_id))
       totalPossible = questions.filter(q => drawnIds.has(q.id)).reduce((s, q) => s + q.score, 0)
     }
 

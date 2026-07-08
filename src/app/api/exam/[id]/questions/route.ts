@@ -6,14 +6,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params
   const candidateId = new URL(req.url).searchParams.get("candidate_id")
 
-  const { data: exam } = await db.from("exams").select("id, question_bank_id").eq("id", id).single()
+  const { data: exam } = await db.from("exams").select("id").eq("id", id).single()
   if (!exam) return NextResponse.json([], { status: 200 })
 
   let questions: any[] | null = null
 
-  if (exam.question_bank_id) {
-    // Question Bank exam — return ONLY this candidate's frozen random draw.
-    if (!candidateId) return NextResponse.json({ error: "candidate_id required" }, { status: 400 })
+  // A candidate with rows in candidate_exam_questions has a frozen random
+  // draw — regardless of whether it came from one bank, several banks, or
+  // (for manual exams) doesn't exist at all. Checking the data directly
+  // instead of an exam-level "question_bank_id" column means this route
+  // doesn't need to know how many banks, if any, an exam is linked to.
+  if (candidateId) {
     const { data: rows } = await db
       .from("candidate_exam_questions")
       .select(`
@@ -27,9 +30,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       `)
       .eq("candidate_id", candidateId)
       .order("order_index")
-    questions = (rows ?? []).map((r: any) => r.questions).filter(Boolean)
-  } else {
-    // Manual exam — unchanged from before this feature existed.
+    if (rows?.length) questions = rows.map((r: any) => r.questions).filter(Boolean)
+  }
+
+  if (!questions) {
+    // Manual exam (or no draw found) — unchanged from before this feature existed.
     const { data } = await db
       .from("questions")
       .select(`
