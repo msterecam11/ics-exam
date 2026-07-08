@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { parseGIFT } from "@/lib/gift-parser"
-import { parseBody, res400, res413, BodyTooLargeError } from "@/lib/apiUtils"
+import { parseBody, res400, res413, BodyTooLargeError, IMPORT_BODY_BYTES } from "@/lib/apiUtils"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -11,7 +11,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id: examId } = await params
 
   let body: any
-  try { body = await parseBody(req) } catch (e) {
+  try { body = await parseBody(req, IMPORT_BODY_BYTES) } catch (e) {
     return e instanceof BodyTooLargeError ? res413() : res400("Invalid request body")
   }
   const { gift_text, start_index = 0 } = body

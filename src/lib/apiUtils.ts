@@ -2,19 +2,25 @@ import { NextResponse } from "next/server"
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 
-const MAX_BODY_BYTES = 50_000 // 50 KB — sufficient for any API payload in this app
+const MAX_BODY_BYTES = 50_000 // 50 KB — sufficient for any ordinary API payload in this app
+
+// 5 MB — bulk CSV/GIFT question imports (a several-hundred-question bank
+// can legitimately run a few hundred KB); pass to parseBody's maxBytes.
+export const IMPORT_BODY_BYTES = 5_000_000
 
 /**
  * Safely parse a JSON request body, rejecting oversized payloads.
  * Throws on invalid JSON or body too large.
+ * maxBytes overrides the default 50 KB cap — used by bulk CSV/GIFT import
+ * routes, which can legitimately carry a few hundred KB of question text.
  */
-export async function parseBody(req: Request): Promise<unknown> {
+export async function parseBody(req: Request, maxBytes: number = MAX_BODY_BYTES): Promise<unknown> {
   const contentLength = req.headers.get("content-length")
-  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+  if (contentLength && parseInt(contentLength, 10) > maxBytes) {
     throw new BodyTooLargeError()
   }
   const text = await req.text()
-  if (Buffer.byteLength(text, "utf-8") > MAX_BODY_BYTES) {
+  if (Buffer.byteLength(text, "utf-8") > maxBytes) {
     throw new BodyTooLargeError()
   }
   try {
