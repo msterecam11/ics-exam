@@ -8,6 +8,7 @@ import {
   Trophy, Target, TrendingUp, Medal, Lightbulb, ShieldAlert,
 } from "lucide-react"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
+import { scaleToTarget } from "@/lib/scoreDisplay"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,20 @@ function scoreColor(pct: number) {
   if (pct >= 80) return { text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
   if (pct >= 60) return { text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
+}
+
+// For a Question Bank exam, builds the same { title, question_ids } shape as
+// exam_analyses.sections, but derived directly from each answered question's
+// own topic tag (set once by the bank's Expert Analyze) — no per-exam
+// analysis needed, since the exam has no fixed question list to analyze.
+function buildTopicSections(answers: any[]): { title: string; question_ids: string[] }[] {
+  const byTopic = new Map<string, string[]>()
+  for (const a of answers) {
+    const topic = (a.questions as any)?.topic ?? "General"
+    if (!byTopic.has(topic)) byTopic.set(topic, [])
+    byTopic.get(topic)!.push(a.question_id)
+  }
+  return [...byTopic.entries()].map(([title, question_ids]) => ({ title, question_ids }))
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -116,14 +131,28 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
 
   const examId = (candidate as any).exams?.id
 
+  // A candidate with rows in candidate_exam_questions has a frozen random
+  // draw (from one bank, several banks — doesn't matter which). Detecting
+  // this from the candidate's own data instead of an exam-level
+  // "question_bank_id" column means this works the same regardless of how
+  // many banks, if any, the exam is linked to.
+  const { data: printDrawnCheck } = await db
+    .from("candidate_exam_questions")
+    .select("candidate_id")
+    .eq("candidate_id", candidateId)
+    .limit(1)
+  const isBankExam = (printDrawnCheck?.length ?? 0) > 0
+
   const [answersRes, analysisRes, cachedRes, allCandidatesRes] = await Promise.all([
     db.from("candidate_answers")
-      .select("*, questions(id, text, type, score, order_index)")
+      .select("*, questions(id, text, type, score, order_index, topic)")
       .eq("candidate_id", candidateId),
-    db.from("exam_analyses")
-      .select("sections, generated_at")
-      .eq("exam_id", examId)
-      .single(),
+    // Question Bank exams have no per-exam exam_analyses row (topics are
+    // tagged on the bank, not the exam) — the "sections" equivalent is
+    // synthesized below from each answered question's own topic tag.
+    isBankExam
+      ? Promise.resolve({ data: null } as any)
+      : db.from("exam_analyses").select("sections, generated_at").eq("exam_id", examId).single(),
     db.from("report_cache")
       .select("narrative, generated_at")
       .eq("type", "candidate")
@@ -137,7 +166,9 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   ])
 
   const answers = answersRes.data ?? []
-  const analysis = analysisRes.data ?? null
+  const analysis = isBankExam
+    ? { sections: buildTopicSections(answers), generated_at: null }
+    : (analysisRes.data ?? null)
 
   const allCandidates = ((allCandidatesRes.data ?? []) as any[])
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
@@ -157,8 +188,23 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   const exam = (candidate as any).exams as any
   const sections = (((analysis?.sections ?? []) as any[])).sort((a: any, b: any) => a.order_index - b.order_index)
   const answerMap = new Map(answers.map((a: any) => [a.question_id, a]))
-  const totalPossible = Math.round(answers.reduce((s: number, a: any) => s + parseFloat((a.questions as any)?.score ?? 0), 0) * 10) / 10
-  const totalEarned   = Math.round(answers.reduce((s: number, a: any) => s + parseFloat(a.score_achieved ?? 0), 0) * 10) / 10
+  // Points shown here always sum to exactly 100 for this candidate's own
+  // question set, regardless of the raw scoring weights behind them — e.g.
+  // a mixed-bank exam. Grading itself (candidate.total_score) is untouched.
+  const rawPossible = answers.map((a: any) => a.questions?.score ?? 0)
+  const displayPossible = scaleToTarget(rawPossible)
+  const displayByQid = new Map(
+    answers.map((a: any, i: number) => {
+      const raw = rawPossible[i]
+      const ratio = raw > 0 ? displayPossible[i] / raw : 0
+      return [a.question_id, {
+        possible: displayPossible[i],
+        achieved: Math.round((a.score_achieved ?? 0) * ratio * 100) / 100,
+      }]
+    })
+  )
+  const totalPossible = Math.round([...displayByQid.values()].reduce((s, v) => s + v.possible, 0) * 100) / 100
+  const totalEarned   = Math.round([...displayByQid.values()].reduce((s, v) => s + v.achieved, 0) * 100) / 100
   const overallPct = (candidate as any).total_score ?? 0
 
   const sectionsWithData = sections.map((section: any, si: number) => {
@@ -166,11 +212,19 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
       .map((qid: string) => {
         const a = answerMap.get(qid); if (!a) return null
         const q = (a as any).questions
-        return { id: qid, text: q?.text ?? "", type: q?.type ?? "", score: parseFloat(q?.score ?? 0), scoreAchieved: parseFloat((a as any).score_achieved ?? 0) }
+        const disp = displayByQid.get(qid) ?? { possible: parseFloat(q?.score ?? 0), achieved: parseFloat((a as any).score_achieved ?? 0) }
+        return {
+          id: qid, text: q?.text ?? "", type: q?.type ?? "",
+          score: parseFloat(q?.score ?? 0), scoreAchieved: parseFloat((a as any).score_achieved ?? 0),
+          scoreDisplay: disp.possible, scoreAchievedDisplay: disp.achieved,
+        }
       }).filter(Boolean)
-    const earned   = Math.round(questions.reduce((s: number, q: any) => s + q.scoreAchieved, 0) * 10) / 10
-    const possible = Math.round(questions.reduce((s: number, q: any) => s + q.score, 0) * 10) / 10
+    const earned   = Math.round(questions.reduce((s: number, q: any) => s + q.scoreAchievedDisplay, 0) * 100) / 100
+    const possible = Math.round(questions.reduce((s: number, q: any) => s + q.scoreDisplay, 0) * 100) / 100
     const pct = possible > 0 ? (earned / possible) * 100 : 0
+    // Correct/partial/zero classification uses the RAW achieved-vs-possible
+    // comparison — ratio-identical to the scaled values, so unaffected by
+    // display scaling; kept on raw to avoid touching this logic at all.
     const correct = questions.filter((q: any) => q.scoreAchieved >= q.score).length
     const partial = questions.filter((q: any) => q.scoreAchieved > 0 && q.scoreAchieved < q.score).length
     const zero = questions.filter((q: any) => q.scoreAchieved === 0).length
@@ -440,7 +494,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                           </div>
                           <p className="flex-1 text-xs text-slate-600 leading-relaxed">{q.text}</p>
                           <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
-                            {q.scoreAchieved.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.score.toFixed(2)}</span>
+                            {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
                           </span>
                         </div>
                       )

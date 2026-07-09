@@ -182,8 +182,12 @@ export default function CandidateReportPage() {
   const exam = candidate?.exams as any
   const sections = ((analysis?.sections ?? []) as any[]).sort((a: any, b: any) => a.order_index - b.order_index)
   const answerMap = new Map(answers.map((a: any) => [a.question_id, a]))
-  const totalPossible = Math.round(answers.reduce((s: number, a: any) => s + parseFloat((a.questions as any)?.score ?? 0), 0) * 10) / 10
-  const totalEarned = Math.round(answers.reduce((s: number, a: any) => s + parseFloat(a.score_achieved ?? 0), 0) * 10) / 10
+  // Points shown here always sum to exactly 100 for this candidate's own
+  // question set (display_possible/display_achieved, computed server-side)
+  // — regardless of the raw scoring weights behind them, e.g. a mixed-bank
+  // exam. Grading itself (candidate.total_score) is untouched.
+  const totalPossible = Math.round(answers.reduce((s: number, a: any) => s + (a.display_possible ?? parseFloat(a.questions?.score ?? 0)), 0) * 100) / 100
+  const totalEarned = Math.round(answers.reduce((s: number, a: any) => s + (a.display_achieved ?? parseFloat(a.score_achieved ?? 0)), 0) * 100) / 100
   const overallPct = candidate.total_score ?? 0
 
   const sectionsWithData = sections.map((section: any, si: number) => {
@@ -191,11 +195,19 @@ export default function CandidateReportPage() {
       .map((qid: string) => {
         const a = answerMap.get(qid) as any; if (!a) return null
         const q = a.questions
-        return { id: qid, text: q?.text ?? "", type: q?.type ?? "", score: parseFloat(q?.score ?? 0), scoreAchieved: parseFloat(a.score_achieved ?? 0) }
+        return {
+          id: qid, text: q?.text ?? "", type: q?.type ?? "",
+          score: parseFloat(q?.score ?? 0), scoreAchieved: parseFloat(a.score_achieved ?? 0),
+          scoreDisplay: a.display_possible ?? parseFloat(q?.score ?? 0),
+          scoreAchievedDisplay: a.display_achieved ?? parseFloat(a.score_achieved ?? 0),
+        }
       }).filter(Boolean)
-    const earned = Math.round(questions.reduce((s: number, q: any) => s + q.scoreAchieved, 0) * 10) / 10
-    const possible = Math.round(questions.reduce((s: number, q: any) => s + q.score, 0) * 10) / 10
+    const earned = Math.round(questions.reduce((s: number, q: any) => s + q.scoreAchievedDisplay, 0) * 100) / 100
+    const possible = Math.round(questions.reduce((s: number, q: any) => s + q.scoreDisplay, 0) * 100) / 100
     const pct = possible > 0 ? (earned / possible) * 100 : 0
+    // Correct/partial/zero classification uses the RAW achieved-vs-possible
+    // comparison — ratio-identical to the scaled values, so unaffected by
+    // display scaling; kept on raw to avoid touching this logic at all.
     const correct = questions.filter((q: any) => q.scoreAchieved >= q.score).length
     const partial = questions.filter((q: any) => q.scoreAchieved > 0 && q.scoreAchieved < q.score).length
     const zero = questions.filter((q: any) => q.scoreAchieved === 0).length
@@ -570,7 +582,7 @@ export default function CandidateReportPage() {
                             </div>
                             <p className="flex-1 text-xs text-slate-600 leading-relaxed line-clamp-2">{q.text}</p>
                             <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
-                              {q.scoreAchieved.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{parseFloat(q.score).toFixed(2)}</span>
+                              {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
                             </span>
                           </div>
                         )

@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Library, PenLine, Shuffle, Plus, X } from "lucide-react"
+import { Loader2, Library, PenLine, Shuffle, Plus, X, Wand2 } from "lucide-react"
 import { toast } from "sonner"
 import QuestionBuilder from "./QuestionBuilder"
+import { distributeProportional } from "@/lib/distribute"
 import type { Question } from "@/types"
 
 interface Bank { id: string; name: string; question_count: number }
@@ -30,6 +31,7 @@ export default function ExamQuestionSource({
   const [bankQuestionsById, setBankQuestionsById] = useState<Record<string, BankQuestion[]>>({})
   const [loadingLinks, setLoadingLinks] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [distributeInputs, setDistributeInputs] = useState<Record<number, number>>({})
 
   // Load the bank picker list + this exam's current link set once, on entering bank mode.
   useEffect(() => {
@@ -71,6 +73,31 @@ export default function ExamQuestionSource({
 
   function updateLink(index: number, patch: Partial<BankLink>) {
     setLinks(prev => prev.map((l, i) => i === index ? { ...l, ...patch } : l))
+  }
+
+  // Fills the per-topic inputs proportionally to each topic's available
+  // question count (bigger topics get proportionally more), capped so no
+  // topic is asked for more than it actually has. The result is just a
+  // starting point — every value it fills in stays a normal editable input.
+  function handleDistribute(index: number, bankId: string) {
+    const total = distributeInputs[index] ?? 0
+    if (!total || total <= 0) return toast.error("Enter a number of questions first")
+
+    const topics = topicCountsFor(bankId)
+    const topicArr = [...topics.entries()]
+      .filter(([t]) => t !== "Untagged")
+      .map(([t, v]) => ({ key: t, available: v.available }))
+
+    const result = distributeProportional(total, topicArr)
+    const placed = Object.values(result).reduce((s, n) => s + n, 0)
+
+    updateLink(index, { draw_config: { by_topic: result } })
+
+    if (placed < total) {
+      toast.warning(`Could only distribute ${placed} of ${total} — not enough tagged questions in this bank.`)
+    } else {
+      toast.success(`Distributed ${placed} questions across ${topicArr.length} topics`)
+    }
   }
 
   function addBankRow() {
@@ -184,6 +211,26 @@ export default function ExamQuestionSource({
                         </SelectContent>
                       </Select>
                     </div>
+                    {link.question_bank_id && hasTopics && (
+                      <div className="flex items-end gap-1.5">
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Distribute</Label>
+                          <Input
+                            type="number" min={1} className="w-20"
+                            placeholder="30"
+                            value={distributeInputs[index] ?? ""}
+                            onChange={(e) => setDistributeInputs(prev => ({ ...prev, [index]: Number(e.target.value) }))}
+                          />
+                        </div>
+                        <Button
+                          variant="outline" size="sm" className="gap-1.5"
+                          onClick={() => handleDistribute(index, link.question_bank_id)}
+                          disabled={saving}
+                        >
+                          <Wand2 className="h-3.5 w-3.5" /> Distribute
+                        </Button>
+                      </div>
+                    )}
                     {links.length > 1 && (
                       <Button variant="outline" size="icon" onClick={() => removeBankRow(index)} disabled={saving}>
                         <X className="h-4 w-4" />

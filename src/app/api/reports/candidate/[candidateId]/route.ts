@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { scaleToTarget } from "@/lib/scoreDisplay"
 import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY ?? "placeholder" })
@@ -91,9 +92,27 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
     ? { sections: buildTopicSections(answersRes.data ?? []), generated_at: null }
     : (analysisRes.data ?? null)
 
+  // Same display-only scaling as the candidate-facing take/results pages —
+  // the admin/print/viewer report always shows point values that sum to
+  // exactly 100 for this candidate's own question set, regardless of the
+  // raw scoring weights behind them (e.g. mixed-bank exams). Grading itself
+  // (candidate.total_score) is untouched — already a percentage.
+  const rawAnswers = answersRes.data ?? []
+  const rawPossible = rawAnswers.map((a: any) => a.questions?.score ?? 0)
+  const displayPossible = scaleToTarget(rawPossible)
+  const answersWithDisplay = rawAnswers.map((a: any, i: number) => {
+    const raw = rawPossible[i]
+    const ratio = raw > 0 ? displayPossible[i] / raw : 0
+    return {
+      ...a,
+      display_possible: displayPossible[i],
+      display_achieved: Math.round((a.score_achieved ?? 0) * ratio * 100) / 100,
+    }
+  })
+
   return NextResponse.json({
     candidate,
-    answers: answersRes.data ?? [],
+    answers: answersWithDisplay,
     analysis,
     narrative: narrativeParsed,
     narrativeGeneratedAt: cachedRes.data?.generated_at ?? null,
