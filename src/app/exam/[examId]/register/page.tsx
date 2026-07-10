@@ -36,6 +36,17 @@ export default function RegisterPage({ params }: { params: Promise<{ examId: str
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    // Request fullscreen immediately, synchronously within this click handler
+    // — the Fullscreen API only grants the request while the browser still
+    // considers this a "fresh" user gesture, which expires a few seconds
+    // after the click. Doing this here (before the registration + questions
+    // network round-trips that follow) instead of on the take page after
+    // those finish is why this used to succeed inconsistently: by the time
+    // the take page tried, the gesture had often already expired. Fullscreen
+    // state persists across the client-side navigation to the take page.
+    document.documentElement.requestFullscreen?.().catch(() => {})
+
     setSubmitting(true)
 
     const res = await fetch(`/api/exams/${examId}/candidates`, {

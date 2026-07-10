@@ -196,10 +196,23 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   useEffect(() => {
     if (loading) return
 
-    function requestFs() {
-      document.documentElement.requestFullscreen?.().catch(() => {})
+    // The register page already requests fullscreen synchronously on the
+    // "Start Exam" click (the only reliable place to do it — see that
+    // page's handleSubmit), and it persists across this client-side
+    // navigation. If we're already in fullscreen, there's nothing to do.
+    // If not — the earlier request failed or this page was reached some
+    // other way — try again here, but unlike before, a failure is no
+    // longer silent: show the warning banner immediately and log it, so
+    // there's never a gap where proctoring silently isn't active with no
+    // record of it.
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.()
+        .then(() => setFullscreenWarning(false))
+        .catch(() => {
+          setFullscreenWarning(true)
+          logSecurity("fullscreen_exit")
+        })
     }
-    requestFs()
 
     function onFsChange() {
       if (!document.fullscreenElement) {
