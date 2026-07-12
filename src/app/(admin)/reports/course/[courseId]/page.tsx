@@ -276,6 +276,11 @@ export default function CourseReportViewPage() {
   const { course, exams, allCandidatesRanked, allScores, totalCandidates, overallPassRate, overallAvg, narrative } = data
   const hasAI = !!narrative
   const allPassedCount = allCandidatesRanked.filter((c: any) => c.passed).length
+
+  // Average time spent across all ranked candidates (each already capped at
+  // its exam's limit by the report API's timeSpentMin).
+  const courseTimes = (allCandidatesRanked as any[]).map((c) => c.timeSpentMin).filter((m): m is number => typeof m === "number")
+  const avgTimeMins = courseTimes.length ? Math.round(courseTimes.reduce((s, m) => s + m, 0) / courseTimes.length) : null
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const totalPages = 3 + exams.length + (hasAI ? 2 : 0)
 
@@ -370,6 +375,11 @@ export default function CourseReportViewPage() {
                 <div className="text-center">
                   <p className="text-2xl font-bold text-white">{exams.length}</p>
                   <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exams</p>
+                </div>
+                <div className="h-10 w-px bg-white/15" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-white">{fmtTime(avgTimeMins)}</p>
+                  <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Time</p>
                 </div>
               </div>
             </div>

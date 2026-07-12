@@ -9,7 +9,7 @@ import CandidateDetailClient from "./CandidateDetailClient"
 async function getData(candidateId: string) {
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, show_results, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, show_results, duration_minutes, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 

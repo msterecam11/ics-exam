@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { scaleToTarget } from "@/lib/scoreDisplay"
+import { formatTimeSpent } from "@/lib/utils"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
@@ -303,6 +304,11 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
               <div className="text-center">
                 <p className="text-2xl font-bold text-white">{exam?.passing_score}%</p>
                 <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Pass Mark</p>
+              </div>
+              <div className="h-10 w-px bg-white/15" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{formatTimeSpent((candidate as any).started_at, (candidate as any).submitted_at, exam?.duration_minutes)}</p>
+                <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Time Spent</p>
               </div>
             </div>
 

@@ -17,7 +17,7 @@ export async function GET(_: Request, { params }: Params) {
 
   const { data: candidate, error: candidateErr } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 

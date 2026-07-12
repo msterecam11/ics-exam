@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { formatScore } from "@/lib/utils"
+import { formatScore, formatTimeSpent } from "@/lib/utils"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy, Download, Loader2 } from "lucide-react"
@@ -155,6 +155,12 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
               <h2 className="text-lg font-bold">{candidate.full_name}</h2>
               <p className="text-sm text-muted-foreground">{candidate.email} · {candidate.company}</p>
               <p className="text-sm text-muted-foreground">{candidate.job_title} · {candidate.years_of_experience}yr exp</p>
+              {candidate.submitted_at && (
+                <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
+                  <Clock className="h-3.5 w-3.5 text-slate-400" />
+                  Time spent: <span className="font-medium text-slate-700">{formatTimeSpent(candidate.started_at, candidate.submitted_at, exam?.duration_minutes)}</span>
+                </p>
+              )}
             </div>
             <div className="text-right space-y-2">
               <p className={`text-3xl font-bold ${passed ? "text-emerald-600" : "text-red-500"}`}>

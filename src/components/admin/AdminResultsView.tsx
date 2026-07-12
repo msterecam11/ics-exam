@@ -10,7 +10,7 @@ import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, Fil
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { formatScore } from "@/lib/utils"
+import { formatScore, formatTimeSpent, formatMinutes, timeSpentMinutes } from "@/lib/utils"
 
 interface Props {
   exam: any
@@ -30,6 +30,15 @@ export default function AdminResultsView({ exam, candidates }: Props) {
     submitted.length > 0
       ? submitted.reduce((sum, c) => sum + (c.total_score ?? 0), 0) / submitted.length
       : 0
+
+  // Average time spent across submitted candidates (each capped at the exam
+  // limit) — cohort-level "how long did this exam take" at a glance.
+  const timeMins = submitted
+    .map((c) => timeSpentMinutes(c.started_at, c.submitted_at, exam.duration_minutes))
+    .filter((m): m is number => m !== null)
+  const avgTimeMins = timeMins.length > 0
+    ? Math.round(timeMins.reduce((s, m) => s + m, 0) / timeMins.length)
+    : null
 
   async function deleteCandidate(id: string, name: string) {
     if (!confirm(`Delete "${name}"?\n\nThis will permanently remove their registration and all submitted answers. This cannot be undone.`)) return
@@ -85,12 +94,13 @@ export default function AdminResultsView({ exam, candidates }: Props) {
       </div>
 
       {/* Overview stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           { label: "Total Candidates", value: candidates.length, icon: Users, color: "text-[#1B4F8A]" },
           { label: "Submitted", value: submitted.length, icon: CheckCircle2, color: "text-emerald-600" },
           { label: "Avg Score", value: `${avgScore.toFixed(1)}%`, icon: BarChart2, color: "text-purple-600" },
           { label: "Pass Rate", value: `${passRate}%`, icon: BarChart2, color: passRate >= 60 ? "text-emerald-600" : "text-red-500" },
+          { label: "Avg Time", value: formatMinutes(avgTimeMins), icon: Clock, color: "text-[#1B4F8A]" },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <CardContent className="pt-4 pb-3">
@@ -140,6 +150,7 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                     <TableHead>Name</TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Time</TableHead>
                     <TableHead>Score</TableHead>
                     <TableHead>Result</TableHead>
                     <TableHead>Released</TableHead>
@@ -165,6 +176,13 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                             <Clock className="h-2.5 w-2.5" /> In progress
                           </Badge>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {c.submitted_at ? (
+                          <span className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-slate-300" />{formatTimeSpent(c.started_at, c.submitted_at, exam.duration_minutes)}
+                          </span>
+                        ) : "—"}
                       </TableCell>
                       <TableCell>
                         {c.total_score !== null ? (

@@ -32,7 +32,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 
@@ -149,7 +149,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name)))")
     .eq("id", candidateId)
     .single()
 

@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner"
 import TerminologyModal from "@/components/reports/TerminologyModal"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
+import { formatTimeSpent } from "@/lib/utils"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,11 @@ export default function CandidateReportPage() {
                 <div className="text-center">
                   <p className="text-2xl font-bold text-white">{exam?.passing_score}%</p>
                   <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Pass Mark</p>
+                </div>
+                <div className="h-10 w-px bg-white/15" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-white">{formatTimeSpent(candidate.started_at, candidate.submitted_at, exam?.duration_minutes)}</p>
+                  <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Time Spent</p>
                 </div>
               </div>
 

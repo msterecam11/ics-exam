@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner"
 import TerminologyModal, { EntityTerm, ContentTerm } from "@/components/reports/TerminologyModal"
 import { makeT } from "@/lib/reportTerms"
+import { formatMinutes } from "@/lib/utils"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -262,6 +263,11 @@ export default function GroupReportViewPage() {
   const hasAI = !!narrative
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const totalPages = 3 + courses.length + (hasAI ? 2 : 0)
+
+  // Average time spent across all submitted candidates in the group (each
+  // already capped at its exam's limit by the report API's timeSpentMin).
+  const groupTimes = (allSubmissions as any[]).map((c) => c.timeSpentMin).filter((m): m is number => typeof m === "number")
+  const avgTimeMins = groupTimes.length ? Math.round(groupTimes.reduce((s, m) => s + m, 0) / groupTimes.length) : null
   const priorityColors: Record<string, string> = {
     high: "bg-red-50 text-red-600 border-red-100",
     medium: "bg-amber-50 text-amber-600 border-amber-100",
@@ -340,6 +346,7 @@ export default function GroupReportViewPage() {
                   { label: "Exams", val: totalExams },
                   { label: "Candidates", val: totalCandidates },
                   { label: "Avg Score", val: `${overallAvg.toFixed(1)}%` },
+                  { label: "Avg Time", val: formatMinutes(avgTimeMins) },
                 ].map(({ label, val }, i, arr) => (
                   <div key={i} className="flex items-center gap-8">
                     <div className="text-center">
