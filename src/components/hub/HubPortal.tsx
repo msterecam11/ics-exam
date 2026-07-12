@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
-import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3, ShieldCheck } from "lucide-react"
+import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3, ShieldCheck, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface System {
@@ -76,6 +76,17 @@ const ADMIN_SYSTEMS: System[] = [
     accent: "#1B4F8A",
     accentBg: "bg-[#1B4F8A]",
     accentText: "text-[#1B4F8A]",
+  },
+  {
+    id: "status",
+    label: "System Status",
+    description: "Live database and file storage usage against plan limits, plus platform-wide counts.",
+    icon: Activity,
+    href: "/hub/status",
+    status: "live",
+    accent: "#0d9488",
+    accentBg: "bg-teal-600",
+    accentText: "text-teal-600",
   },
 ]
 
