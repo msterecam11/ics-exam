@@ -225,6 +225,15 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
 
 Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
 
+  // Scales with section count — the prompt asks for one full write-up
+  // (summary + strengths + weaknesses + development) per section, so a
+  // bank-linked exam spanning many topics needs a much larger completion
+  // budget than a manual exam's handful of sections, or the JSON gets cut
+  // off mid-generation and fails to parse. 1400 was the fixed baseline;
+  // this formula returns ~1400-2000 for a normal exam's 6-10 sections
+  // (unchanged in practice) and scales up from there.
+  const maxTokens = Math.min(8000, 600 + sectionData.length * 180)
+
   let narrativeObj: any
   try {
     const completion = await withRetry(() =>
@@ -232,7 +241,7 @@ Be specific, professional, constructive, and base all insights strictly on the s
         model      : "llama-3.1-8b-instant",
         messages   : [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens : 1400,
+        max_tokens : maxTokens,
       })
     )
     const raw     = completion.choices[0]?.message?.content?.trim() ?? ""
