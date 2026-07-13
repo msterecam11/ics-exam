@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import ScoreBar from "@/components/reports/ScoreBar"
 import { Button } from "@/components/ui/button"
@@ -108,6 +108,11 @@ function PageFooter({ page, total, light = false }: { page: number; total: numbe
 export default function CandidateReportPage() {
   const { candidateId } = useParams<{ candidateId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const mode: "original" | "manual" = searchParams.get("mode") === "manual" ? "manual" : "original"
+  const basePath = mode === "manual"
+    ? `/api/reports/candidate/${candidateId}/manual`
+    : `/api/reports/candidate/${candidateId}`
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generatingAI, setGeneratingAI] = useState(false)
@@ -120,20 +125,29 @@ export default function CandidateReportPage() {
   const t = makeT(entityTerm, contentTerm)
 
   useEffect(() => {
-    fetch(`/api/reports/candidate/${candidateId}`)
+    setLoading(true)
+    fetch(basePath)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
-  }, [candidateId])
+  }, [candidateId, basePath])
+
+  function switchMode(next: "original" | "manual") {
+    router.replace(next === "manual" ? "?mode=manual" : "?")
+  }
 
   async function generateNarrative() {
     setGeneratingAI(true)
-    const res = await fetch(`/api/reports/candidate/${candidateId}`, {
+    const res = await fetch(basePath, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ includeSecurity }),
     })
     setGeneratingAI(false)
-    if (!res.ok) { toast.error("Failed to generate expert report"); return }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Failed to generate expert report")
+      return
+    }
     const result = await res.json()
     setData((prev: any) => ({ ...prev, narrative: result.narrative, narrativeGeneratedAt: result.generated_at }))
     toast.success("Expert report generated")
@@ -174,6 +188,20 @@ export default function CandidateReportPage() {
         <div className="text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin text-[#1B4F8A] mx-auto" />
           <p className="text-sm text-slate-500">Loading report…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (data?.error) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-100">
+        <div className="text-center space-y-4">
+          <AlertCircle className="h-8 w-8 text-amber-500 mx-auto" />
+          <p className="text-sm text-slate-500">{data.error}</p>
+          {mode === "manual" && (
+            <Button size="sm" variant="outline" onClick={() => switchMode("original")}>View Original Report</Button>
+          )}
         </div>
       </div>
     )
@@ -285,9 +313,25 @@ export default function CandidateReportPage() {
 
       {/* ── Toolbar ── */}
       <div className="no-print sticky top-0 z-40 bg-white border-b shadow-sm px-6 py-3 flex items-center justify-between">
-        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" /> Back
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" /> Back
+          </Button>
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+            <button
+              onClick={() => switchMode("original")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "original" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Original
+            </button>
+            <button
+              onClick={() => switchMode("manual")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "manual" ? "bg-white shadow-sm text-purple-700" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Manual
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {!hasAI && (
             <Button size="sm" onClick={generateNarrative} disabled={generatingAI}
@@ -302,11 +346,13 @@ export default function CandidateReportPage() {
               Regenerate Expert
             </Button>
           )}
-          <Button size="sm" onClick={downloadPDF}
-            className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-            <Printer className="h-4 w-4" />
-            Save as PDF
-          </Button>
+          {mode === "original" && (
+            <Button size="sm" onClick={downloadPDF}
+              className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
+              <Printer className="h-4 w-4" />
+              Save as PDF
+            </Button>
+          )}
         </div>
       </div>
 

@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatScore, formatTimeSpent } from "@/lib/utils"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy, Download, Loader2 } from "lucide-react"
+import { FileText, ShieldAlert, ShieldCheck, Clock, Monitor, MousePointerClick, Copy, Download, Loader2, Sliders } from "lucide-react"
 import AnswerCard from "@/components/admin/AnswerCard"
 import { toast } from "sonner"
 
@@ -15,6 +16,7 @@ interface Props {
   answers: any[]
   examId: string
   candidateId: string
+  initialMode: "original" | "manual"
 }
 
 function SecurityTab({ candidate }: { candidate: any }) {
@@ -104,16 +106,43 @@ function SecurityTab({ candidate }: { candidate: any }) {
   )
 }
 
-export default function CandidateDetailClient({ candidate, answers, examId, candidateId }: Props) {
+export default function CandidateDetailClient({ candidate: realCandidate, answers: realAnswers, examId, candidateId, initialMode }: Props) {
+  const router = useRouter()
+  const [mode, setMode] = useState<"original" | "manual">(initialMode)
+
+  const [manualData, setManualData] = useState<{ candidate: any; answers: any[]; manualScore: any } | null>(null)
+  const [manualLoading, setManualLoading] = useState(false)
+
+  useEffect(() => {
+    if (mode !== "manual") return
+    setManualLoading(true)
+    fetch(`/api/candidates/${candidateId}/manual-score/answers`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setManualData(data))
+      .catch(() => { toast.error("No active manual score for this candidate"); setManualData(null) })
+      .finally(() => setManualLoading(false))
+  }, [mode, candidateId])
+
+  const candidate = mode === "manual" && manualData ? manualData.candidate : realCandidate
+  const answers = mode === "manual" && manualData ? manualData.answers : realAnswers
+
   const exam = candidate.exams as any
-  const [totalScore, setTotalScore] = useState<number>(candidate.total_score ?? 0)
-  const [passed, setPassed] = useState<boolean>(candidate.passed ?? false)
+  const [totalScore, setTotalScore] = useState<number>(realCandidate.total_score ?? 0)
+  const [passed, setPassed] = useState<boolean>(realCandidate.passed ?? false)
   const [activeTab, setActiveTab] = useState<"answers" | "security">("answers")
   const [downloadingPDF, setDownloadingPDF] = useState(false)
+
+  const displayScore = mode === "manual" && manualData ? manualData.candidate.total_score : totalScore
+  const displayPassed = mode === "manual" && manualData ? manualData.candidate.passed : passed
 
   function handleScoreUpdate(_answerId: string, _newScore: number, newTotal: number, newPassed: boolean) {
     setTotalScore(newTotal)
     setPassed(newPassed)
+  }
+
+  function switchMode(next: "original" | "manual") {
+    setMode(next)
+    router.replace(next === "manual" ? "?mode=manual" : "?")
   }
 
   async function downloadPDF() {
@@ -147,6 +176,31 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
 
   return (
     <div className="space-y-6">
+      {/* Original / Manual toggle */}
+      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+        <button
+          onClick={() => switchMode("original")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === "original" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Original
+        </button>
+        <button
+          onClick={() => switchMode("manual")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${mode === "manual" ? "bg-white shadow-sm text-purple-700" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Sliders className="h-3 w-3" /> Manual
+        </button>
+      </div>
+
+      {mode === "manual" && manualLoading && (
+        <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading manual score…</p>
+      )}
+      {mode === "manual" && !manualLoading && !manualData && (
+        <Card><CardContent className="py-6 text-sm text-muted-foreground">No active manual score for this candidate yet — create one from the results table.</CardContent></Card>
+      )}
+
+      {(mode === "original" || manualData) && (
+      <>
       {/* Candidate summary */}
       <Card>
         <CardContent className="pt-5 pb-4">
@@ -161,25 +215,32 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
                   Time spent: <span className="font-medium text-slate-700">{formatTimeSpent(candidate.started_at, candidate.submitted_at, exam?.duration_minutes)}</span>
                 </p>
               )}
+              {mode === "manual" && manualData?.manualScore && (
+                <Badge className="bg-purple-100 text-purple-700 border-0 mt-2">
+                  Manual score {!manualData.manualScore.is_exact_match ? "(closest achievable)" : ""}
+                </Badge>
+              )}
             </div>
             <div className="text-right space-y-2">
-              <p className={`text-3xl font-bold ${passed ? "text-emerald-600" : "text-red-500"}`}>
-                {formatScore(totalScore)}
+              <p className={`text-3xl font-bold ${displayPassed ? "text-emerald-600" : "text-red-500"}`}>
+                {formatScore(displayScore)}
               </p>
-              <Badge className={passed ? "bg-emerald-100 text-emerald-700 border-0" : "bg-red-100 text-red-700 border-0"}>
-                {passed ? "Passed" : "Failed"} · Passing: {exam?.passing_score}%
+              <Badge className={displayPassed ? "bg-emerald-100 text-emerald-700 border-0" : "bg-red-100 text-red-700 border-0"}>
+                {displayPassed ? "Passed" : "Failed"} · Passing: {exam?.passing_score}%
               </Badge>
               <div className="flex gap-2">
-                <Button
-                  size="sm" variant="outline" className="gap-2"
-                  onClick={downloadPDF} disabled={downloadingPDF}
-                >
-                  {downloadingPDF
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
-                    : <><Download className="h-4 w-4" /> Download Results</>
-                  }
-                </Button>
-                <Link href={`/reports/candidate/${candidateId}`} target="_blank">
+                {mode === "original" && (
+                  <Button
+                    size="sm" variant="outline" className="gap-2"
+                    onClick={downloadPDF} disabled={downloadingPDF}
+                  >
+                    {downloadingPDF
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+                      : <><Download className="h-4 w-4" /> Download Results</>
+                    }
+                  </Button>
+                )}
+                <Link href={`/reports/candidate/${candidateId}${mode === "manual" ? "?mode=manual" : ""}`} target="_blank">
                   <Button size="sm" className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
                     <FileText className="h-4 w-4" /> View Results
                   </Button>
@@ -213,7 +274,9 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
               Answers ({answers.length} questions)
             </h3>
-            <p className="text-xs text-muted-foreground">Click the pencil icon to override any score</p>
+            <p className="text-xs text-muted-foreground">
+              {mode === "manual" ? "Manual (client) view — scores are not editable here" : "Click the pencil icon to override any score"}
+            </p>
           </div>
           {answers.length === 0 ? (
             <Card>
@@ -223,13 +286,21 @@ export default function CandidateDetailClient({ candidate, answers, examId, cand
             </Card>
           ) : (
             answers.map((answer, idx) => (
-              <AnswerCard key={answer.id} answer={answer} index={idx} onScoreUpdate={handleScoreUpdate} />
+              <AnswerCard
+                key={answer.id}
+                answer={answer}
+                index={idx}
+                onScoreUpdate={mode === "original" ? handleScoreUpdate : undefined}
+                readOnly={mode === "manual"}
+              />
             ))
           )}
         </div>
       )}
 
       {activeTab === "security" && <SecurityTab candidate={candidate} />}
+      </>
+      )}
     </div>
   )
 }

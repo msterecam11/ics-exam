@@ -29,10 +29,13 @@ async function getData(candidateId: string) {
 
 export default async function CandidateDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; candidateId: string }>
+  searchParams: Promise<{ mode?: string }>
 }) {
   const { id, candidateId } = await params
+  const { mode } = await searchParams
   await auth()
   const data = await getData(candidateId)
   if (!data) notFound()
@@ -58,6 +61,7 @@ export default async function CandidateDetailPage({
         answers={answers}
         examId={id}
         candidateId={candidateId}
+        initialMode={mode === "manual" ? "manual" : "original"}
       />
     </div>
   )

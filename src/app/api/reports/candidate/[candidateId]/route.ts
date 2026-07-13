@@ -56,13 +56,15 @@ const SINGLE_CALL_TOPIC_LIMIT = 15
 const BATCH_SIZE = 15
 const BATCH_DELAY_MS = 30_000
 
-interface SectionDatum { title: string; pct: number; earned: number; possible: number }
+export interface SectionDatum { title: string; pct: number; earned: number; possible: number }
 
 function buildSectionLines(sections: SectionDatum[]): string {
   return sections.map(s => `  - ${s.title}: ${s.pct}% (${s.earned.toFixed(1)}/${s.possible} pts)`).join("\n")
 }
 
-async function generateCandidateNarrative(
+// Reused as-is by the manual report route — it only needs candidate,
+// examTitle, and sectionData, and doesn't care where those numbers came from.
+export async function generateCandidateNarrative(
   candidate: any,
   examTitle: string,
   sectionData: SectionDatum[]
@@ -301,7 +303,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
 // exam_analyses.sections, but derived directly from each answered question's
 // own topic tag (set once by the bank's Expert Analyze) — no per-exam
 // analysis needed, since the exam has no fixed question list to analyze.
-function buildTopicSections(answers: any[]): { title: string; question_ids: string[] }[] {
+export function buildTopicSections(answers: any[]): { title: string; question_ids: string[] }[] {
   const byTopic = new Map<string, string[]>()
   for (const a of answers) {
     const topic = (a.questions as any)?.topic ?? "General"

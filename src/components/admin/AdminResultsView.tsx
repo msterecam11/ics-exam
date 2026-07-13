@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,7 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { formatScore, formatTimeSpent, formatMinutes, timeSpentMinutes } from "@/lib/utils"
+import ManualScoreControl, { ManualScoreBadge, type ManualScoreRow } from "@/components/admin/ManualScoreControl"
 
 interface Props {
   exam: any
@@ -22,6 +23,18 @@ export default function AdminResultsView({ exam, candidates }: Props) {
   const [releasing, setReleasing] = useState<string | null>(null)
   const [deleting,  setDeleting]  = useState<string | null>(null)
   const [localCandidates, setLocalCandidates] = useState(candidates)
+  const [manualScores, setManualScores] = useState<Record<string, ManualScoreRow | null>>({})
+
+  useEffect(() => {
+    fetch(`/api/exams/${exam.id}/manual-scores`)
+      .then(res => res.ok ? res.json() : { manualScores: {} })
+      .then(data => setManualScores(data.manualScores ?? {}))
+      .catch(() => {})
+  }, [exam.id])
+
+  function handleManualScoreChange(candidateId: string, manualScore: ManualScoreRow | null) {
+    setManualScores(prev => ({ ...prev, [candidateId]: manualScore }))
+  }
 
   const submitted = localCandidates.filter((c) => c.submitted_at)
   const passed = submitted.filter((c) => c.passed)
@@ -186,9 +199,14 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                       </TableCell>
                       <TableCell>
                         {c.total_score !== null ? (
-                          <span className={`font-semibold text-sm ${c.passed ? "text-emerald-600" : "text-red-500"}`}>
-                            {formatScore(c.total_score)}
-                          </span>
+                          <div>
+                            <span className={`font-semibold text-sm ${c.passed ? "text-emerald-600" : "text-red-500"}`}>
+                              {formatScore(c.total_score)}
+                            </span>
+                            <div>
+                              <ManualScoreBadge manualScore={manualScores[c.id] ?? null} />
+                            </div>
+                          </div>
                         ) : "—"}
                       </TableCell>
                       <TableCell>
@@ -246,6 +264,15 @@ export default function AdminResultsView({ exam, candidates }: Props) {
                               {releasing === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                               Release
                             </Button>
+                          )}
+
+                          {c.submitted_at && (
+                            <ManualScoreControl
+                              candidateId={c.id}
+                              examId={exam.id}
+                              manualScore={manualScores[c.id] ?? null}
+                              onChange={handleManualScoreChange}
+                            />
                           )}
 
                           <Button
