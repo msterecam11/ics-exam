@@ -1,4 +1,7 @@
-export const maxDuration = 60
+// Topic-heavy bank exams can need a few sequential Groq calls with pauses
+// between them (see generateCandidateNarrative below) — raised from 60 to
+// give that room; a normal exam's single call still finishes in seconds.
+export const maxDuration = 180
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -22,6 +25,178 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): 
     }
   }
   throw new Error("Max retries exceeded")
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+function parseJsonResponse(raw: string): any {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+  const match = cleaned.match(/\{[\s\S]*\}/)
+  return JSON.parse(match ? match[0] : cleaned)
+}
+
+// Groq's account-level rate limit is tokens-PER-MINUTE, not per-request —
+// confirmed live against a real 30-topic candidate, where a single request
+// (input prompt + requested output combined) asked for 8,966 tokens against
+// a 6,000 TPM cap and was rejected outright (413), before any generation
+// even started. This applies to the whole account, so raising max_tokens
+// alone never helps once the topic count is large enough — the request has
+// to actually be smaller.
+//
+// Below SINGLE_CALL_TOPIC_LIMIT, generate everything in one call exactly as
+// before — every existing manual exam (max 10 sections today) always stays
+// on this path, byte-for-byte the same prompt and behavior as before this
+// change. Above it (topic-heavy bank-linked exams), split into a small
+// "overview" call plus per-topic batches, each sized to stay safely under
+// the limit on its own, pausing between every call so each one sees a
+// freshly-reset per-minute budget rather than competing with the last.
+const SINGLE_CALL_TOPIC_LIMIT = 15
+const BATCH_SIZE = 15
+const BATCH_DELAY_MS = 30_000
+
+interface SectionDatum { title: string; pct: number; earned: number; possible: number }
+
+function buildSectionLines(sections: SectionDatum[]): string {
+  return sections.map(s => `  - ${s.title}: ${s.pct}% (${s.earned.toFixed(1)}/${s.possible} pts)`).join("\n")
+}
+
+async function generateCandidateNarrative(
+  candidate: any,
+  examTitle: string,
+  sectionData: SectionDatum[]
+): Promise<any> {
+  const sectionLines = buildSectionLines(sectionData)
+
+  if (sectionData.length <= SINGLE_CALL_TOPIC_LIMIT) {
+    // Unchanged — the exact single-call flow that existed before this fix.
+    const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this candidate's exam performance and return a detailed JSON report.
+
+Candidate: ${candidate.full_name}
+Exam: ${examTitle}
+Overall Score: ${candidate.total_score?.toFixed(1)}%
+Result: ${candidate.passed ? "PASSED" : "FAILED"}
+Passing Score: ${(candidate.exams as any)?.passing_score}%
+
+Section Performance:
+${sectionLines || "No section breakdown available"}
+
+Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+{
+  "executive_summary": "2-3 professional sentences summarizing overall performance, result, and tone",
+  "section_analyses": {
+    ${sectionData.map(s => `"${s.title}": {
+      "summary": "one sentence overall assessment of this section (score: ${s.pct}%)",
+      "strengths": ["specific strength observed in this section"],
+      "weaknesses": ["specific weakness observed based on score"],
+      "development": ["one concrete action to improve in this section"]
+    }`).join(",\n    ")}
+  },
+  "strengths": ["overall strength 1", "overall strength 2"],
+  "improvements": ["overall weak area 1 with context", "overall weak area 2"],
+  "recommendations": [
+    {"area": "section or topic name", "score": ${sectionData[0]?.pct ?? 0}, "action": "specific actionable step"},
+    {"area": "section or topic name", "score": ${sectionData[1]?.pct ?? 50}, "action": "specific actionable step"}
+  ]
+}
+
+Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
+
+    const maxTokens = Math.min(8000, 600 + sectionData.length * 180)
+    const completion = await withRetry(() =>
+      groq.chat.completions.create({
+        model      : "llama-3.1-8b-instant",
+        messages   : [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens : maxTokens,
+      })
+    )
+    return parseJsonResponse(completion.choices[0]?.message?.content?.trim() ?? "")
+  }
+
+  // Topic-heavy bank exam — generate the overview and every batch of
+  // section write-ups as separate, smaller requests, pausing between each
+  // so none of them ever competes with another for the same per-minute
+  // token budget.
+  const overviewPrompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this candidate's exam performance and return a high-level structured report.
+
+Candidate: ${candidate.full_name}
+Exam: ${examTitle}
+Overall Score: ${candidate.total_score?.toFixed(1)}%
+Result: ${candidate.passed ? "PASSED" : "FAILED"}
+Passing Score: ${(candidate.exams as any)?.passing_score}%
+
+Section Performance (${sectionData.length} topics):
+${sectionLines}
+
+Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+{
+  "executive_summary": "2-3 professional sentences summarizing overall performance, result, and tone",
+  "strengths": ["overall strength 1", "overall strength 2"],
+  "improvements": ["overall weak area 1 with context", "overall weak area 2"],
+  "recommendations": [
+    {"area": "section or topic name", "score": 0, "action": "specific actionable step"},
+    {"area": "section or topic name", "score": 50, "action": "specific actionable step"}
+  ]
+}
+
+Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
+
+  const overviewCompletion = await withRetry(() =>
+    groq.chat.completions.create({
+      model      : "llama-3.1-8b-instant",
+      messages   : [{ role: "user", content: overviewPrompt }],
+      temperature: 0.3,
+      max_tokens : 700,
+    })
+  )
+  const overview = parseJsonResponse(overviewCompletion.choices[0]?.message?.content?.trim() ?? "")
+
+  const batches: SectionDatum[][] = []
+  for (let i = 0; i < sectionData.length; i += BATCH_SIZE) batches.push(sectionData.slice(i, i + BATCH_SIZE))
+
+  const sectionAnalyses: Record<string, any> = {}
+  for (let b = 0; b < batches.length; b++) {
+    await sleep(BATCH_DELAY_MS)
+
+    const batch = batches[b]
+    const batchPrompt = `You are an expert aviation training analyst at ICS Aviation, continuing a detailed candidate performance analysis (part ${b + 1} of ${batches.length}).
+
+Candidate: ${candidate.full_name}
+Exam: ${examTitle}
+
+Analyze ONLY these topic sections — do not include any other topics:
+${buildSectionLines(batch)}
+
+Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+{
+  "section_analyses": {
+    ${batch.map(s => `"${s.title}": {
+      "summary": "one sentence overall assessment of this section (score: ${s.pct}%)",
+      "strengths": ["specific strength observed in this section"],
+      "weaknesses": ["specific weakness observed based on score"],
+      "development": ["one concrete action to improve in this section"]
+    }`).join(",\n    ")}
+  }
+}
+
+Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
+
+    const maxTokens = Math.min(8000, 400 + batch.length * 180)
+    const completion = await withRetry(() =>
+      groq.chat.completions.create({
+        model      : "llama-3.1-8b-instant",
+        messages   : [{ role: "user", content: batchPrompt }],
+        temperature: 0.3,
+        max_tokens : maxTokens,
+      })
+    )
+    const parsed = parseJsonResponse(completion.choices[0]?.message?.content?.trim() ?? "")
+    Object.assign(sectionAnalyses, parsed.section_analyses ?? {})
+  }
+
+  return { ...overview, section_analyses: sectionAnalyses }
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ candidateId: string }> }) {
@@ -189,65 +364,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
     return { title: section.title, pct, earned, possible }
   })
 
-  const sectionLines = sectionData.map(s =>
-    `  - ${s.title}: ${s.pct}% (${s.earned.toFixed(1)}/${s.possible} pts)`
-  ).join("\n")
-
-  const prompt = `You are an expert aviation training analyst at ICS Aviation. Analyze this candidate's exam performance and return a detailed JSON report.
-
-Candidate: ${candidate.full_name}
-Exam: ${examTitle}
-Overall Score: ${candidate.total_score?.toFixed(1)}%
-Result: ${candidate.passed ? "PASSED" : "FAILED"}
-Passing Score: ${(candidate.exams as any)?.passing_score}%
-
-Section Performance:
-${sectionLines || "No section breakdown available"}
-
-Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
-{
-  "executive_summary": "2-3 professional sentences summarizing overall performance, result, and tone",
-  "section_analyses": {
-    ${sectionData.map(s => `"${s.title}": {
-      "summary": "one sentence overall assessment of this section (score: ${s.pct}%)",
-      "strengths": ["specific strength observed in this section"],
-      "weaknesses": ["specific weakness observed based on score"],
-      "development": ["one concrete action to improve in this section"]
-    }`).join(",\n    ")}
-  },
-  "strengths": ["overall strength 1", "overall strength 2"],
-  "improvements": ["overall weak area 1 with context", "overall weak area 2"],
-  "recommendations": [
-    {"area": "section or topic name", "score": ${sectionData[0]?.pct ?? 0}, "action": "specific actionable step"},
-    {"area": "section or topic name", "score": ${sectionData[1]?.pct ?? 50}, "action": "specific actionable step"}
-  ]
-}
-
-Be specific, professional, constructive, and base all insights strictly on the section scores provided.`
-
-  // Scales with section count — the prompt asks for one full write-up
-  // (summary + strengths + weaknesses + development) per section, so a
-  // bank-linked exam spanning many topics needs a much larger completion
-  // budget than a manual exam's handful of sections, or the JSON gets cut
-  // off mid-generation and fails to parse. 1400 was the fixed baseline;
-  // this formula returns ~1400-2000 for a normal exam's 6-10 sections
-  // (unchanged in practice) and scales up from there.
-  const maxTokens = Math.min(8000, 600 + sectionData.length * 180)
-
   let narrativeObj: any
   try {
-    const completion = await withRetry(() =>
-      groq.chat.completions.create({
-        model      : "llama-3.1-8b-instant",
-        messages   : [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens : maxTokens,
-      })
-    )
-    const raw     = completion.choices[0]?.message?.content?.trim() ?? ""
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-    const match   = cleaned.match(/\{[\s\S]*\}/)
-    narrativeObj  = JSON.parse(match ? match[0] : cleaned)
+    narrativeObj = await generateCandidateNarrative(candidate, examTitle, sectionData)
   } catch {
     return NextResponse.json({ error: "AI service temporarily unavailable. Please try again in a moment." }, { status: 503 })
   }
@@ -268,6 +387,8 @@ Be specific, professional, constructive, and base all insights strictly on the s
     const switchLines = tabSwitches.map((sw, i) =>
       `  Switch ${i + 1}: at ${new Date(sw.timestamp).toLocaleTimeString("en-GB")}, away for ${sw.duration ?? 0}s`
     ).join("\n")
+
+    const sectionLines = buildSectionLines(sectionData)
 
     const secPrompt = `You are a forensic exam integrity analyst at ICS Aviation. Analyze the following behavioral data recorded during a candidate's exam and provide a professional assessment.
 
