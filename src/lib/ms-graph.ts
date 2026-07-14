@@ -408,7 +408,7 @@ export interface ResultsEmailInput {
 export async function sendResultsEmail(input: ResultsEmailInput): Promise<void> {
   const token = await getAccessToken()
 
-  const scoreText  = input.score != null ? `${Math.round(input.score)}%` : "—"
+  const scoreText  = input.score != null ? `${input.score.toFixed(1)}%` : "—"
   const passed     = input.passed === true
   const resultWord = passed ? "Passed" : "Did Not Pass"
   const resultColor = passed ? "#10b981" : "#ef4444"
