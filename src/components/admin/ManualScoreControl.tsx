@@ -22,6 +22,7 @@ import {
 import { Sliders, ChevronDown, Loader2, Send, FileText, Eye, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
+import { formatScore } from "@/lib/utils"
 
 export interface ManualScoreRow {
   id: string
@@ -94,8 +95,8 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
     onChange(candidateId, data.manualScore)
     toast.success(
       data.manualScore.is_exact_match
-        ? `Manual score confirmed at ${data.manualScore.achieved_score}%`
-        : `Closest achievable score: ${data.manualScore.achieved_score}% (target ${data.manualScore.target_score}% wasn't exactly reachable)`
+        ? `Manual score confirmed at ${formatScore(data.manualScore.achieved_score)}`
+        : `Closest achievable score: ${formatScore(data.manualScore.achieved_score)} (target ${formatScore(data.manualScore.target_score)} wasn't exactly reachable)`
     )
     setOpen(false)
   }
@@ -217,12 +218,12 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
                   <p>Target equals the candidate&apos;s real score — no answers will change.</p>
                 ) : preview.is_exact_match ? (
                   <p>
-                    Achievable exactly: <span className="font-semibold text-purple-700">{preview.achieved_score}%</span>
+                    Achievable exactly: <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
                   </p>
                 ) : (
                   <p>
                     Target not exactly reachable (all-MCQ paper). Closest achievable score:{" "}
-                    <span className="font-semibold text-purple-700">{preview.achieved_score}%</span>
+                    <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
                   </p>
                 )}
               </div>
@@ -245,7 +246,7 @@ export function ManualScoreBadge({ manualScore }: { manualScore: ManualScoreRow 
   if (!manualScore || manualScore.status !== "confirmed") return null
   return (
     <Badge className="bg-purple-100 text-purple-700 border-0 text-[10px] mt-1">
-      Manual: {manualScore.achieved_score}%{!manualScore.is_exact_match ? " (closest)" : ""}
+      Manual: {formatScore(manualScore.achieved_score)}{!manualScore.is_exact_match ? " (closest)" : ""}
     </Badge>
   )
 }
