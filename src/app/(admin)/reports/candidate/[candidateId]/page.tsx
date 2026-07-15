@@ -168,7 +168,7 @@ export default function CandidateReportPage() {
     try {
       const hasSec = includeSecurity && !!(data?.narrative?.security_analysis)
       const res = await fetch(
-        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}${hasSec ? "&security=1" : ""}`
+        `/api/reports/candidate/${candidateId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}${hasSec ? "&security=1" : ""}${mode === "manual" ? "&mode=manual" : ""}`
       )
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -356,13 +356,11 @@ export default function CandidateReportPage() {
               Regenerate Expert
             </Button>
           )}
-          {mode === "original" && (
-            <Button size="sm" onClick={downloadPDF}
-              className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-              <Printer className="h-4 w-4" />
-              Save as PDF
-            </Button>
-          )}
+          <Button size="sm" onClick={downloadPDF}
+            className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
+            <Printer className="h-4 w-4" />
+            Save as PDF
+          </Button>
         </div>
       </div>
 
@@ -625,14 +623,15 @@ export default function CandidateReportPage() {
                     </div>
                   </div>
 
-                  {/* Quick stats */}
+                  {/* Quick stats — manual report omits the Points chip since
+                      raw point values aren't shown anywhere else on it */}
                   <div className="flex gap-2 flex-wrap avoid-break">
                     {[
                       { label: "Questions", val: section.questions.length, color: "bg-slate-100 text-slate-700" },
                       { label: "Full Marks", val: section.correct, color: "bg-emerald-50 text-emerald-700" },
                       { label: "Partial", val: section.partial, color: "bg-amber-50 text-amber-700" },
                       { label: "Zero", val: section.zero, color: "bg-red-50 text-red-600" },
-                      { label: "Points", val: `${section.earned.toFixed(1)}/${section.possible.toFixed(1)}`, color: "bg-blue-50 text-blue-700" },
+                      ...(mode === "manual" ? [] : [{ label: "Points", val: `${section.earned.toFixed(1)}/${section.possible.toFixed(1)}`, color: "bg-blue-50 text-blue-700" }]),
                     ].map(({ label, val, color }) => (
                       <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
                         <p className="text-xs font-bold">{val}</p>

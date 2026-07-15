@@ -19,6 +19,15 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
+// Manual (client) report only — same bands as the on-screen manual report:
+// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
+function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
+  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
+  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
+  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
+  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
+}
+
 // For a Question Bank exam, builds the same { title, question_ids } shape as
 // exam_analyses.sections, but derived directly from each answered question's
 // own topic tag (set once by the bank's Expert Analyze) — no per-exam
@@ -106,7 +115,7 @@ function PageFooter({ page, total, light = false }: { page: number; total: numbe
 
 interface Props {
   params: Promise<{ candidateId: string }>
-  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string; security?: string }>
+  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string; security?: string; mode?: string }>
 }
 
 export default async function PrintCandidatePage({ params, searchParams }: Props) {
@@ -118,7 +127,8 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   }
 
   const { candidateId } = await params
-  const { entity = "Group", content = "Course", security } = await searchParams
+  const { entity = "Group", content = "Course", security, mode } = await searchParams
+  const isManual = mode === "manual"
   const showSecurity = security === "1"
   const t = makeT(entity as EntityTerm, content as ContentTerm)
 
@@ -132,6 +142,20 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
 
   const examId = (candidate as any).exams?.id
 
+  // Manual (client) report — the active manual_scores version and its
+  // per-answer overrides, mirroring the on-screen manual report's logic
+  // exactly. Falls back to the real result if no manual score exists.
+  const { data: manualScore } = isManual
+    ? await db
+        .from("manual_scores")
+        .select("*")
+        .eq("candidate_id", candidateId)
+        .in("status", ["draft", "confirmed"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null }
+
   // A candidate with rows in candidate_exam_questions has a frozen random
   // draw (from one bank, several banks — doesn't matter which). Detecting
   // this from the candidate's own data instead of an exam-level
@@ -144,7 +168,9 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
     .limit(1)
   const isBankExam = (printDrawnCheck?.length ?? 0) > 0
 
-  const [answersRes, analysisRes, cachedRes, allCandidatesRes] = await Promise.all([
+  const useManual = isManual && !!manualScore
+
+  const [answersRes, analysisRes, cachedRes, allCandidatesRes, overridesRes] = await Promise.all([
     db.from("candidate_answers")
       .select("*, questions(id, text, type, score, order_index, topic)")
       .eq("candidate_id", candidateId),
@@ -154,19 +180,26 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
     isBankExam
       ? Promise.resolve({ data: null } as any)
       : db.from("exam_analyses").select("sections, generated_at").eq("exam_id", examId).single(),
-    db.from("report_cache")
-      .select("narrative, generated_at")
-      .eq("type", "candidate")
-      .eq("reference_id", candidateId)
-      .eq("exam_id", examId)
-      .single(),
+    // Manual narrative is keyed by manual_score_id, not candidate_id — a new
+    // manual score version naturally orphans the old cached narrative.
+    useManual
+      ? db.from("report_cache").select("narrative, generated_at").eq("type", "candidate_manual").eq("reference_id", manualScore!.id).eq("exam_id", examId).single()
+      : db.from("report_cache").select("narrative, generated_at").eq("type", "candidate").eq("reference_id", candidateId).eq("exam_id", examId).single(),
     db.from("candidates")
       .select("id, total_score")
       .eq("exam_id", examId)
       .not("submitted_at", "is", null),
+    useManual
+      ? db.from("manual_score_answer_overrides").select("candidate_answer_id, manual_score_achieved").eq("manual_score_id", manualScore!.id)
+      : Promise.resolve({ data: null } as any),
   ])
 
-  const answers = answersRes.data ?? []
+  const overrideMap = new Map((overridesRes.data ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const answers = (answersRes.data ?? []).map((a: any) => {
+    if (!useManual) return a
+    const override = overrideMap.get(a.id)
+    return override === undefined ? a : { ...a, score_achieved: override }
+  })
   const analysis = isBankExam
     ? { sections: buildTopicSections(answers), generated_at: null }
     : (analysisRes.data ?? null)
@@ -206,7 +239,8 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   )
   const totalPossible = Math.round([...displayByQid.values()].reduce((s, v) => s + v.possible, 0) * 100) / 100
   const totalEarned   = Math.round([...displayByQid.values()].reduce((s, v) => s + v.achieved, 0) * 100) / 100
-  const overallPct = (candidate as any).total_score ?? 0
+  const overallPct = useManual ? manualScore!.achieved_score : ((candidate as any).total_score ?? 0)
+  const displayPassed = useManual ? overallPct >= ((candidate as any).exams?.passing_score ?? 60) : (candidate as any).passed
 
   const sectionsWithData = sections.map((section: any, si: number) => {
     const questions = (section.question_ids ?? [])
@@ -279,7 +313,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
               )}
             </div>
 
-            <CoverRing score={overallPct} passed={(candidate as any).passed} />
+            <CoverRing score={overallPct} passed={displayPassed} />
 
             <div className="flex items-center gap-10">
               <div className="text-center">
@@ -349,7 +383,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                   ["Total Points", `${totalPossible.toFixed(1)} pts`],
                   ["Passing Score", `${exam?.passing_score}%`],
                   ["Your Score", `${overallPct.toFixed(1)}%`],
-                  ["Result", (candidate as any).passed ? "✓ Passed" : "✗ Failed"],
+                  ["Result", displayPassed ? "✓ Passed" : "✗ Failed"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-center gap-3 py-2 border-b border-slate-50">
                     <p className="text-[10px] text-slate-400 w-28 shrink-0">{label}</p>
@@ -364,7 +398,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Score Comparison</p>
               <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
                 {[
-                  { label: "Your Score", value: `${overallPct.toFixed(1)}%`, color: scoreColor(overallPct).text, sub: (candidate as any).passed ? "Passed" : "Failed" },
+                  { label: "Your Score", value: `${overallPct.toFixed(1)}%`, color: scoreColor(overallPct).text, sub: displayPassed ? "Passed" : "Failed" },
                   { label: "Class Average", value: `${classAvg.toFixed(1)}%`, color: "#1B4F8A", sub: `${totalCandidates} candidates` },
                   { label: "Pass Mark", value: `${exam?.passing_score}%`, color: "#64748b", sub: "Required" },
                 ].map(({ label, value, color, sub }) => (
@@ -377,14 +411,30 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
               </div>
             </div>
 
-            {/* Section bars */}
+            {/* Section bars — manual report shows letter grades only (no
+                fractions/percentages), matching the on-screen manual report */}
             {sectionsWithData.length > 0 && (
               <div className="avoid-break space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Performance by Section</p>
-                {sectionsWithData.map((s: any) => (
-                  <ScoreBar key={s.title} label={s.title} score={s.pct}
-                    detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible.toFixed(1)} pts`} />
-                ))}
+                {useManual ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    {sectionsWithData.map((s: any) => {
+                      const g = letterGrade(s.pct)
+                      return (
+                        <div key={s.title} className="rounded-xl p-4 text-center"
+                          style={{ background: g.bg, border: `1.5px solid ${g.border}` }}>
+                          <p className="text-2xl font-extrabold" style={{ color: g.text }}>{g.letter}</p>
+                          <p className="text-[10px] text-slate-600 mt-1 leading-snug">{s.title}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  sectionsWithData.map((s: any) => (
+                    <ScoreBar key={s.title} label={s.title} score={s.pct}
+                      detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible.toFixed(1)} pts`} />
+                  ))
+                )}
               </div>
             )}
 
@@ -445,7 +495,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
         {/* ══ PAGES 3–N — SECTIONS ══ */}
         {sectionsWithData.map((section: any) => {
           const sectionAI = narrative?.section_analyses?.[section.title]
-          const col = scoreColor(section.pct)
+          const col = useManual ? letterGrade(section.pct) : scoreColor(section.pct)
           return (
             <Page key={section.title}>
               <PageHeader title={`Section ${section.idx + 1} — ${section.title}`} subtitle={exam?.title} today={today} />
@@ -461,18 +511,21 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                   </div>
                   <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0"
                     style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
-                    <span className="text-xl font-extrabold" style={{ color: col.text }}>{section.pct.toFixed(0)}%</span>
+                    <span className="text-xl font-extrabold" style={{ color: col.text }}>
+                      {useManual ? (col as ReturnType<typeof letterGrade>).letter : `${section.pct.toFixed(0)}%`}
+                    </span>
                     <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Score</span>
                   </div>
                 </div>
 
+                {/* Quick stats — manual report omits the Points chip */}
                 <div className="flex gap-2 flex-wrap avoid-break">
                   {[
                     { label: "Questions", val: section.questions.length, color: "bg-slate-100 text-slate-700" },
                     { label: "Full Marks", val: section.correct, color: "bg-emerald-50 text-emerald-700" },
                     { label: "Partial", val: section.partial, color: "bg-amber-50 text-amber-700" },
                     { label: "Zero", val: section.zero, color: "bg-red-50 text-red-600" },
-                    { label: "Points", val: `${section.earned.toFixed(1)}/${section.possible.toFixed(1)}`, color: "bg-blue-50 text-blue-700" },
+                    ...(useManual ? [] : [{ label: "Points", val: `${section.earned.toFixed(1)}/${section.possible.toFixed(1)}`, color: "bg-blue-50 text-blue-700" }]),
                   ].map(({ label, val, color }) => (
                     <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
                       <p className="text-xs font-bold">{val}</p>
@@ -481,32 +534,44 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                   ))}
                 </div>
 
-                <ScoreBar label="Section Score" score={section.pct}
-                  detail={`${section.correct}/${section.questions.length} correct`} />
-
-                <div className="avoid-break">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Question Breakdown</p>
-                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                    {section.questions.map((q: any, qi: number) => {
-                      const full = q.scoreAchieved >= q.score
-                      const part = q.scoreAchieved > 0 && !full
-                      return (
-                        <div key={q.id}
-                          className={`flex items-start gap-3 px-4 py-2 border-b border-slate-50 last:border-0 ${qi % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
-                          <div className="mt-0.5 shrink-0">
-                            {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                              : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400" />
-                                : <XCircle className="h-3.5 w-3.5 text-red-400" />}
-                          </div>
-                          <p className="flex-1 text-xs text-slate-600 leading-relaxed">{q.text}</p>
-                          <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
-                            {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
-                          </span>
-                        </div>
-                      )
-                    })}
+                {/* Score bar — manual report shows a letter grade instead;
+                    question breakdown is omitted entirely for manual */}
+                {useManual ? (
+                  <div className="rounded-xl p-4 flex items-center gap-3"
+                    style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
+                    <span className="text-2xl font-extrabold" style={{ color: col.text }}>{(col as ReturnType<typeof letterGrade>).letter}</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: col.text }}>Section Grade</span>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <ScoreBar label="Section Score" score={section.pct}
+                      detail={`${section.correct}/${section.questions.length} correct`} />
+
+                    <div className="avoid-break">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Question Breakdown</p>
+                      <div className="rounded-xl border border-slate-100 overflow-hidden">
+                        {section.questions.map((q: any, qi: number) => {
+                          const full = q.scoreAchieved >= q.score
+                          const part = q.scoreAchieved > 0 && !full
+                          return (
+                            <div key={q.id}
+                              className={`flex items-start gap-3 px-4 py-2 border-b border-slate-50 last:border-0 ${qi % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
+                              <div className="mt-0.5 shrink-0">
+                                {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                  : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400" />
+                                    : <XCircle className="h-3.5 w-3.5 text-red-400" />}
+                              </div>
+                              <p className="flex-1 text-xs text-slate-600 leading-relaxed">{q.text}</p>
+                              <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
+                                {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {sectionAI && (
                   <div className="avoid-break space-y-3">
