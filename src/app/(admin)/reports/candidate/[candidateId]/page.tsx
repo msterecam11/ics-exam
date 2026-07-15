@@ -23,6 +23,16 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
+// Manual report only — letter-grade presentation (A/B/C/D) instead of raw
+// percentages/fractions, per client-report requirements: A=90-100 (green),
+// B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
+function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
+  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
+  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
+  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
+  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
+}
+
 // ─── Cover score ring ────────────────────────────────────────────────────────
 
 function CoverRing({ score, passed }: { score: number; passed: boolean }) {
@@ -490,14 +500,30 @@ export default function CandidateReportPage() {
                 </div>
               </div>
 
-              {/* Section bars */}
+              {/* Section bars — manual report shows letter grades only (no
+                  fractions/percentages), per client-report requirements */}
               {sectionsWithData.length > 0 && (
                 <div className="avoid-break space-y-3">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Performance by Section</p>
-                  {sectionsWithData.map((s: any) => (
-                    <ScoreBar key={s.title} label={s.title} score={s.pct}
-                      detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible.toFixed(1)} pts`} />
-                  ))}
+                  {mode === "manual" ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {sectionsWithData.map((s: any) => {
+                        const g = letterGrade(s.pct)
+                        return (
+                          <div key={s.title} className="rounded-xl border p-4 text-center"
+                            style={{ background: g.bg, border: `1.5px solid ${g.border}` }}>
+                            <p className="text-2xl font-extrabold" style={{ color: g.text }}>{g.letter}</p>
+                            <p className="text-[10px] text-slate-600 mt-1 leading-snug">{s.title}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    sectionsWithData.map((s: any) => (
+                      <ScoreBar key={s.title} label={s.title} score={s.pct}
+                        detail={`${s.correct}/${s.questions.length} correct · ${s.earned.toFixed(1)}/${s.possible.toFixed(1)} pts`} />
+                    ))
+                  )}
                 </div>
               )}
 
@@ -575,7 +601,7 @@ export default function CandidateReportPage() {
           {/* ══ PAGES 3–N — SECTIONS ══ */}
           {sectionsWithData.map((section: any) => {
             const sectionAI = narrative?.section_analyses?.[section.title]
-            const col = scoreColor(section.pct)
+            const col = mode === "manual" ? letterGrade(section.pct) : scoreColor(section.pct)
             return (
               <Page key={section.title}>
                 <PageHeader title={`Section ${section.idx + 1} — ${section.title}`} subtitle={exam?.title} today={today} />
@@ -592,7 +618,9 @@ export default function CandidateReportPage() {
                     </div>
                     <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0"
                       style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
-                      <span className="text-xl font-extrabold" style={{ color: col.text }}>{section.pct.toFixed(0)}%</span>
+                      <span className="text-xl font-extrabold" style={{ color: col.text }}>
+                        {mode === "manual" ? (col as ReturnType<typeof letterGrade>).letter : `${section.pct.toFixed(0)}%`}
+                      </span>
                       <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Score</span>
                     </div>
                   </div>
@@ -613,34 +641,46 @@ export default function CandidateReportPage() {
                     ))}
                   </div>
 
-                  {/* Score bar */}
-                  <ScoreBar label="Section Score" score={section.pct}
-                    detail={`${section.correct}/${section.questions.length} correct`} />
-
-                  {/* Question list */}
-                  <div className="avoid-break">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Question Breakdown</p>
-                    <div className="rounded-xl border border-slate-100 overflow-hidden">
-                      {section.questions.map((q: any, qi: number) => {
-                        const full = q.scoreAchieved >= q.score
-                        const part = q.scoreAchieved > 0 && !full
-                        return (
-                          <div key={q.id}
-                            className={`flex items-start gap-3 px-4 py-2 border-b border-slate-50 last:border-0 ${qi % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
-                            <div className="mt-0.5 shrink-0">
-                              {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400" />
-                                  : <XCircle className="h-3.5 w-3.5 text-red-400" />}
-                            </div>
-                            <p className="flex-1 text-xs text-slate-600 leading-relaxed line-clamp-2">{q.text}</p>
-                            <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
-                              {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
-                            </span>
-                          </div>
-                        )
-                      })}
+                  {/* Score bar — manual report shows a letter grade instead
+                      of the percentage/correct-count; question breakdown is
+                      omitted entirely for the manual (client) report */}
+                  {mode === "manual" ? (
+                    <div className="rounded-xl p-4 flex items-center gap-3"
+                      style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
+                      <span className="text-2xl font-extrabold" style={{ color: col.text }}>{(col as ReturnType<typeof letterGrade>).letter}</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: col.text }}>Section Grade</span>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <ScoreBar label="Section Score" score={section.pct}
+                        detail={`${section.correct}/${section.questions.length} correct`} />
+
+                      {/* Question list */}
+                      <div className="avoid-break">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Question Breakdown</p>
+                        <div className="rounded-xl border border-slate-100 overflow-hidden">
+                          {section.questions.map((q: any, qi: number) => {
+                            const full = q.scoreAchieved >= q.score
+                            const part = q.scoreAchieved > 0 && !full
+                            return (
+                              <div key={q.id}
+                                className={`flex items-start gap-3 px-4 py-2 border-b border-slate-50 last:border-0 ${qi % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
+                                <div className="mt-0.5 shrink-0">
+                                  {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                    : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400" />
+                                      : <XCircle className="h-3.5 w-3.5 text-red-400" />}
+                                </div>
+                                <p className="flex-1 text-xs text-slate-600 leading-relaxed line-clamp-2">{q.text}</p>
+                                <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">
+                                  {q.scoreAchievedDisplay.toFixed(2)}<span className="text-slate-300 font-normal text-[10px]">/{q.scoreDisplay.toFixed(2)}</span>
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   {/* Expert Section Analysis */}
                   {sectionAI ? (
