@@ -390,21 +390,28 @@ export default function CandidateReportPage() {
             <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full pointer-events-none opacity-10"
               style={{ background: "radial-gradient(circle, #93c5fd, transparent)", transform: "translate(-35%,35%)" }} />
 
-            {/* Top bar — manual report: client logos beside ICS, date moves
-                to bottom-middle instead of sitting top-right */}
-            <div className="flex items-center justify-between px-12 pt-10 shrink-0">
-              <div className="flex items-center gap-4">
+            {/* Top bar — manual report: ICS stays left, first client logo
+                centered, second client logo top-right (white, since the
+                cover page background is dark blue). Date moves to
+                bottom-middle instead of sitting top-right. */}
+            <div className="grid grid-cols-3 items-center px-12 pt-10 shrink-0">
+              <div className="flex items-center">
                 <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
-                {mode === "manual" && groupLogos.length > 0 && (
-                  <div className="flex items-center gap-3 pl-4 border-l border-white/15">
-                    {groupLogos.map((url) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={url} src={url} alt="Client logo" className="h-8 max-w-[100px] object-contain" />
-                    ))}
-                  </div>
+              </div>
+              <div className="flex items-center justify-center">
+                {mode === "manual" && groupLogos[0] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={groupLogos[0]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
                 )}
               </div>
-              {mode !== "manual" && <p className="text-white/40 text-xs">{today}</p>}
+              <div className="flex items-center justify-end">
+                {mode === "manual" && groupLogos[1] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={groupLogos[1]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+                ) : mode !== "manual" ? (
+                  <p className="text-white/40 text-xs">{today}</p>
+                ) : null}
+              </div>
             </div>
 
             {/* Center */}
