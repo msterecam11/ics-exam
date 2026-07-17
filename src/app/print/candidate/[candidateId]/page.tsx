@@ -80,16 +80,26 @@ function Page({ children, dark = false, first = false }: {
   )
 }
 
-function PageHeader({ light = false, title, subtitle, today }: {
-  light?: boolean; title: string; subtitle?: string; today: string
+function PageHeader({ light = false, title, subtitle, today, extraLogos = [] }: {
+  light?: boolean; title: string; subtitle?: string; today: string; extraLogos?: string[]
 }) {
   return (
     <div className={`flex items-center justify-between px-12 pt-8 pb-5 border-b shrink-0
       ${light ? "border-white/15" : "border-[#1B4F8A] border-b-2"}`}>
-      <Image
-        src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"}
-        alt="ICS Aviation" width={110} height={30} className="object-contain"
-      />
+      <div className="flex items-center gap-4">
+        <Image
+          src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"}
+          alt="ICS Aviation" width={110} height={30} className="object-contain"
+        />
+        {extraLogos.length > 0 && (
+          <div className="flex items-center gap-3 pl-4 border-l" style={{ borderColor: light ? "rgba(255,255,255,0.15)" : "#e2e8f0" }}>
+            {extraLogos.map((url) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={url} src={url} alt="Client logo" className="h-7 max-w-[90px] object-contain" />
+            ))}
+          </div>
+        )}
+      </div>
       <div className="text-right">
         <p className={`text-[10px] font-bold uppercase tracking-widest ${light ? "text-white/70" : "text-[#1B4F8A]"}`}>{title}</p>
         {subtitle && <p className={`text-[10px] mt-0.5 ${light ? "text-white/40" : "text-slate-400"}`}>{subtitle}</p>}
@@ -134,7 +144,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
 
   const { data: candidate } = await db
     .from("candidates")
-    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name)))")
+    .select("*, exams(id, title, passing_score, duration_minutes, courses(name, groups(name, manual_report_logos)))")
     .eq("id", candidateId)
     .single()
 
@@ -220,6 +230,8 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
   // ─── Derived data ──────────────────────────────────────────────────────────
 
   const exam = (candidate as any).exams as any
+  // Client-branding logos, optional — only shown on the manual report.
+  const groupLogos: string[] = useManual ? (exam?.courses?.groups?.manual_report_logos ?? []) : []
   const sections = (((analysis?.sections ?? []) as any[])).sort((a: any, b: any) => a.order_index - b.order_index)
   const answerMap = new Map(answers.map((a: any) => [a.question_id, a]))
   // Points shown here always sum to exactly 100 for this candidate's own
@@ -368,7 +380,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
 
         {/* ══ PAGE 2 — EXAM OVERVIEW ══ */}
         <Page>
-          <PageHeader title="Exam Overview" subtitle={exam?.title} today={today} />
+          <PageHeader title="Exam Overview" subtitle={exam?.title} today={today} extraLogos={groupLogos} />
           <div className="px-12 py-7 space-y-6">
 
             {/* Exam summary */}
@@ -498,7 +510,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
           const col = useManual ? letterGrade(section.pct) : scoreColor(section.pct)
           return (
             <Page key={section.title}>
-              <PageHeader title={`Section ${section.idx + 1} — ${section.title}`} subtitle={exam?.title} today={today} />
+              <PageHeader title={`Section ${section.idx + 1} — ${section.title}`} subtitle={exam?.title} today={today} extraLogos={groupLogos} />
               <div className="px-12 py-7 space-y-5">
 
                 <div className="flex items-start justify-between gap-4 pb-4 border-b-2 border-slate-100">
@@ -625,7 +637,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
         {/* ══ LAST PAGE — RECOMMENDATIONS ══ */}
         {hasAI && (
           <Page>
-            <PageHeader title="Personalized Recommendations" subtitle={exam?.title} today={today} />
+            <PageHeader title="Personalized Recommendations" subtitle={exam?.title} today={today} extraLogos={groupLogos} />
             <div className="px-12 py-7 space-y-6">
 
               <div className="avoid-break">
@@ -724,7 +736,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
           ]
           return (
             <Page>
-              <PageHeader title="Security Analysis" subtitle={exam?.title} today={today} />
+              <PageHeader title="Security Analysis" subtitle={exam?.title} today={today} extraLogos={groupLogos} />
               <div className="px-12 py-7 space-y-5">
 
                 {/* Title row — matches section page style */}

@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash2, BookOpen, Loader2 } from "lucide-react"
+import { Plus, Pencil, Trash2, BookOpen, Loader2, ImagePlus, X } from "lucide-react"
 import { toast } from "sonner"
 import type { Group } from "@/types"
 import Link from "next/link"
@@ -28,6 +28,8 @@ export default function GroupsPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [saving, setSaving] = useState(false)
+  const [logos, setLogos] = useState<string[]>([])
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   async function load() {
     const res = await fetch("/api/groups")
@@ -42,6 +44,7 @@ export default function GroupsPage() {
     setEditing(null)
     setName("")
     setDescription("")
+    setLogos([])
     setDialogOpen(true)
   }
 
@@ -49,7 +52,38 @@ export default function GroupsPage() {
     setEditing(group)
     setName(group.name)
     setDescription(group.description ?? "")
+    setLogos(group.manual_report_logos ?? [])
     setDialogOpen(true)
+  }
+
+  async function uploadLogo(file: File) {
+    if (!editing) return
+    setUploadingLogo(true)
+    const form = new FormData()
+    form.append("file", file)
+    const res = await fetch(`/api/groups/${editing.id}/logo`, { method: "POST", body: form })
+    setUploadingLogo(false)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Failed to upload logo")
+      return
+    }
+    const data = await res.json()
+    setLogos(data.manual_report_logos)
+    load()
+  }
+
+  async function removeLogo(url: string) {
+    if (!editing) return
+    const res = await fetch(`/api/groups/${editing.id}/logo`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    })
+    if (!res.ok) { toast.error("Failed to remove logo"); return }
+    const data = await res.json()
+    setLogos(data.manual_report_logos)
+    load()
   }
 
   async function handleSave() {
@@ -129,6 +163,51 @@ export default function GroupsPage() {
                   rows={3}
                 />
               </div>
+
+              {editing && (
+                <div className="space-y-2">
+                  <Label>Manual Report Logos</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Optional — shown alongside the ICS Aviation logo on this group&apos;s manual (client) reports.
+                    Falls back to just the ICS logo if none are set. Up to 3.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {logos.map((url) => (
+                      <div key={url} className="relative w-16 h-16 border rounded-lg overflow-hidden bg-white group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="Group logo" className="w-full h-full object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => removeLogo(url)}
+                          className="absolute top-0.5 right-0.5 bg-white/90 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3 text-red-500" />
+                        </button>
+                      </div>
+                    ))}
+                    {logos.length < 3 && (
+                      <label className="w-16 h-16 border border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:bg-muted transition-colors">
+                        {uploadingLogo
+                          ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          : <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                        }
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                          className="hidden"
+                          disabled={uploadingLogo}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) uploadLogo(file)
+                            e.target.value = ""
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel

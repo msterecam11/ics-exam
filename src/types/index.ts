@@ -34,6 +34,7 @@ export interface Group {
   description: string | null
   created_at: string
   courses?: Course[]
+  manual_report_logos?: string[]
 }
 
 export interface Course {
