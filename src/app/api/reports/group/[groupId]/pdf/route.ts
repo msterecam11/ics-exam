@@ -26,9 +26,10 @@ export async function GET(
   const url = new URL(req.url)
   const entity = url.searchParams.get("entity") ?? "Group"
   const content = url.searchParams.get("content") ?? "Course"
+  const mode = url.searchParams.get("mode") === "manual" ? "manual" : ""
   const port = process.env.PORT ?? "3000"
   const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/group/${groupId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}`
+  const printUrl = `http://localhost:${port}/print/group/${groupId}?entity=${encodeURIComponent(entity)}&content=${encodeURIComponent(content)}&pdf_secret=${secret}${mode === "manual" ? "&mode=manual" : ""}`
 
   const browser = await getBrowser()
 

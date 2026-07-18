@@ -5,11 +5,20 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
 import Groq from "groq-sdk"
 
 // ─── shared data fetcher ────────────────────────────────────────────────────
 
-async function fetchGroupData(groupId: string) {
+// manual: true substitutes each candidate's confirmed manual score/pass-fail
+// (and overrides their answers before section averaging) wherever one
+// exists — everyone is still counted, candidates without a manual score
+// just contribute their real numbers unchanged. Every downstream rollup
+// (course leaderboard, group totals) reads through the same `candidates`
+// objects, so substituting here is enough to flow through the whole
+// aggregation. Exported so the print page can reuse this directly.
+export async function fetchGroupData(groupId: string, opts: { manual?: boolean } = {}) {
+  const manual = opts.manual ?? false
   const [groupRes, coursesRes] = await Promise.all([
     db.from("groups").select("id, name").eq("id", groupId).single(),
     db.from("courses").select("id, name").eq("group_id", groupId).order("name"),
@@ -33,8 +42,13 @@ async function fetchGroupData(groupId: string) {
             .eq("exam_id", exam.id)
             .not("submitted_at", "is", null)
 
-          const candidates = (candidatesRes.data ?? []) as any[]
-          const cIds = candidates.map((c: any) => c.id)
+          const rawCandidates = (candidatesRes.data ?? []) as any[]
+          const cIds = rawCandidates.map((c: any) => c.id)
+
+          const manualMap = manual ? await loadManualScoresForCandidates(cIds) : new Map()
+          const candidates = manual
+            ? rawCandidates.map((c: any) => ({ ...c, ...applyManualOverride(c, manualMap, c.id, exam.passing_score ?? 60) }))
+            : rawCandidates
 
           let sectionAvgs: { title: string; avg: number }[] = []
 
@@ -60,9 +74,9 @@ async function fetchGroupData(groupId: string) {
             let answers: any[] = []
             if (cIds.length > 0 && qIds.length > 0) {
               const { data } = await db.from("candidate_answers")
-                .select("candidate_id, question_id, score_achieved")
+                .select("id, candidate_id, question_id, score_achieved")
                 .in("candidate_id", cIds).in("question_id", qIds)
-              answers = data ?? []
+              answers = manual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
             }
 
             const topics = [...new Set(allDrawn.map((d: any) => (d.questions as any)?.topic ?? "General"))]
@@ -95,10 +109,10 @@ async function fetchGroupData(groupId: string) {
             if (cIds.length > 0 && qIds.length > 0) {
               const { data } = await db
                 .from("candidate_answers")
-                .select("candidate_id, question_id, score_achieved")
+                .select("id, candidate_id, question_id, score_achieved")
                 .in("candidate_id", cIds)
                 .in("question_id", qIds)
-              answers = data ?? []
+              answers = manual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
             }
 
             sectionAvgs = sections.map((section: any) => {
@@ -251,22 +265,23 @@ async function fetchGroupData(groupId: string) {
 // ─── GET ─────────────────────────────────────────────────────────────────────
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ groupId: string }> }
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { groupId } = await params
+  const isManual = new URL(req.url).searchParams.get("mode") === "manual"
   const { group, courseDataArr, allSubmissions, allScores, totalCandidates, allPassedCount, overallPassRate, overallAvg, totalExams } =
-    await fetchGroupData(groupId)
+    await fetchGroupData(groupId, { manual: isManual })
 
   if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const { data: cached } = await db
     .from("report_cache")
     .select("narrative, generated_at")
-    .eq("type", "group")
+    .eq("type", isManual ? "group_manual" : "group")
     .eq("reference_id", groupId)
     .order("generated_at", { ascending: false })
     .limit(1)
@@ -316,8 +331,10 @@ export async function POST(
   if (!allowed) return res429(retryAfterSeconds)
 
   const { groupId } = await params
+  const body = await req.json().catch(() => ({}))
+  const isManual = body?.mode === "manual"
   const { group, courseDataArr, totalCandidates, overallPassRate, overallAvg, totalExams, uniqueCandidateStats, firstExamId } =
-    await fetchGroupData(groupId)
+    await fetchGroupData(groupId, { manual: isManual })
 
   if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -423,10 +440,11 @@ Return ONLY valid JSON (no markdown) with this exact structure:
   }
 
   // DELETE existing + INSERT fresh with real exam ID to satisfy FK constraint
+  const cacheType = isManual ? "group_manual" : "group"
   if (firstExamId) {
-    await db.from("report_cache").delete().eq("type", "group").eq("reference_id", groupId)
+    await db.from("report_cache").delete().eq("type", cacheType).eq("reference_id", groupId)
     await db.from("report_cache").insert({
-      type: "group",
+      type: cacheType,
       reference_id: groupId,
       exam_id: firstExamId,
       narrative: JSON.stringify(narrative),

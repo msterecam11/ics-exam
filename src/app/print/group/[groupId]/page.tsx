@@ -8,6 +8,7 @@ import {
   Target, TrendingUp, Lightbulb, Users, Medal, Clock, Star, AlertTriangle,
 } from "lucide-react"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
+import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,15 @@ function scoreColor(pct: number) {
   if (pct >= 80) return { text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
   if (pct >= 60) return { text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
+}
+
+// Manual (client) report only — same bands as the individual manual report:
+// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
+function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
+  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
+  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
+  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
+  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
 function fmtTime(minutes: number | null) {
@@ -189,7 +199,7 @@ export default async function PrintGroupPage({
   searchParams,
 }: {
   params: Promise<{ groupId: string }>
-  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string }>
+  searchParams: Promise<{ entity?: string; content?: string; pdf_secret?: string; mode?: string }>
 }) {
   const { pdf_secret } = await searchParams
   const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
@@ -199,7 +209,8 @@ export default async function PrintGroupPage({
   }
 
   const { groupId } = await params
-  const { entity = "Group", content = "Course" } = await searchParams
+  const { entity = "Group", content = "Course", mode } = await searchParams
+  const isManual = mode === "manual"
   const t = makeT(entity as EntityTerm, content as ContentTerm)
 
   const [groupRes, coursesRes] = await Promise.all([
@@ -222,16 +233,21 @@ export default async function PrintGroupPage({
           db.from("questions").select("id, score").eq("exam_id", exam.id),
           db.from("exam_analyses").select("sections").eq("exam_id", exam.id).maybeSingle(),
         ])
-        const candidates = (candidatesRes.data ?? []) as any[]
+        const rawCandidates = (candidatesRes.data ?? []) as any[]
         const questions = (questionsRes.data ?? []) as any[]
         const sections = ((analysisRes.data?.sections ?? []) as any[]).sort((a: any, b: any) => a.order_index - b.order_index)
 
+        const cIds = rawCandidates.map((c: any) => c.id)
+        const manualMap = isManual ? await loadManualScoresForCandidates(cIds) : new Map()
+        const candidates = isManual
+          ? rawCandidates.map((c: any) => ({ ...c, ...applyManualOverride(c, manualMap, c.id, exam.passing_score ?? 60) }))
+          : rawCandidates
+
         let answers: any[] = []
-        const cIds = candidates.map((c: any) => c.id)
         const qIds = questions.map((q: any) => q.id)
         if (cIds.length > 0 && qIds.length > 0) {
-          const { data } = await db.from("candidate_answers").select("candidate_id, question_id, score_achieved").in("candidate_id", cIds).in("question_id", qIds)
-          answers = data ?? []
+          const { data } = await db.from("candidate_answers").select("id, candidate_id, question_id, score_achieved").in("candidate_id", cIds).in("question_id", qIds)
+          answers = isManual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
         }
 
         const sectionAvgs = sections.map((section: any) => {
@@ -294,7 +310,7 @@ export default async function PrintGroupPage({
 
   // Cached narrative
   const { data: cached } = await db.from("report_cache").select("narrative, generated_at")
-    .eq("type", "group").eq("reference_id", groupId)
+    .eq("type", isManual ? "group_manual" : "group").eq("reference_id", groupId)
     .order("generated_at", { ascending: false }).limit(1).maybeSingle()
   let narrative: any = null
   if (cached?.narrative) { try { narrative = JSON.parse(cached.narrative) } catch { narrative = null } }
@@ -352,7 +368,7 @@ export default async function PrintGroupPage({
                 { label: t("Courses"),   val: courseDataArr.length },
                 { label: "Exams",        val: totalExams },
                 { label: "Candidates",   val: totalCandidates },
-                { label: "Avg Score",    val: `${overallAvg.toFixed(1)}%` },
+                { label: "Avg Score",    val: isManual ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%` },
               ].map(({ label, val }, i, arr) => (
                 <div key={label} className="flex items-center gap-8">
                   <div className="text-center">
@@ -422,7 +438,7 @@ export default async function PrintGroupPage({
                           <td className="px-3 py-2.5 text-xs font-semibold text-slate-700">{course.name}</td>
                           <td className="px-3 py-2.5 text-xs text-slate-600">{examDataArr.length}</td>
                           <td className="px-3 py-2.5 text-xs text-slate-600">{courseTotalCandidates}</td>
-                          <td className="px-3 py-2.5"><span className="text-xs font-bold" style={{ color: col.text }}>{courseAvgScore.toFixed(1)}%</span></td>
+                          <td className="px-3 py-2.5"><span className="text-xs font-bold" style={{ color: col.text }}>{isManual ? letterGrade(courseAvgScore).letter : `${courseAvgScore.toFixed(1)}%`}</span></td>
                           <td className="px-3 py-2.5 text-xs text-slate-600">{coursePassRate.toFixed(0)}%</td>
                           <td className="px-3 py-2.5"><span className="text-xs font-semibold text-emerald-600">{coursePassCount}</span></td>
                           <td className="px-3 py-2.5"><span className="text-xs font-semibold text-red-500">{courseTotalCandidates - coursePassCount}</span></td>
@@ -466,7 +482,7 @@ export default async function PrintGroupPage({
             {/* Stats strip */}
             <div className="grid grid-cols-4 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden avoid-break">
               {[
-                { label: "Overall Average",   value: `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
+                { label: "Overall Average",   value: isManual ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
                 { label: "Overall Pass Rate", value: `${overallPassRate.toFixed(1)}%`, color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
                 { label: "Total Candidates",  value: `${totalCandidates}`,           color: "#64748b" },
                 { label: "Total Exams",       value: `${totalExams}`,                color: "#64748b" },
@@ -515,7 +531,7 @@ export default async function PrintGroupPage({
                               <td className="px-4 py-1.5 text-center"><span className={`text-xs font-bold ${idx < 3 ? "text-amber-500" : "text-slate-400"}`}>#{idx + 1}</span></td>
                               <td className="px-4 py-1.5 text-xs font-semibold text-slate-700">{c.name}</td>
                               <td className="px-4 py-1.5 text-xs text-slate-500">{c.examsTaken}</td>
-                              <td className="px-4 py-1.5"><span className="text-xs font-bold" style={{ color: col.text }}>{c.avgScore.toFixed(1)}%</span></td>
+                              <td className="px-4 py-1.5"><span className="text-xs font-bold" style={{ color: col.text }}>{isManual ? letterGrade(c.avgScore).letter : `${c.avgScore.toFixed(1)}%`}</span></td>
                               <td className="px-4 py-1.5 text-xs text-slate-500">{c.examsTaken > 0 ? Math.round((c.passCount / c.examsTaken) * 100) : 0}%</td>
                             </tr>
                           )
@@ -551,7 +567,7 @@ export default async function PrintGroupPage({
                           <td className="px-3 py-2 text-xs font-semibold text-slate-700">{c.full_name}</td>
                           <td className="px-3 py-2 text-[10px] text-slate-500 max-w-[100px]"><p className="truncate">{c.courseName}</p></td>
                           <td className="px-3 py-2 text-[10px] text-slate-500 max-w-[110px]"><p className="truncate">{c.examTitle}</p></td>
-                          <td className="px-3 py-2"><span className="text-xs font-bold" style={{ color: col.text }}>{(c.total_score ?? 0).toFixed(1)}%</span></td>
+                          <td className="px-3 py-2"><span className="text-xs font-bold" style={{ color: col.text }}>{isManual ? letterGrade(c.total_score ?? 0).letter : `${(c.total_score ?? 0).toFixed(1)}%`}</span></td>
                           <td className="px-3 py-2">
                             {c.passed
                               ? <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium"><CheckCircle2 className="h-3 w-3" /> Pass</span>
@@ -629,7 +645,7 @@ export default async function PrintGroupPage({
                     { label: "Passed",     val: coursePassCount,                        color: "bg-emerald-50 text-emerald-700" },
                     { label: "Failed",     val: courseTotalCandidates - coursePassCount, color: "bg-red-50 text-red-600" },
                     { label: "Pass Rate",  val: `${coursePassRate.toFixed(0)}%`,         color: "bg-blue-50 text-blue-700" },
-                    { label: "Average",    val: `${courseAvgScore.toFixed(1)}%`,         color: "bg-purple-50 text-purple-700" },
+                    { label: "Average",    val: isManual ? letterGrade(courseAvgScore).letter : `${courseAvgScore.toFixed(1)}%`, color: "bg-purple-50 text-purple-700" },
                   ].map(({ label, val, color }) => (
                     <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
                       <p className="text-xs font-bold">{val}</p>
@@ -659,11 +675,25 @@ export default async function PrintGroupPage({
                     )}
                     <div className={hasRadar ? "" : "w-full"}>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Section Performance</p>
-                      <div className="space-y-2">
-                        {aggregatedSectionAvgs.map((s: any) => (
-                          <ScoreBar key={s.title} label={s.title} score={s.avg} detail={`${s.avg.toFixed(1)}% avg`} />
-                        ))}
-                      </div>
+                      {isManual ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          {aggregatedSectionAvgs.map((s: any) => {
+                            const g = letterGrade(s.avg)
+                            return (
+                              <div key={s.title} className="rounded-lg p-2.5 text-center" style={{ background: g.bg, border: `1px solid ${g.border}` }}>
+                                <p className="text-lg font-extrabold" style={{ color: g.text }}>{g.letter}</p>
+                                <p className="text-[9px] text-slate-600 mt-0.5 leading-snug">{s.title}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {aggregatedSectionAvgs.map((s: any) => (
+                            <ScoreBar key={s.title} label={s.title} score={s.avg} detail={`${s.avg.toFixed(1)}% avg`} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

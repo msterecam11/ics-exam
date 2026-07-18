@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import ScoreBar from "@/components/reports/ScoreBar"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,15 @@ function scoreColor(pct: number) {
   if (pct >= 80) return { text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
   if (pct >= 60) return { text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
+}
+
+// Manual (client) report only — same bands as the individual manual report:
+// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
+function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
+  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
+  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
+  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
+  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
 function fmtTime(minutes: number | null) {
@@ -210,6 +219,8 @@ function AIPlaceholder({ onGenerate }: { onGenerate: () => void }) {
 export default function CourseReportViewPage() {
   const { courseId } = useParams<{ courseId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const mode: "original" | "manual" = searchParams.get("mode") === "manual" ? "manual" : "original"
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generatingAI, setGeneratingAI] = useState(false)
@@ -222,14 +233,23 @@ export default function CourseReportViewPage() {
   const t = makeT(entityTerm, contentTerm)
 
   useEffect(() => {
-    fetch(`/api/reports/course/${courseId}`)
+    setLoading(true)
+    fetch(`/api/reports/course/${courseId}${mode === "manual" ? "?mode=manual" : ""}`)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false) })
-  }, [courseId])
+  }, [courseId, mode])
+
+  function switchMode(next: "original" | "manual") {
+    router.replace(next === "manual" ? "?mode=manual" : "?")
+  }
 
   async function generateNarrative() {
     setGeneratingAI(true)
-    const res = await fetch(`/api/reports/course/${courseId}`, { method: "POST" })
+    const res = await fetch(`/api/reports/course/${courseId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    })
     setGeneratingAI(false)
     if (!res.ok) { toast.error("Failed to generate expert report"); return }
     const result = await res.json()
@@ -242,7 +262,7 @@ export default function CourseReportViewPage() {
     toast.info("Generating PDF… this takes a few seconds")
     try {
       const res = await fetch(
-        `/api/reports/course/${courseId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}`
+        `/api/reports/course/${courseId}/pdf?entity=${encodeURIComponent(entityTerm)}&content=${encodeURIComponent(contentTerm)}${mode === "manual" ? "&mode=manual" : ""}`
       )
       if (!res.ok) throw new Error(await res.text())
       const blob = await res.blob()
@@ -305,9 +325,25 @@ export default function CourseReportViewPage() {
 
       {/* ── Toolbar ── */}
       <div className="no-print sticky top-0 z-40 bg-white border-b shadow-sm px-6 py-3 flex items-center justify-between">
-        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" /> Back
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" /> Back
+          </Button>
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+            <button
+              onClick={() => switchMode("original")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "original" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Original
+            </button>
+            <button
+              onClick={() => switchMode("manual")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "manual" ? "bg-white shadow-sm text-purple-700" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Manual
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {!hasAI ? (
             <Button size="sm" onClick={generateNarrative} disabled={generatingAI}
@@ -368,7 +404,7 @@ export default function CourseReportViewPage() {
                 </div>
                 <div className="h-10 w-px bg-white/15" />
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-white">{overallAvg.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-white">{mode === "manual" ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`}</p>
                   <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Score</p>
                 </div>
                 <div className="h-10 w-px bg-white/15" />
@@ -439,7 +475,7 @@ export default function CourseReportViewPage() {
                             </td>
                             <td className="px-4 py-2.5 text-xs text-slate-600">{candidateCount}</td>
                             <td className="px-4 py-2.5">
-                              <span className="text-xs font-bold" style={{ color: col.text }}>{avgScore.toFixed(1)}%</span>
+                              <span className="text-xs font-bold" style={{ color: col.text }}>{mode === "manual" ? letterGrade(avgScore).letter : `${avgScore.toFixed(1)}%`}</span>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-slate-600">{passRate.toFixed(0)}%</td>
                             <td className="px-4 py-2.5">
@@ -480,7 +516,7 @@ export default function CourseReportViewPage() {
               {/* Stats strip */}
               <div className="grid grid-cols-3 divide-x divide-slate-200 border border-slate-200 rounded-xl overflow-hidden avoid-break">
                 {[
-                  { label: "Overall Average",  value: `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
+                  { label: "Overall Average",  value: mode === "manual" ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
                   { label: "Overall Pass Rate", value: `${overallPassRate.toFixed(1)}%`, color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
                   { label: "Total Candidates",  value: `${totalCandidates}`,           color: "#64748b" },
                 ].map(({ label, value, color }) => (
@@ -535,7 +571,7 @@ export default function CourseReportViewPage() {
                             </td>
                             <td className="px-4 py-2">
                               <span className="text-xs font-bold" style={{ color: col.text }}>
-                                {(c.total_score ?? 0).toFixed(1)}%
+                                {mode === "manual" ? letterGrade(c.total_score ?? 0).letter : `${(c.total_score ?? 0).toFixed(1)}%`}
                               </span>
                             </td>
                             <td className="px-4 py-2">
@@ -626,7 +662,7 @@ export default function CourseReportViewPage() {
                       { label: "Passed",     val: passCount,                       color: "bg-emerald-50 text-emerald-700" },
                       { label: "Failed",     val: candidateCount - passCount,      color: "bg-red-50 text-red-600" },
                       { label: "Pass Rate",  val: `${passRate.toFixed(0)}%`,       color: "bg-blue-50 text-blue-700" },
-                      { label: "Average",    val: `${avgScore.toFixed(1)}%`,       color: "bg-purple-50 text-purple-700" },
+                      { label: "Average",    val: mode === "manual" ? letterGrade(avgScore).letter : `${avgScore.toFixed(1)}%`, color: "bg-purple-50 text-purple-700" },
                     ].map(({ label, val, color }) => (
                       <div key={label} className={`px-3 py-1.5 rounded-lg text-center ${color}`}>
                         <p className="text-xs font-bold">{val}</p>
@@ -646,11 +682,25 @@ export default function CourseReportViewPage() {
                       )}
                       <div className={hasRadar ? "" : "w-full"}>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Section Performance</p>
+                        {mode === "manual" ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {sectionAvgs.map((s: any) => {
+                              const g = letterGrade(s.avg)
+                              return (
+                                <div key={s.title} className="rounded-lg p-2.5 text-center" style={{ background: g.bg, border: `1px solid ${g.border}` }}>
+                                  <p className="text-lg font-extrabold" style={{ color: g.text }}>{g.letter}</p>
+                                  <p className="text-[9px] text-slate-600 mt-0.5 leading-snug">{s.title}</p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
                         <div className="space-y-2">
                           {sectionAvgs.map((s: any) => (
                             <ScoreBar key={s.title} label={s.title} score={s.avg} detail={`${s.avg.toFixed(1)}% avg`} />
                           ))}
                         </div>
+                        )}
                       </div>
                     </div>
                   )}

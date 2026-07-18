@@ -5,11 +5,18 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
 import Groq from "groq-sdk"
 
 // ─── shared data fetcher ────────────────────────────────────────────────────
 
-async function fetchCourseData(courseId: string) {
+// manual: true substitutes each candidate's confirmed manual score/pass-fail
+// (and overrides their answers before section averaging) wherever one
+// exists — everyone is still counted, candidates without a manual score
+// just contribute their real numbers unchanged. Exported so the print page
+// can reuse this instead of re-deriving the aggregation a second time.
+export async function fetchCourseData(courseId: string, opts: { manual?: boolean } = {}) {
+  const manual = opts.manual ?? false
   const [courseRes, examsRes] = await Promise.all([
     db.from("courses").select("id, name, groups(name)").eq("id", courseId).single(),
     db.from("exams")
@@ -28,8 +35,13 @@ async function fetchCourseData(courseId: string) {
         .eq("exam_id", exam.id)
         .not("submitted_at", "is", null)
 
-      const candidates = (candidatesRes.data ?? []) as any[]
-      const candidateIds = candidates.map((c: any) => c.id)
+      const rawCandidates = (candidatesRes.data ?? []) as any[]
+      const candidateIds = rawCandidates.map((c: any) => c.id)
+
+      const manualMap = manual ? await loadManualScoresForCandidates(candidateIds) : new Map()
+      const candidates = manual
+        ? rawCandidates.map((c: any) => ({ ...c, ...applyManualOverride(c, manualMap, c.id, exam.passing_score ?? 60) }))
+        : rawCandidates
 
       let sectionAvgs: { title: string; avg: number }[] = []
 
@@ -55,9 +67,9 @@ async function fetchCourseData(courseId: string) {
         let answers: any[] = []
         if (candidateIds.length > 0 && qIds.length > 0) {
           const { data } = await db.from("candidate_answers")
-            .select("candidate_id, question_id, score_achieved")
+            .select("id, candidate_id, question_id, score_achieved")
             .in("candidate_id", candidateIds).in("question_id", qIds)
-          answers = data ?? []
+          answers = manual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
         }
 
         const topics = [...new Set(allDrawn.map((d: any) => (d.questions as any)?.topic ?? "General"))]
@@ -90,10 +102,10 @@ async function fetchCourseData(courseId: string) {
         if (candidateIds.length > 0 && questionIds.length > 0) {
           const { data } = await db
             .from("candidate_answers")
-            .select("candidate_id, question_id, score_achieved")
+            .select("id, candidate_id, question_id, score_achieved")
             .in("candidate_id", candidateIds)
             .in("question_id", questionIds)
-          answers = data ?? []
+          answers = manual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
         }
 
         // Per-section averages
@@ -166,16 +178,17 @@ async function fetchCourseData(courseId: string) {
 // ─── GET — return report data + cached narrative ─────────────────────────────
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ courseId: string }> }
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { courseId } = await params
+  const isManual = new URL(req.url).searchParams.get("mode") === "manual"
 
   const { course, examDataArr, allCandidatesRanked, allScores, totalCandidates, overallPassRate, overallAvg } =
-    await fetchCourseData(courseId)
+    await fetchCourseData(courseId, { manual: isManual })
 
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -183,7 +196,7 @@ export async function GET(
   const { data: cached } = await db
     .from("report_cache")
     .select("narrative, generated_at")
-    .eq("type", "course")
+    .eq("type", isManual ? "course_manual" : "course")
     .eq("reference_id", courseId)
     .order("generated_at", { ascending: false })
     .limit(1)
@@ -227,9 +240,11 @@ export async function POST(
   if (!allowed) return res429(retryAfterSeconds)
 
   const { courseId } = await params
+  const body = await req.json().catch(() => ({}))
+  const isManual = body?.mode === "manual"
 
   const { course, examDataArr, totalCandidates, overallPassRate, overallAvg } =
-    await fetchCourseData(courseId)
+    await fetchCourseData(courseId, { manual: isManual })
 
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -319,15 +334,16 @@ Return ONLY valid JSON (no markdown, no extra text) with this exact structure:
 
   // Cache — use the first real exam ID from this course to satisfy the FK constraint on exam_id.
   // DELETE existing entry first (avoids unique constraint conflicts), then INSERT fresh.
+  const cacheType = isManual ? "course_manual" : "course"
   const firstExamId = examDataArr[0]?.exam?.id as string | undefined
   if (firstExamId) {
     await db.from("report_cache")
       .delete()
-      .eq("type", "course")
+      .eq("type", cacheType)
       .eq("reference_id", courseId)
 
     await db.from("report_cache").insert({
-      type: "course",
+      type: cacheType,
       reference_id: courseId,
       exam_id: firstExamId,
       narrative: JSON.stringify(narrative),
