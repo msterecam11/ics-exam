@@ -20,7 +20,7 @@ import Groq from "groq-sdk"
 export async function fetchGroupData(groupId: string, opts: { manual?: boolean } = {}) {
   const manual = opts.manual ?? false
   const [groupRes, coursesRes] = await Promise.all([
-    db.from("groups").select("id, name").eq("id", groupId).single(),
+    db.from("groups").select("id, name, manual_report_logos").eq("id", groupId).single(),
     db.from("courses").select("id, name").eq("group_id", groupId).order("name"),
   ])
 

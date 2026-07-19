@@ -171,10 +171,20 @@ function Page({ children, dark = false, first = false }: { children: React.React
   )
 }
 
-function PageHeader({ today, light = false }: { today: string; light?: boolean }) {
+function PageHeader({ today, light = false, extraLogos = [] }: { today: string; light?: boolean; extraLogos?: string[] }) {
   return (
     <div className={`flex items-center justify-between px-12 pt-8 pb-5 border-b shrink-0 ${light ? "border-white/15" : "border-[#1B4F8A] border-b-2"}`}>
-      <Image src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"} alt="ICS Aviation" width={110} height={30} className="object-contain" />
+      <div className="flex items-center gap-4">
+        <Image src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"} alt="ICS Aviation" width={110} height={30} className="object-contain" />
+        {extraLogos.length > 0 && (
+          <div className="flex items-center gap-3 pl-4 border-l" style={{ borderColor: light ? "rgba(255,255,255,0.15)" : "#e2e8f0" }}>
+            {extraLogos.map((url) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={url} src={url} alt="Client logo" className="h-7 max-w-[90px] object-contain" />
+            ))}
+          </div>
+        )}
+      </div>
       <p className={`text-[10px] ${light ? "text-white/40" : "text-slate-400"}`}>{today}</p>
     </div>
   )
@@ -283,6 +293,8 @@ export default function GroupReportViewPage() {
   const hasAI = !!narrative
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const totalPages = 3 + courses.length + (hasAI ? 2 : 0)
+  // Client-branding logos, optional — only shown on the manual report.
+  const groupLogos: string[] = mode === "manual" ? (group?.manual_report_logos ?? []) : []
 
   // Average time spent across all submitted candidates in the group (each
   // already capped at its exam's limit by the report API's timeSpentMin).
@@ -360,9 +372,24 @@ export default function GroupReportViewPage() {
             <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full pointer-events-none opacity-10"
               style={{ background: "radial-gradient(circle, #93c5fd, transparent)", transform: "translate(-40%,40%)" }} />
 
-            <div className="flex items-center justify-between px-12 pt-10 shrink-0">
-              <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
-              <p className="text-white/40 text-xs">{today}</p>
+            <div className="grid grid-cols-3 items-center px-12 pt-10 shrink-0">
+              <div className="flex items-center">
+                <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
+              </div>
+              <div className="flex items-center justify-center">
+                {mode === "manual" && groupLogos[0] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={groupLogos[0]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+                )}
+              </div>
+              <div className="flex items-center justify-end">
+                {mode === "manual" && groupLogos[1] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={groupLogos[1]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+                ) : mode !== "manual" ? (
+                  <p className="text-white/40 text-xs">{today}</p>
+                ) : null}
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center px-12 text-center gap-8">
@@ -406,7 +433,7 @@ export default function GroupReportViewPage() {
 
           {/* ══ PAGE 2 — GROUP OVERVIEW ══ */}
           <Page>
-            <PageHeader today={today} />
+            <PageHeader today={today} extraLogos={groupLogos} />
             <div className="px-12 py-7 space-y-6">
               <div className="avoid-break">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">{t("Group Report")}</p>
@@ -519,7 +546,7 @@ export default function GroupReportViewPage() {
 
           {/* ══ PAGE 3 — RANKINGS ══ */}
           <Page>
-            <PageHeader today={today} />
+            <PageHeader today={today} extraLogos={groupLogos} />
             <div className="px-12 py-7 space-y-6">
               <div className="avoid-break">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">{t("Group Report")}</p>
@@ -643,7 +670,7 @@ export default function GroupReportViewPage() {
 
             return (
               <Page key={course.id}>
-                <PageHeader today={today} />
+                <PageHeader today={today} extraLogos={groupLogos} />
                 <div className="px-12 py-7 space-y-5">
 
                   <div className="border-b-2 border-slate-100 pb-4 avoid-break">
@@ -767,7 +794,7 @@ export default function GroupReportViewPage() {
           {/* ══ AI ANALYSIS PAGE ══ */}
           {hasAI && (
             <Page>
-              <PageHeader today={today} />
+              <PageHeader today={today} extraLogos={groupLogos} />
               <div className="px-12 py-7 space-y-5">
                 <div className="avoid-break">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">{t("Group Report")}</p>
@@ -864,7 +891,7 @@ export default function GroupReportViewPage() {
           {/* ══ RECOMMENDATIONS PAGE ══ */}
           {hasAI && (
             <Page>
-              <PageHeader today={today} />
+              <PageHeader today={today} extraLogos={groupLogos} />
               <div className="px-12 py-7 space-y-6">
                 <div className="avoid-break">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A]">{t("Group Report")}</p>

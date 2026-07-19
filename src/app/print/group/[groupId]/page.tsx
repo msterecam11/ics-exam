@@ -164,10 +164,20 @@ function Page({ children, dark = false, first = false }: { children: React.React
   )
 }
 
-function PageHeader({ today, light = false }: { today: string; light?: boolean }) {
+function PageHeader({ today, light = false, extraLogos = [] }: { today: string; light?: boolean; extraLogos?: string[] }) {
   return (
     <div className={`flex items-center justify-between px-12 pt-8 pb-5 border-b shrink-0 ${light ? "border-white/15" : "border-[#1B4F8A] border-b-2"}`}>
-      <Image src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"} alt="ICS Aviation" width={110} height={30} className="object-contain" />
+      <div className="flex items-center gap-4">
+        <Image src={light ? "/logo/logo-white.png" : "/logo/logo-dark-blue.png"} alt="ICS Aviation" width={110} height={30} className="object-contain" />
+        {extraLogos.length > 0 && (
+          <div className="flex items-center gap-3 pl-4 border-l" style={{ borderColor: light ? "rgba(255,255,255,0.15)" : "#e2e8f0" }}>
+            {extraLogos.map((url) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={url} src={url} alt="Client logo" className="h-7 max-w-[90px] object-contain" />
+            ))}
+          </div>
+        )}
+      </div>
       <p className={`text-[10px] ${light ? "text-white/40" : "text-slate-400"}`}>{today}</p>
     </div>
   )
@@ -214,11 +224,13 @@ export default async function PrintGroupPage({
   const t = makeT(entity as EntityTerm, content as ContentTerm)
 
   const [groupRes, coursesRes] = await Promise.all([
-    db.from("groups").select("id, name").eq("id", groupId).single(),
+    db.from("groups").select("id, name, manual_report_logos").eq("id", groupId).single(),
     db.from("courses").select("id, name").eq("group_id", groupId).order("name"),
   ])
   if (!groupRes.data) notFound()
   const group = groupRes.data as any
+  // Client-branding logos, optional — only shown on the manual report.
+  const groupLogos: string[] = isManual ? (group?.manual_report_logos ?? []) : []
   const courses = (coursesRes.data ?? []) as any[]
 
   // Per-course full data fetch
@@ -347,9 +359,24 @@ export default async function PrintGroupPage({
           <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full pointer-events-none opacity-10"
             style={{ background: "radial-gradient(circle, #93c5fd, transparent)", transform: "translate(-40%,40%)" }} />
 
-          <div className="flex items-center justify-between px-12 pt-10 shrink-0">
-            <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
-            <p className="text-white/40 text-xs">{today}</p>
+          <div className="grid grid-cols-3 items-center px-12 pt-10 shrink-0">
+            <div className="flex items-center">
+              <Image src="/logo/logo-white.png" alt="ICS Aviation" width={130} height={36} className="object-contain" />
+            </div>
+            <div className="flex items-center justify-center">
+              {isManual && groupLogos[0] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={groupLogos[0]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+              )}
+            </div>
+            <div className="flex items-center justify-end">
+              {isManual && groupLogos[1] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={groupLogos[1]} alt="Client logo" className="h-8 max-w-[100px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+              ) : !isManual ? (
+                <p className="text-white/40 text-xs">{today}</p>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex-1 flex flex-col items-center justify-center px-12 text-center gap-8">
@@ -392,7 +419,7 @@ export default async function PrintGroupPage({
 
         {/* ══ PAGE 2 — GROUP OVERVIEW ══ */}
         <Page>
-          <PageHeader today={today} />
+          <PageHeader today={today} extraLogos={groupLogos} />
           <div className="px-12 py-7 space-y-6">
             <PageTitle label={t("Group Report")} title={group.name} sub={t("Group Overview")} />
 
@@ -499,7 +526,7 @@ export default async function PrintGroupPage({
 
         {/* ══ PAGE 3 — RANKINGS ══ */}
         <Page>
-          <PageHeader today={today} />
+          <PageHeader today={today} extraLogos={groupLogos} />
           <div className="px-12 py-7 space-y-6">
             <PageTitle label={t("Group Report")} title="Rankings" sub={`${group.name} · ${t("All courses combined")}`} />
 
@@ -616,7 +643,7 @@ export default async function PrintGroupPage({
           const courseAI = narrative?.course_analyses?.[course.name] ?? null
           return (
             <Page key={course.id}>
-              <PageHeader today={today} />
+              <PageHeader today={today} extraLogos={groupLogos} />
               <div className="px-12 py-7 space-y-5">
 
                 {/* Title in body */}
@@ -741,7 +768,7 @@ export default async function PrintGroupPage({
         {/* ══ EXPERT ANALYSIS PAGE ══ */}
         {hasAI && (
           <Page>
-            <PageHeader today={today} />
+            <PageHeader today={today} extraLogos={groupLogos} />
             <div className="px-12 py-7 space-y-5">
               <PageTitle label={t("Group Report")} title={t("Expert Group Analysis")} sub={`${group.name} · Strengths, weaknesses, readiness & key candidates`} />
 
@@ -838,7 +865,7 @@ export default async function PrintGroupPage({
         {/* ══ RECOMMENDATIONS PAGE ══ */}
         {hasAI && (
           <Page>
-            <PageHeader today={today} />
+            <PageHeader today={today} extraLogos={groupLogos} />
             <div className="px-12 py-7 space-y-6">
               <PageTitle label={t("Group Report")} title="Recommendations" sub={`${group.name} · ${t("Future training & priority topics")}`} />
 

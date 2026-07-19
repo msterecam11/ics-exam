@@ -18,7 +18,7 @@ import Groq from "groq-sdk"
 export async function fetchCourseData(courseId: string, opts: { manual?: boolean } = {}) {
   const manual = opts.manual ?? false
   const [courseRes, examsRes] = await Promise.all([
-    db.from("courses").select("id, name, groups(name)").eq("id", courseId).single(),
+    db.from("courses").select("id, name, groups(name, manual_report_logos)").eq("id", courseId).single(),
     db.from("exams")
       .select("id, title, passing_score, duration_minutes, created_at")
       .eq("course_id", courseId)
