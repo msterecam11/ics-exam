@@ -108,9 +108,9 @@ function ExamSection({ items }: { items: ExamItem[] }) {
                 <div className="flex items-center gap-3">
                   {/* Permission badges */}
                   <div className="hidden sm:flex gap-1">
-                    {(["scores", "results", "reports"] as const).map(k => p[k] && (
+                    {(["scores", "results", "reports", "manual_reports"] as const).map(k => p[k] && (
                       <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-[#1B4F8A]/10 text-[#1B4F8A] px-2 py-0.5 rounded-full">
-                        {k === "reports" ? "Results" : k}
+                        {k === "reports" ? "Results" : k === "manual_reports" ? "Manual Reports" : k}
                       </span>
                     ))}
                   </div>
@@ -128,21 +128,23 @@ function ExamSection({ items }: { items: ExamItem[] }) {
                     <div className={cn(
                       "grid px-5 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60 border-b border-slate-100",
                       p.scores
-                        ? "grid-cols-[1fr_auto_auto_auto_auto_auto]"
-                        : "grid-cols-[1fr_auto_auto_auto]"
+                        ? "grid-cols-[1fr_auto_auto_auto_auto_auto_auto_auto]"
+                        : "grid-cols-[1fr_auto_auto_auto_auto_auto]"
                     )}>
                       <span>Candidate</span>
                       {p.scores && <><span className="px-4 text-center">Score</span><span className="px-3 text-center">Result</span></>}
                       <span className="px-4 text-center">Submitted</span>
                       <span className="px-3 text-center">Results</span>
                       <span className="px-3 text-center">Report</span>
+                      <span className="px-3 text-center">Manual Results</span>
+                      <span className="px-3 text-center">Manual Report</span>
                     </div>
                     {item.candidates.map(c => (
                       <div key={c.id} className={cn(
                         "grid items-center px-5 py-3 border-b last:border-0 border-slate-50",
                         p.scores
-                          ? "grid-cols-[1fr_auto_auto_auto_auto_auto]"
-                          : "grid-cols-[1fr_auto_auto_auto]"
+                          ? "grid-cols-[1fr_auto_auto_auto_auto_auto_auto_auto]"
+                          : "grid-cols-[1fr_auto_auto_auto_auto_auto]"
                       )}>
                         {/* Name */}
                         <div>
@@ -187,6 +189,24 @@ function ExamSection({ items }: { items: ExamItem[] }) {
                             <a href={`/viewer/report/candidate/${c.id}`} target="_blank" rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs font-medium text-[#1B4F8A] hover:bg-[#1B4F8A]/10 px-2 py-1 rounded-lg transition-colors">
                               <Eye className="h-3.5 w-3.5" />Report
+                            </a>
+                          )}
+                        </div>
+                        {/* Manual Results — answer breakdown with manual overrides */}
+                        <div className="flex items-center justify-center px-3">
+                          {p.manual_reports && (
+                            <a href={`/viewer/results/candidate/${c.id}?mode=manual`} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-purple-700 hover:bg-purple-50 px-2 py-1 rounded-lg transition-colors">
+                              <Eye className="h-3.5 w-3.5" />Manual
+                            </a>
+                          )}
+                        </div>
+                        {/* Manual Report — full manual (client) report */}
+                        <div className="flex items-center justify-center px-3">
+                          {p.manual_reports && (
+                            <a href={`/viewer/report/candidate/${c.id}?mode=manual`} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-purple-700 hover:bg-purple-50 px-2 py-1 rounded-lg transition-colors">
+                              <Eye className="h-3.5 w-3.5" />Manual
                             </a>
                           )}
                         </div>
