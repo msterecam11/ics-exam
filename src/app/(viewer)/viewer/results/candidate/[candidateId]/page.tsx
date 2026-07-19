@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Loader2, AlertCircle, ArrowLeft, ShieldAlert, ShieldCheck, Monitor, MousePointerClick, Copy } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -80,6 +80,8 @@ function SecurityTab({ candidate }: { candidate: any }) {
 export default function ViewerCandidateReportPage() {
   const { candidateId } = useParams<{ candidateId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const mode: "original" | "manual" = searchParams.get("mode") === "manual" ? "manual" : "original"
 
   const [data,    setData]    = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -87,12 +89,19 @@ export default function ViewerCandidateReportPage() {
   const [tab,     setTab]     = useState<"answers" | "security">("answers")
 
   useEffect(() => {
-    fetch(`/api/viewer/exam-result/${candidateId}`)
+    setLoading(true)
+    setError(null)
+    const url = mode === "manual" ? `/api/viewer/manual-results/${candidateId}` : `/api/viewer/exam-result/${candidateId}`
+    fetch(url)
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d) })
       .catch(() => setError("Failed to load report"))
       .finally(() => setLoading(false))
-  }, [candidateId])
+  }, [candidateId, mode])
+
+  function switchMode(next: "original" | "manual") {
+    router.replace(next === "manual" ? "?mode=manual" : "?")
+  }
 
   const candidate = data?.candidate
   const exam      = candidate?.exams as any
@@ -101,20 +110,36 @@ export default function ViewerCandidateReportPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Back bar */}
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 shadow-sm">
-        <button
-          onClick={() => router.push("/viewer")}
-          className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-[#1B4F8A] transition-colors">
-          <ArrowLeft className="h-4 w-4" />Back to Dashboard
-        </button>
-        {candidate && (
-          <>
-            <span className="text-slate-300">·</span>
-            <span className="text-sm font-medium text-slate-700">{candidate.full_name}</span>
-            <span className="text-slate-300">·</span>
-            <span className="text-sm text-slate-400">{exam?.title}</span>
-          </>
-        )}
+      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/viewer")}
+            className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-[#1B4F8A] transition-colors">
+            <ArrowLeft className="h-4 w-4" />Back to Dashboard
+          </button>
+          {candidate && (
+            <>
+              <span className="text-slate-300">·</span>
+              <span className="text-sm font-medium text-slate-700">{candidate.full_name}</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-sm text-slate-400">{exam?.title}</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          <button
+            onClick={() => switchMode("original")}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "original" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Original
+          </button>
+          <button
+            onClick={() => switchMode("manual")}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "manual" ? "bg-white shadow-sm text-purple-700" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Manual
+          </button>
+        </div>
       </div>
 
       {loading ? (

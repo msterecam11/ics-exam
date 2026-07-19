@@ -64,6 +64,7 @@ const EXAM_PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "scores",  label: "Scores",            desc: "Total score and pass/fail result" },
   { key: "results", label: "Candidate Results", desc: "Full answer breakdown per candidate" },
   { key: "reports", label: "Results",            desc: "Full candidate result view with answers and scores" },
+  { key: "manual_reports", label: "Manual Reports", desc: "Manual (client) score results and report, when set" },
 ]
 const INTERVIEW_PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "progress", label: "Progress",  desc: "Scoring status per assessor" },

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import ScoreBar from "@/components/reports/ScoreBar"
 import {
@@ -86,17 +86,26 @@ function PageFooter({ page, total, light = false }: { page: number; total: numbe
 export default function ViewerCandidateReportPage() {
   const { candidateId } = useParams<{ candidateId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const mode: "original" | "manual" = searchParams.get("mode") === "manual" ? "manual" : "original"
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/viewer/exam-report/${candidateId}`)
+    setLoading(true)
+    setError(null)
+    const url = mode === "manual" ? `/api/viewer/manual-report/${candidateId}` : `/api/viewer/exam-report/${candidateId}`
+    fetch(url)
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d) })
       .catch(() => setError("Failed to load report"))
       .finally(() => setLoading(false))
-  }, [candidateId])
+  }, [candidateId, mode])
+
+  function switchMode(next: "original" | "manual") {
+    router.replace(next === "manual" ? "?mode=manual" : "?")
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-slate-100">
@@ -180,6 +189,20 @@ export default function ViewerCandidateReportPage() {
           className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-[#1B4F8A] transition-colors">
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </button>
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          <button
+            onClick={() => switchMode("original")}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "original" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Original
+          </button>
+          <button
+            onClick={() => switchMode("manual")}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === "manual" ? "bg-white shadow-sm text-purple-700" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Manual
+          </button>
+        </div>
       </div>
 
       {/* Report */}

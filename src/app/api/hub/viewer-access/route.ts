@@ -6,7 +6,7 @@ import { z } from "zod"
 function isAdmin(role?: string) { return role === "admin" }
 function isViewer(role?: string) { return role === "viewer" }
 
-const EXAM_PERMISSIONS      = ["scores", "results", "reports"] as const
+const EXAM_PERMISSIONS      = ["scores", "results", "reports", "manual_reports"] as const
 const INTERVIEW_PERMISSIONS = ["progress", "scores", "verdicts", "reports"] as const
 const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates", "reports", "last_login"] as const
 
