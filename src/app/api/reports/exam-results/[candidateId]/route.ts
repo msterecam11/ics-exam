@@ -19,6 +19,7 @@ export async function GET(
   if (!allowed) return res429(retryAfterSeconds)
 
   const { candidateId } = await params
+  const mode = new URL(req.url).searchParams.get("mode") === "manual" ? "manual" : ""
 
   const { data: candidate } = await db
     .from("candidates")
@@ -30,7 +31,7 @@ export async function GET(
 
   const port   = process.env.PORT ?? "3000"
   const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/exam-results/${candidateId}?pdf_secret=${secret}`
+  const printUrl = `http://localhost:${port}/print/exam-results/${candidateId}?pdf_secret=${secret}${mode === "manual" ? "&mode=manual" : ""}`
 
   const browser = await getBrowser()
 

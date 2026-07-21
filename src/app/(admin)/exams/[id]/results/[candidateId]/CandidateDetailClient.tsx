@@ -149,7 +149,7 @@ export default function CandidateDetailClient({ candidate: realCandidate, answer
     setDownloadingPDF(true)
     toast.info("Generating PDF — this may take a few seconds…")
     try {
-      const res = await fetch(`/api/reports/exam-results/${candidateId}`)
+      const res = await fetch(`/api/reports/exam-results/${candidateId}${mode === "manual" ? "?mode=manual" : ""}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         toast.error(err.error ?? "PDF generation failed. Please try again.")
@@ -229,17 +229,15 @@ export default function CandidateDetailClient({ candidate: realCandidate, answer
                 {displayPassed ? "Passed" : "Failed"} · Passing: {exam?.passing_score}%
               </Badge>
               <div className="flex gap-2">
-                {mode === "original" && (
-                  <Button
-                    size="sm" variant="outline" className="gap-2"
-                    onClick={downloadPDF} disabled={downloadingPDF}
-                  >
-                    {downloadingPDF
-                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
-                      : <><Download className="h-4 w-4" /> Download Results</>
-                    }
-                  </Button>
-                )}
+                <Button
+                  size="sm" variant="outline" className="gap-2"
+                  onClick={downloadPDF} disabled={downloadingPDF}
+                >
+                  {downloadingPDF
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+                    : <><Download className="h-4 w-4" /> Download Results</>
+                  }
+                </Button>
                 <Link href={`/reports/candidate/${candidateId}${mode === "manual" ? "?mode=manual" : ""}`} target="_blank">
                   <Button size="sm" className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
                     <FileText className="h-4 w-4" /> View Results

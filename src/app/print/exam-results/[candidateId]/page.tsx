@@ -3,10 +3,11 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Image from "next/image"
 import { CheckCircle2, XCircle, MinusCircle } from "lucide-react"
+import { scaleToTarget } from "@/lib/scoreDisplay"
 
 interface Props {
   params: Promise<{ candidateId: string }>
-  searchParams: Promise<{ pdf_secret?: string }>
+  searchParams: Promise<{ pdf_secret?: string; mode?: string }>
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ function PageFooter({ page, total }: { page: number; total: number }) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default async function PrintExamResultsPage({ params, searchParams }: Props) {
-  const { pdf_secret } = await searchParams
+  const { pdf_secret, mode } = await searchParams
   const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
@@ -116,6 +117,7 @@ export default async function PrintExamResultsPage({ params, searchParams }: Pro
   }
 
   const { candidateId } = await params
+  const isManual = mode === "manual"
 
   const { data: candidate } = await db
     .from("candidates")
@@ -125,25 +127,55 @@ export default async function PrintExamResultsPage({ params, searchParams }: Pro
 
   if (!candidate) notFound()
 
-  const { data: answers } = await db
+  const { data: manualScore } = isManual
+    ? await db
+        .from("manual_scores")
+        .select("*")
+        .eq("candidate_id", candidateId)
+        .in("status", ["draft", "confirmed"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null }
+  const useManual = isManual && !!manualScore
+
+  const { data: rawAnswers } = await db
     .from("candidate_answers")
     .select("*, questions(*, choices(*), matching_pairs(*), ordering_items(*))")
     .eq("candidate_id", candidateId)
 
-  const sorted = (answers ?? []).sort(
-    (a, b) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0)
-  )
+  const { data: overrides } = useManual
+    ? await db.from("manual_score_answer_overrides").select("candidate_answer_id, manual_score_achieved").eq("manual_score_id", manualScore!.id)
+    : { data: null }
+  const overrideMap = new Map((overrides ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+
+  const sorted = (rawAnswers ?? [])
+    .map((a: any) => {
+      if (!useManual) return a
+      const override = overrideMap.get(a.id)
+      return override === undefined ? a : { ...a, score_achieved: override }
+    })
+    .sort((a, b) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0))
 
   const exam        = (candidate as any).exams
-  const score       = (candidate as any).total_score ?? 0
-  const passed      = (candidate as any).passed ?? false
+  const score       = useManual ? manualScore!.achieved_score : ((candidate as any).total_score ?? 0)
+  const passed      = useManual ? score >= (exam?.passing_score ?? 60) : ((candidate as any).passed ?? false)
   const today       = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const submittedAt = (candidate as any).submitted_at
     ? new Date((candidate as any).submitted_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
     : "—"
 
-  const totalPossible = sorted.reduce((s, a) => s + (a.questions?.score ?? 0), 0)
-  const totalEarned   = sorted.reduce((s, a) => s + (a.score_achieved ?? 0), 0)
+  // Question Bank exams draw a random subset per candidate, so raw question
+  // weights don't sum to 100 for any given draw — scale for display only,
+  // same as every other candidate-facing/report page. Grading untouched.
+  const rawPossible   = sorted.map((a) => a.questions?.score ?? 0)
+  const displayPossible = scaleToTarget(rawPossible)
+  const totalPossible = displayPossible.reduce((s, v) => s + v, 0)
+  const totalEarned   = sorted.reduce((s, a, i) => {
+    const raw = rawPossible[i]
+    const ratio = raw > 0 ? displayPossible[i] / raw : 0
+    return s + Math.round((a.score_achieved ?? 0) * ratio * 100) / 100
+  }, 0)
   const correctCount  = sorted.filter(a => (a.score_achieved ?? 0) >= (a.questions?.score ?? 0) && (a.questions?.score ?? 0) > 0).length
 
   // 1 cover + answer pages (roughly 6 questions per page)
@@ -300,6 +332,10 @@ export default async function PrintExamResultsPage({ params, searchParams }: Pro
                   const partial    = sc > 0 && !full
                   const scColor    = full ? "#059669" : partial ? "#D97706" : "#DC2626"
                   const summary    = answerSummary(answer)
+                  const rawMax     = rawPossible[idx]
+                  const dispMax    = displayPossible[idx]
+                  const dispRatio  = rawMax > 0 ? dispMax / rawMax : 0
+                  const dispScore  = Math.round(sc * dispRatio * 100) / 100
 
                   return (
                     <div key={answer.id} className="avoid-break rounded-xl border border-slate-100 overflow-hidden">
@@ -312,7 +348,7 @@ export default async function PrintExamResultsPage({ params, searchParams }: Pro
                           <span className="text-[10px] text-slate-400">Q{idx + 1}</span>
                         </div>
                         <span className="text-xs font-bold" style={{ color: scColor }}>
-                          {fmtPts(sc)} / {fmtPts(maxSc)} pts
+                          {fmtPts(dispScore)} / {fmtPts(dispMax)} pts
                         </span>
                       </div>
 
