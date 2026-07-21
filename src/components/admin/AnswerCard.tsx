@@ -25,9 +25,14 @@ function renderAnswer(answer: any) {
 
   if (q.type === "mcq_single") {
     const choice = q.choices?.find((c: any) => c.id === answer.answer_json?.choice_id)
+    // mcq_single is strictly binary (full marks or zero) — a manual score
+    // override can flip score_achieved without touching the stored choice,
+    // so the icon must follow the (possibly overridden) score, not
+    // choice.is_correct, or the two would visibly contradict each other.
+    const markedCorrect = (answer.score_achieved ?? 0) >= (q.score ?? 0) - 0.005
     return choice ? (
       <div className="flex items-center gap-2">
-        {choice.is_correct ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" /> : <XCircle className="h-4 w-4 text-red-500 shrink-0" />}
+        {markedCorrect ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" /> : <XCircle className="h-4 w-4 text-red-500 shrink-0" />}
         <span className="text-sm">{choice.text}</span>
       </div>
     ) : <em className="text-sm text-muted-foreground">No answer</em>
