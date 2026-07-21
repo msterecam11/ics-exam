@@ -10,6 +10,7 @@ import {
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { scaleToTarget } from "@/lib/scoreDisplay"
 import { formatTimeSpent } from "@/lib/utils"
+import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -214,7 +215,16 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
     ? { sections: buildTopicSections(answers), generated_at: null }
     : (analysisRes.data ?? null)
 
+  // Rank/class average blend in every cohort member's confirmed manual
+  // score where one exists (manual mode only) — otherwise "Your Score"
+  // (manual) and "Class Average" (real) would visibly disagree, e.g. a
+  // 1-candidate cohort where the average wouldn't equal the candidate's
+  // own displayed score.
+  const cohortManualMap = useManual
+    ? await loadManualScoresForCandidates(((allCandidatesRes.data ?? []) as any[]).map((c: any) => c.id))
+    : new Map()
   const allCandidates = ((allCandidatesRes.data ?? []) as any[])
+    .map((c: any) => ({ ...c, total_score: cohortManualMap.get(c.id)?.achievedScore ?? c.total_score }))
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
   const rank = allCandidates.findIndex((c: any) => c.id === candidateId) + 1
   const totalCandidates = allCandidates.length

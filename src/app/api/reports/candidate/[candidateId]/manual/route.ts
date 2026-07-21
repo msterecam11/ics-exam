@@ -9,6 +9,7 @@ import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { scaleToTarget } from "@/lib/scoreDisplay"
 import { generateCandidateNarrative, buildTopicSections, type SectionDatum } from "@/app/api/reports/candidate/[candidateId]/route"
+import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
 
 async function loadActiveManualScore(candidateId: string) {
   return db
@@ -66,17 +67,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
     db.from("manual_score_answer_overrides")
       .select("candidate_answer_id, manual_score_achieved")
       .eq("manual_score_id", manualScore.id),
-    // Rank/class average are cohort-relative stats computed the same way as
-    // the real report — based on every candidate's real submitted score,
-    // since the manual score is this one candidate's own substitution, not a
-    // cohort-wide concept.
     db.from("candidates")
       .select("id, total_score")
       .eq("exam_id", examId)
       .not("submitted_at", "is", null),
   ])
 
+  // Rank/class average are cohort-relative stats — every cohort member who
+  // also has a confirmed manual score contributes THAT number instead of
+  // their real one, same blended approach as the Group/Course manual
+  // reports. Otherwise "Your Score" (manual) and "Class Average" (real)
+  // would sit on different bases and visibly disagree, e.g. a 1-candidate
+  // cohort where the average wouldn't equal the candidate's own score.
+  const cohortIds = (allCandidatesRes.data ?? []).map((c: any) => c.id)
+  const cohortManualMap = await loadManualScoresForCandidates(cohortIds)
   const allCandidates = (allCandidatesRes.data ?? [])
+    .map((c: any) => ({ ...c, total_score: cohortManualMap.get(c.id)?.achievedScore ?? c.total_score }))
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
   const rank = allCandidates.findIndex((c: any) => c.id === candidateId) + 1
   const classAvg = allCandidates.length > 0

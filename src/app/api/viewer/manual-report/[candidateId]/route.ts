@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { scaleToTarget } from "@/lib/scoreDisplay"
 import { buildTopicSections } from "@/app/api/reports/candidate/[candidateId]/route"
+import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
 
 type Params = { params: Promise<{ candidateId: string }> }
 
@@ -95,7 +96,15 @@ export async function GET(_: Request, { params }: Params) {
       .not("submitted_at", "is", null),
   ])
 
+  // Rank/class average blend in every cohort member's confirmed manual
+  // score where one exists, same as the admin manual report — otherwise
+  // "Your Score" (manual) and "Class Average" (real) would visibly
+  // disagree, e.g. a 1-candidate cohort where the average wouldn't equal
+  // the candidate's own displayed score.
+  const cohortIds = (allCandidatesRes.data ?? []).map((c: any) => c.id)
+  const cohortManualMap = await loadManualScoresForCandidates(cohortIds)
   const allCandidates = (allCandidatesRes.data ?? [])
+    .map((c: any) => ({ ...c, total_score: cohortManualMap.get(c.id)?.achievedScore ?? c.total_score }))
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
   const rank = allCandidates.findIndex((c: any) => c.id === candidateId) + 1
   const classAvg = allCandidates.length > 0
