@@ -108,6 +108,18 @@ export default function AnswerCard({ answer, index, onScoreUpdate, readOnly = fa
   const [editVal, setEditVal] = useState("")
   const [saving, setSaving] = useState(false)
 
+  // Question Bank exams draw a random subset per candidate, so raw question
+  // weights don't sum to 100 for any given draw — display_possible/
+  // display_achieved (computed server-side, same scaleToTarget used
+  // everywhere else) show scaled points instead. Deriving the displayed
+  // achieved value from the live `score` state (not the server's static
+  // display_achieved) keeps it in sync immediately after an edit, rather
+  // than only after the next full reload. Editing itself always operates
+  // on the real maxScore/score_achieved — never the scaled display values.
+  const displayMax = answer.display_possible ?? maxScore
+  const displayRatio = maxScore > 0 ? displayMax / maxScore : 0
+  const displayScore = Math.round(score * displayRatio * 100) / 100
+
   const scoreColor = score >= maxScore ? "text-emerald-600" : score > 0 ? "text-amber-500" : "text-red-500"
 
   function startEdit() {
@@ -178,7 +190,7 @@ export default function AnswerCard({ answer, index, onScoreUpdate, readOnly = fa
             ) : (
               <div className="flex items-center gap-1.5">
                 <p className={`text-base font-bold ${scoreColor}`}>
-                  {fmtPts(score)} <span className="text-xs font-normal text-muted-foreground">/ {fmtPts(maxScore)}</span>
+                  {fmtPts(displayScore)} <span className="text-xs font-normal text-muted-foreground">/ {fmtPts(displayMax)}</span>
                 </p>
                 {!readOnly && (
                   <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={startEdit} title="Override score">
