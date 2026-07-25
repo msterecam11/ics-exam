@@ -8,6 +8,7 @@ export interface ManualOverrideEntry {
   manualScoreId: string
   achievedScore: number
   overrides: Map<string, number> // candidate_answer_id -> manual_score_achieved
+  maxOverrides: Map<string, number> // candidate_answer_id -> manual_max_score (Force Exact only)
 }
 
 // Batch-loads every candidate's manual score in one pair of queries, keyed
@@ -43,13 +44,18 @@ export async function loadManualScoresForCandidates(
   const manualScoreIds = [...activeByCandidate.values()].map((v) => v.id)
   const { data: overrideRows } = await db
     .from("manual_score_answer_overrides")
-    .select("manual_score_id, candidate_answer_id, manual_score_achieved")
+    .select("manual_score_id, candidate_answer_id, manual_score_achieved, manual_max_score")
     .in("manual_score_id", manualScoreIds)
 
   const overridesByManualScoreId = new Map<string, Map<string, number>>()
+  const maxOverridesByManualScoreId = new Map<string, Map<string, number>>()
   for (const o of overrideRows ?? []) {
     if (!overridesByManualScoreId.has(o.manual_score_id)) overridesByManualScoreId.set(o.manual_score_id, new Map())
     overridesByManualScoreId.get(o.manual_score_id)!.set(o.candidate_answer_id, o.manual_score_achieved)
+    if (o.manual_max_score != null) {
+      if (!maxOverridesByManualScoreId.has(o.manual_score_id)) maxOverridesByManualScoreId.set(o.manual_score_id, new Map())
+      maxOverridesByManualScoreId.get(o.manual_score_id)!.set(o.candidate_answer_id, o.manual_max_score)
+    }
   }
 
   for (const [candidateId, { id, achieved_score }] of activeByCandidate) {
@@ -57,6 +63,7 @@ export async function loadManualScoresForCandidates(
       manualScoreId: id,
       achievedScore: achieved_score,
       overrides: overridesByManualScoreId.get(id) ?? new Map(),
+      maxOverrides: maxOverridesByManualScoreId.get(id) ?? new Map(),
     })
   }
   return result
@@ -77,7 +84,12 @@ export function applyManualOverride(
 
 // Overlays a candidate's manual answer overrides (if any) onto their
 // candidate_answers rows — untouched answers fall back to the real value.
-export function overlayAnswerOverrides<T extends { id: string; candidate_id: string; score_achieved: number }>(
+// Also overlays a Force-Exact-adjusted question weight onto the nested
+// `questions.score` (when present) so downstream max/possible calculations
+// (section averages, display scaling, etc.) see the adjusted denominator
+// too — a question whose weight was redistributed must show e.g. "9/9",
+// not "9/10".
+export function overlayAnswerOverrides<T extends { id: string; candidate_id: string; score_achieved: number; questions?: any }>(
   answers: T[],
   manualMap: Map<string, ManualOverrideEntry>
 ): T[] {
@@ -85,6 +97,12 @@ export function overlayAnswerOverrides<T extends { id: string; candidate_id: str
     const manual = manualMap.get(a.candidate_id)
     if (!manual) return a
     const override = manual.overrides.get(a.id)
-    return override === undefined ? a : { ...a, score_achieved: override }
+    const maxOverride = manual.maxOverrides.get(a.id)
+    if (override === undefined && maxOverride === undefined) return a
+    return {
+      ...a,
+      ...(override !== undefined ? { score_achieved: override } : {}),
+      ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+    }
   })
 }

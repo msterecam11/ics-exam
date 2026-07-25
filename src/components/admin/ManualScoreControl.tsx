@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sliders, ChevronDown, Loader2, Send, FileText, Eye, Pencil, Trash2 } from "lucide-react"
+import { Sliders, ChevronDown, Loader2, Send, FileText, Eye, Pencil, Trash2, Target } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { formatScore } from "@/lib/utils"
@@ -31,6 +31,7 @@ export interface ManualScoreRow {
   achieved_score: number
   is_exact_match: boolean
   is_identical_to_original: boolean
+  force_exact_applied?: boolean
   status: "draft" | "confirmed" | "superseded" | "deleted"
 }
 
@@ -46,6 +47,8 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
   const [target, setTarget] = useState("")
   const [preview, setPreview] = useState<ManualScoreRow | null>(null)
   const [previewing, setPreviewing] = useState(false)
+  const [forcing, setForcing] = useState(false)
+  const [forceExactInfeasible, setForceExactInfeasible] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [releasing, setReleasing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -56,6 +59,7 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
   function openDialog() {
     setTarget(active ? String(active.target_score) : "")
     setPreview(active && active.status === "draft" ? active : null)
+    setForceExactInfeasible(false)
     setOpen(true)
   }
 
@@ -65,6 +69,7 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
       toast.error("Enter a score between 0 and 100")
       return
     }
+    setForceExactInfeasible(false)
     setPreviewing(true)
     const res = await fetch(`/api/candidates/${candidateId}/manual-score`, {
       method: "POST",
@@ -79,6 +84,34 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
     }
     const data = await res.json()
     setPreview(data.manualScore)
+    onChange(candidateId, data.manualScore)
+  }
+
+  // Only ever meaningfully changes anything for an all-MCQ-Single paper
+  // where the plain Preview couldn't land on the target exactly — it
+  // redistributes question weights (never partial credit) to close the
+  // gap, spread as thin as possible across every available question,
+  // capped at a 25% per-question change. If even that can't fit, the
+  // preview simply stays on "Closest achievable" and this button reports
+  // it via forceExactInfeasible rather than erroring.
+  async function forceExact() {
+    const num = Number(target)
+    if (!Number.isFinite(num) || num < 0 || num > 100) return
+    setForcing(true)
+    const res = await fetch(`/api/candidates/${candidateId}/manual-score`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_score: num, force_exact: true }),
+    })
+    setForcing(false)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.error ?? "Failed to force-adjust manual score")
+      return
+    }
+    const data = await res.json()
+    setPreview(data.manualScore)
+    setForceExactInfeasible(!!data.force_exact_infeasible)
     onChange(candidateId, data.manualScore)
   }
 
@@ -213,18 +246,37 @@ export default function ManualScoreControl({ candidateId, examId, manualScore, o
             </div>
 
             {preview && (
-              <div className="rounded-lg border p-3 text-sm space-y-1 bg-muted/40">
+              <div className="rounded-lg border p-3 text-sm space-y-2 bg-muted/40">
                 {preview.is_identical_to_original ? (
                   <p>Target equals the candidate&apos;s real score — no answers will change.</p>
+                ) : preview.force_exact_applied ? (
+                  <p>
+                    Force-adjusted to exactly{" "}
+                    <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
+                    {" "}— question weights redistributed slightly (no partial credit given).
+                  </p>
                 ) : preview.is_exact_match ? (
                   <p>
                     Achievable exactly: <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
                   </p>
                 ) : (
-                  <p>
-                    Target not exactly reachable (all-MCQ paper). Closest achievable score:{" "}
-                    <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
-                  </p>
+                  <>
+                    <p>
+                      Target not exactly reachable (all-MCQ paper). Closest achievable score:{" "}
+                      <span className="font-semibold text-purple-700">{formatScore(preview.achieved_score)}</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={forceExact} disabled={forcing}>
+                        {forcing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Target className="h-3 w-3" />}
+                        Force Exact
+                      </Button>
+                      {forceExactInfeasible && (
+                        <span className="text-xs text-muted-foreground">
+                          Can&apos;t reach it without an unreasonable weight change — closest achievable kept.
+                        </span>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -246,7 +298,8 @@ export function ManualScoreBadge({ manualScore }: { manualScore: ManualScoreRow 
   if (!manualScore || manualScore.status !== "confirmed") return null
   return (
     <Badge className="bg-purple-100 text-purple-700 border-0 text-[10px] mt-1">
-      Manual: {formatScore(manualScore.achieved_score)}{!manualScore.is_exact_match ? " (closest)" : ""}
+      Manual: {formatScore(manualScore.achieved_score)}
+      {!manualScore.is_exact_match ? " (closest)" : manualScore.force_exact_applied ? " (force-adjusted)" : ""}
     </Badge>
   )
 }

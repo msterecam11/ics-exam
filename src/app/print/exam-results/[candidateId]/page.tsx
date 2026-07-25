@@ -145,15 +145,22 @@ export default async function PrintExamResultsPage({ params, searchParams }: Pro
     .eq("candidate_id", candidateId)
 
   const { data: overrides } = useManual
-    ? await db.from("manual_score_answer_overrides").select("candidate_answer_id, manual_score_achieved").eq("manual_score_id", manualScore!.id)
+    ? await db.from("manual_score_answer_overrides").select("candidate_answer_id, manual_score_achieved, manual_max_score").eq("manual_score_id", manualScore!.id)
     : { data: null }
   const overrideMap = new Map((overrides ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const maxOverrideMap = new Map((overrides ?? []).filter((o: any) => o.manual_max_score != null).map((o: any) => [o.candidate_answer_id, o.manual_max_score]))
 
   const sorted = (rawAnswers ?? [])
     .map((a: any) => {
       if (!useManual) return a
       const override = overrideMap.get(a.id)
-      return override === undefined ? a : { ...a, score_achieved: override }
+      const maxOverride = maxOverrideMap.get(a.id)
+      if (override === undefined && maxOverride === undefined) return a
+      return {
+        ...a,
+        ...(override !== undefined ? { score_achieved: override } : {}),
+        ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+      }
     })
     .sort((a, b) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0))
 

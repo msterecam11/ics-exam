@@ -39,14 +39,24 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const { data: overrides } = await db
     .from("manual_score_answer_overrides")
-    .select("candidate_answer_id, manual_score_achieved")
+    .select("candidate_answer_id, manual_score_achieved, manual_max_score")
     .eq("manual_score_id", manualScore.id)
 
   const overrideMap = new Map((overrides ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const maxOverrideMap = new Map((overrides ?? []).filter((o: any) => o.manual_max_score != null).map((o: any) => [o.candidate_answer_id, o.manual_max_score]))
 
+  // Force Exact may have redistributed a question's weight for this manual
+  // score version — overlay it onto questions.score so "achieved/possible"
+  // (and the display scaling below) reflect the adjusted denominator.
   const manualAnswers = (answers ?? []).map((a: any) => {
     const override = overrideMap.get(a.id)
-    return override === undefined ? a : { ...a, score_achieved: override }
+    const maxOverride = maxOverrideMap.get(a.id)
+    if (override === undefined && maxOverride === undefined) return a
+    return {
+      ...a,
+      ...(override !== undefined ? { score_achieved: override } : {}),
+      ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+    }
   })
 
   // Same display-only scaling as the real Answers view — Question Bank

@@ -71,15 +71,22 @@ export async function GET(_: Request, { params }: Params) {
 
   const { data: overrides } = await db
     .from("manual_score_answer_overrides")
-    .select("candidate_answer_id, manual_score_achieved")
+    .select("candidate_answer_id, manual_score_achieved, manual_max_score")
     .eq("manual_score_id", manualScore.id)
 
   const overrideMap = new Map((overrides ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const maxOverrideMap = new Map((overrides ?? []).filter((o: any) => o.manual_max_score != null).map((o: any) => [o.candidate_answer_id, o.manual_max_score]))
 
   const sorted = (answers ?? [])
     .map((a: any) => {
       const override = overrideMap.get(a.id)
-      return override === undefined ? a : { ...a, score_achieved: override }
+      const maxOverride = maxOverrideMap.get(a.id)
+      if (override === undefined && maxOverride === undefined) return a
+      return {
+        ...a,
+        ...(override !== undefined ? { score_achieved: override } : {}),
+        ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+      }
     })
     .sort((a: any, b: any) => (a.questions?.order_index ?? 0) - (b.questions?.order_index ?? 0))
 

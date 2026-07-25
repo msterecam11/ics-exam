@@ -42,6 +42,11 @@ export interface ManualScoreOverride {
   candidate_answer_id: string
   original_score_achieved: number
   manual_score_achieved: number
+  // Set only by applyForceExact — redistributes this mcq_single question's
+  // weight (max_score) so it can stay strictly full-marks-or-zero while the
+  // paper's total lands exactly on the target. Undefined means "unchanged,
+  // use the question's real max_score."
+  manual_max_score?: number
 }
 
 export interface ManualScoreResult {
@@ -50,6 +55,7 @@ export interface ManualScoreResult {
   is_exact_match: boolean
   is_identical_to_original: boolean
   overrides: ManualScoreOverride[]
+  force_exact_applied?: boolean
 }
 
 const FLEXIBLE_TYPES = new Set<ManualScoreQuestionType>(["mcq_multi", "ordering", "matching", "open_ended"])
@@ -268,5 +274,123 @@ export function computeManualScore(
     is_exact_match: isExact,
     is_identical_to_original: false,
     overrides,
+  }
+}
+
+// The absolute max relative weight change ever allowed on a single question
+// (e.g. 0.25 = a 10-point question may become at most 7.5–12.5 points).
+const FORCE_EXACT_CEILING = 0.25
+
+// Splits `totalDeltaCents` proportionally to each item's own weight (so
+// every item in the set gets the SAME relative % change), largest-remainder
+// rounded so the individual cent deltas sum to exactly totalDeltaCents.
+function distributeDeltaCents(items: AnswerForManualScore[], totalDeltaCents: number, pct: number): number[] {
+  const raw = items.map(a => Math.round(a.max_score * CENTS) * pct)
+  const floored = raw.map(v => Math.floor(v))
+  const flooredSum = floored.reduce((s, v) => s + v, 0)
+  const remainder = Math.max(0, totalDeltaCents - flooredSum)
+
+  const order = raw
+    .map((v, i) => ({ i, frac: v - floored[i] }))
+    .sort((a, b) => b.frac - a.frac)
+
+  const result = [...floored]
+  for (let k = 0; k < remainder && k < order.length; k++) result[order[k].i]++
+  return result
+}
+
+// Only ever engages when computeManualScore() returned a non-exact result
+// for an all-mcq_single paper (the only case where a target can be
+// unreachable). Rather than giving any question partial credit — which
+// would break the real full-marks-or-zero rule for mcq_single — this
+// redistributes WEIGHTS: it shrinks/grows the max_score of a spread of
+// questions (proportional to each one's own weight, so every touched
+// question gets the same % change) so the achieved total lands on the
+// target exactly while every answer stays strictly full-marks-or-zero
+// under its (possibly adjusted) weight. The paper's total max is preserved
+// exactly, since whatever is added to one side is removed from the other.
+//
+// Returns null (never partially applies) if the required change on either
+// side would exceed FORCE_EXACT_CEILING, or if one side has no members to
+// spread the adjustment across — callers should keep showing the original
+// "closest achievable" result in that case.
+export function applyForceExact(
+  answers: AnswerForManualScore[],
+  result: ManualScoreResult
+): ManualScoreResult | null {
+  if (result.is_exact_match) return null
+  if (answers.length === 0 || answers.some(a => a.type !== "mcq_single")) return null
+
+  const targetPct = result.target_score
+  const totalMax = answers.reduce((s, a) => s + a.max_score, 0)
+  if (totalMax <= 0) return null
+  const targetAchieved = round2((targetPct / 100) * totalMax)
+
+  // Recover the same closest-achievable subset computeManualScore found, so
+  // we know which answers are currently plotted "correct" (S) vs
+  // "incorrect" (S') under this target.
+  const weightsCents = answers.map(a => Math.round(a.max_score * CENTS))
+  const { subset } = closestSubsetSum(weightsCents, Math.round(targetAchieved * CENTS))
+
+  const correct = answers.filter((_, i) => subset[i])
+  const incorrect = answers.filter((_, i) => !subset[i])
+  const correctIds = new Set(correct.map(a => a.candidate_answer_id))
+
+  const achievedRaw = correct.reduce((s, a) => s + a.max_score, 0)
+  const gap = round2(targetAchieved - achievedRaw)
+  if (Math.abs(gap) < EPSILON) return null // already exact — computeManualScore would have said so
+
+  // gap > 0: need MORE achieved points — grow the correct side, shrink the
+  // incorrect side by the same amount so the grand total is unchanged.
+  // gap < 0: the reverse.
+  const incSet = gap > 0 ? correct : incorrect
+  const decSet = gap > 0 ? incorrect : correct
+  const absGapCents = Math.round(Math.abs(gap) * CENTS)
+
+  const sumIncCents = incSet.reduce((s, a) => s + Math.round(a.max_score * CENTS), 0)
+  const sumDecCents = decSet.reduce((s, a) => s + Math.round(a.max_score * CENTS), 0)
+  if (sumIncCents <= 0 || sumDecCents <= 0) return null // no capacity on one side
+
+  const pctInc = absGapCents / sumIncCents
+  const pctDec = absGapCents / sumDecCents
+  if (pctInc > FORCE_EXACT_CEILING || pctDec > FORCE_EXACT_CEILING) return null
+
+  const incDeltaCents = distributeDeltaCents(incSet, absGapCents, pctInc)
+  const decDeltaCents = distributeDeltaCents(decSet, absGapCents, pctDec)
+
+  const newWeightCents = new Map<string, number>()
+  incSet.forEach((a, i) => newWeightCents.set(a.candidate_answer_id, Math.round(a.max_score * CENTS) + incDeltaCents[i]))
+  decSet.forEach((a, i) => newWeightCents.set(a.candidate_answer_id, Math.round(a.max_score * CENTS) - decDeltaCents[i]))
+
+  const overrides: ManualScoreOverride[] = []
+  let realizedTotal = 0
+  for (const a of answers) {
+    const isCorrect = correctIds.has(a.candidate_answer_id)
+    const wCents = newWeightCents.get(a.candidate_answer_id) ?? Math.round(a.max_score * CENTS)
+    const w = wCents / CENTS
+    const achieved = isCorrect ? w : 0
+    realizedTotal += achieved
+
+    const weightChanged = newWeightCents.has(a.candidate_answer_id)
+    if (weightChanged || Math.abs(achieved - a.achieved_score) >= EPSILON) {
+      overrides.push({
+        candidate_answer_id: a.candidate_answer_id,
+        original_score_achieved: a.achieved_score,
+        manual_score_achieved: round2(achieved),
+        ...(weightChanged ? { manual_max_score: round2(w) } : {}),
+      })
+    }
+  }
+
+  realizedTotal = round2(realizedTotal)
+  const achievedPct = round2((realizedTotal / totalMax) * 100)
+
+  return {
+    target_score: targetPct,
+    achieved_score: achievedPct,
+    is_exact_match: Math.abs(achievedPct - targetPct) < EPSILON,
+    is_identical_to_original: false,
+    overrides,
+    force_exact_applied: true,
   }
 }

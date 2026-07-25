@@ -65,7 +65,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
       .eq("exam_id", examId)
       .single(),
     db.from("manual_score_answer_overrides")
-      .select("candidate_answer_id, manual_score_achieved")
+      .select("candidate_answer_id, manual_score_achieved, manual_max_score")
       .eq("manual_score_id", manualScore.id),
     db.from("candidates")
       .select("id, total_score")
@@ -90,9 +90,16 @@ export async function GET(_: Request, { params }: { params: Promise<{ candidateI
     : 0
 
   const overrideMap = new Map((overridesRes.data ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const maxOverrideMap = new Map((overridesRes.data ?? []).filter((o: any) => o.manual_max_score != null).map((o: any) => [o.candidate_answer_id, o.manual_max_score]))
   const rawAnswers = (answersRes.data ?? []).map((a: any) => {
     const override = overrideMap.get(a.id)
-    return override === undefined ? a : { ...a, score_achieved: override }
+    const maxOverride = maxOverrideMap.get(a.id)
+    if (override === undefined && maxOverride === undefined) return a
+    return {
+      ...a,
+      ...(override !== undefined ? { score_achieved: override } : {}),
+      ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+    }
   })
 
   let narrativeParsed = null
@@ -176,14 +183,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
       ? Promise.resolve({ data: null } as any)
       : db.from("exam_analyses").select("sections").eq("exam_id", examId).single(),
     db.from("manual_score_answer_overrides")
-      .select("candidate_answer_id, manual_score_achieved")
+      .select("candidate_answer_id, manual_score_achieved, manual_max_score")
       .eq("manual_score_id", manualScore.id),
   ])
 
   const overrideMap = new Map((overridesRes.data ?? []).map((o: any) => [o.candidate_answer_id, o.manual_score_achieved]))
+  const maxOverrideMap = new Map((overridesRes.data ?? []).filter((o: any) => o.manual_max_score != null).map((o: any) => [o.candidate_answer_id, o.manual_max_score]))
   const answers = (answersRes.data ?? []).map((a: any) => {
     const override = overrideMap.get(a.id)
-    return override === undefined ? a : { ...a, score_achieved: override }
+    const maxOverride = maxOverrideMap.get(a.id)
+    if (override === undefined && maxOverride === undefined) return a
+    return {
+      ...a,
+      ...(override !== undefined ? { score_achieved: override } : {}),
+      ...(maxOverride !== undefined && a.questions ? { questions: { ...a.questions, score: maxOverride } } : {}),
+    }
   })
 
   const sections = isBankExam ? buildTopicSections(answers) : ((analysisRes.data?.sections ?? []) as any[])

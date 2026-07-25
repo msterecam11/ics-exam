@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { auditLog } from "@/lib/audit"
-import { computeManualScore, type AnswerForManualScore } from "@/lib/manualScore"
+import { computeManualScore, applyForceExact, type AnswerForManualScore } from "@/lib/manualScore"
 
 // Returns the candidate's current active (draft or confirmed) manual score
 // version, with its overrides — or manualScore: null if none exists/all
@@ -42,7 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: candidateId } = await params
-  const { target_score } = await req.json().catch(() => ({}))
+  const { target_score, force_exact } = await req.json().catch(() => ({}))
 
   if (typeof target_score !== "number" || !Number.isFinite(target_score) || target_score < 0 || target_score > 100) {
     return NextResponse.json({ error: "target_score must be a number between 0 and 100" }, { status: 400 })
@@ -72,7 +72,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Candidate has no answers to score" }, { status: 400 })
   }
 
-  const result = computeManualScore(answers, target_score)
+  let result = computeManualScore(answers, target_score)
+
+  // "Force Exact" only ever changes anything when the plain computation
+  // couldn't land on the target exactly (all-mcq_single papers only) — if
+  // it can't fit within the safety ceiling either, we silently keep the
+  // plain "closest achievable" result rather than erroring, matching the
+  // agreed UX (Force Exact button just has no effect, preview stays as-is).
+  if (force_exact === true) {
+    const forced = applyForceExact(answers, result)
+    if (forced) result = forced
+  }
 
   // Supersede any prior draft/confirmed version for this candidate — never
   // deleted, just marked so the new one becomes the sole active version.
@@ -90,6 +100,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       achieved_score: result.achieved_score,
       is_exact_match: result.is_exact_match,
       is_identical_to_original: result.is_identical_to_original,
+      force_exact_applied: result.force_exact_applied ?? false,
       status: "draft",
       created_by: session.user.id ?? null,
     })
@@ -105,11 +116,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         candidate_answer_id: o.candidate_answer_id,
         original_score_achieved: o.original_score_achieved,
         manual_score_achieved: o.manual_score_achieved,
+        manual_max_score: o.manual_max_score ?? null,
       }))
     )
   }
 
-  return NextResponse.json({ manualScore: inserted, overrides: result.overrides })
+  return NextResponse.json({
+    manualScore: inserted,
+    overrides: result.overrides,
+    force_exact_infeasible: force_exact === true && !result.force_exact_applied,
+  })
 }
 
 // Marks the current active manual score version 'deleted'. Never a hard SQL
