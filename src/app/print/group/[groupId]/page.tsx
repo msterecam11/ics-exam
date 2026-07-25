@@ -265,12 +265,21 @@ export default async function PrintGroupPage({
         const sectionAvgs = sections.map((section: any) => {
           const sqIds: string[] = section.question_ids ?? []
           const sQs = questions.filter((q: any) => sqIds.includes(q.id))
-          const possible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
-          if (possible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
+          const realPossible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
+          if (realPossible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
           const sAns = answers.filter((a: any) => sqIds.includes(a.question_id))
           const cScores = candidates.map((c: any) => {
-            const earned = sAns.filter((a: any) => a.candidate_id === c.id).reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
-            return (earned / possible) * 100
+            const cAns = sAns.filter((a: any) => a.candidate_id === c.id)
+            const earned = cAns.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            // Force Exact redistributes weight per-answer, not per-section —
+            // use this candidate's own adjusted weight where one exists.
+            const maxOv = isManual ? manualMap.get(c.id)?.maxOverrides : undefined
+            const possible = sQs.reduce((s: number, q: any) => {
+              const ans = cAns.find((a: any) => a.question_id === q.id)
+              const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
+              return s + (mo ?? q.score ?? 0)
+            }, 0)
+            return possible > 0 ? (earned / possible) * 100 : 0
           })
           return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
         })

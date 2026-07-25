@@ -76,12 +76,19 @@ export async function fetchCourseData(courseId: string, opts: { manual?: boolean
         sectionAvgs = topics.map(topic => {
           const cScores = candidates.map((c: any) => {
             const myDrawn = allDrawn.filter((d: any) => d.candidate_id === c.id && ((d.questions as any)?.topic ?? "General") === topic)
-            const possible = myDrawn.reduce((s: number, d: any) => s + ((d.questions as any)?.score ?? 0), 0)
-            if (possible === 0) return null
             const myQIds = new Set(myDrawn.map((d: any) => d.question_id))
-            const earned = answers
-              .filter((a: any) => a.candidate_id === c.id && myQIds.has(a.question_id))
-              .reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            const myAnswers = answers.filter((a: any) => a.candidate_id === c.id && myQIds.has(a.question_id))
+            // Force Exact redistributes weight per-answer, not per-topic —
+            // a candidate's "possible" for this topic must reflect their
+            // own adjusted weights (if any), not the question's real score.
+            const maxOv = manual ? manualMap.get(c.id)?.maxOverrides : undefined
+            const possible = myDrawn.reduce((s: number, d: any) => {
+              const ans = myAnswers.find((a: any) => a.question_id === d.question_id)
+              const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
+              return s + (mo ?? (d.questions as any)?.score ?? 0)
+            }, 0)
+            if (possible === 0) return null
+            const earned = myAnswers.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
             return (earned / possible) * 100
           }).filter((v): v is number => v !== null)
           return { title: topic, avg: cScores.length ? cScores.reduce((s, v) => s + v, 0) / cScores.length : 0 }
@@ -112,14 +119,21 @@ export async function fetchCourseData(courseId: string, opts: { manual?: boolean
         sectionAvgs = sections.map((section: any) => {
           const qIds: string[] = section.question_ids ?? []
           const sQs = questions.filter((q: any) => qIds.includes(q.id))
-          const possible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
-          if (possible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
+          const realPossible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
+          if (realPossible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
           const sAnswers = answers.filter((a: any) => qIds.includes(a.question_id))
           const cScores = candidates.map((c: any) => {
-            const earned = sAnswers
-              .filter((a: any) => a.candidate_id === c.id)
-              .reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
-            return (earned / possible) * 100
+            const cAns = sAnswers.filter((a: any) => a.candidate_id === c.id)
+            const earned = cAns.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            // Force Exact redistributes weight per-answer, not per-section —
+            // use this candidate's own adjusted weight where one exists.
+            const maxOv = manual ? manualMap.get(c.id)?.maxOverrides : undefined
+            const possible = sQs.reduce((s: number, q: any) => {
+              const ans = cAns.find((a: any) => a.question_id === q.id)
+              const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
+              return s + (mo ?? q.score ?? 0)
+            }, 0)
+            return possible > 0 ? (earned / possible) * 100 : 0
           })
           return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
         })
