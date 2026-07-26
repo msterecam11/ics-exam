@@ -11,10 +11,11 @@ import { res429 } from "@/lib/apiUtils"
 import { scaleToTarget } from "@/lib/scoreDisplay"
 import Groq from "groq-sdk"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY ?? "placeholder" })
+export const groq = new Groq({ apiKey: process.env.GROQ_API_KEY ?? "placeholder" })
 
 // Retry with exponential backoff — handles Groq rate limits gracefully
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+// Exported: reused as-is by the manual report route's security analysis.
+export async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn()
@@ -58,8 +59,89 @@ const BATCH_DELAY_MS = 30_000
 
 export interface SectionDatum { title: string; pct: number; earned: number; possible: number }
 
-function buildSectionLines(sections: SectionDatum[]): string {
+// Exported: reused as-is by the manual report route's security analysis.
+export function buildSectionLines(sections: SectionDatum[]): string {
   return sections.map(s => `  - ${s.title}: ${s.pct}% (${s.earned.toFixed(1)}/${s.possible} pts)`).join("\n")
+}
+
+// Behavioral/proctoring analysis is about the exam SESSION, not the score —
+// exported so the manual report route can generate the exact same "real"
+// security analysis (fed real proctoring fields + real score/sections,
+// never the manually-substituted ones) rather than something manual-score-
+// flavored, which wouldn't mean anything against real session events.
+// Returns null (never throws) if the AI call fails — callers should treat
+// that as "skip it," not fail the whole report.
+export async function generateSecurityAnalysis(
+  candidate: any,
+  examTitle: string,
+  sectionData: SectionDatum[]
+): Promise<any | null> {
+  const tabSwitches: { timestamp: string; duration: number | null }[] = candidate.tab_switches ?? []
+  const fullscreenExits: number = candidate.fullscreen_exits ?? 0
+  const rightClicks: number = candidate.right_click_attempts ?? 0
+  const copyPaste: number = candidate.copy_paste_attempts ?? 0
+  const totalAway = tabSwitches.reduce((s, sw) => s + (sw.duration ?? 0), 0)
+  const totalEvents = tabSwitches.length + fullscreenExits
+  const riskLevel = totalEvents === 0 ? "clean" : totalEvents <= 2 ? "medium" : "high"
+
+  const switchLines = tabSwitches.map((sw, i) =>
+    `  Switch ${i + 1}: at ${new Date(sw.timestamp).toLocaleTimeString("en-GB")}, away for ${sw.duration ?? 0}s`
+  ).join("\n")
+
+  const sectionLines = buildSectionLines(sectionData)
+
+  const secPrompt = `You are a forensic exam integrity analyst at ICS Aviation. Analyze the following behavioral data recorded during a candidate's exam and provide a professional assessment.
+
+Candidate: ${candidate.full_name}
+Exam: ${examTitle}
+Score: ${candidate.total_score?.toFixed(1)}% (${candidate.passed ? "PASSED" : "FAILED"})
+
+Section Performance:
+${sectionLines || "No section breakdown available"}
+
+Behavioral Events Recorded:
+- Tab switches (left exam window): ${tabSwitches.length}
+- Total time away from exam: ${totalAway}s
+${switchLines ? `Tab switch details:\n${switchLines}` : ""}
+- Fullscreen exits: ${fullscreenExits}
+- Right-click attempts: ${rightClicks}
+- Copy/cut attempts: ${copyPaste}
+
+Based on this data, write a professional 3-4 sentence behavioral assessment that:
+1. Describes the pattern of behavior objectively
+2. Correlates the timing/frequency of events with section performance where relevant
+3. Predicts what the candidate was likely doing during those away periods, based on the evidence
+4. States the overall integrity risk level
+
+Return ONLY valid JSON:
+{
+  "risk_level": "${riskLevel}",
+  "tab_switches": ${tabSwitches.length},
+  "fullscreen_exits": ${fullscreenExits},
+  "right_click_attempts": ${rightClicks},
+  "copy_paste_attempts": ${copyPaste},
+  "total_away_seconds": ${totalAway},
+  "behavioral_assessment": "Your 3-4 sentence assessment here"
+}`
+
+  try {
+    const secCompletion = await withRetry(() =>
+      groq.chat.completions.create({
+        model      : "llama-3.1-8b-instant",
+        messages   : [{ role: "user", content: secPrompt }],
+        temperature: 0.4,
+        max_tokens : 500,
+      })
+    )
+    const secRaw     = secCompletion.choices[0]?.message?.content?.trim() ?? ""
+    const secCleaned = secRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
+    const secMatch   = secCleaned.match(/\{[\s\S]*\}/)
+    return JSON.parse(secMatch ? secMatch[0] : secCleaned)
+  } catch {
+    // Security analysis failed — don't block the full report, just skip it
+    console.error("[Security AI] Failed to generate security analysis")
+    return null
+  }
 }
 
 // Reused as-is by the manual report route — it only needs candidate,
@@ -378,71 +460,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
   delete narrativeObj.security_analysis
 
   if (includeSecurity) {
-    const tabSwitches: { timestamp: string; duration: number | null }[] = (candidate as any).tab_switches ?? []
-    const fullscreenExits: number = (candidate as any).fullscreen_exits ?? 0
-    const rightClicks: number = (candidate as any).right_click_attempts ?? 0
-    const copyPaste: number = (candidate as any).copy_paste_attempts ?? 0
-    const totalAway = tabSwitches.reduce((s, sw) => s + (sw.duration ?? 0), 0)
-    const totalEvents = tabSwitches.length + fullscreenExits
-    const riskLevel = totalEvents === 0 ? "clean" : totalEvents <= 2 ? "medium" : "high"
-
-    const switchLines = tabSwitches.map((sw, i) =>
-      `  Switch ${i + 1}: at ${new Date(sw.timestamp).toLocaleTimeString("en-GB")}, away for ${sw.duration ?? 0}s`
-    ).join("\n")
-
-    const sectionLines = buildSectionLines(sectionData)
-
-    const secPrompt = `You are a forensic exam integrity analyst at ICS Aviation. Analyze the following behavioral data recorded during a candidate's exam and provide a professional assessment.
-
-Candidate: ${candidate.full_name}
-Exam: ${examTitle}
-Score: ${candidate.total_score?.toFixed(1)}% (${candidate.passed ? "PASSED" : "FAILED"})
-
-Section Performance:
-${sectionLines || "No section breakdown available"}
-
-Behavioral Events Recorded:
-- Tab switches (left exam window): ${tabSwitches.length}
-- Total time away from exam: ${totalAway}s
-${switchLines ? `Tab switch details:\n${switchLines}` : ""}
-- Fullscreen exits: ${fullscreenExits}
-- Right-click attempts: ${rightClicks}
-- Copy/cut attempts: ${copyPaste}
-
-Based on this data, write a professional 3-4 sentence behavioral assessment that:
-1. Describes the pattern of behavior objectively
-2. Correlates the timing/frequency of events with section performance where relevant
-3. Predicts what the candidate was likely doing during those away periods, based on the evidence
-4. States the overall integrity risk level
-
-Return ONLY valid JSON:
-{
-  "risk_level": "${riskLevel}",
-  "tab_switches": ${tabSwitches.length},
-  "fullscreen_exits": ${fullscreenExits},
-  "right_click_attempts": ${rightClicks},
-  "copy_paste_attempts": ${copyPaste},
-  "total_away_seconds": ${totalAway},
-  "behavioral_assessment": "Your 3-4 sentence assessment here"
-}`
-
-    try {
-      const secCompletion = await withRetry(() =>
-        groq.chat.completions.create({
-          model      : "llama-3.1-8b-instant",
-          messages   : [{ role: "user", content: secPrompt }],
-          temperature: 0.4,
-          max_tokens : 500,
-        })
-      )
-      const secRaw     = secCompletion.choices[0]?.message?.content?.trim() ?? ""
-      const secCleaned = secRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
-      const secMatch   = secCleaned.match(/\{[\s\S]*\}/)
-      narrativeObj.security_analysis = JSON.parse(secMatch ? secMatch[0] : secCleaned)
-    } catch {
-      // Security analysis failed — don't block the full report, just skip it
-      console.error("[Security AI] Failed to generate security analysis")
-    }
+    const sec = await generateSecurityAnalysis(candidate, examTitle, sectionData)
+    if (sec) narrativeObj.security_analysis = sec
   }
 
   const narrativeStr = JSON.stringify(narrativeObj)

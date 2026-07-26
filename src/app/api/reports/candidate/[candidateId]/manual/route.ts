@@ -8,7 +8,7 @@ import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { scaleToTarget } from "@/lib/scoreDisplay"
-import { generateCandidateNarrative, buildTopicSections, type SectionDatum } from "@/app/api/reports/candidate/[candidateId]/route"
+import { generateCandidateNarrative, generateSecurityAnalysis, buildTopicSections, type SectionDatum } from "@/app/api/reports/candidate/[candidateId]/route"
 import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
 
 async function loadActiveManualScore(candidateId: string) {
@@ -213,6 +213,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
     return { title: section.title, pct, earned, possible }
   })
 
+  // Real (un-overridden) section data, for the security analysis only —
+  // proctoring behavior is about the real exam session, so it's assessed
+  // against the real score/sections, never the manually-substituted ones.
+  const rawAnswerMap = new Map((answersRes.data ?? []).map((a: any) => [a.question_id, a]))
+  const realSectionData: SectionDatum[] = sections.map((section: any) => {
+    const sectionAnswers = (section.question_ids ?? [])
+      .map((qid: string) => rawAnswerMap.get(qid))
+      .filter(Boolean)
+    const earned = sectionAnswers.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+    const possible = sectionAnswers.reduce((s: number, a: any) => s + ((a.questions as any)?.score ?? 0), 0)
+    const pct = possible > 0 ? Math.round((earned / possible) * 100) : 0
+    return { title: section.title, pct, earned, possible }
+  })
+
   const manualCandidate = {
     ...candidate,
     total_score: manualScore.achieved_score,
@@ -226,11 +240,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ candida
     return NextResponse.json({ error: "AI service temporarily unavailable. Please try again in a moment." }, { status: 503 })
   }
 
-  // Security AI analysis is intentionally never included in a manual report —
-  // it reflects real proctoring events, which have no meaning against a
-  // manually-substituted score.
+  // Security AI analysis reflects real proctoring events tied to the exam
+  // session — always the REAL score/sections, never the manually-substituted
+  // ones, so it means the same thing here as it does in the real report.
   delete narrativeObj.security_analysis
-  void includeSecurity
+
+  if (includeSecurity) {
+    // Prefer whatever security analysis the real report already generated
+    // for this exact session — avoids a second AI call and guarantees this
+    // is the same real analysis, not a freshly re-derived one that could
+    // read slightly differently each time.
+    const { data: realCached } = await db
+      .from("report_cache")
+      .select("narrative")
+      .eq("type", "candidate")
+      .eq("reference_id", candidateId)
+      .eq("exam_id", examId)
+      .maybeSingle()
+
+    let realSecurity: any = null
+    if (realCached?.narrative) {
+      try { realSecurity = JSON.parse(realCached.narrative)?.security_analysis ?? null } catch { realSecurity = null }
+    }
+
+    narrativeObj.security_analysis = realSecurity ?? await generateSecurityAnalysis(candidate, examTitle, realSectionData)
+  }
 
   const narrativeStr = JSON.stringify(narrativeObj)
 
