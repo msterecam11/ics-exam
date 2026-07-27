@@ -263,59 +263,107 @@ export default async function PrintCoursePage({
   // ── Fetch per-exam data ───────────────────────────────────────────────────
   const examDataArr = await Promise.all(
     exams.map(async (exam: any) => {
-      const [candidatesRes, questionsRes, analysisRes] = await Promise.all([
-        db.from("candidates")
-          .select("id, full_name, job_title, company, started_at, submitted_at, total_score, passed")
-          .eq("exam_id", exam.id)
-          .not("submitted_at", "is", null),
-        db.from("questions").select("id, score").eq("exam_id", exam.id),
-        db.from("exam_analyses").select("sections").eq("exam_id", exam.id).maybeSingle(),
-      ])
+      const candidatesRes = await db.from("candidates")
+        .select("id, full_name, job_title, company, started_at, submitted_at, total_score, passed")
+        .eq("exam_id", exam.id)
+        .not("submitted_at", "is", null)
 
       const rawCandidates = (candidatesRes.data ?? []) as any[]
-      const questions = (questionsRes.data ?? []) as any[]
-      const sections = ((analysisRes.data?.sections ?? []) as any[]).sort(
-        (a: any, b: any) => a.order_index - b.order_index
-      )
-
       const cIds = rawCandidates.map((c: any) => c.id)
+
       const manualMap = isManual ? await loadManualScoresForCandidates(cIds) : new Map()
       const candidates = isManual
         ? rawCandidates.map((c: any) => ({ ...c, ...applyManualOverride(c, manualMap, c.id, exam.passing_score ?? 60) }))
         : rawCandidates
 
-      let answers: any[] = []
-      const qIds = questions.map((q: any) => q.id)
-      if (cIds.length > 0 && qIds.length > 0) {
-        const { data } = await db
-          .from("candidate_answers")
-          .select("id, candidate_id, question_id, score_achieved")
-          .in("candidate_id", cIds)
-          .in("question_id", qIds)
-        answers = isManual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
-      }
+      // A candidate with rows in candidate_exam_questions has a frozen
+      // random draw (Question Bank exam) — there's no shared exam_analyses
+      // row for these, so topics/"possible" must be computed per-candidate
+      // from their own draw instead. Mirrors the API route's fetchCourseData
+      // exactly, since this page fetches independently rather than reusing it.
+      const { data: drawnRows } = cIds.length > 0
+        ? await db.from("candidate_exam_questions")
+            .select("candidate_id, question_id, questions(score, topic)")
+            .in("candidate_id", cIds)
+        : { data: [] }
+      const allDrawn = (drawnRows ?? []) as any[]
 
-      const sectionAvgs = sections.map((section: any) => {
-        const sqIds: string[] = section.question_ids ?? []
-        const sQs = questions.filter((q: any) => sqIds.includes(q.id))
-        const realPossible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
-        if (realPossible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
-        const sAns = answers.filter((a: any) => sqIds.includes(a.question_id))
-        const cScores = candidates.map((c: any) => {
-          const cAns = sAns.filter((a: any) => a.candidate_id === c.id)
-          const earned = cAns.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
-          // Force Exact redistributes weight per-answer, not per-section —
-          // use this candidate's own adjusted weight where one exists.
-          const maxOv = isManual ? manualMap.get(c.id)?.maxOverrides : undefined
-          const possible = sQs.reduce((s: number, q: any) => {
-            const ans = cAns.find((a: any) => a.question_id === q.id)
-            const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
-            return s + (mo ?? q.score ?? 0)
-          }, 0)
-          return possible > 0 ? (earned / possible) * 100 : 0
+      let sectionAvgs: { title: string; avg: number }[] = []
+      let questions: any[] = []
+      let sections: any[] = []
+      let answers: any[] = []
+
+      if (allDrawn.length > 0) {
+        const qIds = [...new Set(allDrawn.map((d: any) => d.question_id))]
+        if (cIds.length > 0 && qIds.length > 0) {
+          const { data } = await db.from("candidate_answers")
+            .select("id, candidate_id, question_id, score_achieved")
+            .in("candidate_id", cIds).in("question_id", qIds)
+          answers = isManual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
+        }
+
+        const topics = [...new Set(allDrawn.map((d: any) => (d.questions as any)?.topic ?? "General"))]
+        sectionAvgs = topics.map(topic => {
+          const cScores = candidates.map((c: any) => {
+            const myDrawn = allDrawn.filter((d: any) => d.candidate_id === c.id && ((d.questions as any)?.topic ?? "General") === topic)
+            const myQIds = new Set(myDrawn.map((d: any) => d.question_id))
+            const myAnswers = answers.filter((a: any) => a.candidate_id === c.id && myQIds.has(a.question_id))
+            // Force Exact redistributes weight per-answer, not per-topic —
+            // use this candidate's own adjusted weight where one exists.
+            const maxOv = isManual ? manualMap.get(c.id)?.maxOverrides : undefined
+            const possible = myDrawn.reduce((s: number, d: any) => {
+              const ans = myAnswers.find((a: any) => a.question_id === d.question_id)
+              const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
+              return s + (mo ?? (d.questions as any)?.score ?? 0)
+            }, 0)
+            if (possible === 0) return null
+            const earned = myAnswers.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            return (earned / possible) * 100
+          }).filter((v): v is number => v !== null)
+          return { title: topic, avg: cScores.length ? cScores.reduce((s, v) => s + v, 0) / cScores.length : 0 }
         })
-        return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
-      })
+      } else {
+        const [questionsRes, analysisRes] = await Promise.all([
+          db.from("questions").select("id, score").eq("exam_id", exam.id),
+          db.from("exam_analyses").select("sections").eq("exam_id", exam.id).maybeSingle(),
+        ])
+        questions = (questionsRes.data ?? []) as any[]
+        sections = ((analysisRes.data?.sections ?? []) as any[]).sort(
+          (a: any, b: any) => a.order_index - b.order_index
+        )
+
+        const qIds = questions.map((q: any) => q.id)
+        if (cIds.length > 0 && qIds.length > 0) {
+          const { data } = await db
+            .from("candidate_answers")
+            .select("id, candidate_id, question_id, score_achieved")
+            .in("candidate_id", cIds)
+            .in("question_id", qIds)
+          answers = isManual ? overlayAnswerOverrides(data ?? [], manualMap) : (data ?? [])
+        }
+
+        sectionAvgs = sections.map((section: any) => {
+          const sqIds: string[] = section.question_ids ?? []
+          const sQs = questions.filter((q: any) => sqIds.includes(q.id))
+          const realPossible = sQs.reduce((s: number, q: any) => s + (q.score ?? 0), 0)
+          if (realPossible === 0 || candidates.length === 0) return { title: section.title, avg: 0 }
+          const sAns = answers.filter((a: any) => sqIds.includes(a.question_id))
+          const cScores = candidates.map((c: any) => {
+            const cAns = sAns.filter((a: any) => a.candidate_id === c.id)
+            const earned = cAns.reduce((s: number, a: any) => s + (a.score_achieved ?? 0), 0)
+            // Force Exact redistributes weight per-answer, not per-section —
+            // use this candidate's own adjusted weight where one exists.
+            const maxOv = isManual ? manualMap.get(c.id)?.maxOverrides : undefined
+            const possible = sQs.reduce((s: number, q: any) => {
+              const ans = cAns.find((a: any) => a.question_id === q.id)
+              const mo = ans && maxOv ? maxOv.get(ans.id) : undefined
+              return s + (mo ?? q.score ?? 0)
+            }, 0)
+            return possible > 0 ? (earned / possible) * 100 : 0
+          })
+          return { title: section.title, avg: cScores.reduce((s: number, v: number) => s + v, 0) / cScores.length }
+        })
+      }
 
       const avgScore =
         candidates.length > 0
