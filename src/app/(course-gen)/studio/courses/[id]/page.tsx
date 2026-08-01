@@ -25,6 +25,8 @@ export default function StudioCoursePage() {
   const [data, setData] = useState<any>(null)
   const [refs, setRefs] = useState<any[]>([])
   const [busy, setBusy] = useState(false)
+  const [outline, setOutline] = useState<any>(null)
+  const [adjustments, setAdjustments] = useState("")
 
   const load = useCallback(async () => {
     const [c, r] = await Promise.all([
@@ -33,6 +35,10 @@ export default function StudioCoursePage() {
     ])
     setData(c)
     setRefs(r.references ?? [])
+    if (c?.course?.status === "outline_review") {
+      const o = await fetch(`/api/course-gen/courses/${id}/outline`).then(x => x.json()).catch(() => null)
+      setOutline(o?.job?.output ?? null)
+    }
   }, [id])
 
   useEffect(() => { load() }, [load])
@@ -45,16 +51,36 @@ export default function StudioCoursePage() {
     return () => clearInterval(t)
   }, [data?.course?.status, load])
 
-  async function generateOutline() {
+  async function generateOutline(adj?: string) {
     setBusy(true)
-    const res = await fetch(`/api/course-gen/courses/${id}/outline`, { method: "POST" })
+    const res = await fetch(`/api/course-gen/courses/${id}/outline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adj ? { adjustments: adj } : {}),
+    })
     setBusy(false)
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       toast.error(err.error ?? "Outline generation isn't available yet")
       return
     }
-    toast.success("Outline generation started")
+    setAdjustments("")
+    setOutline(null)
+    toast.success(adj ? "Regenerating outline with your adjustments" : "Outline generation started")
+    load()
+  }
+
+  async function approveOutline() {
+    if (!confirm("Approve this outline? Slide generation will start for every module.")) return
+    setBusy(true)
+    const res = await fetch(`/api/course-gen/courses/${id}/outline/approve`, { method: "POST" })
+    setBusy(false)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Approval failed")
+      return
+    }
+    toast.success("Outline approved — slide generation queued")
     load()
   }
 
@@ -134,7 +160,7 @@ export default function StudioCoursePage() {
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
           <p className="text-sm text-red-700 flex-1">{latestJob?.error ?? "Generation failed."}</p>
-          <button onClick={generateOutline} disabled={busy}
+          <button onClick={() => generateOutline()} disabled={busy}
             className="flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-900">
             <RefreshCw className="h-3.5 w-3.5" /> Retry
           </button>
@@ -151,11 +177,76 @@ export default function StudioCoursePage() {
             {refs.some(r => r.has_text) ? " and the uploaded reference materials" : ""}.
             Nothing else runs until you approve it.
           </p>
-          <button onClick={generateOutline} disabled={busy}
+          <button onClick={() => generateOutline()} disabled={busy}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#0C72C6] hover:bg-[#0a63ab] disabled:opacity-60 transition-colors">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Generate outline
           </button>
+        </div>
+      )}
+
+      {/* Outline review gate */}
+      {course.status === "outline_review" && (
+        <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="bg-amber-50 border-b border-amber-100 px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-bold text-amber-800">Outline review</p>
+              <p className="text-xs text-amber-600">
+                Nothing is generated until you approve. Adjust and regenerate as many times as needed.
+              </p>
+            </div>
+            <button onClick={approveOutline} disabled={busy || !outline}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Approve outline
+            </button>
+          </div>
+
+          {!outline ? (
+            <div className="p-8 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
+            </div>
+          ) : (
+            <div className="p-5 space-y-4 max-h-[520px] overflow-y-auto">
+              {(outline.modules ?? []).map((m: any) => (
+                <div key={m.module_number} className="space-y-1.5">
+                  <p className="text-sm font-bold text-slate-800">
+                    {m.is_module_zero ? "Module 0" : `Module ${m.module_number}`} — {m.title}
+                    <span className="text-xs font-normal text-slate-400 ml-2">
+                      {m.slides?.length ?? 0} slides{m.day_number ? ` · Day ${m.day_number}` : ""}
+                    </span>
+                  </p>
+                  <div className="space-y-1">
+                    {(m.slides ?? []).map((s: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2.5 rounded-lg bg-slate-50 border border-slate-100 px-3 py-1.5">
+                        <span className="text-[10px] font-bold text-slate-300 w-5 shrink-0">{i + 1}</span>
+                        <span className="text-xs text-slate-700 truncate flex-1">{s.title}</span>
+                        <span className="text-[10px] font-semibold text-slate-400 shrink-0">{s.intent}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-[#0C72C6] bg-[#0C72C6]/10 px-1.5 py-0.5 rounded shrink-0">
+                          {s.layout_kind?.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 p-4 space-y-2">
+            <textarea
+              value={adjustments}
+              onChange={e => setAdjustments(e.target.value)}
+              placeholder='Request changes — e.g. "Add a slide on NOTAM procedures to Module 4" or "Module 2 is too thin, expand it to 8 slides"'
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-16 resize-y placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0C72C6]/30"
+            />
+            <button
+              onClick={() => adjustments.trim() && generateOutline(adjustments.trim())}
+              disabled={busy || !adjustments.trim()}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0C72C6] bg-[#0C72C6]/10 hover:bg-[#0C72C6]/20 disabled:opacity-50 transition-colors">
+              <RefreshCw className="h-3.5 w-3.5" /> Regenerate with adjustments
+            </button>
+          </div>
         </div>
       )}
 

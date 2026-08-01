@@ -118,11 +118,29 @@ export interface ComparisonNode extends BlueprintBase {
   columns: { heading: string; icon?: string; accent?: TokenRef; children: BlueprintNode[] }[]
 }
 
+// Tier 3 (gated): custom visual composition for content no primitive covers
+// (timelines, diagrams-with-arrows, hero stat treatments). The ONE place the
+// LLM expresses geometry — small-scale, relative to this node's own box
+// (0-100 of its width/height), never the whole slide. Must justify its use;
+// gets stricter QA. Children are limited to simple visual atoms so the
+// result always bakes to standard editable elements — never an opaque blob.
+export interface CustomNode extends BlueprintBase {
+  type: "custom"
+  justification: string // why no primitive combination could express this
+  aspect?: number // preferred width/height ratio of the box, e.g. 2.5
+  children: {
+    kind: "shape" | "line" | "text" | "icon"
+    x: number; y: number; width: number; height: number // % of the custom box
+    // shape: fill/radius; line: stroke; text: content+token; icon: name+color
+    props: Record<string, string | number | boolean>
+  }[]
+}
+
 export type BlueprintNode =
   | RowNode | ColNode | StackNode
   | HeadingNode | BodyNode | BulletsNode | CardNode | BadgeNumberNode
   | CalloutNode | IconRowNode | AlternatingListNode | QuestionRowsNode
-  | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode
+  | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode | CustomNode
 
 /** What the Media Agent resolves into an actual image. */
 export interface MediaRequest {
