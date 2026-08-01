@@ -11,10 +11,11 @@ import Moveable from "react-moveable"
 import { toast } from "sonner"
 import {
   ArrowLeft, Loader2, Undo2, Redo2, Plus, Play, Type, Square, ImageIcon,
-  Table2, BarChart3, Save, X, Trash2,
+  Table2, BarChart3, Save, X, Trash2, Sparkles, SlidersHorizontal,
 } from "lucide-react"
 import SlideCanvas, { type Master } from "@/components/course-gen/SlideCanvas"
 import PropertiesPanel from "@/components/course-gen/PropertiesPanel"
+import ChatPanel, { type Proposal } from "@/components/course-gen/ChatPanel"
 import { useEditor, useActivePage, type EditorPage } from "@/lib/course-gen/editorStore"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "@/lib/course-gen/tokens"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
@@ -38,6 +39,8 @@ export default function ModuleEditorPage() {
   const [zoom, setZoom] = useState(0.62)
   const [present, setPresent] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [rightPanel, setRightPanel] = useState<"properties" | "chat">("properties")
+  const [preview, setPreview] = useState<Proposal | null>(null)
 
   const store = useEditor()
   const page = useActivePage()
@@ -132,10 +135,29 @@ export default function ModuleEditorPage() {
     setMoveableTarget(node ?? null)
   }, [store.selection, page?.id, page?.elements])
 
+  // When the agent proposes a rewrite of the OPEN slide, show its compiled
+  // result on the stage so the user judges the real thing, not a description.
+  const previewElements: CanvasElement[] | null = useMemo(() => {
+    if (!preview || !page) return null
+    const els = preview.compiled?.[String(page.order_index)]
+    return els ?? null
+  }, [preview, page])
+
   const selectedEl: CanvasElement | null = useMemo(
     () => page?.elements.find(e => e.id === store.selection[0]) ?? null,
     [page, store.selection]
   )
+
+  // After the agent commits changes, pull the module fresh — the ops ran
+  // server-side (including compiles), so the DB is the source of truth.
+  const reload = useCallback(async () => {
+    const d = await fetch(`/api/course-gen/modules/${moduleId}`).then(r => r.json())
+    setMeta(d)
+    const keep = useEditor.getState().activePageId
+    store.init((d.pages ?? []) as EditorPage[])
+    if (keep && (d.pages ?? []).some((p: any) => p.id === keep)) store.setActivePage(keep)
+    setPreview(null)
+  }, [moduleId])
 
   // ── Element helpers ──────────────────────────────────────────────────────
   function addElement(type: CanvasElement["type"]) {
@@ -245,6 +267,17 @@ export default function ModuleEditorPage() {
           className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded">
           <Play className="h-3.5 w-3.5" /> Present
         </button>
+        <div className="h-5 w-px bg-slate-200" />
+        <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+          <button onClick={() => setRightPanel("properties")} title="Properties"
+            className={`p-1.5 rounded-md transition-colors ${rightPanel === "properties" ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => setRightPanel("chat")} title="AI Assistant"
+            className={`p-1.5 rounded-md transition-colors ${rightPanel === "chat" ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
+            <Sparkles className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {store.conflict && (
@@ -308,7 +341,7 @@ export default function ModuleEditorPage() {
             style={{ width: SLIDE_W * zoom, height: SLIDE_H * zoom, position: "relative", flexShrink: 0 }}>
             <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: SLIDE_W, height: SLIDE_H, boxShadow: "0 8px 32px rgba(0,0,0,.2)" }}>
               <SlideCanvas
-                elements={page.elements} master={master} tokens={tokens}
+                elements={previewElements ?? page.elements} master={master} tokens={tokens}
                 pageNumber={page.order_index + 1} moduleNumber={meta.module.order_index}
                 partnerLogoLight={meta.course?.partner_logo_light_url}
                 partnerLogoDark={meta.course?.partner_logo_dark_url}
@@ -371,7 +404,14 @@ export default function ModuleEditorPage() {
           </div>
         </div>
 
-        <PropertiesPanel tokens={tokens} />
+        {rightPanel === "properties"
+          ? <PropertiesPanel tokens={tokens} />
+          : <ChatPanel
+              moduleId={moduleId}
+              openPageIndex={page.order_index}
+              onApplied={reload}
+              onPreview={setPreview}
+            />}
       </div>
     </div>
   )
