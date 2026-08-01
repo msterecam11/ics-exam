@@ -157,6 +157,28 @@ export interface MediaRequest {
 // ─── Baked element layer (what cg_pages.elements stores) ─────────────────────
 // All coordinates are PERCENTAGES of the slide (1280×720 reference).
 
+/** Visual effects available on any element — plain CSS under the hood, so
+ *  they bake, render, export to PDF, and stay editable identically. */
+export interface ElementEffects {
+  /** Drop shadow: "none" | "sm" | "md" | "lg" | "glow" */
+  shadow?: "none" | "sm" | "md" | "lg" | "glow"
+  opacity?: number          // 0-1
+  blur?: number             // px, backdrop blur for glass looks
+  /** Text only: outline/stroke around glyphs. */
+  textStroke?: { width: number; color: TokenRef }
+  /** Text only: shadow behind glyphs (readability over photos). */
+  textShadow?: "none" | "soft" | "strong"
+  /** Fill with a gradient between two tokens instead of a flat colour. */
+  gradient?: { from: TokenRef; to: TokenRef; angle?: number }
+  /** Image only. */
+  grayscale?: boolean
+  brightness?: number       // 1 = unchanged
+  /** Image only: crop the image to a shape. */
+  mask?: "none" | "circle" | "rounded" | "squircle"
+  /** Border on any element. */
+  border?: { width: number; color: TokenRef; style?: "solid" | "dashed" }
+}
+
 export interface ElementBase {
   id: string
   type: string
@@ -164,6 +186,7 @@ export interface ElementBase {
   zIndex: number
   rotation?: number
   locked?: boolean
+  effects?: ElementEffects
 }
 export interface TextRun { text: string; bold?: boolean; italic?: boolean; color?: TokenRef }
 export interface TextElement extends ElementBase {

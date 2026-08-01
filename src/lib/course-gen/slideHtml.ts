@@ -8,6 +8,7 @@ import type { CanvasElement } from "./primitives"
 import { resolveToken, SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import type { Master, ChromeSlot } from "./theme1"
 import { inlineFontFaces } from "./fonts"
+import { effectsCss } from "./effects"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -76,13 +77,13 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
       // run (e.g. a <b>) becomes its own flex item and lands on its own line,
       // which reflows text the compiler measured as one flowing paragraph.
       // Overflow stays visible so sub-pixel differences never clip text.
-      return `<div style="${box}font-size:${s.fontSize}px;font-weight:${s.fontWeight ?? 400};color:${color};text-align:${s.align ?? "left"};line-height:${s.lineHeight ?? 1.45};display:block;overflow:visible;${s.noWrap ? "white-space:nowrap;" : ""}">${html}</div>`
+      return `<div style="${box}font-size:${s.fontSize}px;font-weight:${s.fontWeight ?? 400};color:${color};text-align:${s.align ?? "left"};line-height:${s.lineHeight ?? 1.45};display:block;overflow:visible;${s.noWrap ? "white-space:nowrap;" : ""}${effectsCss(el.effects, tokens, true)}">${html}</div>`
     }
     case "shape": {
       const s = el.style
       if (el.shape === "line")
         return `<div style="${box}background:${resolveToken(s.fill, tokens, "#0C72C6")}"></div>`
-      return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}"></div>`
+      return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
     }
     case "icon":
       // Icons bake as token-colored marks; the editor swaps in the real
@@ -90,7 +91,7 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
       return `<div style="${box}background:${resolveToken(el.color, tokens, "#0C72C6")};border-radius:4px;opacity:.9"></div>`
     case "image":
       return el.url
-        ? `<img src="${esc(el.url)}" style="${box}object-fit:${el.fit ?? "cover"};border-radius:6px" />`
+        ? `<img src="${esc(el.url)}" style="${box}object-fit:${el.fit ?? "cover"};border-radius:6px;${effectsCss(el.effects, tokens)}" />`
         : `<div style="${box}background:linear-gradient(135deg,#eef2f7,#e2e9f2);border:1px dashed #cbd5e1;border-radius:6px"></div>`
     case "table": {
       const border = resolveToken(el.tableStyle.borders, tokens, "#DDE3EA")
