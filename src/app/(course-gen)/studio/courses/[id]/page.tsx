@@ -84,6 +84,21 @@ export default function StudioCoursePage() {
     load()
   }
 
+  // A failed slide generation resumes from its cursor — finished slides are
+  // already persisted, so this never regenerates work that succeeded.
+  async function resumeGeneration() {
+    setBusy(true)
+    const res = await fetch(`/api/course-gen/courses/${id}/resume`, { method: "POST" })
+    setBusy(false)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Could not resume")
+      return
+    }
+    toast.success("Resuming generation")
+    load()
+  }
+
   async function deleteCourse() {
     if (!confirm("Delete this course and everything generated for it?")) return
     const res = await fetch(`/api/course-gen/courses/${id}`, { method: "DELETE" })
@@ -160,9 +175,12 @@ export default function StudioCoursePage() {
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
           <p className="text-sm text-red-700 flex-1">{latestJob?.error ?? "Generation failed."}</p>
-          <button onClick={() => generateOutline()} disabled={busy}
+          <button
+            onClick={() => (course.modules ?? []).length > 0 ? resumeGeneration() : generateOutline()}
+            disabled={busy}
             className="flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-900">
-            <RefreshCw className="h-3.5 w-3.5" /> Retry
+            <RefreshCw className="h-3.5 w-3.5" />
+            {(course.modules ?? []).length > 0 ? "Resume" : "Retry"}
           </button>
         </div>
       )}

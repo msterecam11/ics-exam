@@ -9,6 +9,8 @@
 
 import { db } from "@/lib/db"
 import { handleOutlineJob } from "./jobs/outline"
+import { handleOrchestratorTick } from "./jobs/orchestrator"
+import { notifyCourseReady } from "./notify"
 
 const POLL_MS = 3000
 
@@ -91,9 +93,23 @@ async function runJob(job: any) {
       }
 
       case "orchestrator": {
-        // Phase 5 wires the full slide pipeline under this job. Until then,
-        // fail loudly and honestly rather than pretending.
-        throw new Error("Slide generation pipeline is not deployed yet — outline approval succeeded, modules are created; full generation arrives with the next phase.")
+        // One slide per tick, then re-queue itself with an advanced cursor:
+        // slide-level progress, slide-level restart recovery, and the worker
+        // never blocks for hours on a single row.
+        const tick = await handleOrchestratorTick(job)
+        if (tick.done) {
+          await completeJob(job.id, { cursor: tick.cursor })
+          await notifyCourseReady(job.course_id)
+        } else {
+          await db.from("cg_generation_jobs").update({
+            status: "queued",
+            current_step: tick.step,
+            progress_pct: tick.progress,
+            input: { ...job.input, cursor: tick.cursor },
+            started_at: null,
+          }).eq("id", job.id)
+        }
+        break
       }
 
       default:

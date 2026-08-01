@@ -169,7 +169,12 @@ export interface TextRun { text: string; bold?: boolean; italic?: boolean; color
 export interface TextElement extends ElementBase {
   type: "text"
   runs: TextRun[]
-  style: { fontSize: number; fontWeight?: number; color?: TokenRef; align?: "left" | "center" | "right"; lineHeight?: number }
+  style: {
+    fontSize: number; fontWeight?: number; color?: TokenRef
+    align?: "left" | "center" | "right"; lineHeight?: number
+    /** Set by the compiler when the text measured as exactly one line. */
+    noWrap?: boolean
+  }
 }
 export interface ImageElement extends ElementBase {
   type: "image"

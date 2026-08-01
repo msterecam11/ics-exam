@@ -1,0 +1,242 @@
+// Orchestrator — pure code. Owns the generation lifecycle.
+//
+// Deliberate design: it processes exactly ONE SLIDE per execution, then
+// re-queues itself with an advanced cursor. That keeps a 400-slide course
+// out of a single multi-hour job, gives slide-level progress, survives
+// restarts at slide granularity, and keeps the single-threaded worker
+// responsive — all of which matter on a 512MB/0.5CPU instance.
+
+import { db } from "@/lib/db"
+import { handleSlideContentJob } from "./slideContent"
+import { handleMediaJob } from "./media"
+import { handleQaJob } from "./qa"
+import { compileBlueprint } from "../compiler"
+import type { Master } from "../theme1"
+import type { ThemeTokens } from "../tokens"
+import type { BlueprintNode, CanvasElement } from "../primitives"
+
+const MAX_QA_RETRIES = 2
+
+interface Cursor { module_index: number; slide_index: number }
+
+export interface OrchestratorTick {
+  done: boolean
+  cursor: Cursor
+  step: string
+  progress: number
+}
+
+function containsCustom(node: BlueprintNode | undefined | null): boolean {
+  if (!node) return false
+  if (node.type === "custom") return true
+  const kids = (node as any).children as BlueprintNode[] | undefined
+  if (Array.isArray(kids)) return kids.some(containsCustom)
+  if (node.type === "comparison") return node.columns.some(c => c.children.some(containsCustom))
+  return false
+}
+
+export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick> {
+  const courseId = job.course_id
+  const plan = job.input?.plan as any[]
+  if (!Array.isArray(plan) || plan.length === 0) throw new Error("Orchestrator has no approved plan")
+
+  const cursor: Cursor = job.input?.cursor ?? { module_index: 0, slide_index: 0 }
+
+  const { data: course } = await db
+    .from("cg_courses")
+    .select("*, cg_themes(tokens, layout_templates)")
+    .eq("id", courseId)
+    .single()
+  if (!course) throw new Error("Course not found")
+
+  const theme = (course as any).cg_themes
+  if (!theme) throw new Error("Course has no theme")
+  const tokens = theme.tokens as ThemeTokens
+  const masters = theme.layout_templates as Record<string, Master>
+
+  const totalSlides = plan.reduce((s, m) => s + (m.slides?.length ?? 0), 0)
+  const doneBefore = plan
+    .slice(0, cursor.module_index)
+    .reduce((s, m) => s + (m.slides?.length ?? 0), 0) + cursor.slide_index
+
+  const mod = plan[cursor.module_index]
+  const slide = mod?.slides?.[cursor.slide_index]
+
+  // Nothing left → course is ready.
+  if (!mod || !slide) {
+    await db.from("cg_courses")
+      .update({ status: "ready", updated_at: new Date().toISOString() })
+      .eq("id", courseId)
+    return { done: true, cursor, step: "Finished", progress: 100 }
+  }
+
+  const master = masters[slide.layout_kind] ?? masters.content_white
+  const stepLabel = `Module ${cursor.module_index} of ${plan.length - 1} — slide ${cursor.slide_index + 1}/${mod.slides.length}`
+
+  // ── 1. Content + blueprint (Sonnet) ──────────────────────────────────────
+  await progress(job.id, `${stepLabel} — writing content`, pct(doneBefore, totalSlides))
+  let source = await handleSlideContentJob({
+    course_id: courseId,
+    module_id: mod.module_id,
+    input: {
+      slide,
+      module_title: mod.title,
+      module_number: mod.module_number,
+      slide_index: cursor.slide_index,
+      slide_total: mod.slides.length,
+      previous_titles: mod.slides.slice(0, cursor.slide_index).map((s: any) => s.title),
+    },
+  })
+
+  let elements: CanvasElement[] = []
+  let verdictFeedback = ""
+
+  for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
+    // ── 2. Compile (code — CSS resolves geometry, then bake) ───────────────
+    await progress(job.id, `${stepLabel} — laying out`, pct(doneBefore + 0.3, totalSlides))
+    const compiled = source.blueprint
+      ? await compileBlueprint({
+          blueprint: source.blueprint,
+          master, tokens,
+          title: source.title,
+          subtitle: (source as any).subtitle,
+        })
+      : { elements: titleOnlyElements(source, master, tokens), overflow: false }
+    elements = compiled.elements
+
+    // Geometric overflow is detectable without a vision call — fix it first.
+    if (compiled.overflow && attempt < MAX_QA_RETRIES) {
+      verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
+      source = await regenerate(courseId, mod, slide, cursor, verdictFeedback)
+      continue
+    }
+
+    // ── 3. Media (library-first, generation fallback, validated) ───────────
+    await progress(job.id, `${stepLabel} — sourcing imagery`, pct(doneBefore + 0.5, totalSlides))
+    try {
+      const media = await handleMediaJob({
+        course_id: courseId,
+        input: { elements, slide_title: source.title, sensitive: (source as any).sensitive },
+      })
+      elements = media.elements
+    } catch (err) {
+      console.error("[course-gen] media step failed (continuing without imagery):", err)
+    }
+
+    // ── 4. QA vision check ────────────────────────────────────────────────
+    await progress(job.id, `${stepLabel} — quality check`, pct(doneBefore + 0.7, totalSlides))
+    let verdict
+    try {
+      verdict = await handleQaJob({
+        input: {
+          elements, master, tokens,
+          slide_title: source.title,
+          page_number: cursor.slide_index + 1,
+          module_number: mod.module_number,
+          partner_logo_light: course.partner_logo_light_url,
+          partner_logo_dark: course.partner_logo_dark_url,
+          is_custom: containsCustom(source.blueprint),
+        },
+      })
+    } catch (err) {
+      console.error("[course-gen] QA step failed (accepting slide):", err)
+      break
+    }
+
+    if (verdict.pass || attempt === MAX_QA_RETRIES) break
+
+    // Route the fix to the layer that can actually resolve it.
+    verdictFeedback = verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
+    source = await regenerate(courseId, mod, slide, cursor, verdictFeedback)
+  }
+
+  // ── 5. Persist the finished slide ────────────────────────────────────────
+  await db.from("cg_pages").insert({
+    module_id: mod.module_id,
+    order_index: cursor.slide_index,
+    layout_kind: slide.layout_kind,
+    background: {},
+    elements,
+    source_content: source,
+    blueprint: source.blueprint ?? null,
+    manually_diverged: false,
+  })
+
+  // ── 6. Advance ───────────────────────────────────────────────────────────
+  const next: Cursor =
+    cursor.slide_index + 1 < mod.slides.length
+      ? { module_index: cursor.module_index, slide_index: cursor.slide_index + 1 }
+      : { module_index: cursor.module_index + 1, slide_index: 0 }
+
+  const finished = next.module_index >= plan.length
+  if (finished) {
+    await db.from("cg_courses")
+      .update({ status: "ready", updated_at: new Date().toISOString() })
+      .eq("id", courseId)
+  }
+
+  return {
+    done: finished,
+    cursor: next,
+    step: finished ? "Finished" : stepLabel,
+    progress: pct(doneBefore + 1, totalSlides),
+  }
+}
+
+async function regenerate(courseId: string, mod: any, slide: any, cursor: Cursor, feedback: string) {
+  return handleSlideContentJob({
+    course_id: courseId,
+    module_id: mod.module_id,
+    input: {
+      slide,
+      module_title: mod.title,
+      module_number: mod.module_number,
+      slide_index: cursor.slide_index,
+      slide_total: mod.slides.length,
+      previous_titles: mod.slides.slice(0, cursor.slide_index).map((s: any) => s.title),
+      retry_feedback: feedback,
+    },
+  })
+}
+
+// Cover / divider / closing slides carry only master-zone text.
+function titleOnlyElements(source: any, master: Master, tokens: ThemeTokens): CanvasElement[] {
+  const dark = master.background.tone === "dark"
+  const out: CanvasElement[] = []
+  const titleZone = master.zones.find(z => z.name === "title")
+  if (titleZone && source.title) {
+    out.push({
+      id: "el-title", type: "text",
+      x: titleZone.x, y: titleZone.y, width: titleZone.width, height: titleZone.height,
+      zIndex: 1,
+      runs: [{ text: source.title, bold: true }],
+      style: {
+        fontSize: (tokens.type_scale as any)?.[titleZone.token ?? "h2"] ?? 40,
+        fontWeight: 800,
+        color: dark ? "token:text-inverse" : "token:navy",
+        align: "left", lineHeight: 1.2,
+      },
+    } as CanvasElement)
+  }
+  const subZone = master.zones.find(z => z.name === "subtitle")
+  if (subZone && source.subtitle) {
+    out.push({
+      id: "el-subtitle", type: "text",
+      x: subZone.x, y: subZone.y, width: subZone.width, height: subZone.height,
+      zIndex: 2,
+      runs: [{ text: source.subtitle }],
+      style: { fontSize: 18, color: dark ? "token:text-inverse" : "token:text", align: "left" },
+    } as CanvasElement)
+  }
+  return out
+}
+
+function pct(done: number, total: number): number {
+  return Math.min(99, Math.round((done / Math.max(1, total)) * 100))
+}
+
+async function progress(jobId: string, step: string, progressPct: number) {
+  await db.from("cg_generation_jobs")
+    .update({ current_step: step, progress_pct: progressPct })
+    .eq("id", jobId)
+}
