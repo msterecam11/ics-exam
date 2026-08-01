@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
-import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3, ShieldCheck, Activity } from "lucide-react"
+import { LogOut, ArrowRight, GraduationCap, Users, BookOpen, BarChart3, ShieldCheck, Activity, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface System {
@@ -51,6 +51,17 @@ const SYSTEMS: System[] = [
     accent: "#059669",
     accentBg: "bg-emerald-600",
     accentText: "text-emerald-600",
+  },
+  {
+    id: "course-gen",
+    label: "Course Generator",
+    description: "AI-generated ICS-branded training courses — outline review, canvas editing, PDF export.",
+    icon: Sparkles,
+    href: "/studio",
+    status: "live",
+    accent: "#0C72C6",
+    accentBg: "bg-[#0C72C6]",
+    accentText: "text-[#0C72C6]",
   },
   {
     id: "reports",
