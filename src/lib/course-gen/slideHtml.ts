@@ -7,6 +7,7 @@
 import type { CanvasElement } from "./primitives"
 import { resolveToken, SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import type { Master, ChromeSlot } from "./theme1"
+import { inlineFontFaces } from "./fonts"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -123,9 +124,7 @@ export function renderSlideHtml(input: RenderSlideInput): string {
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Regular.ttf') format('truetype');font-weight:400}
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Bold.ttf') format('truetype');font-weight:700}
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Light.ttf') format('truetype');font-weight:300}
+  ${inlineFontFaces()}
   *{box-sizing:border-box;margin:0;padding:0}
   body{width:${SLIDE_W}px;height:${SLIDE_H}px;font-family:'Jakarta',sans-serif;overflow:hidden}
   #slide{position:relative;width:${SLIDE_W}px;height:${SLIDE_H}px;overflow:hidden;background:#fff}

@@ -10,6 +10,7 @@ import { getBrowser } from "@/lib/browser"
 import type { BlueprintNode, CanvasElement } from "./primitives"
 import { blueprintToHtml } from "./blueprintHtml"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
+import { inlineFontFaces } from "./fonts"
 import type { Master } from "./theme1"
 
 export interface CompileInput {
@@ -29,16 +30,14 @@ interface MeasuredNode {
 // Rendered once per compile — a bare page sized to the slide, with the
 // content zone as an absolutely-positioned box. Fonts are the self-hosted
 // Plus Jakarta Sans the rest of the app uses.
-function buildPage(html: string, zone: { x: number; y: number; width: number; height: number }, origin: string): string {
+function buildPage(html: string, zone: { x: number; y: number; width: number; height: number }): string {
   const zx = (zone.x / 100) * SLIDE_W
   const zy = (zone.y / 100) * SLIDE_H
   const zw = (zone.width / 100) * SLIDE_W
   const zh = (zone.height / 100) * SLIDE_H
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Regular.ttf') format('truetype');font-weight:400}
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Bold.ttf') format('truetype');font-weight:700}
-  @font-face{font-family:'Jakarta';src:url('${origin}/fonts/PlusJakartaSans-Light.ttf') format('truetype');font-weight:300}
+  ${inlineFontFaces()}
   *{box-sizing:border-box;margin:0;padding:0}
   body{width:${SLIDE_W}px;height:${SLIDE_H}px;font-family:'Jakarta',sans-serif;position:relative;overflow:hidden;background:#fff}
   #zone{position:absolute;left:${zx}px;top:${zy}px;width:${zw}px;height:${zh}px;display:flex;flex-direction:column;overflow:visible}
@@ -55,9 +54,6 @@ export async function compileBlueprint(input: CompileInput): Promise<{
   const darkContext = input.master.background.tone === "dark"
   const html = blueprintToHtml(input.blueprint, input.tokens, darkContext)
 
-  const port = process.env.PORT ?? "3000"
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? `http://localhost:${port}`
-
   const browser = await getBrowser()
   try {
     const page = await browser.newPage()
@@ -65,7 +61,7 @@ export async function compileBlueprint(input: CompileInput): Promise<{
     // networkidle0 (not "load") so the webfont requests actually finish —
     // measuring with a fallback font produces boxes that are wrong for the
     // real font, and every text box then re-wraps at render time.
-    await page.setContent(buildPage(html, zone, origin), { waitUntil: "networkidle0" })
+    await page.setContent(buildPage(html, zone), { waitUntil: "networkidle0" })
     await page.evaluate(async () => { await (document as any).fonts?.ready })
 
     const measured: MeasuredNode[] = await page.evaluate(() => {
