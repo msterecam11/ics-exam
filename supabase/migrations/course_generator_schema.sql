@@ -95,6 +95,11 @@ CREATE INDEX IF NOT EXISTS idx_cg_pages_module ON cg_pages(module_id, order_inde
 -- the same as passing. Added after the table shipped.
 ALTER TABLE cg_pages ADD COLUMN IF NOT EXISTS fact_check JSONB;
 
+-- Course-level consistency report — cross-slide contradictions, terminology
+-- drift, and near-duplicate content, none of which a per-slide check can see.
+ALTER TABLE cg_courses ADD COLUMN IF NOT EXISTS consistency_report JSONB;
+ALTER TABLE cg_courses ADD COLUMN IF NOT EXISTS consistency_checked_at TIMESTAMPTZ;
+
 -- ── Generation jobs (this table IS the queue) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS cg_generation_jobs (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

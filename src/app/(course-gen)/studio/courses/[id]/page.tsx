@@ -285,6 +285,46 @@ export default function StudioCoursePage() {
         </div>
       )}
 
+      {/* Cross-course consistency — a report to review, not an auto-fix; a
+          contradiction between two modules needs a human call on which one's right. */}
+      {course.consistency_report?.checked && (
+        <div className="s-card" style={{ padding: "14px 18px", marginBottom: 22 }}>
+          <div className="flex items-center gap-2" style={{ marginBottom: course.consistency_report.issues?.length ? 10 : 0 }}>
+            {course.consistency_report.issues?.length > 0
+              ? <AlertCircle className="h-4 w-4 shrink-0" style={{ color: "#C08A2E" }} />
+              : <Check className="h-4 w-4 shrink-0" style={{ color: "#1F7A44" }} />}
+            <p className="s-label flex-1">
+              Consistency check{" "}
+              {course.consistency_report.issues?.length > 0
+                ? `— ${course.consistency_report.issues.length} item${course.consistency_report.issues.length === 1 ? "" : "s"} to review`
+                : "— nothing found across modules"}
+            </p>
+            <span className="s-meta" style={{ fontSize: 11 }}>
+              {course.consistency_report.slide_count} slides compared
+              {course.consistency_report.truncated ? " (partial — course too large for one pass)" : ""}
+            </span>
+          </div>
+          {(course.consistency_report.issues ?? []).map((iss: any, i: number) => (
+            <div key={i} className="flex items-start gap-2.5" style={{
+              padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid var(--s-line-soft)",
+            }}>
+              <span className={`s-pill ${iss.severity === "major" ? "s-pill-danger" : "s-pill-warn"}`}
+                style={{ fontSize: 9.5, padding: "1px 7px", marginTop: 1, flexShrink: 0 }}>
+                {iss.kind?.toUpperCase()}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p style={{ fontSize: 12, color: "var(--s-body)", lineHeight: 1.5 }}>{iss.detail}</p>
+                {Array.isArray(iss.slides) && iss.slides.length > 0 && (
+                  <p className="s-meta" style={{ fontSize: 10.5, marginTop: 2 }}>
+                    {iss.slides.map((s: any) => `Module ${s.module}, Slide ${s.slide}`).join("  ·  ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Modules */}
       {(course.modules ?? []).length > 0 && (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(430px,1fr))", marginBottom: 22 }}>

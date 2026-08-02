@@ -100,7 +100,7 @@ DO $$
 BEGIN
   ALTER TABLE cg_generation_jobs DROP CONSTRAINT IF EXISTS cg_generation_jobs_job_type_check;
   ALTER TABLE cg_generation_jobs ADD CONSTRAINT cg_generation_jobs_job_type_check
-    CHECK (job_type IN ('orchestrator','outline','slide_content','media','compile','qa','chat_edit','pdf_export','doc_scan'));
+    CHECK (job_type IN ('orchestrator','outline','slide_content','media','compile','qa','chat_edit','pdf_export','doc_scan','consistency'));
 END $$;
 
 -- ── RLS (service-role client is used server-side; permissive policy) ────────

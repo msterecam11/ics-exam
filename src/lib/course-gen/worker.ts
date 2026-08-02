@@ -11,6 +11,7 @@ import { db } from "@/lib/db"
 import { handleOutlineJob } from "./jobs/outline"
 import { handleOrchestratorTick } from "./jobs/orchestrator"
 import { handleDocScanTick } from "./jobs/docScan"
+import { handleConsistencyJob } from "./jobs/consistency"
 import { handlePdfExportJob } from "./jobs/pdfExport"
 import { notifyCourseReady } from "./notify"
 
@@ -105,6 +106,11 @@ async function runJob(job: any) {
         if (tick.done) {
           await completeJob(job.id, { cursor: tick.cursor, log })
           await notifyCourseReady(job.course_id)
+          // One-shot, queued after the course is already marked ready — a
+          // failed or slow consistency pass must never hold up delivery.
+          await db.from("cg_generation_jobs").insert({
+            course_id: job.course_id, job_type: "consistency", status: "queued", input: {},
+          })
         } else {
           await db.from("cg_generation_jobs").update({
             status: "queued",
@@ -123,6 +129,13 @@ async function runJob(job: any) {
         await setStep(job.id, "Preparing export…", 5)
         const out = await handlePdfExportJob(job)
         await completeJob(job.id, out)
+        break
+      }
+
+      case "consistency": {
+        await setStep(job.id, "Checking consistency across the course…", 10)
+        const report = await handleConsistencyJob(job)
+        await completeJob(job.id, report)
         break
       }
 
