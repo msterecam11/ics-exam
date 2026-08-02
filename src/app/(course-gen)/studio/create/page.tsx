@@ -11,10 +11,16 @@ import {
   Loader2, Plus, Trash2, Upload, FileText, Sparkles, X,
 } from "lucide-react"
 
-interface ModuleRow { title: string; slide_count: number }
+interface ModuleRow { title: string; slide_count: number; coverage: string }
 interface RefFile { file: File; status: "pending" | "uploading" | "done" | "failed" }
 
 const TONES = ["Corporate / formal", "Instructional", "Conversational"]
+
+/** Rough count of the bullet points a designer pasted, for the hint line. */
+function countPoints(text: string): number {
+  return text.split(/\r?\n/).map(l => l.trim())
+    .filter(l => l.length > 2 && /^[-•*o\d]/.test(l)).length
+}
 
 export default function CreateCoursePage() {
   const router = useRouter()
@@ -29,7 +35,7 @@ export default function CreateCoursePage() {
 
   // ── Structure ──
   const [modules, setModules] = useState<ModuleRow[]>([
-    { title: "", slide_count: 20 },
+    { title: "", slide_count: 20, coverage: "" },
   ])
 
   // ── Options ──
@@ -200,25 +206,45 @@ export default function CreateCoursePage() {
           <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(2, "Course structure")}
             <p className="s-meta" style={{ fontSize: 11.5, marginTop: -6 }}>
-              One row per module. Slides per module is a target, not a hard limit — the outline review lets you adjust before anything is generated.
+              One row per module. Paste what each module must cover — the agent treats every point as required, maps it to specific slides, and the outline review flags anything left uncovered. Slide counts are targets, not limits.
             </p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {modules.map((m, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <span className="s-meta shrink-0" style={{ width: 56, fontSize: 11, fontWeight: 700 }}>Module {i + 1}</span>
-                  <input className={inputCls} value={m.title}
-                    onChange={e => setModule(i, { title: e.target.value })}
-                    placeholder="Module title" />
-                  <input type="number" min={4} max={60} className={`${inputCls} !w-20 shrink-0`} value={m.slide_count}
-                    onChange={e => setModule(i, { slide_count: parseInt(e.target.value) || 10 })}
-                    title="Target slides" />
-                  {modules.length > 1 && (
-                    <button onClick={() => setModules(ms => ms.filter((_, j) => j !== i))}
-                      className="text-slate-300 hover:text-red-500 shrink-0"><Trash2 className="h-4 w-4" /></button>
+                <div key={i} style={{ border: "1.5px solid var(--s-line)", borderRadius: 8, padding: 12 }}>
+                  <div className="flex gap-2 items-center">
+                    <span className="s-meta shrink-0" style={{ width: 56, fontSize: 11, fontWeight: 700 }}>Module {i + 1}</span>
+                    <input className={inputCls} value={m.title}
+                      onChange={e => setModule(i, { title: e.target.value })}
+                      placeholder="Module title" />
+                    <input type="number" min={4} max={60} className={`${inputCls} !w-20 shrink-0`} value={m.slide_count}
+                      onChange={e => setModule(i, { slide_count: parseInt(e.target.value) || 10 })}
+                      title="Target slides" />
+                    {modules.length > 1 && (
+                      <button onClick={() => setModules(ms => ms.filter((_, j) => j !== i))}
+                        className="text-slate-300 hover:text-red-500 shrink-0"><Trash2 className="h-4 w-4" /></button>
+                    )}
+                  </div>
+                  <textarea
+                    className={inputCls}
+                    style={{ marginTop: 8, minHeight: 76, resize: "vertical", fontFamily: "ui-monospace, monospace", fontSize: 11.5 }}
+                    value={m.coverage}
+                    onChange={e => setModule(i, { coverage: e.target.value })}
+                    placeholder={`What this module must cover — paste your syllabus, structure and all:
+
+• Safety and Security Protocols
+   - Introduction to Safety Management Systems (SMS) and OHS
+   - Security measures [MR4.1], procedures, crisis management
+• Performance and Quality Improvement
+   - Performance metrics, continuous improvement, QMS
+   - Introduction to Lean management [MR5.1]`} />
+                  {m.coverage.trim() && (
+                    <p className="s-meta" style={{ fontSize: 11, marginTop: 5 }}>
+                      {countPoints(m.coverage)} required point{countPoints(m.coverage) === 1 ? "" : "s"} — the outline must cover every one, and you&apos;ll see which slides do.
+                    </p>
                   )}
                 </div>
               ))}
-              <button onClick={() => setModules(ms => [...ms, { title: "", slide_count: 20 }])}
+              <button onClick={() => setModules(ms => [...ms, { title: "", slide_count: 20, coverage: "" }])}
                 className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 700, color: "var(--s-primary)" }}>
                 <Plus className="h-3.5 w-3.5" /> Add module
               </button>

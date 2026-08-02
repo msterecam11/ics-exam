@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import GeneratingView from "@/components/course-gen/GeneratingView"
 import { STATUS_PILL } from "@/components/course-gen/CourseCards"
+import CoverageCheck from "@/components/course-gen/CoverageCheck"
 
 // Slide-type chips on module cards, coloured like the prototype so a module's
 // shape (cover → section → content → check → closing) reads at a glance.
@@ -152,7 +153,7 @@ export default function StudioCoursePage() {
     )
   }
 
-  const briefModules: { title: string; slide_count: number }[] = course.generation_input?.modules ?? []
+  const briefModules: { title: string; slide_count: number; coverage?: string }[] = course.generation_input?.modules ?? []
 
   return (
     <div className="s-fade" style={{ maxWidth: 1160, margin: "0 auto" }}>
@@ -258,6 +259,15 @@ export default function StudioCoursePage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Required-coverage verification, when the brief supplied one */}
+                  {(() => {
+                    const idx = m.is_module_zero ? -1 : m.module_number - 1
+                    const cov = briefModules[idx]?.coverage
+                    return cov?.trim()
+                      ? <CoverageCheck coverage={cov} slides={m.slides ?? []} />
+                      : null
+                  })()}
                 </div>
               ))}
             </div>

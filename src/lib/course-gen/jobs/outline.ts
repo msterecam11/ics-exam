@@ -15,6 +15,9 @@ export interface OutlineSlide {
   layout_kind: (typeof LAYOUT_KINDS)[number]
   intent: string
   key_points: string[]
+  /** Verbatim required-coverage points from the brief that this slide
+   *  delivers — this is what makes coverage checkable rather than assumed. */
+  covers?: string[]
 }
 export interface OutlineModule {
   module_number: number
@@ -48,10 +51,19 @@ export async function handleOutlineJob(job: any): Promise<OutlineOutput> {
     .join("\n\n")
 
   const gi = course.generation_input ?? {}
-  const briefModules: { title: string; slide_count: number }[] = gi.modules ?? []
+  const briefModules: { title: string; slide_count: number; coverage?: string }[] = gi.modules ?? []
   const moduleLines = briefModules
-    .map((m, i) => `  Module ${i + 1}: "${m.title}" — target ~${m.slide_count} slides`)
+    .map((m, i) => {
+      const head = `  Module ${i + 1}: "${m.title}" — target ~${m.slide_count} slides`
+      if (!m.coverage?.trim()) return head
+      // The designer's syllabus is passed through verbatim, structure and
+      // reference markers intact, so the agent can echo lines back exactly.
+      const body = m.coverage.trim().split(/\r?\n/).map(l => `      ${l.trim()}`).join("\n")
+      return `${head}\n    REQUIRED COVERAGE (every point below must appear in this module):\n${body}`
+    })
     .join("\n")
+
+  const hasCoverage = briefModules.some(m => m.coverage?.trim())
 
   const assessment = course.include_assessment
   const grammar = [
@@ -88,7 +100,10 @@ ${refBlock ? `## Reference material excerpts (ground the outline in these — us
 ${previousOutline ? `## Previous outline (being revised)\n${JSON.stringify(previousOutline)}\n` : ""}
 ${adjustments ? `## Designer's requested adjustments (apply these precisely)\n${adjustments}\n` : ""}
 
-## Slide intents
+${hasCoverage ? `## Required coverage — this is a contract
+Some modules list REQUIRED COVERAGE. Every one of those points must be delivered by at least one slide in that module. For each slide, list in "covers" the exact coverage lines (copied verbatim, including any [MR..] reference markers) that the slide delivers. A point may span several slides, and one slide may cover several points — but nothing may be dropped. If a module's coverage needs more slides than its target, exceed the target rather than omitting content, and keep reference markers intact in the slide content later.
+
+` : ""}## Slide intents
 For each content slide choose an intent that describes its content shape: "comparison", "numbered-process", "categorized-sections", "definition-list", "bullets-with-figure", "table", "chart", "timeline", "case-study", "regulation-breakdown", or similar. Vary intents — a module of 15 identical bullet slides is a failure.
 
 ## Output
@@ -102,13 +117,13 @@ Return ONLY valid JSON (no markdown fences):
       "day_number": null,
       "slides": [
         { "title": "...", "layout_kind": "cover", "intent": "module-cover", "key_points": [] },
-        { "title": "...", "layout_kind": "content_white", "intent": "bullets-with-figure", "key_points": ["...", "..."] }
+        { "title": "...", "layout_kind": "content_white", "intent": "bullets-with-figure", "key_points": ["...", "..."], "covers": ["exact required-coverage line this slide delivers"] }
       ]
     },
     { "module_number": 1, "title": "...", "is_module_zero": false, "day_number": 1, "slides": [ ... ] }
   ]
 }
-layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short phrases naming what the slide will actually cover (used later to write the full slide).`
+layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short phrases naming what the slide will actually cover (used later to write the full slide). "covers" is only for modules that listed required coverage — copy those lines verbatim.`
 
   const result = await claudeJSON({
     model: MODELS.outline,
@@ -126,6 +141,7 @@ layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short
     for (const s of m.slides) {
       if (!LAYOUT_KINDS.includes(s.layout_kind)) s.layout_kind = "content_white"
       if (!Array.isArray(s.key_points)) s.key_points = []
+      if (!Array.isArray(s.covers)) s.covers = []
     }
   }
 

@@ -70,6 +70,13 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
 
   const isStructural = ["cover", "section_divider", "closing_cta"].includes(slide.layout_kind)
 
+  // The syllabus points the outline assigned to THIS slide. Passed verbatim so
+  // reference markers like [MR4.1] survive into the finished slide text.
+  const covers: string[] = Array.isArray(slide.covers) ? slide.covers : []
+  const coversBlock = covers.length
+    ? `REQUIRED COVERAGE this slide must deliver (from the client's syllabus — keep any [MR..] reference markers verbatim):\n${covers.map(c => `  - ${c}`).join("\n")}`
+    : ""
+
   const prompt = `You are the Content Agent for ICS Aviation's course generator. Write ONE slide of a professional aviation training course, and design the structure of its content area.
 
 ## Course
@@ -85,6 +92,7 @@ Planned title: "${slide.title}"
 Planned intent: ${slide.intent}
 Layout master: ${slide.layout_kind}
 Key points to cover: ${JSON.stringify(slide.key_points ?? [])}
+${coversBlock}
 ${previous_titles?.length ? `Already covered in this module (do NOT repeat): ${JSON.stringify(previous_titles)}` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}\nProduce less text and/or a simpler structure so everything fits comfortably.` : ""}
 
