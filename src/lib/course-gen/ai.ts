@@ -13,6 +13,10 @@ export const MODELS = {
   slide_content: process.env.CG_MODEL_CONTENT ?? "claude-sonnet-5",
   chat:          process.env.CG_MODEL_CHAT    ?? "claude-sonnet-5",
   qa_vision:     process.env.CG_MODEL_QA      ?? "claude-haiku-4-5-20251001",
+  // Reading a regulation against a claim is close reading, not pattern
+  // matching — a contradiction missed here ships as a compliance error, so
+  // this one does not get the cheap model.
+  qa_fact:       process.env.CG_MODEL_FACT    ?? "claude-sonnet-5",
   media_scoring: process.env.CG_MODEL_MEDIA   ?? "claude-haiku-4-5-20251001",
 } as const
 

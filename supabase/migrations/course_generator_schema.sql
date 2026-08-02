@@ -90,6 +90,11 @@ CREATE TABLE IF NOT EXISTS cg_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_cg_pages_module ON cg_pages(module_id, order_index);
 
+-- Factual QA verdict: { checked, pass, claims[], fabricated_citations[], feedback }.
+-- `checked:false` means the slide could not be verified — a real state, and not
+-- the same as passing. Added after the table shipped.
+ALTER TABLE cg_pages ADD COLUMN IF NOT EXISTS fact_check JSONB;
+
 -- ── Generation jobs (this table IS the queue) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS cg_generation_jobs (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

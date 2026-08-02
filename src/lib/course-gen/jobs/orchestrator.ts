@@ -10,6 +10,7 @@ import { db } from "@/lib/db"
 import { handleSlideContentJob } from "./slideContent"
 import { handleMediaJob } from "./media"
 import { handleQaJob } from "./qa"
+import { handleFactCheckJob, type FactVerdict } from "./factCheck"
 import { compileBlueprint } from "../compiler"
 import type { Master } from "../theme1"
 import type { ThemeTokens } from "../tokens"
@@ -90,6 +91,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
 
   let elements: CanvasElement[] = []
   let verdictFeedback = ""
+  let factVerdict: FactVerdict | null = null
 
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
     // ── 2. Compile (code — CSS resolves geometry, then bake) ───────────────
@@ -143,10 +145,36 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       break
     }
 
-    if (verdict.pass || attempt === MAX_QA_RETRIES) break
+    // ── 4b. Factual check — does it match the clause it cites? ─────────────
+    // Runs only once the slide looks right, so a slide destined for a layout
+    // rewrite doesn't burn a fact call on text that's about to change.
+    if (verdict.pass) {
+      await progress(job.id, `${stepLabel} — checking facts`, pct(doneBefore + 0.85, totalSlides))
+      try {
+        factVerdict = await handleFactCheckJob({
+          course_id: courseId,
+          input: { elements, slide_title: source.title, citations: (source as any).citations },
+        })
+      } catch (err) {
+        // An unavailable checker must not silently become a clean bill of
+        // health — record that this slide went unverified.
+        console.error("[course-gen] fact check failed:", err)
+        factVerdict = {
+          checked: false, pass: true, claims: [], fabricated_citations: [],
+          feedback: `Fact check could not run: ${(err as any)?.message ?? "unknown error"}`,
+        }
+      }
+    }
 
-    // Route the fix to the layer that can actually resolve it.
-    verdictFeedback = verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
+    const factOk = !factVerdict || factVerdict.pass
+    if ((verdict.pass && factOk) || attempt === MAX_QA_RETRIES) break
+
+    // Route the fix to the layer that can actually resolve it. A factual
+    // failure always goes back to the content layer — no layout change can
+    // make a wrong number right.
+    verdictFeedback = !factOk
+      ? factVerdict!.feedback
+      : verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
     source = await regenerate(courseId, mod, slide, cursor, verdictFeedback)
   }
 
@@ -160,6 +188,9 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     source_content: source,
     blueprint: source.blueprint ?? null,
     manually_diverged: false,
+    // Kept on the slide so a reviewer can see WHY it was accepted — including
+    // "unverified", which is a real state and not the same as "correct".
+    fact_check: factVerdict,
   })
 
   // ── 6. Advance ───────────────────────────────────────────────────────────
