@@ -141,7 +141,6 @@ layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short
     model: MODELS.outline,
     prompt,
     maxTokens: 16_000,
-    temperature: 0.4,
   })
 
   // Validate shape + coerce basics so downstream never sees garbage.

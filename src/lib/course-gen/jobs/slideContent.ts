@@ -150,7 +150,6 @@ Return ONLY valid JSON:
     model: MODELS.slide_content,
     prompt,
     maxTokens: 8000,
-    temperature: 0.5,
   })
 
   if (!result?.title) throw new Error("Slide content came back without a title")

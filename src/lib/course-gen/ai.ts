@@ -53,19 +53,23 @@ export function parseJsonLoose(raw: string): any {
   return JSON.parse(match ? match[0] : cleaned)
 }
 
-/** One text-in → JSON-out call. Throws on unparseable output. */
+/**
+ * One text-in → JSON-out call. Throws on unparseable output.
+ *
+ * No `temperature` — Sonnet 5 (every model in MODELS) 400s on any non-default
+ * value, and these are structured-JSON extraction/generation calls where
+ * consistency is wanted anyway, so there's nothing to steer with sampling.
+ */
 export async function claudeJSON(opts: {
   model: string
   system?: string
   prompt: string
   maxTokens?: number
-  temperature?: number
 }): Promise<any> {
   const msg = await withRetry(() =>
     anthropic.messages.create({
       model: opts.model,
       max_tokens: opts.maxTokens ?? 4096,
-      temperature: opts.temperature ?? 0.4,
       system: opts.system,
       messages: [{ role: "user", content: opts.prompt }],
     })

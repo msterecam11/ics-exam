@@ -138,7 +138,6 @@ If the instruction needs no changes (a question, or nothing to do), return an em
     const msg = await withRetry(() => anthropic.messages.create({
       model: MODELS.chat,
       max_tokens: 8000,
-      temperature: 0.3,
       system,
       tools: TOOLS,
       messages,

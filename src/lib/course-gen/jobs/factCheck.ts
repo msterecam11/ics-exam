@@ -138,7 +138,6 @@ export async function handleFactCheckJob(job: any): Promise<FactVerdict> {
     const result = await claudeJSON({
       model: MODELS.qa_fact,
       maxTokens: 2000,
-      temperature: 0,
       prompt: `You are the factual reviewer for ICS Aviation compliance training. Compare what a slide asserts against the regulatory text it cites.
 
 ## Slide: "${slide_title}"
