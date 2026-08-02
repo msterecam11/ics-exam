@@ -59,7 +59,7 @@ export async function handleDocScanTick(job: any): Promise<ScanTick> {
 
       if (pending.length > 0) {
         const slice = pending.slice(0, OCR_PAGES_PER_TICK)
-        const read = await ocrPdfPages(buffer, slice)
+        const read = await ocrPdfPages(doc.file_url, slice)
         for (const r of read) cache[String(r.page)] = r.text
 
         const doneCount = thinPages.length - pending.length + slice.length
@@ -89,7 +89,7 @@ export async function handleDocScanTick(job: any): Promise<ScanTick> {
         scan_status: "failed",
         scan_error: isOcrConfigured()
           ? "OCR ran but recovered no readable text from this file. It may be a poor-quality scan, or password-protected."
-          : "This PDF has no text layer — every page is an image. Set GOOGLE_VISION_API_KEY to enable OCR, then rescan.",
+          : "This PDF has no text layer — every page is an image. Set MISTRAL_API_KEY to enable OCR, then rescan.",
         updated_at: new Date().toISOString(),
       }).eq("id", documentId)
       return { done: true, progress: 100, step: "Needs OCR" }

@@ -186,7 +186,7 @@ function DocumentRow({ doc, ocrAvailable, onChange }: { doc: any; ocrAvailable: 
             <p style={{ fontSize: 11.5, color: "#C05252", marginTop: 6, lineHeight: 1.5 }}>
               <AlertTriangle className="h-3 w-3 inline mr-1" />
               {doc.scan_error ?? "Scan failed."}
-              {scannedPdf && !ocrAvailable && " Set GOOGLE_VISION_API_KEY to enable OCR, then rescan — or upload a text-based version."}
+              {scannedPdf && !ocrAvailable && " Set MISTRAL_API_KEY to enable OCR, then rescan — or upload a text-based version."}
             </p>
           )}
 
