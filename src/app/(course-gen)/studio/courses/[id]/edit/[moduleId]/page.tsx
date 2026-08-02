@@ -12,10 +12,12 @@ import { toast } from "sonner"
 import {
   ArrowLeft, Loader2, Undo2, Redo2, Plus, Play, Type, Square, ImageIcon,
   Table2, BarChart3, Save, X, Trash2, Sparkles, SlidersHorizontal,
+  PanelRightClose, PanelRightOpen,
 } from "lucide-react"
 import SlideCanvas, { type Master } from "@/components/course-gen/SlideCanvas"
 import PropertiesPanel from "@/components/course-gen/PropertiesPanel"
 import ChatPanel, { type Proposal } from "@/components/course-gen/ChatPanel"
+import AddSlideDialog from "@/components/course-gen/AddSlideDialog"
 import { useEditor, useActivePage, type EditorPage } from "@/lib/course-gen/editorStore"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "@/lib/course-gen/tokens"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
@@ -37,6 +39,8 @@ export default function ModuleEditorPage() {
   const [meta, setMeta] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [zoom, setZoom] = useState(0.62)
+  const [autoFit, setAutoFit] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(true)
   const [present, setPresent] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [rightPanel, setRightPanel] = useState<"properties" | "chat">("properties")
@@ -45,6 +49,7 @@ export default function ModuleEditorPage() {
   const store = useEditor()
   const page = useActivePage()
   const stageRef = useRef<HTMLDivElement>(null)
+  const stageWrapRef = useRef<HTMLDivElement>(null)
   const targetRef = useRef<HTMLElement | null>(null)
   const [moveableTarget, setMoveableTarget] = useState<HTMLElement | null>(null)
 
@@ -64,6 +69,26 @@ export default function ModuleEditorPage() {
   const tokens: ThemeTokens | null = meta?.theme?.tokens ?? null
   const masters: Record<string, Master> = meta?.theme?.layout_templates ?? {}
   const master: Master | null = page ? (masters[page.layout_kind] ?? masters.content_white) : null
+
+  // Fit the slide to the available stage width. Without this the canvas
+  // keeps its fixed zoom and the right panel simply crops it — which is
+  // exactly what made the slide look cut off.
+  useEffect(() => {
+    const el = stageWrapRef.current
+    if (!el) return
+    const measure = () => {
+      if (!autoFit) return
+      const availW = el.clientWidth - 48   // stage padding
+      const availH = el.clientHeight - 48
+      if (availW <= 0 || availH <= 0) return
+      const z = Math.min(availW / SLIDE_W, availH / SLIDE_H)
+      setZoom(Math.max(0.2, Math.min(1, z)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [autoFit, panelOpen, rightPanel])
 
   // ── Autosave (debounced, per dirty page) ─────────────────────────────────
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -261,23 +286,34 @@ export default function ModuleEditorPage() {
             ? <span className="flex items-center gap-1 text-[11px] text-amber-600"><Save className="h-3 w-3" /> Unsaved</span>
             : <span className="text-[11px] text-emerald-600">Saved</span>}
 
-        <input type="range" min={0.3} max={1} step={0.02} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))}
-          className="w-24 accent-[#0C72C6]" title="Zoom" />
+        <button onClick={() => setAutoFit(true)} title="Fit slide to the window"
+          className={`text-[11px] font-bold px-2 py-1 rounded ${autoFit ? "bg-[#0C72C6]/10 text-[#0C72C6]" : "text-slate-500 hover:bg-slate-100"}`}>
+          FIT
+        </button>
+        <input type="range" min={0.2} max={1} step={0.02} value={zoom}
+          onChange={e => { setAutoFit(false); setZoom(parseFloat(e.target.value)) }}
+          className="w-20 accent-[#0C72C6]" title="Zoom" />
+        <span className="text-[11px] text-slate-400 w-8">{Math.round(zoom * 100)}%</span>
         <button onClick={() => setPresent(true)}
           className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded">
           <Play className="h-3.5 w-3.5" /> Present
         </button>
         <div className="h-5 w-px bg-slate-200" />
         <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
-          <button onClick={() => setRightPanel("properties")} title="Properties"
-            className={`p-1.5 rounded-md transition-colors ${rightPanel === "properties" ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
+          <button onClick={() => { setRightPanel("properties"); setPanelOpen(true) }} title="Properties"
+            onFocus={() => setPanelOpen(true)}
+            className={`p-1.5 rounded-md transition-colors ${rightPanel === "properties" && panelOpen ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
             <SlidersHorizontal className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => setRightPanel("chat")} title="AI Assistant"
-            className={`p-1.5 rounded-md transition-colors ${rightPanel === "chat" ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
+          <button onClick={() => { setRightPanel("chat"); setPanelOpen(true) }} title="AI Assistant"
+            className={`p-1.5 rounded-md transition-colors ${rightPanel === "chat" && panelOpen ? "bg-white shadow-sm text-[#0C72C6]" : "text-slate-500 hover:text-slate-700"}`}>
             <Sparkles className="h-3.5 w-3.5" />
           </button>
         </div>
+        <button onClick={() => setPanelOpen(v => !v)} title={panelOpen ? "Hide panel — more room for the slide" : "Show panel"}
+          className="p-1.5 rounded hover:bg-slate-100 text-slate-500">
+          {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+        </button>
       </div>
 
       {store.conflict && (
@@ -290,24 +326,13 @@ export default function ModuleEditorPage() {
 
       <div className="flex flex-1 min-h-0">
         {/* Slides sidebar */}
-        <div className="w-56 shrink-0 border-r border-slate-200 bg-slate-50 overflow-y-auto p-3 space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Slides</p>
-            <button onClick={() => setShowAdd(v => !v)} title="Add slide"
-              className="p-1 rounded hover:bg-slate-200 text-slate-500"><Plus className="h-3.5 w-3.5" /></button>
+        <div className="w-56 shrink-0 border-r flex flex-col" style={{ borderColor: "var(--s-line)", background: "var(--s-surface-soft2)" }}>
+          <div className="flex items-center justify-between px-3 pt-3 pb-1 shrink-0">
+            <p className="s-label">Slides</p>
+            <span className="s-meta" style={{ fontSize: 11 }}>{store.pages.length}</span>
           </div>
 
-          {showAdd && (
-            <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1 mb-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">Choose a master</p>
-              {Object.keys(masters).map(k => (
-                <button key={k} onClick={() => addSlide(k)}
-                  className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-[#0C72C6]/10 hover:text-[#0C72C6] text-slate-600">
-                  {MASTER_LABELS[k] ?? k}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto px-3 pb-2 space-y-2">
 
           {store.pages.map((p, i) => {
             const m = masters[p.layout_kind] ?? masters.content_white
@@ -333,10 +358,18 @@ export default function ModuleEditorPage() {
               </div>
             )
           })}
+          </div>
+
+          {/* Add slide — a real button, always visible at the bottom */}
+          <div className="shrink-0 p-3 border-t" style={{ borderColor: "var(--s-line)", background: "#fff" }}>
+            <button onClick={() => setShowAdd(true)} className="s-btn s-btn-primary w-full">
+              <Plus className="h-4 w-4" /> Add slide
+            </button>
+          </div>
         </div>
 
         {/* Stage */}
-        <div className="flex-1 min-w-0 overflow-auto bg-slate-300 flex items-start justify-center p-8">
+        <div ref={stageWrapRef} className="flex-1 min-w-0 overflow-auto bg-slate-300 flex items-start justify-center p-6">
           <div ref={stageRef}
             style={{ width: SLIDE_W * zoom, height: SLIDE_H * zoom, position: "relative", flexShrink: 0 }}>
             <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: SLIDE_W, height: SLIDE_H, boxShadow: "0 8px 32px rgba(0,0,0,.2)" }}>
@@ -404,7 +437,20 @@ export default function ModuleEditorPage() {
           </div>
         </div>
 
-        {rightPanel === "properties"
+        {showAdd && (
+          <AddSlideDialog
+            masters={masters}
+            tokens={tokens}
+            themeName={meta.theme?.name}
+            moduleNumber={meta.module.order_index}
+            partnerLogoLight={meta.course?.partner_logo_light_url}
+            partnerLogoDark={meta.course?.partner_logo_dark_url}
+            onPick={addSlide}
+            onClose={() => setShowAdd(false)}
+          />
+        )}
+
+        {!panelOpen ? null : rightPanel === "properties"
           ? <PropertiesPanel tokens={tokens} />
           : <ChatPanel
               moduleId={moduleId}
