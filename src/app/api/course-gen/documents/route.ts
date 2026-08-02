@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { isOcrConfigured } from "@/lib/course-gen/ocr"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -19,6 +20,8 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({
+    // So the UI can say "Needs OCR" vs "OCR'd" honestly instead of guessing.
+    ocr_available: isOcrConfigured(),
     documents: (data ?? []).map((d: any) => ({
       ...d,
       used_by: d.cg_course_documents?.length ?? 0,

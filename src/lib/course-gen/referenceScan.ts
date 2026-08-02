@@ -25,12 +25,19 @@ export type TextStatus = "text_layer" | "needs_ocr" | "partial"
 /** A page with almost no extractable text is an image of a page. */
 const MIN_CHARS_PER_PAGE = 100
 
-export function detectTextStatus(pages: PageText[]): { status: TextStatus; ocrPages: number } {
-  if (pages.length === 0) return { status: "needs_ocr", ocrPages: 0 }
+/**
+ * `thinPages` lists the 1-based pages that need OCR, so a mostly-digital
+ * document with a few scanned annexes pays for those pages only.
+ */
+export function detectTextStatus(
+  pages: PageText[]
+): { status: TextStatus; ocrPages: number; thinPages: number[] } {
+  if (pages.length === 0) return { status: "needs_ocr", ocrPages: 0, thinPages: [] }
   const thin = pages.filter(p => p.text.replace(/\s+/g, "").length < MIN_CHARS_PER_PAGE)
-  if (thin.length === 0) return { status: "text_layer", ocrPages: 0 }
-  if (thin.length === pages.length) return { status: "needs_ocr", ocrPages: pages.length }
-  return { status: "partial", ocrPages: thin.length }
+  const thinPages = thin.map(p => p.page)
+  if (thin.length === 0) return { status: "text_layer", ocrPages: 0, thinPages: [] }
+  if (thin.length === pages.length) return { status: "needs_ocr", ocrPages: pages.length, thinPages }
+  return { status: "partial", ocrPages: thin.length, thinPages }
 }
 
 // ── Clause heading patterns, most specific first ────────────────────────────

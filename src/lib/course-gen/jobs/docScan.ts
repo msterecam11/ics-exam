@@ -17,6 +17,7 @@
 import Groq from "groq-sdk"
 import { db } from "@/lib/db"
 import { extractPdfPages, detectTextStatus, splitIntoSections } from "../referenceScan"
+import { isOcrConfigured, ocrPdfPages } from "../ocr"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_COURSEGEN || process.env.GROQ_API_KEY || "placeholder",
@@ -25,6 +26,8 @@ const LABEL_MODEL = process.env.CG_MODEL_REFERENCE ?? "llama-3.3-70b-versatile"
 
 /** Sections labelled per tick — keeps each job step short and resumable. */
 const BATCH = 12
+/** Pages OCR'd per tick, for the same reason. */
+const OCR_PAGES_PER_TICK = 25
 
 export interface ScanTick { done: boolean; progress: number; step: string }
 
@@ -43,15 +46,50 @@ export async function handleDocScanTick(job: any): Promise<ScanTick> {
     if (!res.ok) throw new Error(`Could not download the file (${res.status})`)
     const buffer = Buffer.from(await res.arrayBuffer())
 
-    const pages = await extractPdfPages(buffer)
-    const { status, ocrPages } = detectTextStatus(pages)
+    let pages = await extractPdfPages(buffer)
+    const { status, ocrPages, thinPages } = detectTextStatus(pages)
 
-    if (status === "needs_ocr") {
+    if (thinPages.length > 0 && isOcrConfigured()) {
+      // OCR is metered per page and slow, so it runs a bounded batch per tick
+      // and banks the result — a 400-page scan survives a restart and never
+      // holds the worker hostage. (The file is re-read each tick; that costs
+      // one download per ~25 pages, which is cheaper than keeping it around.)
+      const cache: Record<string, string> = (doc.ocr_cache as any) ?? {}
+      const pending = thinPages.filter(p => !(String(p) in cache))
+
+      if (pending.length > 0) {
+        const slice = pending.slice(0, OCR_PAGES_PER_TICK)
+        const read = await ocrPdfPages(buffer, slice)
+        for (const r of read) cache[String(r.page)] = r.text
+
+        const doneCount = thinPages.length - pending.length + slice.length
+        const pct = 5 + Math.round((doneCount / thinPages.length) * 10)
+        await db.from("cg_documents").update({
+          ocr_cache: cache,
+          text_status: status,
+          ocr_pages: thinPages.length,
+          page_count: pages.length,
+          scan_step: `Reading scanned pages — ${doneCount} of ${thinPages.length}`,
+          scan_progress: pct,
+          updated_at: new Date().toISOString(),
+        }).eq("id", documentId)
+
+        return { done: false, progress: pct, step: `OCR ${doneCount}/${thinPages.length} pages` }
+      }
+
+      pages = pages.map(p => (cache[String(p.page)] ? { ...p, text: cache[String(p.page)] } : p))
+    }
+
+    // Recheck: OCR may have been unavailable, or may have come back empty.
+    const after = detectTextStatus(pages)
+    if (after.status === "needs_ocr") {
       // Honest stop rather than indexing hundreds of empty sections.
       await db.from("cg_documents").update({
         text_status: status, ocr_pages: ocrPages, page_count: pages.length,
         scan_status: "failed",
-        scan_error: "This PDF has no text layer — every page is an image. OCR is required before it can be scanned.",
+        scan_error: isOcrConfigured()
+          ? "OCR ran but recovered no readable text from this file. It may be a poor-quality scan, or password-protected."
+          : "This PDF has no text layer — every page is an image. Set GOOGLE_VISION_API_KEY to enable OCR, then rescan.",
         updated_at: new Date().toISOString(),
       }).eq("id", documentId)
       return { done: true, progress: 100, step: "Needs OCR" }
@@ -73,6 +111,7 @@ export async function handleDocScanTick(job: any): Promise<ScanTick> {
       ocr_pages: ocrPages,
       section_count: sections.length,
       extracted_text: pages.map(p => p.text).join("\n").slice(0, 2_000_000),
+      ocr_cache: null,   // banked into the sections now — no need to keep it
       scan_step: `${sections.length} sections found`,
       scan_progress: 20,
       updated_at: new Date().toISOString(),

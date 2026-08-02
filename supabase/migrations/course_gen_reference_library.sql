@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS cg_documents (
   section_count   INTEGER NOT NULL DEFAULT 0,
   summary         JSONB,                       -- { overview, top_topics[], requirement_count }
   extracted_text  TEXT,
+  ocr_cache       JSONB,                       -- staging: { "<page>": "text" } while OCR runs in batches
 
   created_by      UUID,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -46,6 +47,9 @@ CREATE TABLE IF NOT EXISTS cg_documents (
 );
 
 CREATE INDEX IF NOT EXISTS cg_documents_scan_status_idx ON cg_documents(scan_status);
+
+-- Added after the table shipped; kept here so a fresh replay matches production.
+ALTER TABLE cg_documents ADD COLUMN IF NOT EXISTS ocr_cache JSONB;
 
 -- ── Sections — the retrievable unit ─────────────────────────────────────────
 -- clause/heading/pages are extracted by CODE (regex): models corrupt clause

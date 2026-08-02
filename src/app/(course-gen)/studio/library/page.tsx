@@ -18,11 +18,13 @@ const SCAN_PILL: Record<string, { label: string; cls: string }> = {
 
 export default function StudioLibraryPage() {
   const [docs, setDocs] = useState<any[] | null>(null)
+  const [ocrAvailable, setOcrAvailable] = useState(true)
   const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
     const d = await fetch("/api/course-gen/documents").then(r => r.json()).catch(() => ({ documents: [] }))
     setDocs(d.documents ?? [])
+    setOcrAvailable(d.ocr_available !== false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -83,7 +85,7 @@ export default function StudioLibraryPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {docs.map(d => <DocumentRow key={d.id} doc={d} onChange={load} />)}
+          {docs.map(d => <DocumentRow key={d.id} doc={d} ocrAvailable={ocrAvailable} onChange={load} />)}
         </div>
       )}
 
@@ -102,10 +104,14 @@ function Stat({ label, value, sub }: { label: string; value: number | string; su
   )
 }
 
-function DocumentRow({ doc, onChange }: { doc: any; onChange: () => void }) {
+function DocumentRow({ doc, ocrAvailable, onChange }: { doc: any; ocrAvailable: boolean; onChange: () => void }) {
   const pill = SCAN_PILL[doc.scan_status] ?? SCAN_PILL.uploaded
   const scanning = ["queued", "scanning"].includes(doc.scan_status)
-  const needsOcr = doc.text_status === "needs_ocr"
+  // "Needs OCR" only while it still does; once the scan succeeded those pages
+  // were read, so the pill says so instead of nagging.
+  const scannedPdf = doc.text_status === "needs_ocr" || doc.text_status === "partial"
+  const wasOcrd = scannedPdf && doc.scan_status === "ready"
+  const needsOcr = scannedPdf && !wasOcrd && !ocrAvailable
 
   async function rescan() {
     const res = await fetch(`/api/course-gen/documents/${doc.id}`, {
@@ -147,6 +153,11 @@ function DocumentRow({ doc, onChange }: { doc: any; onChange: () => void }) {
                 <ScanLine className="h-2.5 w-2.5" /> Needs OCR
               </span>
             )}
+            {wasOcrd && (
+              <span className="s-pill s-pill-info" style={{ fontSize: 10, padding: "2px 8px" }}>
+                <ScanLine className="h-2.5 w-2.5" /> OCR{"’"}d {doc.ocr_pages ?? 0} page{doc.ocr_pages === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
 
           <p className="s-meta" style={{ fontSize: 11.5, marginTop: 3 }}>
@@ -175,7 +186,7 @@ function DocumentRow({ doc, onChange }: { doc: any; onChange: () => void }) {
             <p style={{ fontSize: 11.5, color: "#C05252", marginTop: 6, lineHeight: 1.5 }}>
               <AlertTriangle className="h-3 w-3 inline mr-1" />
               {doc.scan_error ?? "Scan failed."}
-              {needsOcr && " Add an OCR provider, or upload a text-based version of this PDF."}
+              {scannedPdf && !ocrAvailable && " Set GOOGLE_VISION_API_KEY to enable OCR, then rescan — or upload a text-based version."}
             </p>
           )}
 
