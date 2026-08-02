@@ -140,7 +140,8 @@ layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short
   const result = await claudeJSON({
     model: MODELS.outline,
     prompt,
-    maxTokens: 16_000,
+    maxTokens: 32_000,
+    label: "Outline generation",
   })
 
   // Validate shape + coerce basics so downstream never sees garbage.

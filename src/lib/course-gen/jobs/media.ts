@@ -53,6 +53,7 @@ async function scoreCandidate(imageB64: string, req: MediaRequest, slideTitle: s
     const verdict = await claudeVisionJSON({
       model: MODELS.media_scoring,
       imagesBase64Png: [imageB64],
+      label: "Media relevance scoring",
       prompt: `This image is a candidate for a slide in an aviation training course.
 
 Slide title: "${slideTitle}"
@@ -100,6 +101,7 @@ async function validateGenerated(imageB64: string, req: MediaRequest, slideTitle
     const verdict = await claudeVisionJSON({
       model: MODELS.media_scoring,
       imagesBase64Png: [imageB64],
+      label: "Generated-image validation",
       prompt: `This AI-generated image is proposed for an aviation training slide.
 
 Slide: "${slideTitle}"

@@ -47,6 +47,31 @@ function extractText(msg: Anthropic.Message): string {
     .join("")
 }
 
+/**
+ * Turn the two silent failure modes into named errors.
+ *
+ * Without this both land in parseJsonLoose as "Unexpected end of JSON input",
+ * which reads like a parser bug and sends you looking in the wrong place.
+ */
+export function assertUsableResponse(msg: Anthropic.Message, label: string): void {
+  if (msg.stop_reason === "refusal") {
+    const category = (msg as any).stop_details?.category
+    throw new Error(
+      `${label}: the model declined this request on safety grounds` +
+      `${category ? ` (category: ${category})` : ""}. ` +
+      `Aviation security material — unlawful interference, screening procedures, threat ` +
+      `scenarios — can trip the safety classifiers even when the training use is legitimate. ` +
+      `Rewrite the source passage, or author this slide by hand.`
+    )
+  }
+  if (msg.stop_reason === "max_tokens") {
+    throw new Error(
+      `${label}: hit the output cap after ${msg.usage.output_tokens} tokens with the answer ` +
+      `still unfinished. Thinking shares this budget with the response — raise maxTokens.`
+    )
+  }
+}
+
 export function parseJsonLoose(raw: string): any {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()
   const match = cleaned.match(/[[{][\s\S]*[\]}]/)
@@ -65,15 +90,22 @@ export async function claudeJSON(opts: {
   system?: string
   prompt: string
   maxTokens?: number
+  /** Names this call in error messages — worth setting on every caller. */
+  label?: string
 }): Promise<any> {
-  const msg = await withRetry(() =>
-    anthropic.messages.create({
+  // Streamed, not awaited whole: the SDK times out long non-streaming
+  // requests, and thinking makes these turns longer than the token count
+  // alone suggests. Streaming removes that ceiling; the final message is
+  // identical either way.
+  const msg = await withRetry(async () =>
+    anthropic.messages.stream({
       model: opts.model,
-      max_tokens: opts.maxTokens ?? 4096,
+      max_tokens: opts.maxTokens ?? 8192,
       system: opts.system,
       messages: [{ role: "user", content: opts.prompt }],
-    })
+    }).finalMessage()
   )
+  assertUsableResponse(msg, opts.label ?? "Claude call")
   return parseJsonLoose(extractText(msg))
 }
 
@@ -84,6 +116,7 @@ export async function claudeVisionJSON(opts: {
   prompt: string
   imagesBase64Png: string[]
   maxTokens?: number
+  label?: string
 }): Promise<any> {
   const content: Anthropic.ContentBlockParam[] = [
     ...opts.imagesBase64Png.map((data): Anthropic.ImageBlockParam => ({
@@ -101,5 +134,6 @@ export async function claudeVisionJSON(opts: {
       messages: [{ role: "user", content }],
     })
   )
+  assertUsableResponse(msg, opts.label ?? "Claude vision call")
   return parseJsonLoose(extractText(msg))
 }

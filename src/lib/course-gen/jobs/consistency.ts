@@ -88,7 +88,8 @@ export async function handleConsistencyJob(job: any): Promise<ConsistencyReport>
 
   const result = await claudeJSON({
     model: MODELS.qa_fact,
-    maxTokens: 3000,
+    maxTokens: 10_000,
+    label: "Consistency pass",
     prompt: `You are the consistency reviewer for a multi-module ICS Aviation training course. Below is every slide's title and a short excerpt of its text, one line per slide, tagged "M<module>.S<slide>".
 
 ${lines.join("\n")}

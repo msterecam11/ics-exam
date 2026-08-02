@@ -14,7 +14,7 @@
 
 import { db } from "@/lib/db"
 import Anthropic from "@anthropic-ai/sdk"
-import { MODELS, anthropic, withRetry, parseJsonLoose } from "../ai"
+import { MODELS, anthropic, withRetry, parseJsonLoose, assertUsableResponse } from "../ai"
 import { compileBlueprint } from "../compiler"
 import type { CanvasElement } from "../primitives"
 import type { Master } from "../theme1"
@@ -137,11 +137,14 @@ If the instruction needs no changes (a question, or nothing to do), return an em
   for (let turn = 0; turn < 5; turn++) {
     const msg = await withRetry(() => anthropic.messages.create({
       model: MODELS.chat,
-      max_tokens: 8000,
+      max_tokens: 16_000,
       system,
       tools: TOOLS,
       messages,
     }))
+
+    // Passes through stop_reason "tool_use" — only refusal and truncation throw.
+    assertUsableResponse(msg, "Chat edit")
 
     if (msg.stop_reason === "tool_use") {
       const toolUses = msg.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")

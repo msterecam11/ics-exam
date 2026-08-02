@@ -74,6 +74,7 @@ export async function handleQaJob(job: any): Promise<QaVerdict> {
     model: MODELS.qa_vision,
     imagesBase64Png: [shot],
     maxTokens: 1200,
+    label: `Visual QA of "${slide_title}"`,
     prompt: `You are the quality reviewer for ICS Aviation's generated training slides. Inspect this rendered slide (1280x720) and report problems a professional designer would reject.
 
 Slide title: "${slide_title}"

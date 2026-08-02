@@ -149,7 +149,8 @@ Return ONLY valid JSON:
   const result = await claudeJSON({
     model: MODELS.slide_content,
     prompt,
-    maxTokens: 8000,
+    maxTokens: 16_000,
+    label: `Slide "${slide.title}"`,
   })
 
   if (!result?.title) throw new Error("Slide content came back without a title")
