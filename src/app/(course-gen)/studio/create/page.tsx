@@ -119,21 +119,22 @@ export default function CreateCoursePage() {
     }
   }
 
-  const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0C72C6]/30 focus:border-[#0C72C6]"
-  const labelCls = "block text-xs font-semibold text-slate-500 mb-1.5"
-  const sectionCls = "bg-white rounded-xl border border-slate-200 p-5 space-y-4"
+  const inputCls = "s-input"
+  const labelCls = "s-label block"
+  const sectionCls = "s-card space-y-4"
   const sectionTitle = (n: number, t: string) => (
     <div className="flex items-center gap-2.5">
-      <span className="w-6 h-6 rounded-full bg-[#0C72C6] text-white text-xs font-bold flex items-center justify-center">{n}</span>
-      <h2 className="text-sm font-bold text-slate-800">{t}</h2>
+      <span className="flex items-center justify-center shrink-0"
+        style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--s-primary)", color: "#fff", fontSize: 11, fontWeight: 800 }}>{n}</span>
+      <h2 className="s-h3" style={{ fontSize: 14 }}>{t}</h2>
     </div>
   )
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Create a Course</h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <h1 className="s-h1">Create a Course</h1>
+        <p className="s-body" style={{ marginTop: 4 }}>
           This brief grounds every agent in the pipeline. Fill it once — Module 0 front matter is generated automatically.
         </p>
       </div>
@@ -143,7 +144,7 @@ export default function CreateCoursePage() {
         <div className="space-y-5">
 
           {/* 1 · Basics */}
-          <div className={sectionCls}>
+          <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(1, "Basics")}
             <div>
               <label className={labelCls}>Course name *</label>
@@ -188,7 +189,7 @@ export default function CreateCoursePage() {
                   </div>
                 ))}
                 <button onClick={() => setObjectives(os => [...os, ""])}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-[#0C72C6] hover:text-[#0a63ab]">
+                  className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 700, color: "var(--s-primary)" }}>
                   <Plus className="h-3.5 w-3.5" /> Add objective
                 </button>
               </div>
@@ -196,15 +197,15 @@ export default function CreateCoursePage() {
           </div>
 
           {/* 2 · Structure */}
-          <div className={sectionCls}>
+          <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(2, "Course structure")}
-            <p className="text-xs text-slate-400 -mt-2">
+            <p className="s-meta" style={{ fontSize: 11.5, marginTop: -6 }}>
               One row per module. Slides per module is a target, not a hard limit — the outline review lets you adjust before anything is generated.
             </p>
             <div className="space-y-2">
               {modules.map((m, i) => (
                 <div key={i} className="flex gap-2 items-center">
-                  <span className="text-xs font-bold text-slate-400 w-14 shrink-0">Module {i + 1}</span>
+                  <span className="s-meta shrink-0" style={{ width: 56, fontSize: 11, fontWeight: 700 }}>Module {i + 1}</span>
                   <input className={inputCls} value={m.title}
                     onChange={e => setModule(i, { title: e.target.value })}
                     placeholder="Module title" />
@@ -218,14 +219,14 @@ export default function CreateCoursePage() {
                 </div>
               ))}
               <button onClick={() => setModules(ms => [...ms, { title: "", slide_count: 20 }])}
-                className="flex items-center gap-1.5 text-xs font-semibold text-[#0C72C6] hover:text-[#0a63ab]">
+                className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 700, color: "var(--s-primary)" }}>
                 <Plus className="h-3.5 w-3.5" /> Add module
               </button>
             </div>
           </div>
 
           {/* 3 · Compliance & options */}
-          <div className={sectionCls}>
+          <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(3, "Compliance & options")}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -250,12 +251,12 @@ export default function CreateCoursePage() {
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input type="checkbox" checked={includeAssessment} onChange={e => setIncludeAssessment(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 accent-[#0C72C6]" />
-              <span className="text-sm text-slate-700">Include knowledge checks / self-assessment per module</span>
+              <span style={{ fontSize: 12.5, color: "var(--s-body)" }}>Include knowledge checks / self-assessment per module</span>
             </label>
           </div>
 
           {/* 4 · Client branding */}
-          <div className={sectionCls}>
+          <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(4, "Client branding (optional)")}
             <div>
               <label className={labelCls}>Client / partner name</label>
@@ -268,7 +269,7 @@ export default function CreateCoursePage() {
               ).map(([variant, label, file, setFile]) => (
                 <div key={variant}>
                   <label className={labelCls}>{label}</label>
-                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 cursor-pointer hover:border-[#0C72C6] hover:text-[#0C72C6] transition-colors">
+                  <label className="flex items-center gap-2 cursor-pointer" style={{ border: "1.5px dashed #A9CFF0", borderRadius: 7, padding: "9px 12px", fontSize: 12.5, color: "var(--s-body-2)" }}>
                     <Upload className="h-4 w-4 shrink-0" />
                     <span className="truncate">{file ? file.name : "Choose image…"}</span>
                     <input type="file" accept="image/*" className="hidden"
@@ -277,18 +278,18 @@ export default function CreateCoursePage() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="s-meta" style={{ fontSize: 11.5 }}>
               The client logo appears in every slide's footer/cover chrome. Uploading both variants gives the best result; with one, the other is derived automatically.
             </p>
           </div>
 
           {/* 5 · Reference materials */}
-          <div className={sectionCls}>
+          <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(5, "Reference materials (optional)")}
-            <p className="text-xs text-slate-400 -mt-2">
+            <p className="s-meta" style={{ fontSize: 11.5, marginTop: -6 }}>
               Regulatory docs, past courses, manuals — the Content Agent grounds generation in these instead of writing from the brief alone. PDF & text files are read; other formats are stored.
             </p>
-            <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-6 text-sm text-slate-500 cursor-pointer hover:border-[#0C72C6] hover:text-[#0C72C6] transition-colors">
+            <label className="flex items-center justify-center gap-2 cursor-pointer" style={{ border: "1.5px dashed #A9CFF0", borderRadius: 8, padding: "22px 12px", fontSize: 12.5, color: "var(--s-body-2)" }}>
               <Upload className="h-4 w-4" /> Add files
               <input type="file" multiple className="hidden"
                 accept=".pdf,.txt,.md,.csv,.docx,.pptx"
@@ -301,9 +302,9 @@ export default function CreateCoursePage() {
             {refs.length > 0 && (
               <div className="space-y-1.5">
                 {refs.map((r, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                  <div key={i} className="flex items-center gap-2" style={{ background: "var(--s-surface-soft2)", border: "1px solid var(--s-line-soft)", borderRadius: 7, padding: "7px 11px" }}>
                     <FileText className="h-4 w-4 text-[#0C72C6] shrink-0" />
-                    <span className="text-xs text-slate-600 truncate flex-1">{r.file.name}</span>
+                    <span className="truncate flex-1" style={{ fontSize: 12, color: "var(--s-body)" }}>{r.file.name}</span>
                     {r.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
                     {r.status === "done" && <span className="text-[10px] font-bold text-emerald-600">UPLOADED</span>}
                     {r.status === "failed" && <span className="text-[10px] font-bold text-red-500">FAILED</span>}
@@ -319,9 +320,9 @@ export default function CreateCoursePage() {
         </div>
 
         {/* ── Summary panel ── */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 lg:sticky lg:top-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Summary</p>
-          <p className="text-lg font-bold text-slate-800 leading-snug">
+        <div className="s-card space-y-4 lg:sticky lg:top-2" style={{ padding: "18px 20px" }}>
+          <p className="s-label">Summary</p>
+          <p className="s-h2" style={{ lineHeight: 1.35 }}>
             {title.trim() || "Untitled course"}
           </p>
           <div className="space-y-2 text-sm">
@@ -335,20 +336,20 @@ export default function CreateCoursePage() {
               ["References", refs.length ? `${refs.length} file${refs.length === 1 ? "" : "s"}` : "—"],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3">
-                <span className="text-slate-400 text-xs">{k}</span>
-                <span className="text-slate-700 font-medium text-right text-xs">{v}</span>
+                <span className="s-meta" style={{ fontSize: 11.5 }}>{k}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--s-ink)", textAlign: "right" }}>{v}</span>
               </div>
             ))}
           </div>
           <button
             onClick={submit}
             disabled={submitting}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#0C72C6] hover:bg-[#0a63ab] disabled:opacity-60 transition-colors"
+            className="s-btn s-btn-primary w-full"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {submitting ? "Creating…" : "Create course"}
           </button>
-          <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+          <p className="s-meta text-center" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
             You'll review the slide-by-slide outline before any full generation runs.
           </p>
         </div>

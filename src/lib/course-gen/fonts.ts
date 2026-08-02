@@ -10,10 +10,16 @@
 import { readFileSync } from "fs"
 import { join } from "path"
 
+// The full brand family. Slides ask for weights up to 800 (ExtraBold titles),
+// so shipping only 300/400/700 meant the browser synthesized the heavier
+// faces instead of using the real ICS ones.
 const FILES = [
   { file: "PlusJakartaSans-Light.ttf", weight: 300 },
   { file: "PlusJakartaSans-Regular.ttf", weight: 400 },
+  { file: "PlusJakartaSans-Medium.ttf", weight: 500 },
+  { file: "PlusJakartaSans-SemiBold.ttf", weight: 600 },
   { file: "PlusJakartaSans-Bold.ttf", weight: 700 },
+  { file: "PlusJakartaSans-ExtraBold.ttf", weight: 800 },
 ]
 
 let cached: string | null = null
@@ -33,8 +39,6 @@ export function inlineFontFaces(): string {
       console.error(`[course-gen] could not inline font ${file}:`, err)
     }
   }
-  // Only ships 300/400/700 — the brand's heavier weights are synthesized by
-  // the browser, matching how the rest of the app renders Plus Jakarta Sans.
   cached = faces.join("\n")
   return cached
 }

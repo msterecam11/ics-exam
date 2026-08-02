@@ -1,0 +1,146 @@
+/* ICS Studio design system — extracted from the approved prototype so the
+   built app matches its look and feel exactly, rather than approximating it
+   with generic utility classes.
+
+   Everything is scoped under .studio so it can never leak into the exam,
+   interview, or LMS systems that share this app. */
+
+.studio {
+  --s-bg:            #EEF3F9;  /* page */
+  --s-surface:       #ffffff;  /* cards */
+  --s-surface-soft:  #F8FBFE;
+  --s-surface-soft2: #F6F9FC;
+  --s-tint:          #EAF3FC;  /* blue wash / active chips */
+
+  --s-navy:          #062B4A;  /* sidebar */
+  --s-navy-text:     #cfe0f0;
+  --s-navy-muted:    #7FA8CE;
+
+  --s-primary:       #0C72C6;
+  --s-primary-dark:  #045089;
+  --s-cyan:          #21B0D4;
+  --s-cyan-ink:      #04212f;
+
+  --s-ink:           #0B2B45;  /* headings */
+  --s-body:          #5B7189;  /* body copy */
+  --s-muted:         #8CA0B6;  /* labels, meta */
+  --s-body-2:        #647D96;
+
+  --s-line:          #E3EAF2;  /* the signature 1.5px border */
+  --s-line-soft:     #E9F0F7;
+
+  --s-r-sm: 7px;
+  --s-r:    10px;
+  --s-r-lg: 16px;
+  --s-r-pill: 20px;
+
+  --s-glow: 0 8px 20px -8px rgba(12, 114, 198, .9);
+
+  background: var(--s-bg);
+  color: var(--s-body);
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+.studio ::-webkit-scrollbar { width: 10px; height: 10px }
+.studio ::-webkit-scrollbar-thumb {
+  background: #C7D5E5; border-radius: 20px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.studio ::-webkit-scrollbar-thumb:hover { background: #A9BDD3; background-clip: content-box }
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@keyframes s-spin     { to { transform: rotate(360deg) } }
+@keyframes s-fadeUp   { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+@keyframes s-pulseDot { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+@keyframes s-shimmer  { 100% { background-position: 200% 0 } }
+
+.s-fade   { animation: s-fadeUp .35s ease }
+.s-pulse  { animation: s-pulseDot 1.6s ease-in-out infinite }
+.s-spin   { animation: s-spin .8s linear infinite }
+
+/* ── Building blocks ────────────────────────────────────────────────────── */
+.s-card {
+  background: var(--s-surface);
+  border: 1.5px solid var(--s-line);
+  border-radius: var(--s-r);
+}
+
+.s-h1     { font-size: 26px; font-weight: 800; color: var(--s-ink); letter-spacing: -.2px }
+.s-h2     { font-size: 17px; font-weight: 800; color: var(--s-ink) }
+.s-h3     { font-size: 13.5px; font-weight: 700; color: var(--s-ink) }
+.s-body   { font-size: 13px;   color: var(--s-body) }
+.s-meta   { font-size: 12px;   color: var(--s-muted) }
+.s-label  { font-size: 11px;   color: var(--s-muted); font-weight: 700; letter-spacing: .3px; text-transform: uppercase }
+
+.s-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  border-radius: var(--s-r-pill); padding: 4px 12px;
+  font-size: 11.5px; font-weight: 800; white-space: nowrap;
+}
+.s-pill-ready   { background: #E8F5EC; color: #1F7A44 }
+.s-pill-info    { background: var(--s-tint); color: var(--s-primary) }
+.s-pill-warn    { background: #FDF3DE; color: #8a6412 }
+.s-pill-danger  { background: #FBEAEA; color: #C05252 }
+.s-pill-neutral { background: #EFF3F8; color: var(--s-body-2) }
+
+.s-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--s-r-sm); font-size: 12.5px; font-weight: 700;
+  padding: 9px 14px; transition: background .15s ease, box-shadow .15s ease;
+  cursor: pointer;
+}
+.s-btn-primary { background: var(--s-primary); color: #fff; box-shadow: var(--s-glow) }
+.s-btn-primary:hover:not(:disabled) { background: var(--s-primary-dark) }
+.s-btn-primary:disabled { opacity: .6; cursor: default; box-shadow: none }
+.s-btn-ghost { background: transparent; color: var(--s-body-2); border: 1.5px solid var(--s-line) }
+.s-btn-ghost:hover { background: var(--s-surface-soft2); color: var(--s-ink) }
+
+.s-input {
+  width: 100%; background: #fff;
+  border: 1.5px solid var(--s-line); border-radius: var(--s-r-sm);
+  padding: 9px 11px; font-size: 12.5px; color: var(--s-ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.s-input::placeholder { color: #B7C6D6 }
+.s-input:focus {
+  outline: none; border-color: var(--s-primary);
+  box-shadow: 0 0 0 3px rgba(12, 114, 198, .12);
+}
+
+/* Segmented control (Gallery | Table, Original | Manual …) */
+.s-seg {
+  display: inline-flex; background: #fff;
+  border: 1.5px solid var(--s-line); border-radius: var(--s-r-sm); padding: 3px;
+}
+.s-seg button {
+  border-radius: 5px; padding: 5px 14px;
+  font-size: 12px; font-weight: 700; color: var(--s-muted);
+  transition: background .15s ease, color .15s ease;
+}
+.s-seg button[data-active="true"] { background: var(--s-tint); color: var(--s-primary) }
+
+/* Sidebar */
+.s-nav {
+  width: 248px; flex-shrink: 0; background: var(--s-navy);
+  display: flex; flex-direction: column; color: var(--s-navy-text);
+}
+.s-nav-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 12px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; color: var(--s-navy-text);
+  transition: background .15s ease, color .15s ease;
+}
+.s-nav-item:hover { background: rgba(255, 255, 255, .06); color: #fff }
+.s-nav-item[data-active="true"] { background: rgba(255, 255, 255, .12); color: #fff }
+.s-nav-badge {
+  margin-left: auto; background: var(--s-cyan); color: var(--s-cyan-ink);
+  font-size: 10.5px; font-weight: 800; border-radius: var(--s-r-pill); padding: 1px 7px;
+}
+.s-nav-note {
+  margin: 12px; padding: 13px;
+  background: rgba(33, 176, 212, .1);
+  border: 1px solid rgba(33, 176, 212, .25);
+  border-radius: 12px;
+}

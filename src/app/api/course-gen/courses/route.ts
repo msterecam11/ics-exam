@@ -12,16 +12,20 @@ export async function GET() {
 
   const { data, error } = await db
     .from("cg_courses")
-    .select("id, title, overview, regulatory_framework, language, day_count, status, partner_name, created_at, updated_at, cg_modules(id)")
+    .select("id, title, overview, regulatory_framework, language, day_count, status, partner_name, created_at, updated_at, cg_modules(id, cg_pages(id))")
     .order("updated_at", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const courses = (data ?? []).map((c: any) => ({
-    ...c,
-    module_count: c.cg_modules?.length ?? 0,
-    cg_modules: undefined,
-  }))
+  const courses = (data ?? []).map((c: any) => {
+    const modules = c.cg_modules ?? []
+    return {
+      ...c,
+      module_count: modules.length,
+      slide_count: modules.reduce((s: number, m: any) => s + (m.cg_pages?.length ?? 0), 0),
+      cg_modules: undefined,
+    }
+  })
   return NextResponse.json({ courses })
 }
 

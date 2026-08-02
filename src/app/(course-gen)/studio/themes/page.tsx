@@ -1,5 +1,12 @@
 import { db } from "@/lib/db"
-import { Palette } from "lucide-react"
+import { Palette, Check } from "lucide-react"
+
+const MASTER_LABELS: Record<string, string> = {
+  cover: "Cover", section_divider: "Section divider",
+  content_white: "Content (white)", content_lightblue: "Content (light blue)",
+  summary_dark: "Summary (dark)", self_assessment: "Self-assessment",
+  closing_cta: "Closing / CTA",
+}
 
 export default async function StudioThemesPage() {
   const { data: themes } = await db
@@ -8,41 +15,50 @@ export default async function StudioThemesPage() {
     .order("created_at")
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Themes</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Slide masters, brand tokens, and layout templates. New themes can be added later — every course binds to one theme.
+    <div className="s-fade" style={{ maxWidth: 1160, margin: "0 auto" }}>
+      <div style={{ marginBottom: 22 }}>
+        <h1 className="s-h1">Themes</h1>
+        <p className="s-body" style={{ marginTop: 4 }}>
+          Slide masters, brand tokens and layout zones. Every course binds to one theme — chrome renders from it, so swapping a theme repaints every slide.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(390px,1fr))" }}>
         {(themes ?? []).map((t: any) => {
           const masters = Object.keys(t.layout_templates ?? {})
           const colors: Record<string, string> = t.tokens?.colors ?? {}
           return (
-            <div key={t.id} className="bg-white rounded-xl border border-slate-200 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Palette className="h-4 w-4 text-[#0C72C6]" />
-                  <p className="text-sm font-semibold text-slate-800">{t.name}</p>
-                </div>
+            <div key={t.id} className="s-card overflow-hidden">
+              <div style={{ height: 74, background: `linear-gradient(135deg,${colors.primary ?? "#0C72C6"},${colors["primary-dark"] ?? "#045089"})`, position: "relative" }}>
+                <Palette className="h-5 w-5" style={{ position: "absolute", left: 18, top: 16, color: "rgba(255,255,255,.85)" }} />
                 {t.is_main && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-[#0C72C6]/10 text-[#0C72C6] px-2 py-0.5 rounded-full">
-                    Main theme
+                  <span className="s-pill" style={{ position: "absolute", right: 14, top: 14, background: "rgba(255,255,255,.92)", color: "#0C72C6" }}>
+                    <Check className="h-3 w-3" /> Main theme
                   </span>
                 )}
               </div>
-              <div className="flex gap-1.5 mb-3">
-                {["primary", "primary-dark", "primary-light", "accent-warm", "navy"].map(k =>
-                  colors[k] ? (
-                    <span key={k} title={k} className="w-6 h-6 rounded-full border border-slate-200" style={{ background: colors[k] }} />
-                  ) : null
-                )}
+
+              <div style={{ padding: "14px 18px 16px" }}>
+                <p className="s-h2" style={{ fontSize: 15 }}>{t.name}</p>
+
+                <p className="s-label" style={{ marginTop: 13, marginBottom: 7 }}>Palette</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {["primary", "primary-dark", "primary-light", "navy", "accent-warm", "danger", "success", "tab-yellow"].map(k =>
+                    colors[k] ? (
+                      <span key={k} title={`${k} · ${colors[k]}`}
+                        style={{ width: 26, height: 26, borderRadius: 7, background: colors[k], border: "1.5px solid rgba(0,0,0,.06)" }} />
+                    ) : null)}
+                </div>
+
+                <p className="s-label" style={{ marginTop: 14, marginBottom: 7 }}>{masters.length} slide masters</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {masters.map(m => (
+                    <span key={m} className="s-pill s-pill-neutral" style={{ fontSize: 10.5, padding: "3px 9px" }}>
+                      {MASTER_LABELS[m] ?? m}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <p className="text-xs text-slate-400">
-                {masters.length} slide masters: {masters.join(", ")}
-              </p>
             </div>
           )
         })}

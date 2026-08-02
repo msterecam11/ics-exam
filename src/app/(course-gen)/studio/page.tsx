@@ -1,118 +1,109 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { BookOpen, Plus, Loader2, Sparkles, ArrowRight } from "lucide-react"
-
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  draft:              { label: "Draft",             cls: "bg-slate-100 text-slate-600" },
-  generating_outline: { label: "Generating outline", cls: "bg-blue-50 text-blue-700" },
-  outline_review:     { label: "Outline review",     cls: "bg-amber-50 text-amber-700" },
-  generating_slides:  { label: "Generating slides",  cls: "bg-blue-50 text-blue-700" },
-  ready:              { label: "Ready",              cls: "bg-emerald-50 text-emerald-700" },
-  failed:             { label: "Failed",             cls: "bg-red-50 text-red-700" },
-  published:          { label: "Published",          cls: "bg-emerald-100 text-emerald-800" },
-}
+import { Plus, Sparkles, LayoutGrid, Rows3 } from "lucide-react"
+import { CourseGallery, CourseTable } from "@/components/course-gen/CourseCards"
 
 export default function StudioDashboard() {
   const [courses, setCourses] = useState<any[] | null>(null)
+  const [view, setView] = useState<"gallery" | "table">("gallery")
 
   useEffect(() => {
-    fetch("/api/course-gen/courses")
-      .then(r => r.json())
-      .then(d => setCourses(d.courses ?? []))
-      .catch(() => setCourses([]))
+    let alive = true
+    async function load() {
+      const d = await fetch("/api/course-gen/courses").then(r => r.json()).catch(() => ({ courses: [] }))
+      if (alive) setCourses(d.courses ?? [])
+    }
+    load()
+    // Keep the workspace live while anything is generating.
+    const t = setInterval(load, 6000)
+    return () => { alive = false; clearInterval(t) }
   }, [])
+
+  const stats = useMemo(() => {
+    const list = courses ?? []
+    const monthAgo = Date.now() - 30 * 864e5
+    const weekAgo = Date.now() - 7 * 864e5
+    return {
+      active: list.length,
+      newThisMonth: list.filter(c => new Date(c.created_at).getTime() > monthAgo).length,
+      slides: list.reduce((s, c) => s + (c.slide_count ?? 0), 0),
+      slidesThisWeek: list.filter(c => new Date(c.updated_at).getTime() > weekAgo)
+        .reduce((s, c) => s + (c.slide_count ?? 0), 0),
+      inReview: list.filter(c => c.status === "outline_review").length,
+      generating: list.filter(c => ["generating_outline", "generating_slides"].includes(c.status)).length,
+      ready: list.filter(c => ["ready", "published"].includes(c.status)).length,
+    }
+  }, [courses])
 
   if (courses === null) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-[#0C72C6]" />
+      <div className="flex flex-col items-center justify-center" style={{ minHeight: 440 }}>
+        <div className="s-spin" style={{ width: 56, height: 56, borderRadius: "50%", border: "4px solid var(--s-line)", borderTopColor: "var(--s-primary)" }} />
+        <p className="s-h2" style={{ marginTop: 22 }}>Loading workspace</p>
       </div>
     )
   }
 
-  const active = courses.filter(c => !["draft"].includes(c.status)).length
-  const ready = courses.filter(c => ["ready", "published"].includes(c.status)).length
-
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="s-fade" style={{ maxWidth: 1240, margin: "0 auto" }}>
       {/* Heading */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Course Workspace</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Generate, review, and edit ICS-style training courses.
-          </p>
+      <div className="flex items-start gap-4 flex-wrap" style={{ marginBottom: 24 }}>
+        <div className="flex-1 min-w-0">
+          <h1 className="s-h1">Course Workspace</h1>
+          <p className="s-body" style={{ marginTop: 4 }}>Generate, review and edit ICS-styled training courses</p>
         </div>
-        <Link
-          href="/studio/create"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-[#0C72C6] hover:bg-[#0a63ab] transition-colors"
-        >
+        <div className="s-seg">
+          <button data-active={view === "gallery"} onClick={() => setView("gallery")}>
+            <span className="flex items-center gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Gallery</span>
+          </button>
+          <button data-active={view === "table"} onClick={() => setView("table")}>
+            <span className="flex items-center gap-1.5"><Rows3 className="h-3.5 w-3.5" /> Table</span>
+          </button>
+        </div>
+        <Link href="/studio/create" className="s-btn s-btn-primary">
           <Plus className="h-4 w-4" /> New Course
         </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Courses</p>
-          <p className="text-3xl font-bold text-slate-800 mt-1">{courses.length}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">In progress</p>
-          <p className="text-3xl font-bold text-slate-800 mt-1">{active - ready}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Ready</p>
-          <p className="text-3xl font-bold text-emerald-600 mt-1">{ready}</p>
-        </div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", marginBottom: 24 }}>
+        <Stat label="Active courses" value={stats.active}
+          delta={stats.newThisMonth ? `+${stats.newThisMonth} this month` : undefined} />
+        <Stat label="Slides generated" value={stats.slides.toLocaleString()}
+          delta={stats.slidesThisWeek ? `+${stats.slidesThisWeek} this week` : undefined} />
+        <Stat label="Generating" value={stats.generating}
+          sub={stats.generating ? "in the pipeline now" : "pipeline idle"} />
+        <Stat label="In review" value={stats.inReview}
+          sub={stats.inReview ? "awaiting outline approval" : "nothing waiting"} />
       </div>
 
       {/* Courses */}
       {courses.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
-          <Sparkles className="h-8 w-8 text-[#0C72C6] mx-auto mb-3" />
-          <h2 className="text-base font-semibold text-slate-700">No courses yet</h2>
-          <p className="text-sm text-slate-500 mt-1 mb-4">
-            Fill one brief — the pipeline generates the outline, slides, and module structure.
+        <div className="s-card flex flex-col items-center text-center"
+          style={{ padding: "56px 30px", borderStyle: "dashed", borderColor: "#A9CFF0" }}>
+          <Sparkles className="h-8 w-8" style={{ color: "var(--s-primary)" }} />
+          <p className="s-h2" style={{ marginTop: 16 }}>No courses yet</p>
+          <p className="s-body" style={{ marginTop: 6, maxWidth: 420 }}>
+            Fill one brief — the pipeline drafts an outline for your review, then builds every slide.
           </p>
-          <Link
-            href="/studio/create"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-[#0C72C6] hover:bg-[#0a63ab] transition-colors"
-          >
+          <Link href="/studio/create" className="s-btn s-btn-primary" style={{ marginTop: 18 }}>
             <Plus className="h-4 w-4" /> Create your first course
           </Link>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {courses.map(c => {
-            const meta = STATUS_META[c.status] ?? STATUS_META.draft
-            return (
-              <Link
-                key={c.id}
-                href={`/studio/courses/${c.id}`}
-                className="flex items-center gap-4 bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:border-slate-300 transition-all group"
-              >
-                <div className="w-10 h-10 rounded-lg bg-[#0C72C6]/10 flex items-center justify-center shrink-0">
-                  <BookOpen className="h-5 w-5 text-[#0C72C6]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{c.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {[c.regulatory_framework, c.day_count ? `${c.day_count} days` : null, c.module_count ? `${c.module_count} modules` : null, c.partner_name]
-                      .filter(Boolean).join(" · ") || "—"}
-                  </p>
-                </div>
-                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 ${meta.cls}`}>
-                  {meta.label}
-                </span>
-                <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
-              </Link>
-            )
-          })}
-        </div>
-      )}
+      ) : view === "gallery" ? <CourseGallery courses={courses} /> : <CourseTable courses={courses} />}
+    </div>
+  )
+}
+
+function Stat({ label, value, delta, sub }: { label: string; value: number | string; delta?: string; sub?: string }) {
+  return (
+    <div className="s-card" style={{ padding: "16px 18px" }}>
+      <p className="s-meta" style={{ fontSize: 12.5 }}>{label}</p>
+      <p style={{ fontSize: 30, fontWeight: 800, color: "var(--s-ink)", lineHeight: 1.15, marginTop: 4 }}>{value}</p>
+      {delta && <p style={{ fontSize: 11.5, color: "#1F7A44", fontWeight: 700, marginTop: 4 }}>{delta}</p>}
+      {!delta && sub && <p className="s-meta" style={{ fontSize: 11.5, marginTop: 4 }}>{sub}</p>}
     </div>
   )
 }

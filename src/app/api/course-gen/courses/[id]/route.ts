@@ -23,10 +23,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     .sort((a: any, b: any) => a.order_index - b.order_index)
     .map((m: any) => ({ ...m, slide_count: m.cg_pages?.length ?? 0, cg_pages: undefined }))
 
-  // Latest orchestrator-level job for live progress display.
+  // Latest orchestrator-level job for live progress display (input carries
+  // the rolling activity log the generating view renders).
   const { data: latestJob } = await db
     .from("cg_generation_jobs")
-    .select("id, job_type, status, progress_pct, current_step, error, created_at")
+    .select("id, job_type, status, progress_pct, current_step, error, input, created_at")
     .eq("course_id", id)
     .in("job_type", ["orchestrator", "outline"])
     .order("created_at", { ascending: false })

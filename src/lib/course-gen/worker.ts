@@ -98,15 +98,18 @@ async function runJob(job: any) {
         // slide-level progress, slide-level restart recovery, and the worker
         // never blocks for hours on a single row.
         const tick = await handleOrchestratorTick(job)
+        // Keep a short rolling activity log on the job so the UI can show
+        // what actually happened, not just a percentage.
+        const log: string[] = [...((job.input?.log as string[]) ?? []), tick.step].slice(-40)
         if (tick.done) {
-          await completeJob(job.id, { cursor: tick.cursor })
+          await completeJob(job.id, { cursor: tick.cursor, log })
           await notifyCourseReady(job.course_id)
         } else {
           await db.from("cg_generation_jobs").update({
             status: "queued",
             current_step: tick.step,
             progress_pct: tick.progress,
-            input: { ...job.input, cursor: tick.cursor },
+            input: { ...job.input, cursor: tick.cursor, log },
             started_at: null,
           }).eq("id", job.id)
         }

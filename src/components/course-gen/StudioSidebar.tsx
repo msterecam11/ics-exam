@@ -3,25 +3,15 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
-import {
-  LayoutDashboard,
-  BookOpen,
-  Palette,
-  Library,
-  Settings,
-  ChevronRight,
-  LayoutGrid,
-  Plus,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
+import { useEffect, useState } from "react"
+import { LayoutDashboard, BookOpen, Palette, Library, Settings, Plus } from "lucide-react"
 
 const navItems = [
-  { href: "/studio",           label: "Dashboard",         icon: LayoutDashboard },
-  { href: "/studio/courses",   label: "Courses",           icon: BookOpen },
-  { href: "/studio/themes",    label: "Themes",            icon: Palette },
-  { href: "/studio/library",   label: "Reference Library", icon: Library },
-  { href: "/studio/settings",  label: "Settings",          icon: Settings },
+  { href: "/studio",          label: "Dashboard",         icon: LayoutDashboard, exact: true },
+  { href: "/studio/courses",  label: "Courses",           icon: BookOpen, counter: true },
+  { href: "/studio/themes",   label: "Themes",            icon: Palette },
+  { href: "/studio/library",  label: "Reference Library", icon: Library },
+  { href: "/studio/settings", label: "Settings",          icon: Settings },
 ]
 
 interface Props {
@@ -31,86 +21,100 @@ interface Props {
 
 export default function StudioSidebar({ user, inSheet = false }: Props) {
   const pathname = usePathname()
+  const [courseCount, setCourseCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch("/api/course-gen/courses")
+      .then(r => r.json())
+      .then(d => setCourseCount(d.courses?.length ?? 0))
+      .catch(() => {})
+  }, [pathname])
+
+  const initials = (user.name ?? "A")
+    .split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
 
   return (
-    <aside className={`${inSheet ? "flex h-full" : "hidden md:flex"} flex-col w-64 bg-[#0A2E4E] text-white shrink-0`}>
-
-      {/* Logo + system label */}
-      <div className="flex flex-col items-center justify-center px-6 py-5 border-b border-white/10 gap-1">
-        <Image
-          src="/logo/logo-white.png"
-          alt="ICS Aviation"
-          width={150}
-          height={42}
-          className="object-contain"
-          priority
-        />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50 mt-1">
-          ICS Studio — Course Generator
-        </span>
+    <aside className={`s-nav ${inSheet ? "flex h-full" : "hidden md:flex"}`}>
+      {/* Brand */}
+      <div className="flex items-center gap-3" style={{ padding: "22px 20px 18px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <Image src="/course-gen/theme-1/logos/ics-icon-white.png" alt="ICS Aviation" width={30} height={30}
+          className="object-contain shrink-0" priority />
+        <div className="min-w-0">
+          <p style={{ fontWeight: 800, fontSize: 15, color: "#fff", letterSpacing: ".2px" }}>ICS Studio</p>
+          <p style={{ fontSize: 11, color: "var(--s-navy-muted)", fontWeight: 500 }}>Course Generator</p>
+        </div>
       </div>
 
-      {/* New Course CTA */}
-      <div className="px-3 pt-4">
-        <Link
-          href="/studio/create"
-          className="flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-semibold bg-[#0C72C6] hover:bg-[#0a63ab] transition-colors"
-        >
+      {/* New Course */}
+      <div style={{ padding: "16px 12px 6px" }}>
+        <Link href="/studio/create" className="s-btn s-btn-primary w-full">
           <Plus className="h-4 w-4" /> New Course
         </Link>
       </div>
 
-      {/* Navigation */}
-      <nav className={`${inSheet ? "" : "flex-1"} px-3 py-4 space-y-1 overflow-y-auto`}>
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/studio" && pathname.startsWith(href + "/"))
+      {/* Nav */}
+      <nav style={{ padding: "6px 12px", display: "flex", flexDirection: "column", gap: 2, flex: inSheet ? undefined : 1 }}>
+        {navItems.map(({ href, label, icon: Icon, exact, counter }) => {
+          const active = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                active
-                  ? "bg-white/15 text-white"
-                  : "text-white/70 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
+            <Link key={href} href={href} className="s-nav-item" data-active={active}>
+              <Icon className="h-4 w-4 shrink-0" style={{ opacity: active ? 1 : .75 }} />
               <span className="flex-1">{label}</span>
-              {active && <ChevronRight className="h-3 w-3 opacity-60" />}
+              {counter && courseCount !== null && <span className="s-nav-badge">{courseCount}</span>}
             </Link>
           )
         })}
       </nav>
 
-      {/* Back to Hub */}
-      <div className="px-3 pb-2">
-        <Link
-          href="/hub"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-        >
-          <LayoutGrid className="h-4 w-4 shrink-0" />
-          <span>Back to Hub</span>
-        </Link>
-      </div>
+      {/* Pipeline status — real: reflects whether generation can actually run */}
+      <PipelineNote />
 
-      {/* User info */}
-      <div className="px-4 py-4 border-t border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold shrink-0">
-            {user.name?.[0]?.toUpperCase() ?? "A"}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user.name}</p>
-            <Badge
-              variant="secondary"
-              className="text-xs bg-white/10 text-white/80 border-0 capitalize px-1.5 py-0"
-            >
-              {user.role ?? "admin"}
-            </Badge>
-          </div>
+      {/* User */}
+      <div className="flex items-center gap-3" style={{ padding: "14px 16px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
+        <div className="shrink-0 flex items-center justify-center rounded-full"
+          style={{ width: 32, height: 32, background: "var(--s-cyan)", color: "var(--s-cyan-ink)", fontSize: 12, fontWeight: 800 }}>
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }} className="truncate">{user.name}</p>
+          <p style={{ fontSize: 11, color: "var(--s-navy-muted)" }} className="capitalize truncate">
+            {user.role === "instructor" ? "Instructional Designer" : user.role ?? "admin"}
+          </p>
         </div>
       </div>
     </aside>
+  )
+}
+
+/** Honest status: says "configure a key" rather than claiming agents are
+ *  ready when generation would 503 on the first request. */
+function PipelineNote() {
+  const [state, setState] = useState<{ ready: boolean; note: string } | null>(null)
+
+  useEffect(() => {
+    fetch("/api/course-gen/status")
+      .then(r => r.json())
+      .then(d => setState({
+        ready: !!d.ai_configured,
+        note: d.ai_configured
+          ? `${d.agents} agents ready · ${d.queued ?? 0} queued`
+          : "Add ANTHROPIC_API_KEY to enable",
+      }))
+      .catch(() => setState({ ready: false, note: "Status unavailable" }))
+  }, [])
+
+  return (
+    <div className="s-nav-note">
+      <div className="flex items-center gap-2">
+        <span className={state?.ready ? "s-pulse" : ""}
+          style={{ width: 7, height: 7, borderRadius: "50%", background: state?.ready ? "#3FD68C" : "#F2C14E", flexShrink: 0 }} />
+        <p style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>
+          {state?.ready ? "Pipeline online" : "Pipeline idle"}
+        </p>
+      </div>
+      <p style={{ fontSize: 11.5, color: "#BFE3F5", lineHeight: 1.4, marginTop: 4 }}>
+        {state?.note ?? "Checking…"}
+      </p>
+    </div>
   )
 }
