@@ -6,7 +6,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   Loader2, ArrowLeft, FileText, Sparkles, Layers,
-  AlertCircle, RefreshCw, Trash2,
+  AlertCircle, RefreshCw, Trash2, Download, FileDown,
 } from "lucide-react"
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -27,6 +27,8 @@ export default function StudioCoursePage() {
   const [busy, setBusy] = useState(false)
   const [outline, setOutline] = useState<any>(null)
   const [adjustments, setAdjustments] = useState("")
+  const [exports, setExports] = useState<any[]>([])
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
     const [c, r] = await Promise.all([
@@ -35,6 +37,8 @@ export default function StudioCoursePage() {
     ])
     setData(c)
     setRefs(r.references ?? [])
+    fetch(`/api/course-gen/courses/${id}/export`).then(x => x.json())
+      .then(e => setExports(e.exports ?? [])).catch(() => {})
     if (c?.course?.status === "outline_review") {
       const o = await fetch(`/api/course-gen/courses/${id}/outline`).then(x => x.json()).catch(() => null)
       setOutline(o?.job?.output ?? null)
@@ -46,10 +50,11 @@ export default function StudioCoursePage() {
   // Poll while a generation is running so progress stays live.
   useEffect(() => {
     const status = data?.course?.status
-    if (!["generating_outline", "generating_slides"].includes(status)) return
+    const exporting = exports.some(e => ["queued", "running"].includes(e.status))
+    if (!["generating_outline", "generating_slides"].includes(status) && !exporting) return
     const t = setInterval(load, 4000)
     return () => clearInterval(t)
-  }, [data?.course?.status, load])
+  }, [data?.course?.status, exports, load])
 
   async function generateOutline(adj?: string) {
     setBusy(true)
@@ -96,6 +101,23 @@ export default function StudioCoursePage() {
       return
     }
     toast.success("Resuming generation")
+    load()
+  }
+
+  async function exportPdf(moduleId?: string) {
+    setExporting(true)
+    const res = await fetch(`/api/course-gen/courses/${id}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(moduleId ? { module_id: moduleId } : {}),
+    })
+    setExporting(false)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? "Could not start the export")
+      return
+    }
+    toast.success("Export queued — the PDF appears here when it's ready")
     load()
   }
 
@@ -149,10 +171,19 @@ export default function StudioCoursePage() {
             </p>
           </div>
         </div>
-        <button onClick={deleteCourse} title="Delete course"
-          className="text-slate-300 hover:text-red-500 transition-colors shrink-0 mt-1.5">
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {(course.modules ?? []).length > 0 && (
+            <button onClick={() => exportPdf()} disabled={exporting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-[#0C72C6] hover:bg-[#0a63ab] disabled:opacity-60 transition-colors">
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+              Export PDF
+            </button>
+          )}
+          <button onClick={deleteCourse} title="Delete course"
+            className="text-slate-300 hover:text-red-500 transition-colors mt-1">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Live progress */}
@@ -284,11 +315,43 @@ export default function StudioCoursePage() {
                 <p className="text-xs text-slate-400">{m.slide_count} slides</p>
               </div>
               {m.slide_count > 0 && (
-                <Link href={`/studio/courses/${id}/edit/${m.id}`}
-                  className="text-xs font-semibold text-[#0C72C6] hover:text-[#0a63ab] shrink-0">
-                  Open in editor →
-                </Link>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => exportPdf(m.id)} title="Export this module"
+                    className="text-slate-300 hover:text-[#0C72C6] transition-colors">
+                    <FileDown className="h-4 w-4" />
+                  </button>
+                  <Link href={`/studio/courses/${id}/edit/${m.id}`}
+                    className="text-xs font-semibold text-[#0C72C6] hover:text-[#0a63ab]">
+                    Open in editor →
+                  </Link>
+                </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Exports */}
+      {exports.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Exports</p>
+          {exports.map(e => (
+            <div key={e.id} className="flex items-center gap-3">
+              <FileText className="h-3.5 w-3.5 text-[#0C72C6] shrink-0" />
+              <span className="text-xs text-slate-600 flex-1 truncate">
+                {e.module_id ? "Single module" : "Whole course"}
+                <span className="text-slate-300"> · {new Date(e.created_at).toLocaleString("en-GB")}</span>
+              </span>
+              {e.status === "done" && e.file_url
+                ? <a href={e.file_url} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 text-xs font-semibold text-[#0C72C6] hover:text-[#0a63ab] shrink-0">
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </a>
+                : e.status === "failed"
+                  ? <span className="text-[10px] font-bold text-red-500 shrink-0">FAILED</span>
+                  : <span className="flex items-center gap-1 text-[10px] text-slate-400 shrink-0">
+                      <Loader2 className="h-3 w-3 animate-spin" /> {e.status}
+                    </span>}
             </div>
           ))}
         </div>

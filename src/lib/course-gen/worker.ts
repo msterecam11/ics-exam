@@ -10,6 +10,7 @@
 import { db } from "@/lib/db"
 import { handleOutlineJob } from "./jobs/outline"
 import { handleOrchestratorTick } from "./jobs/orchestrator"
+import { handlePdfExportJob } from "./jobs/pdfExport"
 import { notifyCourseReady } from "./notify"
 
 const POLL_MS = 3000
@@ -109,6 +110,15 @@ async function runJob(job: any) {
             started_at: null,
           }).eq("id", job.id)
         }
+        break
+      }
+
+      case "pdf_export": {
+        // Heaviest browser work in the system — the single-job-at-a-time
+        // loop is what keeps it from colliding with QA screenshots.
+        await setStep(job.id, "Preparing export…", 5)
+        const out = await handlePdfExportJob(job)
+        await completeJob(job.id, out)
         break
       }
 

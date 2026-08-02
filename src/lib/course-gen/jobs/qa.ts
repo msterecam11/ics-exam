@@ -40,7 +40,11 @@ export async function screenshotSlide(opts: {
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: SLIDE_W, height: SLIDE_H, deviceScaleFactor: 1 })
-    await page.setContent(html, { waitUntil: "networkidle0" })
+    // "load" (not networkidle0): fonts are inlined so the only network work
+    // is the theme's background/logo images, and "load" settles once those
+    // finish either way. networkidle0 waits for a quiet period that a dev
+    // server's keep-alive connections can prevent, hanging the render.
+    await page.setContent(html, { waitUntil: "load", timeout: 60_000 })
     await page.evaluate(() => (document as any).fonts?.ready)
     const buf = await page.screenshot({ type: "png" })
     await page.close()
