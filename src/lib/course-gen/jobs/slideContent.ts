@@ -11,6 +11,7 @@
 import { db } from "@/lib/db"
 import { MODELS, claudeJSON } from "../ai"
 import { exemplarPromptBlock } from "../exemplars"
+import { retrieveForCourse, formatSections } from "../retrieval"
 import type { SlideSourceContent } from "../primitives"
 
 const MAX_REF_CHARS = 14_000
@@ -64,9 +65,20 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
 
   const readable = (refs ?? []).filter(r => r.extracted_text)
   const perRef = readable.length ? Math.floor(MAX_REF_CHARS / readable.length) : 0
-  const refBlock = readable
+  const legacyBlock = readable
     .map(r => `### ${r.file_name}\n${(r.extracted_text as string).slice(0, perRef)}`)
     .join("\n\n")
+
+  // Retrieved per SLIDE, so each slide sees the clauses relevant to its own
+  // subject instead of the same generic opening pages of every document.
+  const retrieved = await retrieveForCourse({
+    courseId: course_id,
+    query: [slide.title, slide.intent, ...(slide.key_points ?? []), ...(slide.covers ?? []), module_title]
+      .filter(Boolean).join(" "),
+    limit: 8,
+    maxChars: MAX_REF_CHARS,
+  })
+  const refBlock = [formatSections(retrieved), legacyBlock].filter(Boolean).join("\n\n")
 
   const isStructural = ["cover", "section_divider", "closing_cta"].includes(slide.layout_kind)
 
@@ -117,7 +129,7 @@ ${PRIMITIVE_REFERENCE}
 ## Content rules
 - Aviation-professional register; precise, factual, no filler or marketing language.
 - Fit the slide: roughly 40-90 words of body text total. Long paragraphs break the layout — split into cards/columns/bullets instead.
-- Name the regulation/standard when the reference material supports it. Never invent a citation.
+- Cite precisely: the reference sections carry their clause and page (e.g. "GACAR Part-139 · 139.15 · p.42"). Use the clause number the material actually shows. NEVER invent or guess a clause number — if the material does not give one, describe the requirement without a citation.
 - Use a figure/photo only when it genuinely aids understanding, at most one per slide.
 - Flag "sensitive": true when the slide covers safety-critical, medical, legal, or regulatory-compliance content (its imagery then gets human review).
 ${isStructural ? `- This is a ${slide.layout_kind} slide: keep it minimal — a strong title${slide.layout_kind === "cover" ? " and a short subtitle" : ""}, and either no blueprint at all or a very light one.` : ""}

@@ -4,15 +4,20 @@
 // Matches the approved design: sectioned form + live summary panel,
 // per-module breakdown, partner logos (light + dark), reference uploads.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { toast } from "sonner"
 import {
-  Loader2, Plus, Trash2, Upload, FileText, Sparkles, X,
+  Loader2, Plus, Trash2, Upload, FileText, Sparkles, X, Check, Library,
 } from "lucide-react"
 
 interface ModuleRow { title: string; slide_count: number; coverage: string }
 interface RefFile { file: File; status: "pending" | "uploading" | "done" | "failed" }
+interface LibDoc {
+  id: string; title: string; authority: string | null; doc_reference: string | null
+  scan_status: string; section_count: number | null; page_count: number | null
+}
 
 const TONES = ["Corporate / formal", "Instructional", "Conversational"]
 
@@ -48,9 +53,21 @@ export default function CreateCoursePage() {
   const [partnerDark, setPartnerDark] = useState<File | null>(null)
 
   // ── References ──
+  // Two sources: the indexed global library (preferred — already scanned and
+  // clause-indexed, so agents retrieve from it) and one-off uploads for this
+  // course only.
+  const [libDocs, setLibDocs] = useState<LibDoc[] | null>(null)
+  const [pickedDocs, setPickedDocs] = useState<string[]>([])
   const [refs, setRefs] = useState<RefFile[]>([])
 
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/course-gen/documents")
+      .then(r => r.json())
+      .then(d => setLibDocs(Array.isArray(d.documents) ? d.documents : []))
+      .catch(() => setLibDocs([]))
+  }, [])
 
   const totalSlides = useMemo(
     () => modules.reduce((s, m) => s + (Number.isFinite(m.slide_count) ? m.slide_count : 0), 0),
@@ -107,7 +124,17 @@ export default function CreateCoursePage() {
         if (!r.ok) toast.warning(`Partner logo (${variant}) upload failed — you can retry later`)
       }
 
-      // 3. Reference materials, sequentially (text extraction runs server-side)
+      // 3. Link the chosen library documents (already indexed — no upload needed)
+      if (pickedDocs.length > 0) {
+        const r = await fetch(`/api/course-gen/courses/${id}/documents`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ document_ids: pickedDocs }),
+        })
+        if (!r.ok) toast.warning("Reference library selection failed to save — you can set it on the course page")
+      }
+
+      // 4. One-off reference materials, sequentially (text extraction runs server-side)
       for (let i = 0; i < refs.length; i++) {
         setRefs(rs => rs.map((r, j) => (j === i ? { ...r, status: "uploading" } : r)))
         const fd = new FormData()
@@ -313,8 +340,78 @@ export default function CreateCoursePage() {
           <div className={sectionCls} style={{ padding: "18px 20px" }}>
             {sectionTitle(5, "Reference materials (optional)")}
             <p className="s-meta" style={{ fontSize: 11.5, marginTop: -6 }}>
-              Regulatory docs, past courses, manuals — the Content Agent grounds generation in these instead of writing from the brief alone. PDF & text files are read; other formats are stored.
+              Regulatory docs, past courses, manuals — the Content Agent grounds generation in these instead of writing from the brief alone.
             </p>
+
+            {/* 5a · Reference Library — already scanned and clause-indexed */}
+            <div>
+              <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                <Library className="h-3.5 w-3.5" style={{ color: "var(--s-primary)" }} />
+                <p className="s-label flex-1">From the Reference Library</p>
+                <Link href="/studio/library" className="s-meta" style={{ fontSize: 11, textDecoration: "underline" }}>
+                  Manage
+                </Link>
+              </div>
+
+              {libDocs === null ? (
+                <p className="s-meta" style={{ fontSize: 11.5 }}>Loading library…</p>
+              ) : libDocs.length === 0 ? (
+                <p className="s-meta" style={{ fontSize: 11.5 }}>
+                  No documents in the library yet. <Link href="/studio/library" style={{ textDecoration: "underline" }}>Add one</Link> and it gets scanned once, then any course can draw on it.
+                </p>
+              ) : (
+                <div className="space-y-1.5" style={{ maxHeight: 260, overflowY: "auto" }}>
+                  {libDocs.map(d => {
+                    const picked = pickedDocs.includes(d.id)
+                    const ready = d.scan_status === "ready"
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setPickedDocs(p => picked ? p.filter(x => x !== d.id) : [...p, d.id])}
+                        className="flex items-center gap-2.5 w-full text-left"
+                        style={{
+                          background: picked ? "var(--s-primary-soft, #E8F2FB)" : "var(--s-surface-soft2)",
+                          border: `1.5px solid ${picked ? "var(--s-primary)" : "var(--s-line-soft)"}`,
+                          borderRadius: 8, padding: "8px 11px",
+                        }}
+                      >
+                        <span className="flex items-center justify-center shrink-0" style={{
+                          width: 16, height: 16, borderRadius: 4,
+                          border: `1.5px solid ${picked ? "var(--s-primary)" : "#C9D6E4"}`,
+                          background: picked ? "var(--s-primary)" : "#fff",
+                        }}>
+                          {picked && <Check className="h-3 w-3" style={{ color: "#fff" }} />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate" style={{ fontSize: 12, fontWeight: 700, color: "var(--s-ink)" }}>
+                            {d.title}
+                          </span>
+                          <span className="s-meta block truncate" style={{ fontSize: 10.5 }}>
+                            {[d.authority, d.doc_reference,
+                              ready ? `${d.section_count ?? 0} indexed sections` : `scan ${d.scan_status}`]
+                              .filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        {!ready && (
+                          <span className="s-pill s-pill-warn shrink-0" style={{ fontSize: 9.5, padding: "1px 7px" }}>
+                            NOT READY
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {pickedDocs.length > 0 && libDocs?.some(d => pickedDocs.includes(d.id) && d.scan_status !== "ready") && (
+                <p className="s-meta" style={{ fontSize: 11, marginTop: 7 }}>
+                  A document still scanning contributes only the sections indexed by the time generation runs.
+                </p>
+              )}
+            </div>
+
+            {/* 5b · One-off uploads, this course only */}
+            <p className="s-label" style={{ marginBottom: -4 }}>Or upload for this course only</p>
             <label className="flex items-center justify-center gap-2 cursor-pointer" style={{ border: "1.5px dashed #A9CFF0", borderRadius: 8, padding: "22px 12px", fontSize: 12.5, color: "var(--s-body-2)" }}>
               <Upload className="h-4 w-4" /> Add files
               <input type="file" multiple className="hidden"
@@ -359,7 +456,8 @@ export default function CreateCoursePage() {
               ["Modules", String(modules.filter(m => m.title.trim()).length || "—")],
               ["Est. slides", totalSlides ? `~${totalSlides} + front matter` : "—"],
               ["Client", partnerName.trim() || "—"],
-              ["References", refs.length ? `${refs.length} file${refs.length === 1 ? "" : "s"}` : "—"],
+              ["Library docs", pickedDocs.length ? `${pickedDocs.length} selected` : "—"],
+              ["Uploads", refs.length ? `${refs.length} file${refs.length === 1 ? "" : "s"}` : "—"],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3">
                 <span className="s-meta" style={{ fontSize: 11.5 }}>{k}</span>

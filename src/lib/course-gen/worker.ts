@@ -10,6 +10,7 @@
 import { db } from "@/lib/db"
 import { handleOutlineJob } from "./jobs/outline"
 import { handleOrchestratorTick } from "./jobs/orchestrator"
+import { handleDocScanTick } from "./jobs/docScan"
 import { handlePdfExportJob } from "./jobs/pdfExport"
 import { notifyCourseReady } from "./notify"
 
@@ -125,6 +126,24 @@ async function runJob(job: any) {
         break
       }
 
+      case "doc_scan": {
+        // Same self-requeue pattern as generation: a 300-page regulation is
+        // hundreds of model calls, so it advances in short resumable steps
+        // instead of one job that could die halfway through.
+        const tick = await handleDocScanTick(job)
+        if (tick.done) {
+          await completeJob(job.id, { step: tick.step })
+        } else {
+          await db.from("cg_generation_jobs").update({
+            status: "queued",
+            current_step: tick.step,
+            progress_pct: tick.progress,
+            started_at: null,
+          }).eq("id", job.id)
+        }
+        break
+      }
+
       default:
         throw new Error(`No handler for job_type "${job.job_type}" yet`)
     }
@@ -140,6 +159,13 @@ async function runJob(job: any) {
       await db.from("cg_courses")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", job.course_id)
+    }
+    if (job.job_type === "doc_scan" && job.document_id) {
+      await db.from("cg_documents").update({
+        scan_status: "failed",
+        scan_error: String(err?.message ?? err).slice(0, 500),
+        updated_at: new Date().toISOString(),
+      }).eq("id", job.document_id)
     }
   }
 }

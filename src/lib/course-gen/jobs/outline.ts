@@ -4,6 +4,7 @@
 
 import { db } from "@/lib/db"
 import { MODELS, claudeJSON } from "../ai"
+import { retrieveForCourse, formatSections } from "../retrieval"
 
 const LAYOUT_KINDS = [
   "cover", "section_divider", "content_white", "content_lightblue",
@@ -43,10 +44,10 @@ export async function handleOutlineJob(job: any): Promise<OutlineOutput> {
     .select("file_name, extracted_text")
     .eq("course_id", courseId)
 
-  // Reference excerpts, budgeted across files
+  // Legacy per-course uploads (pre-library) are still honoured, budgeted.
   const readable = (refs ?? []).filter(r => r.extracted_text)
   const perRef = readable.length ? Math.floor(MAX_REF_CHARS / readable.length) : 0
-  const refBlock = readable
+  const legacyBlock = readable
     .map(r => `### ${r.file_name}\n${(r.extracted_text as string).slice(0, perRef)}`)
     .join("\n\n")
 
@@ -64,6 +65,17 @@ export async function handleOutlineJob(job: any): Promise<OutlineOutput> {
     .join("\n")
 
   const hasCoverage = briefModules.some(m => m.coverage?.trim())
+
+  // Library retrieval: pull the clauses that actually relate to this course
+  // rather than the opening pages of every attached document.
+  const retrieved = await retrieveForCourse({
+    courseId,
+    query: [course.title, course.overview, course.regulatory_framework,
+            ...briefModules.map(m => `${m.title} ${m.coverage ?? ""}`)].filter(Boolean).join(" "),
+    limit: 14,
+    maxChars: MAX_REF_CHARS,
+  })
+  const refBlock = [formatSections(retrieved), legacyBlock].filter(Boolean).join("\n\n")
 
   const assessment = course.include_assessment
   const grammar = [
