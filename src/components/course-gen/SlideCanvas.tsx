@@ -124,10 +124,19 @@ export default function SlideCanvas(props: Props) {
           case "text": {
             const s = el.style
             const html = el.runs.map(r => r.bold ? `<b>${escapeHtml(r.text)}</b>` : escapeHtml(r.text)).join("")
+            // An unfilled placeholder reads as a prompt while editing, and is
+            // simply skipped when rendering for real (export / QA / present).
+            const isPrompt = !!el.placeholder && interactive
+            if (el.placeholder && !interactive) return null
             return (
               <div key={el.id} {...common}
                 style={{
                   ...box,
+                  ...(isPrompt ? {
+                    opacity: .45,
+                    outline: selected ? undefined : "1.5px dashed rgba(12,114,198,.45)",
+                    outlineOffset: 2,
+                  } : {}),
                   fontSize: s.fontSize, fontWeight: s.fontWeight ?? 400,
                   color: resolveToken(s.color, tokens, "#333"),
                   textAlign: s.align ?? "left",

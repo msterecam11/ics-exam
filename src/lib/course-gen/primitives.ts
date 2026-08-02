@@ -187,6 +187,9 @@ export interface ElementBase {
   rotation?: number
   locked?: boolean
   effects?: ElementEffects
+  /** Stamped from a master and not yet filled in — rendered as a prompt
+   *  and cleared on first edit. */
+  placeholder?: boolean
 }
 export interface TextRun { text: string; bold?: boolean; italic?: boolean; color?: TokenRef }
 export interface TextElement extends ElementBase {

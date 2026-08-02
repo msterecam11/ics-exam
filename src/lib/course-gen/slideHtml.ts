@@ -66,6 +66,10 @@ function chromeHtml(input: RenderSlideInput): string {
 }
 
 function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
+  // Unfilled master placeholders are editing prompts, never real content —
+  // they must not appear in exports, QA screenshots, or presentations.
+  if (el.placeholder) return ""
+
   const box = `position:absolute;left:${pct(el.x, "x")};top:${pct(el.y, "y")};width:${pct(el.width, "x")};height:${pct(el.height, "y")};z-index:${el.zIndex};${el.rotation ? `transform:rotate(${el.rotation}deg);` : ""}`
 
   switch (el.type) {

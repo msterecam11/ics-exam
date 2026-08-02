@@ -98,8 +98,15 @@ export default function PropertiesPanel({ tokens }: { tokens: ThemeTokens }) {
       {el.type === "text" && (
         <div className={section}>
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Text</p>
-          <textarea className={`${input} min-h-20 resize-y`} value={el.runs.map(r => r.text).join("")}
-            onChange={e => patch({ runs: [{ text: e.target.value }] } as any, "Edit text")} />
+          <textarea className={`${input} min-h-20 resize-y`}
+            value={el.placeholder ? "" : el.runs.map(r => r.text).join("")}
+            placeholder={el.placeholder ? el.runs.map(r => r.text).join("") : undefined}
+            onChange={e => patch({ runs: [{ text: e.target.value }], placeholder: false } as any, "Edit text")} />
+          {el.placeholder && (
+            <p className="s-meta" style={{ fontSize: 11 }}>
+              This is a master placeholder — typing here turns it into real content.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={label}>Size</label>

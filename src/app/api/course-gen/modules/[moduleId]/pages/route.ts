@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
+import { stampMaster } from "@/lib/course-gen/stampMaster"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -17,6 +18,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ moduleI
   const body = await parseBody(req, 2_000_000).catch(() => ({})) as any
   const afterIndex: number | null = typeof body.after_index === "number" ? body.after_index : null
 
+  // Resolve the module's theme so the new slide starts with this master's
+  // own title/content boxes rather than an empty rectangle.
+  const { data: mod } = await db
+    .from("cg_modules")
+    .select("id, cg_courses(cg_themes(tokens, layout_templates))")
+    .eq("id", moduleId).single()
+  const theme = (mod as any)?.cg_courses?.cg_themes
+  const layoutKind = body.layout_kind ?? "content_white"
+  const master = theme?.layout_templates?.[layoutKind]
+
   const { data: existing } = await db
     .from("cg_pages").select("id, order_index").eq("module_id", moduleId).order("order_index")
   const pages = existing ?? []
@@ -30,9 +41,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ moduleI
   const { data, error } = await db.from("cg_pages").insert({
     module_id: moduleId,
     order_index: insertAt,
-    layout_kind: body.layout_kind ?? "content_white",
+    layout_kind: layoutKind,
     background: body.background ?? {},
-    elements: body.elements ?? [],
+    elements: body.elements
+      ?? (master ? stampMaster(master, theme.tokens, layoutKind) : []),
     source_content: body.source_content ?? { intent: "blank_master", layout_kind: body.layout_kind ?? "content_white" },
     manually_diverged: true,
   }).select("id, order_index, layout_kind, background, elements, source_content, manually_diverged, notes, updated_at").single()
