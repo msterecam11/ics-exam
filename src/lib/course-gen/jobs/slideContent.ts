@@ -132,10 +132,10 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
   const isStructural = ["cover", "section_divider", "closing_cta"].includes(slide.layout_kind)
 
   // The syllabus points the outline assigned to THIS slide. Passed verbatim so
-  // reference markers like [MR4.1] survive into the finished slide text.
+  // any bracketed reference code the client uses survives into the slide.
   const covers: string[] = Array.isArray(slide.covers) ? slide.covers : []
   const coversBlock = covers.length
-    ? `REQUIRED COVERAGE this slide must deliver (from the client's syllabus — keep any [MR..] reference markers verbatim):\n${covers.map(c => `  - ${c}`).join("\n")}`
+    ? `REQUIRED COVERAGE this slide must deliver (from the client's syllabus — reproduce any bracketed reference codes verbatim):\n${covers.map(c => `  - ${c}`).join("\n")}`
     : ""
 
   const prompt = `You are the Content Agent for ICS Aviation's course generator. Write ONE slide of a professional aviation training course, and design the structure of its content area.

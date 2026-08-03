@@ -31,7 +31,7 @@ const STOP = new Set([
 
 function keywords(text: string): string[] {
   const words = text.toLowerCase()
-    .replace(/\[[^\]]*\]/g, " ")           // drop [MR4.1]-style markers
+    .replace(/\[[^\]]*\]/g, " ")           // bracketed client reference codes
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .filter(w => w.length > 3 && !STOP.has(w))

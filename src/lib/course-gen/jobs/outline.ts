@@ -113,7 +113,7 @@ ${previousOutline ? `## Previous outline (being revised)\n${JSON.stringify(previ
 ${adjustments ? `## Designer's requested adjustments (apply these precisely)\n${adjustments}\n` : ""}
 
 ${hasCoverage ? `## Required coverage — this is a contract
-Some modules list REQUIRED COVERAGE. Every one of those points must be delivered by at least one slide in that module. For each slide, list in "covers" the exact coverage lines (copied verbatim, including any [MR..] reference markers) that the slide delivers. A point may span several slides, and one slide may cover several points — but nothing may be dropped. If a module's coverage needs more slides than its target, exceed the target rather than omitting content, and keep reference markers intact in the slide content later.
+Some modules list REQUIRED COVERAGE. Every one of those points must be delivered by at least one slide in that module. For each slide, list in "covers" the exact coverage lines (copied verbatim, including any bracketed reference codes they carry) that the slide delivers. A point may span several slides, and one slide may cover several points — but nothing may be dropped. If a module's coverage needs more slides than its target, exceed the target rather than omitting content, and keep any reference codes intact in the slide content later.
 
 ` : ""}## Slide intents
 For each content slide choose an intent that describes its content shape: "comparison", "numbered-process", "categorized-sections", "definition-list", "bullets-with-figure", "table", "chart", "timeline", "case-study", "regulation-breakdown", or similar. Vary intents — a module of 15 identical bullet slides is a failure.

@@ -260,10 +260,10 @@ export default function CreateCoursePage() {
 
 • Safety and Security Protocols
    - Introduction to Safety Management Systems (SMS) and OHS
-   - Security measures [MR4.1], procedures, crisis management
+   - Security measures, procedures, crisis management
 • Performance and Quality Improvement
    - Performance metrics, continuous improvement, QMS
-   - Introduction to Lean management [MR5.1]`} />
+   - Introduction to Lean management`} />
                   {m.coverage.trim() && (
                     <p className="s-meta" style={{ fontSize: 11, marginTop: 5 }}>
                       {countPoints(m.coverage)} required point{countPoints(m.coverage) === 1 ? "" : "s"} — the outline must cover every one, and you&apos;ll see which slides do.
