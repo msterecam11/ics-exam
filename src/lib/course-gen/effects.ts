@@ -60,6 +60,7 @@ export function effectsCss(e: ElementEffects | undefined, tokens: ThemeTokens, i
   const filters: string[] = []
   if (e.grayscale) filters.push("grayscale(1)")
   if (typeof e.brightness === "number" && e.brightness !== 1) filters.push(`brightness(${e.brightness})`)
+  if (typeof e.saturate === "number" && e.saturate !== 1) filters.push(`saturate(${e.saturate})`)
   if (filters.length) out.push(`filter:${filters.join(" ")}`)
 
   if (e.mask && e.mask !== "none") out.push(MASKS[e.mask].replace(/;$/, ""))

@@ -189,6 +189,14 @@ ${DESIGN_PRINCIPLES}
 - Fit the slide: roughly 40-90 words of body text total. Long paragraphs break the layout — split into cards/columns/bullets instead.
 - Cite precisely: the reference sections carry their clause and page (e.g. "GACAR Part-139 · 139.15 · p.42"). Use the clause number the material actually shows. NEVER invent or guess a clause number — if the material does not give one, describe the requirement without a citation.
 - Use a figure/photo only when it genuinely aids understanding, at most one per slide.
+- Ask for a photo ONLY when the subject is something you could actually
+  photograph: ground crew refuelling an aircraft, a control tower, a fire
+  appliance, an inspection walk. Never ask for a photo of an abstract or
+  regulatory idea — "declared distances", "a compliance framework", "clause
+  139.15(b)". No photograph of those exists; the search returns something
+  vaguely aviation-shaped and irrelevant, and a generated one would invent
+  markings that are wrong. Carry those ideas in a callout, a table, a
+  diagram, or a chart instead.
 - Flag "sensitive": true when the slide covers safety-critical, medical, legal, or regulatory-compliance content (its imagery then gets human review).
 ${isStructural ? `- This is a ${slide.layout_kind} slide: keep it minimal — a strong title${slide.layout_kind === "cover" ? " and a short subtitle" : ""}, and either no blueprint at all or a very light one.` : ""}
 

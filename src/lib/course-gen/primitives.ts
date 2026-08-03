@@ -173,6 +173,10 @@ export interface ElementEffects {
   /** Image only. */
   grayscale?: boolean
   brightness?: number       // 1 = unchanged
+  /** Colour intensity. 1 = untouched, 0 = greyscale. Sourced photography is
+   *  slightly desaturated so a course built from many photographers reads as
+   *  one deck rather than a scrapbook. */
+  saturate?: number
   /** Image only: crop the image to a shape. */
   mask?: "none" | "circle" | "rounded" | "squircle"
   /** Border on any element. */
