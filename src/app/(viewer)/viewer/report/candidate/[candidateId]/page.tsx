@@ -10,6 +10,7 @@ import {
   MinusCircle, Trophy, Target, TrendingUp, Medal, Lightbulb, ShieldAlert
 } from "lucide-react"
 import { formatTimeSpent } from "@/lib/utils"
+import { letterGrade } from "@/lib/grading"
 
 // ─── Helpers (identical to admin report page) ────────────────────────────────
 
@@ -400,7 +401,9 @@ export default function ViewerCandidateReportPage() {
           {/* ══ SECTION PAGES ══ */}
           {sectionsWithData.map((section: any) => {
             const sectionAI = narrative?.section_analyses?.[section.title]
-            const col = scoreColor(section.pct)
+            // Manual mode is the client-facing view: it shows the letter, not
+            // the underlying percentage — matching the admin and print reports.
+            const col = mode === "manual" ? letterGrade(section.pct) : scoreColor(section.pct)
             return (
               <Page key={section.title}>
                 <PageHeader title={`Section ${section.idx + 1} — ${section.title}`} subtitle={exam?.title} today={today} />
@@ -415,8 +418,12 @@ export default function ViewerCandidateReportPage() {
                     </div>
                     <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0"
                       style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
-                      <span className="text-xl font-extrabold" style={{ color: col.text }}>{section.pct.toFixed(0)}%</span>
-                      <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Score</span>
+                      <span className="text-xl font-extrabold" style={{ color: col.text }}>
+                        {mode === "manual" ? (col as ReturnType<typeof letterGrade>).letter : `${section.pct.toFixed(0)}%`}
+                      </span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>
+                        {mode === "manual" ? "Grade" : "Score"}
+                      </span>
                     </div>
                   </div>
 

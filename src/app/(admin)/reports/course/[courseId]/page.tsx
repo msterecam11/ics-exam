@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner"
 import TerminologyModal from "@/components/reports/TerminologyModal"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
+import { letterGrade } from "@/lib/grading"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -22,14 +23,6 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
-// Manual (client) report only — same bands as the individual manual report:
-// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
-function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
-  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
-  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
-  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
-  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
-}
 
 function fmtTime(minutes: number | null) {
   if (minutes === null || minutes < 0) return "—"
@@ -493,7 +486,7 @@ export default function CourseReportViewPage() {
                     </thead>
                     <tbody>
                       {exams.map(({ exam, candidateCount, avgScore, passCount, passRate }: any, idx: number) => {
-                        const col = scoreColor(avgScore)
+                        const col = mode === "manual" ? letterGrade(avgScore) : scoreColor(avgScore)
                         return (
                           <tr key={exam.id} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                             <td className="px-4 py-2.5">
@@ -583,7 +576,7 @@ export default function CourseReportViewPage() {
                     </thead>
                     <tbody>
                       {allCandidatesRanked.map((c: any, idx: number) => {
-                        const col = scoreColor(c.total_score ?? 0)
+                        const col = mode === "manual" ? letterGrade(c.total_score ?? 0) : scoreColor(c.total_score ?? 0)
                         return (
                           <tr key={`${c.id}-${idx}`} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                             <td className="px-4 py-2 text-center">

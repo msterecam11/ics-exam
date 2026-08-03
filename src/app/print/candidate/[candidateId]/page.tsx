@@ -11,6 +11,7 @@ import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { scaleToTarget } from "@/lib/scoreDisplay"
 import { formatTimeSpent } from "@/lib/utils"
 import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
+import { letterGrade } from "@/lib/grading"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -20,14 +21,6 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
-// Manual (client) report only — same bands as the on-screen manual report:
-// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
-function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
-  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
-  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
-  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
-  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
-}
 
 // For a Question Bank exam, builds the same { title, question_ids } shape as
 // exam_analyses.sections, but derived directly from each answered question's

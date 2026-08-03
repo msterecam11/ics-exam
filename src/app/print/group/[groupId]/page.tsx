@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
+import { letterGrade } from "@/lib/grading"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -18,14 +19,6 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
-// Manual (client) report only — same bands as the individual manual report:
-// A=90-100 (green), B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
-function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
-  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
-  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
-  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
-  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
-}
 
 function fmtTime(minutes: number | null) {
   if (minutes === null || minutes < 0) return "—"
@@ -516,7 +509,7 @@ export default async function PrintGroupPage({
                   </thead>
                   <tbody>
                     {courseDataArr.map(({ course, examDataArr, courseAvgScore, coursePassCount, courseTotalCandidates, coursePassRate }: any, idx: number) => {
-                      const col = scoreColor(courseAvgScore)
+                      const col = isManual ? letterGrade(courseAvgScore) : scoreColor(courseAvgScore)
                       return (
                         <tr key={course.id} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                           <td className="px-3 py-2.5 text-xs font-semibold text-slate-700">{course.name}</td>
@@ -609,7 +602,7 @@ export default async function PrintGroupPage({
                       </thead>
                       <tbody>
                         {courseLeaderboard.slice(0, 5).map((c: any, idx: number) => {
-                          const col = scoreColor(c.avgScore)
+                          const col = isManual ? letterGrade(c.avgScore) : scoreColor(c.avgScore)
                           return (
                             <tr key={c.name} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
                               <td className="px-4 py-1.5 text-center"><span className={`text-xs font-bold ${idx < 3 ? "text-amber-500" : "text-slate-400"}`}>#{idx + 1}</span></td>
@@ -644,7 +637,7 @@ export default async function PrintGroupPage({
                   </thead>
                   <tbody>
                     {allSubmissions.map((c: any, idx: number) => {
-                      const col = scoreColor(c.total_score ?? 0)
+                      const col = isManual ? letterGrade(c.total_score ?? 0) : scoreColor(c.total_score ?? 0)
                       return (
                         <tr key={`${c.id}-${idx}`} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                           <td className="px-3 py-2 text-center"><span className={`text-xs font-bold ${idx < 3 ? "text-amber-500" : "text-slate-400"}`}>#{idx + 1}</span></td>

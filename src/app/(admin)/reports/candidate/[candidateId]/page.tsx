@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import TerminologyModal from "@/components/reports/TerminologyModal"
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { formatTimeSpent } from "@/lib/utils"
+import { letterGrade } from "@/lib/grading"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -23,15 +24,6 @@ function scoreColor(pct: number) {
   return { text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
 }
 
-// Manual report only — letter-grade presentation (A/B/C/D) instead of raw
-// percentages/fractions, per client-report requirements: A=90-100 (green),
-// B=75-89 (blue), C=55-74 (amber), D=0-54 (red).
-function letterGrade(pct: number): { letter: "A" | "B" | "C" | "D"; text: string; bg: string; border: string } {
-  if (pct >= 90) return { letter: "A", text: "#10b981", bg: "#d1fae5", border: "#a7f3d0" }
-  if (pct >= 75) return { letter: "B", text: "#2563eb", bg: "#dbeafe", border: "#bfdbfe" }
-  if (pct >= 55) return { letter: "C", text: "#f59e0b", bg: "#fef3c7", border: "#fde68a" }
-  return { letter: "D", text: "#ef4444", bg: "#fee2e2", border: "#fca5a5" }
-}
 
 // ─── Cover score ring ────────────────────────────────────────────────────────
 
