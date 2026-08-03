@@ -10,6 +10,7 @@ import {
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
 import { letterGrade } from "@/lib/grading"
+import { narrativeItems } from "@/lib/narrativeFallback"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -792,7 +793,7 @@ export default async function PrintCoursePage({
                           <Trophy className="h-3 w-3 text-emerald-600" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">Exam Strengths</p>
                         </div>
-                        {(examAI.strengths ?? []).map((s: string, i: number) => (
+                        {narrativeItems(examAI.strengths, "strengths").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -801,7 +802,7 @@ export default async function PrintCoursePage({
                           <Target className="h-3 w-3 text-red-500" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-red-600">Exam Weaknesses</p>
                         </div>
-                        {(examAI.weaknesses ?? []).map((s: string, i: number) => (
+                        {narrativeItems(examAI.weaknesses, "weaknesses").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-red-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -834,7 +835,7 @@ export default async function PrintCoursePage({
                     <Trophy className="h-3.5 w-3.5 text-emerald-600" />
                     <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">{t("Course Strengths")}</p>
                   </div>
-                  {(narrative.strengths ?? []).map((s: string, i: number) => (
+                  {narrativeItems(narrative.strengths, "strengths").map((s: string, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 mb-2">
                       <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
                       <p className="text-[10px] text-emerald-800 leading-relaxed">{t(s)}</p>
@@ -846,7 +847,7 @@ export default async function PrintCoursePage({
                     <Target className="h-3.5 w-3.5 text-red-500" />
                     <p className="text-[9px] font-bold uppercase tracking-wider text-red-600">Weakness Areas</p>
                   </div>
-                  {(narrative.weaknesses ?? []).map((s: string, i: number) => (
+                  {narrativeItems(narrative.weaknesses, "weaknesses").map((s: string, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 mb-2">
                       <XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" />
                       <p className="text-[10px] text-red-800 leading-relaxed">{t(s)}</p>

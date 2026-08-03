@@ -12,6 +12,7 @@ import { scaleToTarget } from "@/lib/scoreDisplay"
 import { formatTimeSpent } from "@/lib/utils"
 import { loadManualScoresForCandidates } from "@/lib/manualOverrides"
 import { letterGrade } from "@/lib/grading"
+import { narrativeItems } from "@/lib/narrativeFallback"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -492,7 +493,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                       <Trophy className="h-3.5 w-3.5 text-emerald-600" />
                       <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">Key Strengths</p>
                     </div>
-                    {(narrative.strengths ?? []).map((s: string, i: number) => (
+                    {narrativeItems(narrative.strengths, "strengths").map((s: string, i: number) => (
                       <div key={i} className="flex items-start gap-1.5 mb-1.5">
                         <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-emerald-800 leading-relaxed">{t(s)}</p>
@@ -505,7 +506,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                       <Target className="h-3.5 w-3.5 text-red-500" />
                       <p className="text-[9px] font-bold uppercase tracking-wider text-red-600">Weakness Areas</p>
                     </div>
-                    {(narrative.improvements ?? []).map((s: string, i: number) => (
+                    {narrativeItems(narrative.improvements, "improvements").map((s: string, i: number) => (
                       <div key={i} className="flex items-start gap-1.5 mb-1.5">
                         <XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-red-800 leading-relaxed">{t(s)}</p>
@@ -631,7 +632,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                           <Trophy className="h-3 w-3 text-emerald-600" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">Strengths</p>
                         </div>
-                        {(sectionAI.strengths ?? []).map((s: string, i: number) => (
+                        {narrativeItems(sectionAI.strengths, "strengths").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -640,7 +641,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                           <Target className="h-3 w-3 text-amber-600" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700">Weaknesses</p>
                         </div>
-                        {(sectionAI.weaknesses ?? []).map((s: string, i: number) => (
+                        {narrativeItems(sectionAI.weaknesses, "weaknesses").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-amber-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -649,7 +650,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                           <Lightbulb className="h-3 w-3 text-purple-600" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-purple-700">Development</p>
                         </div>
-                        {(sectionAI.development ?? []).map((s: string, i: number) => (
+                        {narrativeItems(sectionAI.development, "development").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-purple-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -706,7 +707,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Overall Strengths</p>
                   </div>
                   <div className="space-y-2">
-                    {(narrative.strengths ?? []).map((s: string, i: number) => (
+                    {narrativeItems(narrative.strengths, "strengths").map((s: string, i: number) => (
                       <div key={i} className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-emerald-800 leading-relaxed">{t(s)}</p>
@@ -720,7 +721,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Overall Improvements</p>
                   </div>
                   <div className="space-y-2">
-                    {(narrative.improvements ?? []).map((s: string, i: number) => (
+                    {narrativeItems(narrative.improvements, "improvements").map((s: string, i: number) => (
                       <div key={i} className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg">
                         <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-800 leading-relaxed">{t(s)}</p>

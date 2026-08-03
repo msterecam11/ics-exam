@@ -10,6 +10,7 @@ import {
 import { makeT, type EntityTerm, type ContentTerm } from "@/lib/reportTerms"
 import { loadManualScoresForCandidates, applyManualOverride, overlayAnswerOverrides } from "@/lib/manualOverrides"
 import { letterGrade } from "@/lib/grading"
+import { narrativeItems } from "@/lib/narrativeFallback"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -793,7 +794,7 @@ export default async function PrintGroupPage({
                           <Trophy className="h-3 w-3 text-emerald-600" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">{t("Course Strengths")}</p>
                         </div>
-                        {(courseAI.strengths ?? []).map((s: string, i: number) => (
+                        {narrativeItems(courseAI.strengths, "strengths").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -802,7 +803,7 @@ export default async function PrintGroupPage({
                           <Target className="h-3 w-3 text-red-500" />
                           <p className="text-[9px] font-bold uppercase tracking-wider text-red-600">{t("Course Weaknesses")}</p>
                         </div>
-                        {(courseAI.weaknesses ?? []).map((s: string, i: number) => (
+                        {narrativeItems(courseAI.weaknesses, "weaknesses").map((s: string, i: number) => (
                           <p key={i} className="text-[10px] text-red-800 leading-relaxed mb-1">· {t(s)}</p>
                         ))}
                       </div>
@@ -826,13 +827,13 @@ export default async function PrintGroupPage({
               <div className="grid grid-cols-2 gap-4 avoid-break">
                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
                   <div className="flex items-center gap-1.5 mb-3"><Trophy className="h-3.5 w-3.5 text-emerald-600" /><p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">{t("Group Strengths")}</p></div>
-                  {(narrative.strengths ?? []).map((s: string, i: number) => (
+                  {narrativeItems(narrative.strengths, "strengths").map((s: string, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 mb-2"><CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" /><p className="text-[10px] text-emerald-800 leading-relaxed">{t(s)}</p></div>
                   ))}
                 </div>
                 <div className="bg-red-50 border border-red-100 rounded-xl p-4">
                   <div className="flex items-center gap-1.5 mb-3"><Target className="h-3.5 w-3.5 text-red-500" /><p className="text-[9px] font-bold uppercase tracking-wider text-red-600">Weakness Areas</p></div>
-                  {(narrative.weaknesses ?? []).map((s: string, i: number) => (
+                  {narrativeItems(narrative.weaknesses, "weaknesses").map((s: string, i: number) => (
                     <div key={i} className="flex items-start gap-1.5 mb-2"><XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" /><p className="text-[10px] text-red-800 leading-relaxed">{t(s)}</p></div>
                   ))}
                 </div>
