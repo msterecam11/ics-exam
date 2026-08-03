@@ -72,7 +72,9 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   }
 
   const master = masters[slide.layout_kind] ?? masters.content_white
-  const stepLabel = `Module ${cursor.module_index} of ${plan.length - 1} — slide ${cursor.slide_index + 1}/${mod.slides.length}`
+  // 1-based for humans: the cursor is 0-indexed, but "Module 0 of 1" reads
+  // like a bug to anyone watching the progress panel.
+  const stepLabel = `Module ${cursor.module_index + 1} of ${plan.length} — slide ${cursor.slide_index + 1}/${mod.slides.length}`
 
   // ── 1. Content + blueprint (Sonnet) ──────────────────────────────────────
   await progress(job.id, `${stepLabel} — writing content`, pct(doneBefore, totalSlides))

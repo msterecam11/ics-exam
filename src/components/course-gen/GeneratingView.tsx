@@ -17,7 +17,7 @@ const AGENTS = [
   { key: "content",      name: "Content Agent", desc: "Writes slide text · grounded in refs" },
   { key: "media",        name: "Media Agent",   desc: "Sources imagery & icons" },
   { key: "layout",       name: "Layout / Compiler", desc: "Places content in theme zones" },
-  { key: "qa",           name: "QA / Consistency", desc: "Overflow · logos · vision check" },
+  { key: "qa",           name: "QA / Fact check",  desc: "Overflow · contrast · claims vs cited clause" },
 ]
 
 /** Map the orchestrator's human step text onto which agent is working. */
@@ -31,7 +31,9 @@ function agentState(key: string, step: string | null): "running" | "done" | "idl
     /writing content|content/.test(s) && !/quality/.test(s) ? "content" :
     /sourcing imagery|imagery|media/.test(s) ? "media" :
     /laying out|placing layout|layout|compil/.test(s) ? "layout" :
-    /quality check|qa|review/.test(s) ? "qa" : null
+    // "checking facts" is the factual-QA step; without it here every agent
+    // drops to IDLE mid-slide and the panel looks stalled.
+    /quality check|qa|review|checking facts|fact/.test(s) ? "qa" : null
   if (!current) return "idle"
   const i = order.indexOf(key), c = order.indexOf(current)
   if (i === c) return "running"
