@@ -58,10 +58,20 @@ export async function compileBlueprint(input: CompileInput): Promise<{
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: SLIDE_W, height: SLIDE_H, deviceScaleFactor: 1 })
-    // networkidle0 (not "load") so the webfont requests actually finish —
-    // measuring with a fallback font produces boxes that are wrong for the
-    // real font, and every text box then re-wraps at render time.
-    await page.setContent(buildPage(html, zone), { waitUntil: "networkidle0" })
+    // "load", not networkidle0. The comment that used to sit here said
+    // networkidle0 was needed so the webfont requests could finish — that was
+    // true before the fonts were inlined, and stale ever since. This page now
+    // issues NO network requests at all: the fonts are base64 data URIs and
+    // nothing else here loads (image elements have no URL until the media step
+    // runs, after this one). networkidle0 therefore waits for an idle signal
+    // on a page that never talks to the network, and with Puppeteer's default
+    // 30s navigation budget that surfaced as "Navigation timeout of 30000 ms
+    // exceeded" on a slow instance. The identical fix was already applied in
+    // qa.ts; this file was missed.
+    //
+    // The real guarantee that measurement uses the correct font is the
+    // fonts.ready await below, not the navigation predicate.
+    await page.setContent(buildPage(html, zone), { waitUntil: "load", timeout: 60_000 })
     await page.evaluate(async () => { await (document as any).fonts?.ready })
 
     const measured: MeasuredNode[] = await page.evaluate(() => {

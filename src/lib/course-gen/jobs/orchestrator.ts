@@ -18,6 +18,25 @@ import type { BlueprintNode, CanvasElement } from "../primitives"
 
 const MAX_QA_RETRIES = 2
 
+/**
+ * Retries a browser-backed step. Chromium work on a constrained instance
+ * fails intermittently in ways that succeed on a second try — a launch that
+ * ran long, a page that missed its navigation budget under CPU contention.
+ * A persistent fault still surfaces after the last attempt, so a genuinely
+ * broken slide is not silently swallowed.
+ */
+async function withBrowserRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn() } catch (err) {
+      lastErr = err
+      console.error(`[course-gen] browser step failed (attempt ${i + 1}/${attempts}):`, err)
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, 2000 * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
 interface Cursor { module_index: number; slide_index: number }
 
 export interface OrchestratorTick {
@@ -98,13 +117,22 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
     // ── 2. Compile (code — CSS resolves geometry, then bake) ───────────────
     await progress(job.id, `${stepLabel} — laying out`, pct(doneBefore + 0.3, totalSlides))
-    const compiled = source.blueprint
-      ? await compileBlueprint({
-          blueprint: source.blueprint,
+    // The compile step drives a real browser, which on a small instance can
+    // fail transiently (a slow Chromium launch, a page that misses its
+    // navigation budget). Media and QA already tolerate that; this one did
+    // not, so a single timeout aborted the whole course and threw away the
+    // remaining slides. Retried here rather than inside the compiler so the
+    // second attempt gets an entirely fresh browser.
+    // Captured before the closure: `source` is reassigned on retry, so the
+    // narrowing would not survive into the callback.
+    const blueprint = source.blueprint
+    const compiled = blueprint
+      ? await withBrowserRetry(() => compileBlueprint({
+          blueprint,
           master, tokens,
           title: source.title,
           subtitle: (source as any).subtitle,
-        })
+        }))
       : { elements: titleOnlyElements(source, master, tokens), overflow: false }
     elements = compiled.elements
 
