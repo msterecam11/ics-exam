@@ -119,6 +119,13 @@ Colour tokens: token:primary, token:primary-dark, token:primary-light, token:nav
 Icons — use ONLY these names; anything else renders as a blank marker:
 ${iconPromptBlock()}
 
+Effects — any element may carry "effects": { "shadow":"sm|md|lg|glow",
+"gradient":{"from":"token:primary","to":"token:primary-dark"}, "blur":12,
+"textShadow":"soft|strong", "opacity":0.9 }. Use ONE elevation level per slide;
+never put shadow or gradient on a chart or table (it obscures the data); blur
+only on glass cards over dark backgrounds. Default to flat — depth marks the
+one thing that matters.
+
 ## Rules
 - Stay inside THIS module. Never reference slides outside it.
 - Slides marked MANUALLY EDITED have hand-positioned elements: rewrite_slide would discard that work, so prefer targeted edits there, and if you must rewrite, say so in your summary.

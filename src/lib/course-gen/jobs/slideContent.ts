@@ -50,6 +50,48 @@ well-chosen icons reads better than one where every line carries a glyph.
 
 ${iconPromptBlock()}`
 
+// Depth and finish. These effects have always rendered; the agent was simply
+// never told they existed, so every generated slide was flat. Exposed with
+// house rules rather than as a menu — an effects list without a "when" turns
+// into decoration, and decoration is what makes a deck look amateur.
+const EFFECTS_REFERENCE = `Any element node may carry "effects":
+  "effects": { "shadow": "sm|md|lg|glow", "gradient": {"from":"token:primary","to":"token:primary-dark","angle":135},
+               "blur": 12, "textShadow": "soft|strong", "opacity": 0.9 }
+
+When to reach for them:
+- shadow — lifts a card off the background to signal "this is the focal object".
+  Use ONE elevation level per slide; mixing sm, md and lg on the same slide
+  reads as inconsistent rather than layered. Cards and figures only.
+- gradient — a cover, a section divider, or a single hero stat. Never behind
+  running text: it costs contrast for decoration.
+- blur — only on a "glass" card sitting over a dark or photographic
+  background, which is what it is for. It does nothing over flat white.
+- textShadow — only for text placed over a photo, to keep it readable.
+- NEVER put shadow or gradient on a chart or table. It obscures the data,
+  which is the one thing that slide exists to communicate.
+
+Default to flat. Depth should mark the one thing that matters on the slide.`
+
+// Composition rules, not taste. Each of these is a failure mode that shows up
+// in generated decks and is cheap to state up front.
+const DESIGN_PRINCIPLES = `- ONE focal point per slide. Decide what the viewer should look at first and
+  make it clearly largest / heaviest / most contrasted. If everything is
+  emphasised, nothing is.
+- Build hierarchy with SIZE, WEIGHT and SPACE — not colour alone. Colour is
+  the weakest signal and the first thing lost in print or projection.
+- Use whitespace to group. Related items sit close; unrelated items are
+  separated by a full gap. Even spacing everywhere reads as a list, not a
+  structure.
+- Keep a line of body text roughly 60-75 characters. Wider is tiring to read
+  across a projected slide; much narrower fragments the sentence.
+- Prefer wrapping to truncation. If text does not fit, cut words rather than
+  letting the layout clip them.
+- Font weight carries meaning: 700-800 headings, 500 labels/eyebrows, 400
+  body. Do not bold whole paragraphs for emphasis.
+- Match chart type to the question: trend over time -> line; comparison
+  between categories -> bar; parts of a whole (5 or fewer) -> donut. More than
+  a handful of categories is a bar chart, never a donut.`
+
 export async function handleSlideContentJob(job: any): Promise<SlideSourceContent> {
   const { course_id, module_id } = job
   const {
@@ -135,6 +177,12 @@ ${PRIMITIVE_REFERENCE}
 
 ### Icon vocabulary
 ${ICON_REFERENCE}
+
+### Depth and effects
+${EFFECTS_REFERENCE}
+
+### Composition principles
+${DESIGN_PRINCIPLES}
 
 ## Content rules
 - Aviation-professional register; precise, factual, no filler or marketing language.

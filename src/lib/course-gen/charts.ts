@@ -26,8 +26,11 @@ export type ChartType = "bar" | "line" | "donut"
  * labels collide, and colours lose distinction. Rather than render something
  * unreadable we fall back to a horizontal bar chart, which carries the same
  * data at that cardinality. Enforced here rather than trusted to the agent.
+ *
+ * Tightened from 7 to 6: the Material/HIG-derived guidance is to stop using a
+ * pie past 5 categories, and 7 was already borderline in the test render.
  */
-const DONUT_MAX_SLICES = 7
+const DONUT_MAX_SLICES = 6
 
 /** Past this many categories a vertical bar chart squeezes labels illegibly. */
 const HORIZONTAL_BAR_THRESHOLD = 8
