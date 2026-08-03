@@ -11,6 +11,7 @@
 import { db } from "@/lib/db"
 import { MODELS, claudeJSON } from "../ai"
 import { exemplarPromptBlock } from "../exemplars"
+import { iconPromptBlock } from "../icons"
 import { retrieveForCourse, formatSections } from "../retrieval"
 import type { SlideSourceContent } from "../primitives"
 
@@ -40,8 +41,14 @@ Tier 3 only:
     — x/y/width/height are % of THIS node's own box (never the slide).
 
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy,
-token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.
-Icons: Phosphor names (e.g. "shield-check", "airplane-takeoff", "list-checks", "warning").`
+token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.`
+
+const ICON_REFERENCE = `Use ONLY these icon names — anything else renders as a blank marker, exactly
+like an invented clause number. Pick by meaning, not by keyword: an icon should
+say something the text doesn't already say. A slide with two or three
+well-chosen icons reads better than one where every line carries a glyph.
+
+${iconPromptBlock()}`
 
 export async function handleSlideContentJob(job: any): Promise<SlideSourceContent> {
   const { course_id, module_id } = job
@@ -125,6 +132,9 @@ ${exemplarPromptBlock()}
 
 ### Primitive reference
 ${PRIMITIVE_REFERENCE}
+
+### Icon vocabulary
+${ICON_REFERENCE}
 
 ## Content rules
 - Aviation-professional register; precise, factual, no filler or marketing language.

@@ -16,6 +16,7 @@ import { db } from "@/lib/db"
 import Anthropic from "@anthropic-ai/sdk"
 import { MODELS, anthropic, withRetry, parseJsonLoose, assertUsableResponse } from "../ai"
 import { compileBlueprint } from "../compiler"
+import { iconPromptBlock } from "../icons"
 import type { CanvasElement } from "../primitives"
 import type { Master } from "../theme1"
 import type { ThemeTokens } from "../tokens"
@@ -114,6 +115,9 @@ Blueprints use the same structural primitives as generation (row/stack/heading/b
 
 Layout masters available: ${Object.keys(masters).join(", ")}.
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy, token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.
+
+Icons — use ONLY these names; anything else renders as a blank marker:
+${iconPromptBlock()}
 
 ## Rules
 - Stay inside THIS module. Never reference slides outside it.

@@ -10,10 +10,37 @@
 
 import type { BlueprintNode, TextRun } from "./primitives"
 import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
+import { iconSvg } from "./icons"
 
 interface Bake {
   kind: "text" | "shape" | "icon" | "image" | "table" | "chart" | "line"
   props: Record<string, unknown>
+}
+
+/**
+ * An icon, as a real Phosphor glyph.
+ *
+ * The bake attribute always carries the icon's NAME, never its geometry, so a
+ * re-theme or an icon-set swap repaints it the same way a colour token does.
+ *
+ * An unknown name falls back to the tinted block this used to draw for every
+ * icon. That keeps a hallucinated or stale name visible in review rather than
+ * silently leaving a hole in the layout — and, because the block occupies the
+ * same box, it cannot shift anything around it.
+ */
+function iconHtml(opts: {
+  name: string
+  token: string       // token string, for the bake attribute
+  resolved: string    // resolved colour, for rendering
+  size: number
+  extraStyle?: string
+}): string {
+  const { name, token, resolved, size, extraStyle = "" } = opts
+  const bake = bakeAttr({ kind: "icon", props: { name, color: token } })
+  const glyph = iconSvg(name, { size, color: resolved })
+  return glyph
+    ? `<span ${bake} style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;flex-shrink:0;${extraStyle}">${glyph}</span>`
+    : `<span ${bake} style="display:inline-block;width:${size}px;height:${size}px;background:${resolved};opacity:.85;border-radius:4px;flex-shrink:0;${extraStyle}"></span>`
 }
 
 function esc(s: string): string {
@@ -60,7 +87,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           ? `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: n.color ?? "token:accent-warm", radius: 2 } })} style="display:inline-block;width:4px;align-self:stretch;background:${color};border-radius:2px;margin-right:10px"></span>`
           : ""
         const icon = n.icon
-          ? `<span ${bakeAttr({ kind: "icon", props: { name: n.icon, color: n.color ?? "token:accent-warm" } })} style="display:inline-block;width:${size}px;height:${size}px;background:${color};opacity:.85;border-radius:4px;margin-right:8px;flex-shrink:0"></span>`
+          ? iconHtml({ name: n.icon, token: n.color ?? "token:accent-warm", resolved: color, size, extraStyle: "margin-right:8px" })
           : ""
         return `<div style="display:flex;align-items:center">${bar}${icon}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text, bold: true }], fontSize: size, lineHeight: 1.25, color: n.color ?? (darkContext ? "token:text-inverse" : "token:navy"), fontWeight: 700 } })} style="font-size:${size}px;font-weight:700;color:${color};line-height:1.25">${esc(n.text)}</span></div>`
       }
@@ -118,13 +145,13 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
 
       case "icon-row": {
         const accent = resolveToken(n.accent, tokens, T("primary-light"))
-        return `<div style="display:flex;align-items:center;gap:10px"><span ${bakeAttr({ kind: "icon", props: { name: n.icon, color: n.accent ?? "token:primary-light" } })} style="width:20px;height:20px;background:${accent};border-radius:4px;flex-shrink:0"></span><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text }], fontSize: TYPE_PX.body, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${textColor}">${esc(n.text)}</span></div>`
+        return `<div style="display:flex;align-items:center;gap:10px">${iconHtml({ name: n.icon, token: n.accent ?? "token:primary-light", resolved: accent, size: 20 })}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text }], fontSize: TYPE_PX.body, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${textColor}">${esc(n.text)}</span></div>`
       }
 
       case "alternating-list":
         return `<div style="display:flex;flex-direction:column;gap:8px">${n.items.map(it =>
           `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:surface-alt", radius: 4, accentTab: true } })} style="background:${T("surface-alt")};border-left:4px solid ${T("tab-yellow")};border-radius:4px;padding:10px 14px;display:flex;align-items:center;gap:10px">${
-            it.icon ? `<span ${bakeAttr({ kind: "icon", props: { name: it.icon, color: "token:tab-yellow" } })} style="width:16px;height:16px;background:${T("tab-yellow")};border-radius:3px;flex-shrink:0"></span>` : ""
+            it.icon ? iconHtml({ name: it.icon, token: "token:tab-yellow", resolved: T("tab-yellow"), size: 16 }) : ""
           }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.text }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(it.text)}</span></div>`
         ).join("")}</div>`
 
@@ -159,7 +186,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         return `<div style="display:flex;gap:${gap("lg")}">${n.columns.map(col => {
           const accent = resolveToken(col.accent, tokens, T("accent-warm"))
           return `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:${gap("sm")}"><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ${accent};padding-left:10px">${
-            col.icon ? `<span ${bakeAttr({ kind: "icon", props: { name: col.icon, color: col.accent ?? "token:accent-warm" } })} style="width:20px;height:20px;background:${accent};border-radius:4px"></span>` : ""
+            col.icon ? iconHtml({ name: col.icon, token: col.accent ?? "token:accent-warm", resolved: accent, size: 20 }) : ""
           }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: col.heading, bold: true }], fontSize: TYPE_PX.h5, color: col.accent ?? "token:accent-warm", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${accent};letter-spacing:0.5px">${esc(col.heading)}</span></div>${col.children.map(c => blueprintToHtml(c, tokens, darkContext)).join("")}</div>`
         }).join("")}</div>`
 
@@ -171,8 +198,17 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
             return `<div ${bakeAttr({ kind: "text", props: { runs: [{ text: String(ch.props.text ?? "") }], fontSize: Number(ch.props.fontSize ?? TYPE_PX.body), color: String(ch.props.color ?? "token:text") } })} style="${st}font-size:${ch.props.fontSize ?? TYPE_PX.body}px;color:${resolveToken(String(ch.props.color ?? ""), tokens, T("text"))}">${esc(String(ch.props.text ?? ""))}</div>`
           if (ch.kind === "line")
             return `<div ${bakeAttr({ kind: "line", props: ch.props })} style="${st}background:${resolveToken(String(ch.props.stroke ?? ""), tokens, T("primary"))}"></div>`
-          if (ch.kind === "icon")
-            return `<div ${bakeAttr({ kind: "icon", props: ch.props })} style="${st}background:${resolveToken(String(ch.props.color ?? ""), tokens, T("primary"))};border-radius:4px"></div>`
+          if (ch.kind === "icon") {
+            // Absolutely positioned: the glyph fills its own box, so the SVG
+            // is stretched to 100% rather than given a pixel size.
+            const name = String(ch.props.name ?? "")
+            const col = resolveToken(String(ch.props.color ?? ""), tokens, T("primary"))
+            const glyph = iconSvg(name, { size: 0, color: col })
+            const inner = glyph
+              ? glyph.replace(/width="0" height="0"/, 'width="100%" height="100%"')
+              : ""
+            return `<div ${bakeAttr({ kind: "icon", props: ch.props })} style="${st}${inner ? "" : `background:${col};border-radius:4px`}">${inner}</div>`
+          }
           return `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", ...ch.props } })} style="${st}background:${resolveToken(String(ch.props.fill ?? ""), tokens, T("surface-alt"))};border-radius:${ch.props.radius ?? 6}px"></div>`
         }).join("")}</div>`
       }

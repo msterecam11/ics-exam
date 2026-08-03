@@ -9,6 +9,7 @@ import { resolveToken, SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import type { Master, ChromeSlot } from "./theme1"
 import { inlineFontFaces } from "./fonts"
 import { effectsCss } from "./effects"
+import { iconSvg } from "./icons"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -89,10 +90,16 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
         return `<div style="${box}background:${resolveToken(s.fill, tokens, "#0C72C6")}"></div>`
       return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
     }
-    case "icon":
-      // Icons bake as token-colored marks; the editor swaps in the real
-      // Phosphor glyph. Kept simple here so screenshots stay faithful.
-      return `<div style="${box}background:${resolveToken(el.color, tokens, "#0C72C6")};border-radius:4px;opacity:.9"></div>`
+    case "icon": {
+      // The real Phosphor glyph, filling its baked box. This path feeds both
+      // the QA screenshot and the PDF export, so what the vision reviewer
+      // judges is exactly what the client receives.
+      const iconColor = resolveToken(el.color, tokens, "#0C72C6")
+      const glyph = iconSvg(el.name, { size: "100%", color: iconColor })
+      return glyph
+        ? `<div style="${box}">${glyph}</div>`
+        : `<div style="${box}background:${iconColor};border-radius:4px;opacity:.9"></div>`
+    }
     case "image":
       return el.url
         ? `<img src="${esc(el.url)}" style="${box}object-fit:${el.fit ?? "cover"};border-radius:6px;${effectsCss(el.effects, tokens)}" />`

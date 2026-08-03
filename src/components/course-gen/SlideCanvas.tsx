@@ -7,6 +7,7 @@
 
 import { SLIDE_W, SLIDE_H, resolveToken, type ThemeTokens } from "@/lib/course-gen/tokens"
 import { effectsCss } from "@/lib/course-gen/effects"
+import { iconSvg } from "@/lib/course-gen/icons"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
 export interface Master {
@@ -164,9 +165,18 @@ export default function SlideCanvas(props: Props) {
                 ...cssStyle(effectsCss(el.effects, tokens)),
               }} />
           }
-          case "icon":
-            return <div key={el.id} {...common}
-              style={{ ...box, background: resolveToken(el.color, tokens, "#0C72C6"), borderRadius: 4, opacity: .9, ...cssStyle(effectsCss(el.effects, tokens)) }} />
+          case "icon": {
+            // Same glyph the export renders, so the canvas is not a
+            // prettier-or-uglier approximation of the finished slide.
+            const iconColor = resolveToken(el.color, tokens, "#0C72C6")
+            const glyph = iconSvg(el.name, { size: "100%", color: iconColor })
+            return glyph
+              ? <div key={el.id} {...common}
+                  style={{ ...box, ...cssStyle(effectsCss(el.effects, tokens)) }}
+                  dangerouslySetInnerHTML={{ __html: glyph }} />
+              : <div key={el.id} {...common}
+                  style={{ ...box, background: iconColor, borderRadius: 4, opacity: .9, ...cssStyle(effectsCss(el.effects, tokens)) }} />
+          }
           case "image":
             return el.url
               // eslint-disable-next-line @next/next/no-img-element
