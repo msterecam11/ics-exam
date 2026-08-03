@@ -8,6 +8,7 @@
 import { SLIDE_W, SLIDE_H, resolveToken, type ThemeTokens } from "@/lib/course-gen/tokens"
 import { effectsCss } from "@/lib/course-gen/effects"
 import { iconSvg } from "@/lib/course-gen/icons"
+import { chartSvg } from "@/lib/course-gen/charts"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
 export interface Master {
@@ -211,10 +212,11 @@ export default function SlideCanvas(props: Props) {
             )
           }
           case "chart":
+            // Same SVG the export renders — the canvas is the finished slide,
+            // not an approximation of it.
             return <div key={el.id} {...common}
-              style={{ ...box, display: "flex", alignItems: "center", justifyContent: "center", background: "#F1F3F6", borderRadius: 8, color: "#0C72C6", fontSize: 13, ...cssStyle(effectsCss(el.effects, tokens)) }}>
-              {el.chartType} chart
-            </div>
+              style={{ ...box, ...cssStyle(effectsCss(el.effects, tokens)) }}
+              dangerouslySetInnerHTML={{ __html: chartSvg({ chartType: el.chartType, data: el.data, tokens }) }} />
           default:
             return null
         }

@@ -10,6 +10,7 @@ import type { Master, ChromeSlot } from "./theme1"
 import { inlineFontFaces } from "./fonts"
 import { effectsCss } from "./effects"
 import { iconSvg } from "./icons"
+import { chartSvg } from "./charts"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -115,7 +116,13 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
       }</table>`
     }
     case "chart":
-      return `<div style="${box}display:flex;align-items:center;justify-content:center;background:#F1F3F6;border-radius:8px;color:#0C72C6;font-size:13px" data-chart='${esc(JSON.stringify({ chartType: el.chartType, data: el.data }))}'>${esc(el.chartType)} chart</div>`
+      // The real chart, vector, filling its baked box. This path feeds the QA
+      // screenshot and the PDF export, so the reviewer judges what ships.
+      // Vector means it stays sharp at print resolution — a generated raster
+      // would not, quite apart from inventing its own numbers.
+      return `<div style="${box}" data-chart='${esc(JSON.stringify({ chartType: el.chartType, data: el.data }))}'>${
+        chartSvg({ chartType: el.chartType, data: el.data, tokens })
+      }</div>`
     default:
       return ""
   }

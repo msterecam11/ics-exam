@@ -11,6 +11,7 @@
 import type { BlueprintNode, TextRun } from "./primitives"
 import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
 import { iconSvg } from "./icons"
+import { chartSvg } from "./charts"
 
 interface Bake {
   kind: "text" | "shape" | "icon" | "image" | "table" | "chart" | "line"
@@ -180,7 +181,11 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "chart":
-        return `<div ${bakeAttr({ kind: "chart", props: { chartType: n.chartType, data: n.data } })} style="flex:1;min-height:180px;background:${T("surface-alt")};border:1px dashed ${T("border-subtle")};border-radius:8px;display:flex;align-items:center;justify-content:center;color:${T("primary")};font-size:12px">${esc(n.chartType)} chart</div>`
+        // Drawn for real during measurement too, so the compiler bakes a box
+        // sized to an actual chart rather than to a placeholder.
+        return `<div ${bakeAttr({ kind: "chart", props: { chartType: n.chartType, data: n.data } })} style="flex:1;min-height:180px;display:flex;align-items:stretch;justify-content:stretch">${
+          chartSvg({ chartType: n.chartType, data: n.data, tokens, darkContext })
+        }</div>`
 
       case "comparison":
         return `<div style="display:flex;gap:${gap("lg")}">${n.columns.map(col => {

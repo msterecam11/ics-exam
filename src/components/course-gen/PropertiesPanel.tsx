@@ -149,6 +149,16 @@ export default function PropertiesPanel({ tokens }: { tokens: ThemeTokens }) {
         </div>
       )}
 
+      {/* Chart — the data IS the chart, so this edits numbers, not pixels.
+          Every change goes through patch() like any other property, so it
+          lands on the same undo stack and autosave as a text edit. */}
+      {el.type === "chart" && (
+        <ChartEditor
+          el={el}
+          onChange={(next, label) => patch(next as Partial<CanvasElement>, label)}
+        />
+      )}
+
       {/* Image */}
       {el.type === "image" && (
         <div className={section}>
@@ -271,6 +281,160 @@ function ColorField({ label: text, value, tokens, onChange }: {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Chart data editor.
+ *
+ * A generated chart is only as useful as it is correctable — an admin who
+ * spots a wrong figure needs to fix the number, not redraw a picture. Because
+ * charts render from data rather than from a raster, editing a cell here
+ * redraws the chart on the canvas immediately, at full fidelity, and the same
+ * edit flows straight through to the PDF export.
+ */
+function ChartEditor({ el, onChange }: {
+  el: Extract<CanvasElement, { type: "chart" }>
+  onChange: (patch: Record<string, unknown>, label: string) => void
+}) {
+  const data = el.data ?? { labels: [], datasets: [] }
+  const labels = data.labels ?? []
+  const datasets = data.datasets?.length ? data.datasets : [{ label: "Series 1", data: [] }]
+
+  function write(labels: string[], datasets: { label: string; data: number[] }[], why: string) {
+    onChange({ data: { labels, datasets } }, why)
+  }
+
+  function setLabel(i: number, v: string) {
+    const next = [...labels]; next[i] = v
+    write(next, datasets, "Edit chart label")
+  }
+
+  function setValue(di: number, i: number, v: string) {
+    const n = parseFloat(v)
+    const nextSets = datasets.map((ds, j) => {
+      if (j !== di) return ds
+      const d = [...(ds.data ?? [])]
+      d[i] = Number.isFinite(n) ? n : 0
+      return { ...ds, data: d }
+    })
+    write(labels, nextSets, "Edit chart value")
+  }
+
+  function setSeriesName(di: number, v: string) {
+    write(labels, datasets.map((ds, j) => (j === di ? { ...ds, label: v } : ds)), "Rename series")
+  }
+
+  function addRow() {
+    write(
+      [...labels, `Item ${labels.length + 1}`],
+      datasets.map(ds => ({ ...ds, data: [...(ds.data ?? []), 0] })),
+      "Add chart row"
+    )
+  }
+
+  function removeRow(i: number) {
+    write(
+      labels.filter((_, j) => j !== i),
+      datasets.map(ds => ({ ...ds, data: (ds.data ?? []).filter((_, j) => j !== i) })),
+      "Remove chart row"
+    )
+  }
+
+  function addSeries() {
+    write(labels, [...datasets, { label: `Series ${datasets.length + 1}`, data: labels.map(() => 0) }], "Add series")
+  }
+
+  function removeSeries(di: number) {
+    write(labels, datasets.filter((_, j) => j !== di), "Remove series")
+  }
+
+  // Mirrors the renderer's own rules so the warning matches what will be drawn.
+  const willConvert = el.chartType === "donut" && labels.length > 7
+  const willGoHorizontal = el.chartType === "bar" && labels.length > 8
+
+  return (
+    <div className={section}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Chart</p>
+
+      <div>
+        <label className={label}>Type</label>
+        <div className="flex gap-1">
+          {(["bar", "line", "donut"] as const).map(t => (
+            <button key={t} onClick={() => onChange({ chartType: t }, "Change chart type")}
+              className={`flex-1 text-xs py-1 rounded border capitalize ${el.chartType === t ? "bg-[#0C72C6] text-white border-[#0C72C6]" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>{t}</button>
+          ))}
+        </div>
+      </div>
+
+      {(willConvert || willGoHorizontal) && (
+        <p className="text-[10px] leading-relaxed text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5">
+          {willConvert
+            ? `${labels.length} categories is too many for a donut — it will be drawn as a bar chart so the values stay readable.`
+            : `${labels.length} categories — bars will be drawn horizontally so the labels stay legible.`}
+        </p>
+      )}
+
+      {/* Series names, only when there is more than one to distinguish */}
+      {datasets.length > 1 && (
+        <div className="space-y-1">
+          <label className={label}>Series</label>
+          {datasets.map((ds, di) => (
+            <div key={di} className="flex items-center gap-1">
+              <input className={input} value={ds.label ?? ""} placeholder={`Series ${di + 1}`}
+                onChange={e => setSeriesName(di, e.target.value)} />
+              <button onClick={() => removeSeries(di)} title="Remove series"
+                className="shrink-0 p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <label className={label}>Data</label>
+        <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5">
+          {labels.map((lb, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <input className={`${input} flex-1`} value={lb} placeholder="Label"
+                onChange={e => setLabel(i, e.target.value)} />
+              {datasets.map((ds, di) => (
+                <input key={di} type="number" className={`${input} w-16 shrink-0`}
+                  value={ds.data?.[i] ?? 0}
+                  onChange={e => setValue(di, i, e.target.value)} />
+              ))}
+              <button onClick={() => removeRow(i)} title="Remove row"
+                className="shrink-0 p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {labels.length === 0 && (
+            <p className="text-[11px] text-slate-400 italic py-1">No data yet — add a row to start.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-1">
+        <button onClick={addRow}
+          className="flex-1 text-xs py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">
+          + Row
+        </button>
+        {el.chartType !== "donut" && (
+          <button onClick={addSeries}
+            className="flex-1 text-xs py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">
+            + Series
+          </button>
+        )}
+      </div>
+
+      {el.chartType === "donut" && datasets.length > 1 && (
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          A donut shows one series — only the first is drawn.
+        </p>
+      )}
     </div>
   )
 }
