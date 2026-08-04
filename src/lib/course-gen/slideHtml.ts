@@ -87,8 +87,14 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
     }
     case "shape": {
       const s = el.style
-      if (el.shape === "line")
-        return `<div style="${box}background:${resolveToken(s.fill, tokens, "#0C72C6")}"></div>`
+      if (el.shape === "line") {
+        const color = resolveToken(s.fill, tokens, "#0C72C6")
+        const horizontal = el.width >= el.height
+        const fill = s.dashed
+          ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
+          : `background:${color};`
+        return `<div style="${box}${fill}"></div>`
+      }
       return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
     }
     case "icon": {

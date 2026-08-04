@@ -122,6 +122,9 @@ Fact/enumeration primitives: row/stack/heading/body/bullets/card/badge-number/ca
 Relationship primitives — reach for these whenever the relationship IS the content:
   flow (sequence/escalation, with optional "escalate":true for a severity colour ramp), radial (hub-and-satellites), tiers (stacked hierarchy bands), quote-banner (one statement worth landing on its own), stat-equation (terms + operators resolving to one outcome), tag-list (label + status pill).
 Tier 3 — a "custom" node (justification + small relative-coordinate children) for anything none of the above express. Equally valid to reach for, not a last resort.
+Each custom child ({"kind":"shape|line|text|icon","x","y","width","height","props":{…}}) reads ONLY:
+  shape: fill, radius, dashed (boolean) — line: stroke, dashed — text: text, fontSize, color, align (left|center|right), rotate (degrees) — icon: name, color, rotate.
+No other prop does anything — there is no "arrow"; for a pointer use an icon rotated to the angle you need. Check that no two children's x/y/width/height boxes overlap before finalizing.
 Never emit coordinates outside a custom node — structure only; the compiler lays it out inside the master.
 
 Layout masters available: ${Object.keys(masters).join(", ")}.

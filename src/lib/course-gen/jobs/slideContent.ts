@@ -49,6 +49,17 @@ Tier 3 — for anything none of the above can express (a real timeline, a diagra
   { "type":"custom", "justification":"why nothing else fits", "aspect":2.5,
     "children":[{"kind":"shape|line|text|icon","x":0,"y":40,"width":100,"height":4,"props":{…}}] }
     — x/y/width/height are % of THIS node's own box (never the slide).
+    THE ONLY props each kind reads — anything else is silently dropped, so do not invent others:
+      shape: "fill" (token), "radius" (number), "dashed" (boolean, dashed fill pattern)
+      line:  "stroke" (token), "dashed" (boolean)
+      text:  "text" (string), "fontSize" (number), "color" (token), "align" ("left"|"center"|"right"), "rotate" (degrees)
+      icon:  "name" (from the icon vocabulary below), "color" (token), "rotate" (degrees)
+    "rotate" works on shape/icon/text (not line). There is no "arrow" prop — for a
+    pointer or directional cue, use an icon (e.g. "arrow-right") with "rotate" set
+    to the angle you need, not a line.
+    Two labels must not land in overlapping x/y/width/height boxes — check the
+    numbers against each other before finalizing, the way you'd eyeball a real
+    layout before shipping it.
 
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy,
 token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.`

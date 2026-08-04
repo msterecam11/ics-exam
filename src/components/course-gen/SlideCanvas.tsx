@@ -153,8 +153,14 @@ export default function SlideCanvas(props: Props) {
           }
           case "shape": {
             const s = el.style
-            if (el.shape === "line")
-              return <div key={el.id} {...common} style={{ ...box, background: resolveToken(s.fill, tokens, "#0C72C6"), ...cssStyle(effectsCss(el.effects, tokens)) }} />
+            if (el.shape === "line") {
+              const color = resolveToken(s.fill, tokens, "#0C72C6")
+              const horizontal = el.width >= el.height
+              const backgroundImage = s.dashed
+                ? `repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px)`
+                : undefined
+              return <div key={el.id} {...common} style={{ ...box, background: s.dashed ? undefined : color, backgroundImage, ...cssStyle(effectsCss(el.effects, tokens)) }} />
+            }
             return <div key={el.id} {...common}
               style={{
                 ...box,

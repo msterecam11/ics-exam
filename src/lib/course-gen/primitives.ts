@@ -57,8 +57,10 @@ export interface BodyNode extends BlueprintBase {
 }
 export interface BulletsNode extends BlueprintBase {
   type: "bullets"
-  items: (string | { text: string; icon?: string })[]
-  nested?: boolean
+  items: string[]
+  // Per-item icons: use "icon-row" repeated instead — that primitive already
+  // bakes icon and text as properly separate elements. A bullet item never
+  // carried a working icon here; the field existed but nothing rendered it.
 }
 export interface CardNode extends BlueprintBase {
   type: "card"
@@ -170,7 +172,17 @@ export interface CustomNode extends BlueprintBase {
   children: {
     kind: "shape" | "line" | "text" | "icon"
     x: number; y: number; width: number; height: number // % of the custom box
-    // shape: fill/radius; line: stroke; text: content+token; icon: name+color
+    // The ONLY props each kind reads — the renderer silently drops anything
+    // else, so an invented prop name (an "arrow" on a line, a "style" on a
+    // shape) has no effect and the model never finds out:
+    //   shape: fill, radius, dashed (boolean)
+    //   line:  stroke, dashed (boolean)
+    //   text:  text, fontSize, color, align ("left"|"center"|"right"), rotate (deg)
+    //   icon:  name, color, rotate (deg)
+    // "rotate" is NOT applied as a CSS transform before the compiler measures
+    // this node — a rotated element's bounding box is its rotated envelope,
+    // not its design size. It rides through unchanged into the baked
+    // element's own `rotation` field, applied only at paint time.
     props: Record<string, string | number | boolean>
   }[]
 }
@@ -263,7 +275,7 @@ export interface IconElement extends ElementBase {
 export interface ShapeElement extends ElementBase {
   type: "shape"
   shape: "rect" | "line" | "ellipse"
-  style: { fill?: TokenRef; stroke?: TokenRef; strokeWidth?: number; radius?: number; opacity?: number; shadow?: boolean }
+  style: { fill?: TokenRef; stroke?: TokenRef; strokeWidth?: number; radius?: number; opacity?: number; shadow?: boolean; dashed?: boolean }
 }
 export interface TableCell { text: string; colSpan?: number; rowSpan?: number; style?: Record<string, TokenRef | number | string> }
 export interface TableElement extends ElementBase {

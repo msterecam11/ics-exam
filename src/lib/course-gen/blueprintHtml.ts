@@ -111,11 +111,17 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "bullets": {
-        const items = n.items.map(it => (typeof it === "string" ? { text: it } : it))
-        const runs: TextRun[] = items.map(it => ({ text: `•  ${it.text}\n` }))
-        return `<div ${bakeAttr({ kind: "text", props: { runs, fontSize: TYPE_PX.body, lineHeight: 1.8, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${textColor};line-height:1.8">${
-          items.map(it => `<div style="display:flex;gap:8px"><span style="color:${T("primary-light")}">•</span><span>${esc(it.text)}</span></div>`).join("")
-        }</div>`
+        // Each item bakes as its OWN element, not one text block joined by
+        // "\n". A baked text element renders as a single flowing block
+        // (slideHtml.ts has no reason to special-case bullet runs), and a
+        // literal newline inside normal HTML text collapses to a space — so
+        // a merged multi-line blob rendered as one run-on paragraph with no
+        // visible line breaks at all. Separate elements is what "body"/
+        // "icon-row" already do correctly; bullets gets the same treatment.
+        return `<div style="display:flex;flex-direction:column;gap:${gap("sm")}">${n.items.map(text => {
+          const bulleted = `•  ${text}`
+          return `<div ${bakeAttr({ kind: "text", props: { runs: [{ text: bulleted }], fontSize: TYPE_PX.body, lineHeight: 1.5, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${textColor};line-height:1.5">${esc(bulleted)}</div>`
+        }).join("")}</div>`
       }
 
       case "card": {
@@ -291,12 +297,32 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
 
       case "custom": {
         // Tier 3: children carry their own small-scale relative coordinates.
+        //
+        // "rotate" is intentionally NOT applied as a CSS transform here. This
+        // div's box is what the compiler measures via getBoundingClientRect,
+        // and a rotated element's bounding rect is its rotated envelope, not
+        // its design size — baking against that would corrupt x/y/w/h the
+        // same way the old "bullets" bug corrupted text layout. Instead the
+        // rotate value rides through in the bake props untouched, and the
+        // compiler carries it onto the baked element's own `rotation` field,
+        // which the renderer already applies at PAINT time, after layout is
+        // decided. Same reasoning doesn't apply to "align" or "dashed" —
+        // neither changes the box's own measured dimensions, so both are
+        // safe to render directly here.
         return `<div style="position:relative;flex:1;min-height:200px">${n.children.map(ch => {
           const st = `position:absolute;left:${ch.x}%;top:${ch.y}%;width:${ch.width}%;height:${ch.height}%;`
-          if (ch.kind === "text")
-            return `<div ${bakeAttr({ kind: "text", props: { runs: [{ text: String(ch.props.text ?? "") }], fontSize: Number(ch.props.fontSize ?? TYPE_PX.body), color: String(ch.props.color ?? "token:text") } })} style="${st}font-size:${ch.props.fontSize ?? TYPE_PX.body}px;color:${resolveToken(String(ch.props.color ?? ""), tokens, T("text"))}">${esc(String(ch.props.text ?? ""))}</div>`
-          if (ch.kind === "line")
-            return `<div ${bakeAttr({ kind: "line", props: ch.props })} style="${st}background:${resolveToken(String(ch.props.stroke ?? ""), tokens, T("primary"))}"></div>`
+          if (ch.kind === "text") {
+            const align = String(ch.props.align ?? "left")
+            return `<div ${bakeAttr({ kind: "text", props: { runs: [{ text: String(ch.props.text ?? "") }], fontSize: Number(ch.props.fontSize ?? TYPE_PX.body), color: String(ch.props.color ?? "token:text"), align, rotate: ch.props.rotate } })} style="${st}font-size:${ch.props.fontSize ?? TYPE_PX.body}px;color:${resolveToken(String(ch.props.color ?? ""), tokens, T("text"))};text-align:${align}">${esc(String(ch.props.text ?? ""))}</div>`
+          }
+          if (ch.kind === "line") {
+            const color = resolveToken(String(ch.props.stroke ?? ""), tokens, T("primary"))
+            const horizontal = Number(ch.width) >= Number(ch.height)
+            const fill = ch.props.dashed
+              ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
+              : `background:${color};`
+            return `<div ${bakeAttr({ kind: "line", props: ch.props })} style="${st}${fill}"></div>`
+          }
           if (ch.kind === "icon") {
             // Absolutely positioned: the glyph fills its own box, so the SVG
             // is stretched to 100% rather than given a pixel size.

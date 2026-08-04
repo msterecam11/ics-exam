@@ -129,6 +129,13 @@ export async function compileBlueprint(input: CompileInput): Promise<{
       // last word onto a new line at render time, colliding with whatever
       // sits below. Non-text boxes are exact.
       const cushion = m.bake.kind === "text" ? 2 : 0
+      const p = m.bake.props as any
+      // Rotation rides through from the Tier-3 child's own props (see the
+      // comment in blueprintHtml.ts's "custom" case) rather than ever being
+      // applied as a CSS transform before this measurement — a rotated
+      // element's getBoundingClientRect is its rotated envelope, not its
+      // design size, and baking against that would corrupt x/y/w/h.
+      const rotate = Number(p.rotate)
       const base = {
         id: `el-${i}`,
         x: round2((m.x / SLIDE_W) * 100),
@@ -136,8 +143,8 @@ export async function compileBlueprint(input: CompileInput): Promise<{
         width: round2(((m.w + cushion) / SLIDE_W) * 100),
         height: round2((m.h / SLIDE_H) * 100),
         zIndex: z++,
+        ...(Number.isFinite(rotate) && rotate !== 0 ? { rotation: rotate } : {}),
       }
-      const p = m.bake.props as any
       switch (m.bake.kind) {
         case "text": {
           // Text that occupied a single line at measure time is pinned to one
@@ -148,16 +155,16 @@ export async function compileBlueprint(input: CompileInput): Promise<{
           const lh = p.lineHeight ?? 1.45
           const singleLine = m.h <= fs * lh * 1.35
           elements.push({ ...base, type: "text", runs: p.runs ?? [{ text: "" }],
-            style: { fontSize: fs, fontWeight: p.fontWeight, color: p.color, align: "left", lineHeight: lh, noWrap: singleLine } } as CanvasElement)
+            style: { fontSize: fs, fontWeight: p.fontWeight, color: p.color, align: p.align ?? "left", lineHeight: lh, noWrap: singleLine } } as CanvasElement)
           break
         }
         case "shape":
           elements.push({ ...base, type: "shape", shape: "rect",
-            style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, radius: p.radius ?? 8, opacity: 1, shadow: !!p.shadow } } as CanvasElement)
+            style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, radius: p.radius ?? 8, opacity: 1, shadow: !!p.shadow, dashed: !!p.dashed } } as CanvasElement)
           break
         case "line":
           elements.push({ ...base, type: "shape", shape: "line",
-            style: { fill: p.stroke, radius: 0 } } as CanvasElement)
+            style: { fill: p.stroke, radius: 0, dashed: !!p.dashed } } as CanvasElement)
           break
         case "icon":
           elements.push({ ...base, type: "icon", name: String(p.name ?? "circle"), color: p.color } as CanvasElement)

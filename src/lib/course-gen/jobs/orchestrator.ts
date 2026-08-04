@@ -200,6 +200,17 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       console.error("[course-gen] media step failed (continuing without imagery):", err)
     }
 
+    // An image that never resolved (no library match, no usable generation)
+    // used to ship as-is — a visibly empty dashed box in the final deck,
+    // since nothing downstream caught it. Same retry pattern as overflow:
+    // fix it at the content layer rather than let a broken box through.
+    const unresolvedImage = elements.some(e => e.type === "image" && !e.url)
+    if (unresolvedImage && attempt < MAX_QA_RETRIES) {
+      verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+      continue
+    }
+
     // ── 4. QA vision check ────────────────────────────────────────────────
     await progress(job.id, `${stepLabel} — quality check`, pct(doneBefore + 0.7, totalSlides))
     let verdict
