@@ -73,13 +73,22 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
     switch (n.type) {
       case "row": {
         const weights = n.weights ?? n.children.map(() => 1)
+        // justify-content:center on each column: content shorter than the
+        // row's height used to top-align, dumping all the slack at the
+        // bottom of the shorter column and reading as unfinished rather than
+        // composed. Centering it is what a human laying this out by hand
+        // would do by default. A child that itself wants to fill the box
+        // (a figure, a growing flex item) is unaffected — flex-grow content
+        // still consumes the space before any is left to center.
         return `<div style="display:flex;flex-direction:row;gap:${gap(n.gap)};align-items:stretch;min-height:0">${
-          n.children.map((c, i) => `<div style="flex:${weights[i] ?? 1} 1 0;min-width:0;display:flex;flex-direction:column">${render(c)}</div>`).join("")
+          n.children.map((c, i) => `<div style="flex:${weights[i] ?? 1} 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center">${render(c)}</div>`).join("")
         }</div>`
       }
       case "col":
       case "stack":
-        return `<div style="display:flex;flex-direction:column;gap:${gap(n.gap)}">${n.children.map(render).join("")}</div>`
+        // Same reasoning as the row case above — a stack shorter than the
+        // box it's given centers instead of clinging to the top.
+        return `<div style="display:flex;flex-direction:column;gap:${gap(n.gap)};justify-content:center">${n.children.map(render).join("")}</div>`
 
       case "heading": {
         const size = TYPE_PX[`h${n.level ?? 4}`] ?? TYPE_PX.h4
@@ -194,6 +203,91 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
             col.icon ? iconHtml({ name: col.icon, token: col.accent ?? "token:accent-warm", resolved: accent, size: 20 }) : ""
           }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: col.heading, bold: true }], fontSize: TYPE_PX.h5, color: col.accent ?? "token:accent-warm", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${accent};letter-spacing:0.5px">${esc(col.heading)}</span></div>${col.children.map(c => blueprintToHtml(c, tokens, darkContext)).join("")}</div>`
         }).join("")}</div>`
+
+      case "flow": {
+        const horizontal = (n.direction ?? "horizontal") === "horizontal"
+        // Green → amber → warm → red, sampled evenly across the step count so
+        // position in the sequence reads as severity without needing the
+        // agent to pick colours itself.
+        const ramp = ["success", "tab-yellow", "accent-warm", "danger"]
+        const rampIdx = (i: number) => n.steps.length <= 1 ? 0 : Math.round((i / (n.steps.length - 1)) * (ramp.length - 1))
+        const rampColor = (i: number) => T(ramp[rampIdx(i)])
+        const rampToken = (i: number) => `token:${ramp[rampIdx(i)]}`
+        const connector = horizontal
+          ? iconHtml({ name: "arrow-right", token: "token:border-subtle", resolved: T("border-subtle"), size: 18, extraStyle: "flex-shrink:0;align-self:center" })
+          : `<div ${bakeAttr({ kind: "line", props: { stroke: "token:border-subtle" } })} style="width:2px;height:16px;background:${T("border-subtle")};margin-left:18px"></div>`
+        const cells = n.steps.map((s, i) => {
+          const accent = n.escalate ? rampColor(i) : T("primary")
+          const card = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: n.escalate ? rampToken(i) : "token:surface", stroke: accent } })} style="flex:1;background:${n.escalate ? accent : T("surface")};border:1px solid ${T("border-subtle")};border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("md")};display:flex;flex-direction:column;gap:6px;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
+            s.n !== undefined
+              ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 } })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`
+              : s.icon ? iconHtml({ name: s.icon, token: "token:navy", resolved: n.escalate ? "#fff" : T("navy"), size: 24 }) : ""
+            }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: s.heading, bold: true }], fontSize: TYPE_PX.h5, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${n.escalate ? "#fff" : T("navy")}">${esc(s.heading)}</span>${
+              s.body ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: s.body }], fontSize: TYPE_PX.small, color: n.escalate ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${n.escalate ? "rgba(255,255,255,0.9)" : T("text")}">${esc(s.body)}</span>` : ""
+            }</div>`
+          return i === n.steps.length - 1 ? card : `${card}${connector}`
+        })
+        return `<div style="display:flex;flex-direction:${horizontal ? "row" : "column"};align-items:${horizontal ? "stretch" : "flex-start"};gap:${gap("sm")}">${cells.join("")}</div>`
+      }
+
+      case "radial": {
+        const hubIcon = n.hub.icon ? iconHtml({ name: n.hub.icon, token: "token:text-inverse", resolved: "#fff", size: 22, extraStyle: "margin-right:8px" }) : ""
+        const hub = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:navy", radius: tokens.radius?.md ?? 12 } })} style="background:${T("navy")};border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("md")};display:flex;align-items:center;justify-content:center;align-self:center">${hubIcon}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.hub.heading, bold: true }], fontSize: TYPE_PX.h5, color: "token:text-inverse", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:#fff">${esc(n.hub.heading)}</span></div>`
+        const stem = `<div ${bakeAttr({ kind: "line", props: { stroke: "token:border-subtle" } })} style="width:2px;height:14px;background:${T("border-subtle")};align-self:center"></div>`
+        const spokes = `<div style="display:flex;gap:${gap("md")};align-items:stretch">${n.spokes.map(sp => {
+          const accent = T("accent-warm")
+          return `<div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px"><div ${bakeAttr({ kind: "line", props: { stroke: "token:border-subtle" } })} style="width:100%;height:2px;background:${T("border-subtle")}"></div><div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:surface", stroke: "token:border-subtle" } })} style="width:100%;background:${T("surface")};border:1px solid ${T("border-subtle")};border-top:3px solid ${accent};border-radius:8px;padding:${gap("sm")};display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center">${
+            sp.icon ? iconHtml({ name: sp.icon, token: "token:accent-warm", resolved: accent, size: 20 }) : ""
+          }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sp.heading, bold: true }], fontSize: TYPE_PX.small, color: "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${T("navy")}">${esc(sp.heading)}</span>${
+            sp.body ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sp.body }], fontSize: 12, color: "token:text" } })} style="font-size:12px;color:${T("text")}">${esc(sp.body)}</span>` : ""
+          }</div></div>`
+        }).join("")}</div>`
+        return `<div style="display:flex;flex-direction:column;gap:${gap("sm")};flex:1">${hub}${stem}${spokes}</div>`
+      }
+
+      case "tiers": {
+        const bands = n.bands.map((b, i) => {
+          const fill = resolveToken(b.tone, tokens, i === 0 ? T("navy") : i === n.bands.length - 1 ? T("surface-alt") : T("primary"))
+          const dark = i < n.bands.length - 1 || b.tone === "token:navy" || (!b.tone && i === 0)
+          const textCol = dark ? "#fff" : T("text")
+          const band = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: b.tone ?? "token:navy", radius: 6 } })} style="background:${fill};border-radius:6px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;gap:6px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: b.heading, bold: true }], fontSize: TYPE_PX.h5, color: dark ? "token:text-inverse" : "token:text", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${textCol};text-align:center">${esc(b.heading)}</span>${
+            b.items?.length ? `<div style="display:flex;gap:${gap("sm")};justify-content:center;flex-wrap:wrap">${b.items.map(it => `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: it }], fontSize: TYPE_PX.small, color: dark ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${dark ? "rgba(255,255,255,0.9)" : T("text")};background:${dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.05)"};padding:4px 10px;border-radius:6px">${esc(it)}</span>`).join("")}</div>` : ""
+          }</div>`
+          const arrow = i < n.bands.length - 1 ? `<div style="display:flex;justify-content:center">${iconHtml({ name: "arrow-down", token: "token:border-subtle", resolved: T("border-subtle"), size: 16 })}</div>` : ""
+          return band + arrow
+        })
+        return `<div style="display:flex;flex-direction:column;gap:2px;flex:1;justify-content:center">${bands.join("")}</div>`
+      }
+
+      case "quote-banner": {
+        const bg = T("navy")
+        return `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:navy", radius: tokens.radius?.md ?? 12 } })} style="background:${bg};border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("lg")};display:flex;flex-direction:column;gap:8px;align-self:center;justify-content:center;flex:1"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text, bold: true }], fontSize: TYPE_PX.h2, lineHeight: 1.25, color: "token:text-inverse", fontWeight: 800 } })} style="font-size:${TYPE_PX.h2}px;font-weight:800;line-height:1.25;color:#fff;text-align:center">${esc(n.text)}</span>${
+          n.attribution ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.attribution }], fontSize: TYPE_PX.small, color: "token:text-inverse" } })} style="font-size:${TYPE_PX.small}px;color:rgba(255,255,255,0.75);text-align:center">${esc(n.attribution)}</span>` : ""
+        }</div>`
+      }
+
+      case "stat-equation": {
+        const box = (label: string, sub: string | undefined, emphasise: boolean) =>
+          `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${
+            sub ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sub }], fontSize: 12, color: emphasise ? "token:text-inverse" : "token:text" } })} style="font-size:12px;color:${emphasise ? "rgba(255,255,255,0.85)" : T("text")}">${esc(sub)}</span>` : ""
+          }</div>`
+        const op = (sym: string) => `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sym, bold: true }], fontSize: TYPE_PX.h4, color: "token:text", fontWeight: 800 } })} style="font-size:${TYPE_PX.h4}px;font-weight:800;color:${T("text")};align-self:center">${sym}</span>`
+        return `<div style="display:flex;align-items:stretch;gap:${gap("sm")}">${
+          n.terms.map((t, i) => (i > 0 ? op("+") : "") + box(t.label, t.sublabel, false)).join("")
+        }${op("=")}${box(n.result.label, n.result.sublabel, true)}</div>`
+      }
+
+      case "tag-list": {
+        const toneColor = (t?: string) => t === "success" ? T("success") : t === "warning" ? T("tab-yellow") : t === "danger" ? T("danger") : T("primary")
+        return `<div style="display:flex;flex-direction:column;gap:8px">${n.items.map(it => {
+          const c = toneColor(it.tone)
+          // Box and label bake as two elements (box behind, text on top) —
+          // baking one node as both "shape" and the text carrier would drop
+          // the label, since a shape element carries no text (see badge-number).
+          const pill = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: it.tone ?? "token:primary", radius: 4 } })} style="background:${c}22;border:1px solid ${c}55;border-radius:4px;padding:2px 10px;display:inline-flex"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.tag, bold: true }], fontSize: TYPE_PX.small, color: it.tone ?? "token:primary", fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${c}">${esc(it.tag)}</span></span>`
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid ${T("border-subtle")}"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.label }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(it.label)}</span>${pill}</div>`
+        }).join("")}</div>`
+      }
 
       case "custom": {
         // Tier 3: children carry their own small-scale relative coordinates.

@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS cg_modules (
   description        TEXT,
   is_module_zero     BOOLEAN     NOT NULL DEFAULT FALSE,
   target_slide_count INT,
+  -- Gathered facts/relationship-type for every slide in this module, written
+  -- once before any slide's design pass runs. See jobs/moduleContent.ts.
+  content_plan       JSONB,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_cg_modules_course ON cg_modules(course_id, order_index);
@@ -99,6 +102,10 @@ ALTER TABLE cg_pages ADD COLUMN IF NOT EXISTS fact_check JSONB;
 -- drift, and near-duplicate content, none of which a per-slide check can see.
 ALTER TABLE cg_courses ADD COLUMN IF NOT EXISTS consistency_report JSONB;
 ALTER TABLE cg_courses ADD COLUMN IF NOT EXISTS consistency_checked_at TIMESTAMPTZ;
+
+-- Per-slide gathered facts + relationship-type, written once per module
+-- before any slide's design pass runs. See jobs/moduleContent.ts.
+ALTER TABLE cg_modules ADD COLUMN IF NOT EXISTS content_plan JSONB;
 
 -- ── Generation jobs (this table IS the queue) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS cg_generation_jobs (

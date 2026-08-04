@@ -8,15 +8,30 @@
 
 import { db } from "@/lib/db"
 import { handleSlideContentJob } from "./slideContent"
+import { handleModuleContentJob } from "./moduleContent"
 import { handleMediaJob } from "./media"
 import { handleQaJob } from "./qa"
 import { handleFactCheckJob, type FactVerdict } from "./factCheck"
 import { compileBlueprint } from "../compiler"
 import type { Master } from "../theme1"
 import type { ThemeTokens } from "../tokens"
-import type { BlueprintNode, CanvasElement } from "../primitives"
+import type { BlueprintNode, CanvasElement, ModuleContentPlan } from "../primitives"
 
 const MAX_QA_RETRIES = 2
+
+/**
+ * One accent token per module, cycling through the theme's existing
+ * decorative-purpose tokens — never inventing a color, and never touching
+ * `success`/`danger`/`tab-yellow`, which already carry real meaning
+ * elsewhere (positive/negative/caution in flow-escalate and tag-list). This
+ * is the only per-module variation; chrome, background, and typography stay
+ * exactly as the master defines them.
+ */
+export const MODULE_ACCENT_TOKENS = ["token:accent-warm", "token:primary-light", "token:primary-dark"]
+export function moduleAccentToken(moduleNumber: number): string {
+  const idx = Math.max(0, moduleNumber) % MODULE_ACCENT_TOKENS.length
+  return MODULE_ACCENT_TOKENS[idx]
+}
 
 /**
  * Retries a browser-backed step. Chromium work on a constrained instance
@@ -95,8 +110,29 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   // like a bug to anyone watching the progress panel.
   const stepLabel = `Module ${cursor.module_index + 1} of ${plan.length} — slide ${cursor.slide_index + 1}/${mod.slides.length}`
 
-  // ── 1. Content + blueprint (Sonnet) ──────────────────────────────────────
-  await progress(job.id, `${stepLabel} — writing content`, pct(doneBefore, totalSlides))
+  // ── 0. Gather this module's content, once, before any slide is designed ──
+  // Runs on the first tick of each module and caches to cg_modules so a
+  // restart mid-module doesn't re-spend the call. Everything downstream then
+  // reasons about FINISHED material instead of inventing facts and composing
+  // a layout in the same breath.
+  await progress(job.id, `${stepLabel} — gathering module content`, pct(doneBefore, totalSlides))
+  const contentPlan = await getOrGatherModuleContent(courseId, mod)
+  const slidePlan = contentPlan.slides[cursor.slide_index]
+
+  // Shapes already used earlier in this module — read from what's already
+  // persisted, so the design pass can deliberately vary instead of every
+  // slide independently reaching for the same default.
+  const { data: priorPages } = await db
+    .from("cg_pages")
+    .select("source_content")
+    .eq("module_id", mod.module_id)
+    .lt("order_index", cursor.slide_index)
+  const shapesUsed = (priorPages ?? [])
+    .map((p: any) => p.source_content?.shape)
+    .filter(Boolean)
+
+  // ── 1. Design (Sonnet) ────────────────────────────────────────────────────
+  await progress(job.id, `${stepLabel} — designing`, pct(doneBefore + 0.15, totalSlides))
   let source = await handleSlideContentJob({
     course_id: courseId,
     module_id: mod.module_id,
@@ -106,7 +142,9 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       module_number: mod.module_number,
       slide_index: cursor.slide_index,
       slide_total: mod.slides.length,
-      previous_titles: mod.slides.slice(0, cursor.slide_index).map((s: any) => s.title),
+      content_plan: slidePlan,
+      shapes_used: shapesUsed,
+      module_accent: moduleAccentToken(mod.module_number),
     },
   })
 
@@ -133,13 +171,20 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
           title: source.title,
           subtitle: (source as any).subtitle,
         }))
-      : { elements: titleOnlyElements(source, master, tokens), overflow: false }
+      : { elements: titleOnlyElements(source, master, tokens), overflow: false, underfill: false }
     elements = compiled.elements
 
     // Geometric overflow is detectable without a vision call — fix it first.
     if (compiled.overflow && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
-      source = await regenerate(courseId, mod, slide, cursor, verdictFeedback)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+      continue
+    }
+    // The opposite failure — nothing previously caught a slide that's mostly
+    // empty white space; it passed QA legitimately because nothing checked.
+    if (compiled.underfill && attempt < MAX_QA_RETRIES) {
+      verdictFeedback = "This composition leaves too much empty space for the size of its area — it will read as unfinished rather than intentional. Either add genuine supporting material (another fact from the gathered content, a supporting stat, a second example) or choose a shape that fills the space honestly — a larger single statement, a fuller flow/tiers/radial composition. Do not just stretch existing text bigger."
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
       continue
     }
 
@@ -205,7 +250,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     verdictFeedback = !factOk
       ? factVerdict!.feedback
       : verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
-    source = await regenerate(courseId, mod, slide, cursor, verdictFeedback)
+    source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
   }
 
   // ── 5. Persist the finished slide ────────────────────────────────────────
@@ -244,7 +289,10 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   }
 }
 
-async function regenerate(courseId: string, mod: any, slide: any, cursor: Cursor, feedback: string) {
+async function regenerate(
+  courseId: string, mod: any, slide: any, cursor: Cursor,
+  slidePlan: unknown, shapesUsed: string[], feedback: string,
+) {
   return handleSlideContentJob({
     course_id: courseId,
     module_id: mod.module_id,
@@ -254,10 +302,35 @@ async function regenerate(courseId: string, mod: any, slide: any, cursor: Cursor
       module_number: mod.module_number,
       slide_index: cursor.slide_index,
       slide_total: mod.slides.length,
-      previous_titles: mod.slides.slice(0, cursor.slide_index).map((s: any) => s.title),
+      content_plan: slidePlan,
+      shapes_used: shapesUsed,
+      module_accent: moduleAccentToken(mod.module_number),
       retry_feedback: feedback,
     },
   })
+}
+
+/**
+ * Cached per module in `cg_modules.content_plan` — gathering is a single text
+ * call (no browser, cheap), but still worth caching so a worker restart
+ * mid-module doesn't re-spend it, and so every slide's design pass in this
+ * module sees the exact same material.
+ */
+async function getOrGatherModuleContent(courseId: string, mod: any): Promise<ModuleContentPlan> {
+  const { data: row } = await db
+    .from("cg_modules")
+    .select("content_plan")
+    .eq("id", mod.module_id)
+    .single()
+  if (row?.content_plan?.slides?.length) return row.content_plan as ModuleContentPlan
+
+  const plan = await handleModuleContentJob({
+    course_id: courseId,
+    module_id: mod.module_id,
+    input: { mod },
+  })
+  await db.from("cg_modules").update({ content_plan: plan }).eq("id", mod.module_id)
+  return plan
 }
 
 // Cover / divider / closing slides carry only master-zone text.
@@ -280,12 +353,16 @@ function titleOnlyElements(source: any, master: Master, tokens: ThemeTokens): Ca
     } as CanvasElement)
   }
   const subZone = master.zones.find(z => z.name === "subtitle")
-  if (subZone && source.subtitle) {
+  // A zone with fixed brand text (the cover's standing tagline) always wins
+  // over anything the agent produced — that line is chrome, not per-course
+  // content, the same way the logo isn't agent-authored either.
+  const subText = subZone?.text ?? source.subtitle
+  if (subZone && subText) {
     out.push({
       id: "el-subtitle", type: "text",
       x: subZone.x, y: subZone.y, width: subZone.width, height: subZone.height,
       zIndex: 2,
-      runs: [{ text: source.subtitle }],
+      runs: [{ text: subText }],
       style: { fontSize: 18, color: dark ? "token:text-inverse" : "token:text", align: "left" },
     } as CanvasElement)
   }

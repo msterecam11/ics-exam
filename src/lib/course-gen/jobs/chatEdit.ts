@@ -17,6 +17,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { MODELS, anthropic, withRetry, parseJsonLoose, assertUsableResponse } from "../ai"
 import { compileBlueprint } from "../compiler"
 import { iconPromptBlock } from "../icons"
+import { moduleAccentToken } from "./orchestrator"
 import type { CanvasElement } from "../primitives"
 import type { Master } from "../theme1"
 import type { ThemeTokens } from "../tokens"
@@ -90,11 +91,14 @@ export async function runChatEdit(opts: {
   const tokens = theme?.tokens as ThemeTokens
   const masters = (theme?.layout_templates ?? {}) as Record<string, Master>
 
-  const system = `You are the editing agent inside ICS Aviation's course generator, working on ONE module of a training course. You already know this module's content — reason about it directly.
+  const moduleAccent = moduleAccentToken(mod.order_index)
+
+  const system = `You are the editing agent inside ICS Aviation's course generator, working on ONE module of a training course. You already know this module's content — reason about it directly. When a rewrite is called for, you are a presentation designer looking at content and deciding its shape, not a form-filler — the same discipline the generation pipeline itself follows, not a lesser copy of it.
 
 Course: "${course.title}"${course.regulatory_framework ? ` (${course.regulatory_framework})` : ""}
 Audience: ${course.target_audience ?? "aviation professionals"} · Tone: ${course.tone ?? "corporate/formal"}
 Module ${mod.order_index}: "${mod.title}"
+This module's accent: ${moduleAccent} — use it for headings/badges/borders/highlights in this module instead of the default token:accent-warm, unless the instruction says otherwise. Reserve token:success/token:danger/token:tab-yellow for real positive/negative/caution meaning, never as decoration.
 The user currently has slide #${openPageIndex} open.
 
 ## Module map
@@ -111,7 +115,14 @@ Decide freely what the instruction requires — rewriting content, restructuring
 - {"op":"add_element","page_index":N,"element":{…}}
 - {"op":"delete_element","page_index":N,"element_id":"el-3"}
 
-Blueprints use the same structural primitives as generation (row/stack/heading/body/bullets/card/badge-number/callout/icon-row/alternating-list/question-rows/stat/figure/table/chart/comparison). Never emit coordinates — structure only; the compiler lays it out inside the master.
+## When you rewrite or add a slide
+Before composing a blueprint, do the same reasoning generation does: what relationship do these facts actually have — a sequence, a hierarchy, one thing surrounded by related things, a comparison, an escalation — or are they genuinely just a list? Let THAT choose the shape, not habit. Would this exact composition work for a different slide with similar content? If yes, it's a template with the words swapped — reconsider. Spend your boldness in one place (one loud element per slide, everything else quiet); a numbered badge or accent bar is a claim that the content has that property, not a default reach.
+
+Fact/enumeration primitives: row/stack/heading/body/bullets/card/badge-number/callout/icon-row/alternating-list/question-rows/stat/figure/table/chart/comparison.
+Relationship primitives — reach for these whenever the relationship IS the content:
+  flow (sequence/escalation, with optional "escalate":true for a severity colour ramp), radial (hub-and-satellites), tiers (stacked hierarchy bands), quote-banner (one statement worth landing on its own), stat-equation (terms + operators resolving to one outcome), tag-list (label + status pill).
+Tier 3 — a "custom" node (justification + small relative-coordinate children) for anything none of the above express. Equally valid to reach for, not a last resort.
+Never emit coordinates outside a custom node — structure only; the compiler lays it out inside the master.
 
 Layout masters available: ${Object.keys(masters).join(", ")}.
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy, token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.
@@ -123,13 +134,14 @@ Effects — any element may carry "effects": { "shadow":"sm|md|lg|glow",
 "gradient":{"from":"token:primary","to":"token:primary-dark"}, "blur":12,
 "textShadow":"soft|strong", "opacity":0.9 }. Use ONE elevation level per slide;
 never put shadow or gradient on a chart or table (it obscures the data); blur
-only on glass cards over dark backgrounds. Default to flat — depth marks the
-one thing that matters.
+only on glass cards over dark backgrounds. Use them where they earn their
+place — matching the content is the goal, not "always flat" or "always depth."
 
 ## Rules
 - Stay inside THIS module. Never reference slides outside it.
 - Slides marked MANUALLY EDITED have hand-positioned elements: rewrite_slide would discard that work, so prefer targeted edits there, and if you must rewrite, say so in your summary.
-- Keep the ICS register: precise, factual, aviation-professional. Roughly 40-90 words of body text per slide.
+- Keep the ICS register: precise, factual, aviation-professional. A diagram-shaped rewrite (flow/radial/tiers) needs less running prose than a bullet slide — let the shape carry meaning. As a ceiling, keep body text under ~110 words.
+- cover and section_divider slides carry ONLY master chrome (title, and on cover a fixed tagline) — never rewrite_slide or add_element on those; there is no content area to design there.
 - Use get_slide when you need a slide's actual content before changing it.
 
 ## Output

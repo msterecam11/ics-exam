@@ -45,12 +45,25 @@ function buildPage(html: string, zone: { x: number; y: number; width: number; he
 </style></head><body><div id="zone">${html}</div></body></html>`
 }
 
+/** Below this fraction of the content zone's height, a slide reads as
+ *  unfinished rather than composed — nothing previously checked for this, so
+ *  a slide that was 40%+ empty white space passed QA legitimately. */
+const UNDERFILL_THRESHOLD = 0.55
+
 export async function compileBlueprint(input: CompileInput): Promise<{
   elements: CanvasElement[]
   overflow: boolean
+  underfill: boolean
 }> {
+  // A master with no "content" zone (cover, section_divider) has deliberately
+  // no place for agent content — those slides are chrome + title, full stop.
+  // This used to fall back to a fabricated default box, which meant a
+  // blueprint the agent shouldn't have produced would still render somewhere
+  // instead of being rejected. Refusing here is the actual guarantee; the
+  // prompt instruction alone was not.
   const zone = input.master.zones.find(z => z.name === "content")
-    ?? { name: "content" as const, x: 6, y: 25, width: 88, height: 61 }
+  if (!zone) return { elements: titleZoneElements(input), overflow: false, underfill: false }
+
   const darkContext = input.master.background.tone === "dark"
   const html = blueprintToHtml(input.blueprint, input.tokens, darkContext)
 
@@ -91,48 +104,22 @@ export async function compileBlueprint(input: CompileInput): Promise<{
 
     // Did the composition exceed its zone? (QA also checks visually, but
     // catching it here lets the pipeline fix it without a vision call.)
+    const zoneTop = (zone.y / 100) * SLIDE_H
     const zoneBottom = ((zone.y + zone.height) / 100) * SLIDE_H
     const zoneRight = ((zone.x + zone.width) / 100) * SLIDE_W
     const overflow = measured.some(m => m.y + m.h > zoneBottom + 2 || m.x + m.w > zoneRight + 2)
 
+    // The opposite failure: nothing previously checked for a slide that's
+    // mostly empty white space, so it passed QA legitimately. Cheap to check
+    // here — the same measurement pass already has every node's extent.
+    const contentBottom = measured.length ? Math.max(...measured.map(m => m.y + m.h)) : zoneTop
+    const filledRatio = (contentBottom - zoneTop) / Math.max(1, zoneBottom - zoneTop)
+    const underfill = filledRatio < UNDERFILL_THRESHOLD
+
     await page.close()
 
-    const elements: CanvasElement[] = []
-    let z = 1
-
-    // Title / subtitle come from the master's own zones, not the blueprint.
-    const titleZone = input.master.zones.find(zn => zn.name === "title")
-    if (input.title && titleZone) {
-      elements.push({
-        id: `el-title`,
-        type: "text",
-        x: titleZone.x, y: titleZone.y, width: titleZone.width, height: titleZone.height,
-        zIndex: z++,
-        runs: [{ text: input.title, bold: true }],
-        style: {
-          fontSize: (input.tokens.type_scale as any)?.[titleZone.token ?? "h3"] ?? 32,
-          fontWeight: 800,
-          color: darkContext ? "token:text-inverse" : "token:navy",
-          align: "left",
-          lineHeight: 1.2,
-        },
-      } as CanvasElement)
-    }
-    const subZone = input.master.zones.find(zn => zn.name === "subtitle")
-    if (input.subtitle && subZone) {
-      elements.push({
-        id: `el-subtitle`,
-        type: "text",
-        x: subZone.x, y: subZone.y, width: subZone.width, height: subZone.height,
-        zIndex: z++,
-        runs: [{ text: input.subtitle }],
-        style: {
-          fontSize: 16,
-          color: darkContext ? "token:text-inverse" : "token:text",
-          align: "left",
-        },
-      } as CanvasElement)
-    }
+    const elements: CanvasElement[] = titleZoneElements(input)
+    let z = elements.length + 1
 
     // Bake measured nodes → absolute elements, in DOM order so painting
     // order (and therefore z-index) matches what the browser rendered.
@@ -192,10 +179,59 @@ export async function compileBlueprint(input: CompileInput): Promise<{
       }
     })
 
-    return { elements, overflow }
+    return { elements, overflow, underfill }
   } finally {
     await browser.close()
   }
+}
+
+/**
+ * Title / subtitle come from the master's own zones, never the blueprint.
+ * A zone with a fixed `text` (the cover's standing tagline) always renders
+ * that text — brand chrome, not per-course content — regardless of anything
+ * the agent produced; only a zone with no fixed text falls back to the
+ * agent-authored title/subtitle.
+ */
+function titleZoneElements(input: CompileInput): CanvasElement[] {
+  const darkContext = input.master.background.tone === "dark"
+  const elements: CanvasElement[] = []
+  let z = 1
+
+  const titleZone = input.master.zones.find(zn => zn.name === "title")
+  const titleText = titleZone?.text ?? input.title
+  if (titleText && titleZone) {
+    elements.push({
+      id: `el-title`,
+      type: "text",
+      x: titleZone.x, y: titleZone.y, width: titleZone.width, height: titleZone.height,
+      zIndex: z++,
+      runs: [{ text: titleText, bold: true }],
+      style: {
+        fontSize: (input.tokens.type_scale as any)?.[titleZone.token ?? "h3"] ?? 32,
+        fontWeight: 800,
+        color: darkContext ? "token:text-inverse" : "token:navy",
+        align: "left",
+        lineHeight: 1.2,
+      },
+    } as CanvasElement)
+  }
+  const subZone = input.master.zones.find(zn => zn.name === "subtitle")
+  const subText = subZone?.text ?? input.subtitle
+  if (subText && subZone) {
+    elements.push({
+      id: `el-subtitle`,
+      type: "text",
+      x: subZone.x, y: subZone.y, width: subZone.width, height: subZone.height,
+      zIndex: z++,
+      runs: [{ text: subText }],
+      style: {
+        fontSize: 16,
+        color: darkContext ? "token:text-inverse" : "token:text",
+        align: "left",
+      },
+    } as CanvasElement)
+  }
+  return elements
 }
 
 function round2(n: number): number {

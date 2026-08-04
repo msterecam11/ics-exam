@@ -33,6 +33,10 @@ export interface MasterZone {
   x: number; y: number; width: number; height: number
   /** Default text token for text zones. */
   token?: string
+  /** Fixed brand chrome text — e.g. the cover's standing tagline. When set,
+   *  the compiler renders THIS, never per-course agent content, the same way
+   *  the logo or footer rule is fixed rather than designed per course. */
+  text?: string
 }
 
 export interface Master {
@@ -84,8 +88,15 @@ export const ICS_THEME_1 = {
       ],
       zones: [
         { name: "title", x: 10, y: 14, width: 33, height: 32, token: "h2" },
-        { name: "subtitle", x: 10, y: 50, width: 31, height: 7, token: "small" },
+        // Fixed brand tagline, not agent-authored — real cover decks carry
+        // the same line ("Thriving Together Beyond Expectations") regardless
+        // of course topic, so this is chrome, not content.
+        { name: "subtitle", x: 10, y: 50, width: 31, height: 7, token: "small", text: "Thriving Together Beyond Expectations" },
       ],
+      // Deliberately NO "content" zone. The real cover carries only the
+      // course title and the fixed tagline above — nothing else. The
+      // compiler refuses to place a blueprint on a master with no content
+      // zone, so this is the actual guarantee, not just a prompt request.
     },
     section_divider: {
       background: { asset: `${A}/section.png`, tone: "light" },
@@ -101,6 +112,8 @@ export const ICS_THEME_1 = {
       zones: [
         { name: "title", x: 7, y: 48, width: 56, height: 34, token: "h2" },
       ],
+      // Same as cover: no "content" zone. This is the module number + module
+      // title, full stop — the ghost numeral and title are all this slide is.
     },
     content_white: {
       background: { asset: `${A}/content-white.png`, tone: "light" },

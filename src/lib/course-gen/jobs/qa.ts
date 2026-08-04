@@ -85,14 +85,15 @@ Check for:
 3. contrast — text unreadable against its background (especially over photos)
 4. alignment — visibly misaligned edges, ragged columns, inconsistent spacing
 5. chrome_conflict — content colliding with the logo, footer rule, or page number
-6. image_fit — imagery that is stretched, empty, or unrelated to the message${customRubric}
+6. image_fit — imagery that is stretched, empty, or unrelated to the message
+7. underfill — the content area reads as mostly empty white space relative to what a finished slide should look like — not a deliberately spacious composition, genuinely sparse${customRubric}
 
 Ignore: subjective wording choices, and the deliberate brand style (blue palette, orange accents, rounded cards).
 
 Return ONLY:
 {
   "pass": true|false,
-  "issues": [{ "kind": "text_overflow|crowding|contrast|alignment|chrome_conflict|image_fit|design_quality", "severity": "minor|major", "detail": "what and where" }],
+  "issues": [{ "kind": "text_overflow|crowding|contrast|alignment|chrome_conflict|image_fit|underfill|design_quality", "severity": "minor|major", "detail": "what and where" }],
   "fix_layer": "content|blueprint|style|media|none",
   "feedback": "one instruction to whoever regenerates this slide"
 }

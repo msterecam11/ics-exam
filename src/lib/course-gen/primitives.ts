@@ -118,6 +118,45 @@ export interface ComparisonNode extends BlueprintBase {
   columns: { heading: string; icon?: string; accent?: TokenRef; children: BlueprintNode[] }[]
 }
 
+// ─── Relationship primitives ──────────────────────────────────────────────
+// The categories above are almost all "here is a fact" shapes. These exist
+// for the opposite case: the content's real point is how things relate to
+// each other — a sequence, a center-and-satellites, a hierarchy, an
+// escalation. Reach for one of these whenever the relationship IS the
+// content, not just when a card grid has run out of room.
+
+export interface FlowNode extends BlueprintBase {
+  type: "flow" // sequential stages connected by a directional line (process, lifecycle, escalation)
+  direction?: "horizontal" | "vertical"
+  steps: { n?: number | string; heading: string; body?: string; icon?: string }[]
+  /** Colour ramp low→high across steps (green→amber→orange→red) — for
+   *  severity/escalation content where position in the sequence IS the point. */
+  escalate?: boolean
+}
+export interface RadialNode extends BlueprintBase {
+  type: "radial" // one hub concept with related items connected around it
+  hub: { heading: string; icon?: string }
+  spokes: { heading: string; body?: string; icon?: string }[]
+}
+export interface TiersNode extends BlueprintBase {
+  type: "tiers" // stacked horizontal bands where each governs the one below, linked by a downward arrow
+  bands: { heading: string; items?: string[]; tone?: TokenRef }[]
+}
+export interface QuoteBannerNode extends BlueprintBase {
+  type: "quote-banner" // one full-width oversized statement — the single idea the slide must leave behind
+  text: string
+  attribution?: string
+}
+export interface StatEquationNode extends BlueprintBase {
+  type: "stat-equation" // terms joined by "+" resolving to a result joined by "=" — cumulative/compounding logic
+  terms: { label: string; sublabel?: string }[]
+  result: { label: string; sublabel?: string }
+}
+export interface TagListNode extends BlueprintBase {
+  type: "tag-list" // label rows each ending in a small colored status pill
+  items: { label: string; tag: string; tone?: "success" | "warning" | "danger" | "neutral" }[]
+}
+
 // Tier 3 (gated): custom visual composition for content no primitive covers
 // (timelines, diagrams-with-arrows, hero stat treatments). The ONE place the
 // LLM expresses geometry — small-scale, relative to this node's own box
@@ -140,7 +179,9 @@ export type BlueprintNode =
   | RowNode | ColNode | StackNode
   | HeadingNode | BodyNode | BulletsNode | CardNode | BadgeNumberNode
   | CalloutNode | IconRowNode | AlternatingListNode | QuestionRowsNode
-  | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode | CustomNode
+  | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode
+  | FlowNode | RadialNode | TiersNode | QuoteBannerNode | StatEquationNode | TagListNode
+  | CustomNode
 
 /** What the Media Agent resolves into an actual image. */
 export interface MediaRequest {
@@ -255,4 +296,25 @@ export interface SlideSourceContent {
   media_requests?: MediaRequest[]
   sensitive?: boolean // regulatory/safety/medical/legal → generated images need human review
   citations?: { source_doc_id: string; excerpt?: string }[]
+  /** The root blueprint node's `type` — recorded so the next slide's design
+   *  pass can see what shape its siblings already used and deliberately vary,
+   *  the way a human laying out a whole module would. */
+  shape?: string
+}
+
+/** Per-slide gathered material — the output of the module content-gather
+ *  pass. Facts exist here BEFORE any layout decision is made, so the design
+ *  pass reasons about a finished thing rather than inventing content and
+ *  composing it in the same breath. */
+export interface SlideContentPlan {
+  slide_title: string
+  facts: string[] // the substantive material this slide must convey
+  /** The nature of the relationship between the facts above — this is what
+   *  should drive the visual structure, not a menu pick. */
+  relationship: "sequence" | "hierarchy" | "hub-and-satellites" | "comparison"
+    | "cause-effect" | "escalation" | "cumulative" | "single-statement" | "enumeration"
+  citations: { source_doc_id: string; excerpt?: string }[]
+}
+export interface ModuleContentPlan {
+  slides: SlideContentPlan[]
 }

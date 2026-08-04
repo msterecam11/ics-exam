@@ -1,26 +1,29 @@
-// Slide Content job — the Content Agent's per-slide pass, and the single
-// biggest quality lever in the system. One focused call per slide (never a
-// batch), producing BOTH the semantic content and the structural blueprint,
-// because "what to say" and "what shape it takes" are one judgment.
+// Slide Design job — the Design Agent's per-slide pass.
 //
-// The tier ladder is enforced here in the prompt:
+// This used to also write the slide's substance; it no longer does. The
+// module content-gather pass (moduleContent.ts) writes the facts for every
+// slide in the module BEFORE this runs, so this agent's only job is the one
+// a real presentation designer actually does: look at finished material and
+// decide the most honest way to show it. That split matters — a model
+// writing facts and composing a layout in the same breath reaches for
+// whatever's easiest to hold in its head at once, which is always a card or
+// a bullet list. Given material that already exists, it can reason about
+// what SHAPE that material actually has.
+//
+// The tier ladder still exists, but not as a restriction:
 //   Tier 1  exemplar fast-path for classic shapes
-//   Tier 2  free composition from primitives (default)
-//   Tier 3  gated `custom` node — must justify, gets stricter QA
+//   Tier 2  free composition from primitives
+//   Tier 3  gated `custom` node for anything primitives + relationship
+//           shapes still can't express — a normal tool, not a last resort.
 
-import { db } from "@/lib/db"
 import { MODELS, claudeJSON } from "../ai"
 import { exemplarPromptBlock } from "../exemplars"
 import { iconPromptBlock } from "../icons"
-import { retrieveForCourse, formatSections } from "../retrieval"
-import type { SlideSourceContent } from "../primitives"
+import type { SlideContentPlan, SlideSourceContent } from "../primitives"
 
-const MAX_REF_CHARS = 14_000
-
-const PRIMITIVE_REFERENCE = `
-Containers:  { "type":"row", "gap":"md", "weights":[2,3], "children":[…] }   horizontal split; weights are relative widths
+const PRIMITIVE_REFERENCE = `Containers:  { "type":"row", "gap":"md", "weights":[2,3], "children":[…] }   horizontal split; weights are relative widths
              { "type":"stack", "gap":"md", "children":[…] }                  vertical flow
-Content:
+Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"heading", "text":"…", "level":4, "color":"token:accent-warm", "icon":"strategy", "accentBar":true }
   { "type":"body", "text":"…" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true}] }
   { "type":"bullets", "items":["…","…"] }
@@ -35,8 +38,15 @@ Content:
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
   { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
-Tier 3 only:
-  { "type":"custom", "justification":"why no primitive fits", "aspect":2.5,
+Relationship primitives (reach for these when the relationship IS the content — see the reasoning step below):
+  { "type":"flow", "direction":"horizontal|vertical", "escalate":false, "steps":[{"n":"01","heading":"…","body":"…","icon":"…"}] }
+  { "type":"radial", "hub":{"heading":"…","icon":"…"}, "spokes":[{"heading":"…","body":"…","icon":"…"}] }
+  { "type":"tiers", "bands":[{"heading":"…","items":["…","…"],"tone":"token:navy"}] }
+  { "type":"quote-banner", "text":"…", "attribution":"…" }
+  { "type":"stat-equation", "terms":[{"label":"…","sublabel":"…"}], "result":{"label":"…","sublabel":"…"} }
+  { "type":"tag-list", "items":[{"label":"…","tag":"LEADING","tone":"success|warning|danger|neutral"}] }
+Tier 3 — for anything none of the above can express (a real timeline, a diagram with non-standard connectors, a hero treatment). Equally valid to reach for; not a last resort:
+  { "type":"custom", "justification":"why nothing else fits", "aspect":2.5,
     "children":[{"kind":"shape|line|text|icon","x":0,"y":40,"width":100,"height":4,"props":{…}}] }
     — x/y/width/height are % of THIS node's own box (never the slide).
 
@@ -45,131 +55,102 @@ token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, to
 
 const ICON_REFERENCE = `Use ONLY these icon names — anything else renders as a blank marker, exactly
 like an invented clause number. Pick by meaning, not by keyword: an icon should
-say something the text doesn't already say. A slide with two or three
-well-chosen icons reads better than one where every line carries a glyph.
+say something the text doesn't already say.
 
 ${iconPromptBlock()}`
 
-// Depth and finish. These effects have always rendered; the agent was simply
-// never told they existed, so every generated slide was flat. Exposed with
-// house rules rather than as a menu — an effects list without a "when" turns
-// into decoration, and decoration is what makes a deck look amateur.
 const EFFECTS_REFERENCE = `Any element node may carry "effects":
   "effects": { "shadow": "sm|md|lg|glow", "gradient": {"from":"token:primary","to":"token:primary-dark","angle":135},
                "blur": 12, "textShadow": "soft|strong", "opacity": 0.9 }
 
-When to reach for them:
-- shadow — lifts a card off the background to signal "this is the focal object".
-  Use ONE elevation level per slide; mixing sm, md and lg on the same slide
-  reads as inconsistent rather than layered. Cards and figures only.
-- gradient — a cover, a section divider, or a single hero stat. Never behind
-  running text: it costs contrast for decoration.
-- blur — only on a "glass" card sitting over a dark or photographic
-  background, which is what it is for. It does nothing over flat white.
-- textShadow — only for text placed over a photo, to keep it readable.
-- NEVER put shadow or gradient on a chart or table. It obscures the data,
-  which is the one thing that slide exists to communicate.
+These are a normal part of the toolkit, not an exception to justify:
+- shadow — lifts a card off the background to signal "this is the focal object."
+  Use ONE elevation level per slide; mixing sm/md/lg on the same slide reads as
+  inconsistent rather than layered.
+- gradient — a cover, a section divider, a quote-banner, or a single hero stat.
+  Not behind running text: it costs contrast for decoration.
+- blur — a "glass" card over a dark or photographic background.
+- textShadow — text placed over a photo, to keep it readable.
+- NEVER put shadow or gradient on a chart or table — it obscures the data.
+Use them where they earn their place; skip them where they wouldn't. Neither
+"always flat" nor "always depth" is the goal — matching the content is.`
 
-Default to flat. Depth should mark the one thing that matters on the slide.`
-
-// Composition rules, not taste. Each of these is a failure mode that shows up
-// in generated decks and is cheap to state up front.
-const DESIGN_PRINCIPLES = `- ONE focal point per slide. Decide what the viewer should look at first and
-  make it clearly largest / heaviest / most contrasted. If everything is
-  emphasised, nothing is.
-- Build hierarchy with SIZE, WEIGHT and SPACE — not colour alone. Colour is
-  the weakest signal and the first thing lost in print or projection.
-- Use whitespace to group. Related items sit close; unrelated items are
-  separated by a full gap. Even spacing everywhere reads as a list, not a
-  structure.
-- Keep a line of body text roughly 60-75 characters. Wider is tiring to read
-  across a projected slide; much narrower fragments the sentence.
-- Prefer wrapping to truncation. If text does not fit, cut words rather than
-  letting the layout clip them.
-- Font weight carries meaning: 700-800 headings, 500 labels/eyebrows, 400
-  body. Do not bold whole paragraphs for emphasis.
-- Match chart type to the question: trend over time -> line; comparison
-  between categories -> bar; parts of a whole (5 or fewer) -> donut. More than
-  a handful of categories is a bar chart, never a donut.`
+const RELATIONSHIP_TO_SHAPE = `The relationship named for this slide is what should choose the structure — not habit, not whichever primitive is fastest to fill in:
+- "sequence" → "flow" (steps with connectors), or a numbered stack for a short 2-3 step case
+- "hierarchy" → "tiers" (stacked bands, top governs bottom)
+- "hub-and-satellites" → "radial" (one hub, related items around it)
+- "comparison" → "comparison" primitive, or a row of two contrasted columns/cards
+- "cause-effect" → "flow" (2 steps) or a "custom" connector composition if the causal link needs to be visually explicit
+- "escalation" → "flow" with "escalate":true (colour ramp encodes severity), or "stat-equation" for a compounding read
+- "cumulative" → "stat-equation" (terms + operators resolving to one outcome)
+- "single-statement" → "quote-banner", or a large centered stat
+- "enumeration" → cards, bullets, a table, or a tag-list — this is the one case where a plain list IS the honest answer; do not force a diagram onto content that has no real relationship`
 
 export async function handleSlideContentJob(job: any): Promise<SlideSourceContent> {
-  const { course_id, module_id } = job
   const {
-    slide,            // outline entry: { title, layout_kind, intent, key_points }
+    slide,             // outline entry: { title, layout_kind, intent, key_points }
     module_title,
     module_number,
     slide_index,
     slide_total,
-    previous_titles,  // titles already generated in this module (avoid repetition)
-    retry_feedback,   // set when QA bounced this slide back
+    content_plan,       // SlideContentPlan for THIS slide, from the module gather pass
+    shapes_used,        // root blueprint `type`s already used by earlier slides in this module
+    module_accent,       // this module's assigned branded accent token
+    retry_feedback,     // set when QA bounced this slide back
   } = job.input ?? {}
 
-  const { data: course } = await db.from("cg_courses").select("*").eq("id", course_id).single()
-  if (!course) throw new Error("Course not found")
+  // Cover and section_divider carry ONLY master-zone text — the real ICS
+  // decks show nothing else on these (course title + fixed tagline on the
+  // cover; module number + module title on the divider, nothing more). A
+  // prompt instruction saying "keep it minimal" still lets a model add a
+  // stray subtitle or a light blueprint; skipping the design call entirely
+  // is the actual guarantee. The compiler also refuses a blueprint on these
+  // masters (they have no content zone) as a second layer of defense, but
+  // this is the one that keeps the door from being opened in the first place.
+  if (slide.layout_kind === "cover" || slide.layout_kind === "section_divider") {
+    return {
+      intent: String(slide.intent),
+      layout_kind: slide.layout_kind,
+      title: String(slide.title),
+      sensitive: false,
+      citations: [],
+    } as SlideSourceContent
+  }
 
-  const { data: refs } = await db
-    .from("cg_reference_materials")
-    .select("file_name, extracted_text")
-    .eq("course_id", course_id)
+  const isStructural = ["closing_cta"].includes(slide.layout_kind)
+  const plan: SlideContentPlan | undefined = content_plan
 
-  const readable = (refs ?? []).filter(r => r.extracted_text)
-  const perRef = readable.length ? Math.floor(MAX_REF_CHARS / readable.length) : 0
-  const legacyBlock = readable
-    .map(r => `### ${r.file_name}\n${(r.extracted_text as string).slice(0, perRef)}`)
-    .join("\n\n")
+  const factsBlock = plan?.facts?.length
+    ? plan.facts.map((f: string) => `  - ${f}`).join("\n")
+    : "(structural slide — no substantive facts, just the title)"
 
-  // Retrieved per SLIDE, so each slide sees the clauses relevant to its own
-  // subject instead of the same generic opening pages of every document.
-  const retrieved = await retrieveForCourse({
-    courseId: course_id,
-    query: [slide.title, slide.intent, ...(slide.key_points ?? []), ...(slide.covers ?? []), module_title]
-      .filter(Boolean).join(" "),
-    limit: 8,
-    maxChars: MAX_REF_CHARS,
-  })
-  const refBlock = [formatSections(retrieved), legacyBlock].filter(Boolean).join("\n\n")
+  const varietyNote = shapes_used?.length
+    ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.`
+    : "This is the first content slide in the module — no prior shape to avoid yet."
 
-  const isStructural = ["cover", "section_divider", "closing_cta"].includes(slide.layout_kind)
-
-  // The syllabus points the outline assigned to THIS slide. Passed verbatim so
-  // any bracketed reference code the client uses survives into the slide.
-  const covers: string[] = Array.isArray(slide.covers) ? slide.covers : []
-  const coversBlock = covers.length
-    ? `REQUIRED COVERAGE this slide must deliver (from the client's syllabus — reproduce any bracketed reference codes verbatim):\n${covers.map(c => `  - ${c}`).join("\n")}`
-    : ""
-
-  const prompt = `You are the Content Agent for ICS Aviation's course generator. Write ONE slide of a professional aviation training course, and design the structure of its content area.
+  const prompt = `You are the Design Agent for ICS Aviation's course generator. The material for this slide has already been researched and written — your ONLY job is to decide the most honest way to show it. You are not filling in a template; you are a presentation designer looking at finished content and reasoning about its shape, the way a person would before opening a design tool.
 
 ## Course
-Title: ${course.title}
-Regulatory framework: ${course.regulatory_framework ?? "none specified"}
-Audience: ${course.target_audience ?? "aviation professionals"}
-Tone: ${course.tone ?? "corporate/formal"}
-Language: ${course.language === "ar" ? "Arabic" : "English"}
-
-## This slide
 Module ${module_number}: "${module_title}"  (slide ${slide_index + 1} of ${slide_total})
-Planned title: "${slide.title}"
-Planned intent: ${slide.intent}
+Slide title: "${slide.title}"
 Layout master: ${slide.layout_kind}
-Key points to cover: ${JSON.stringify(slide.key_points ?? [])}
-${coversBlock}
-${previous_titles?.length ? `Already covered in this module (do NOT repeat): ${JSON.stringify(previous_titles)}` : ""}
+${module_accent ? `This module's accent: **${module_accent}** — use it (not token:accent-warm by default) for headings, badges, borders, icon highlights, and other decorative accent choices in this slide. This is what makes each module feel distinct while staying inside the ICS palette. Do NOT use it for token:success/token:danger/token:tab-yellow roles — those stay reserved for real positive/negative/caution meaning (e.g. inside an escalating flow or a tag-list), never as decoration.` : ""}
+
+## The material for this slide (already gathered — do not invent new facts, only decide how to show these)
+${factsBlock}
+${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}\nProduce less text and/or a simpler structure so everything fits comfortably.` : ""}
 
-${refBlock ? `## Reference material (ground every factual claim in this; cite where used)\n${refBlock}\n` : ""}
+## Reasoning step — do this before composing
+1. Look at the relationship named above. What does it actually mean about how these facts connect — is one leading to another, is one central and the rest orbit it, are two things being weighed, does severity build?
+2. Name, in one sentence, why a specific shape fits that relationship better than a plain card or bullet list would — UNLESS the relationship is genuinely "enumeration," in which case say so plainly; a card grid is the correct, honest answer for a real list.
+3. Only then compose the blueprint.
 
-## How to design the content area
-The slide's frame — logo, title position, footer, background — is FIXED by the master. You design only what goes INSIDE the content area, and you do it by composing a structural tree. You never specify coordinates (except inside a Tier-3 custom node).
+${RELATIONSHIP_TO_SHAPE}
 
-Choose the structure that genuinely fits this slide's content:
-- **Tier 1** — if the content matches one of the house patterns below, follow that pattern's shape.
-- **Tier 2** (default) — compose the primitives freely into whatever arrangement the content actually wants.
-- **Tier 3** — only if NO combination of primitives can express it (a real timeline, a flow diagram with connectors, a hero treatment): use a "custom" node and fill in "justification". Prefer Tier 1/2; Tier 3 is rare.
+${varietyNote}
 
-Vary structure across the module — consecutive slides must not look identical.
-
-### House patterns (from real ICS decks)
+### House patterns (from real ICS decks — a starting reference, not the ceiling)
 ${exemplarPromptBlock()}
 
 ### Primitive reference
@@ -182,23 +163,25 @@ ${ICON_REFERENCE}
 ${EFFECTS_REFERENCE}
 
 ### Composition principles
-${DESIGN_PRINCIPLES}
+- **Spend your boldness in one place.** Before composing, decide the ONE element on this slide that gets to be the loud thing — a big stat, a strong image, a quote-banner, a badge-number's first step. Everything else on the slide must visibly defer to it: smaller, quieter, less saturated. A slide with three equally emphasised elements reads as busy, not rich, even if each element is well made on its own.
+- **Structure must be true, not habitual.** A numbered badge, an accent bar, a divider line — each is a claim about the content ("this has an order," "this is the important line"). Before using accentBar/badge-number/numbered markers, ask: does this content actually have that property, or is it just the shape this system reaches for by default? An accent bar on every heading, a number on every card — that is decoration wearing structure's clothes, and it is one of the most recognisable tells of templated AI output. Use it because it is true, not because it is available.
+- Build hierarchy with SIZE, WEIGHT and SPACE — not colour alone.
+- Use whitespace to group. Related items sit close; unrelated items get a full gap.
+- Keep a line of body text roughly 60-75 characters.
+- Prefer wrapping to truncation.
+- Font weight carries meaning: 700-800 headings, 500 labels, 400 body.
+- Match chart type to the question: trend over time → line; category comparison → bar; parts of a whole (5 or fewer) → donut.
+
+## Self-check before you output
+Ask the sharper question, not just "is this generic": **would I produce this exact composition for a different slide with similarly-shaped content?** If the answer is yes, it isn't built from THIS slide's specific facts, it's a template with the words swapped — regardless of which primitive it uses, including the new relationship ones. If the relationship clearly wasn't "enumeration" and you still produced a plain bullet list or card grid, stop and reconsider. And check the boldness budget: is there genuinely one loud element here, or did you give everything the same weight?
 
 ## Content rules
 - Aviation-professional register; precise, factual, no filler or marketing language.
-- Fit the slide: roughly 40-90 words of body text total. Long paragraphs break the layout — split into cards/columns/bullets instead.
-- Cite precisely: the reference sections carry their clause and page (e.g. "GACAR Part-139 · 139.15 · p.42"). Use the clause number the material actually shows. NEVER invent or guess a clause number — if the material does not give one, describe the requirement without a citation.
-- Use a figure/photo only when it genuinely aids understanding, at most one per slide.
-- Ask for a photo ONLY when the subject is something you could actually
-  photograph: ground crew refuelling an aircraft, a control tower, a fire
-  appliance, an inspection walk. Never ask for a photo of an abstract or
-  regulatory idea — "declared distances", "a compliance framework", "clause
-  139.15(b)". No photograph of those exists; the search returns something
-  vaguely aviation-shaped and irrelevant, and a generated one would invent
-  markings that are wrong. Carry those ideas in a callout, a table, a
-  diagram, or a chart instead.
-- Flag "sensitive": true when the slide covers safety-critical, medical, legal, or regulatory-compliance content (its imagery then gets human review).
-${isStructural ? `- This is a ${slide.layout_kind} slide: keep it minimal — a strong title${slide.layout_kind === "cover" ? " and a short subtitle" : ""}, and either no blueprint at all or a very light one.` : ""}
+- Fit the slide: a diagram-shaped slide (flow/radial/tiers) needs less running prose than a bullet slide — let the shape carry meaning instead of restating it in a paragraph. As a ceiling, keep total body text under ~110 words.
+- Reproduce citations from the gathered material's "citations" list where you use that fact; never invent a clause number.
+- Use a figure/photo only when it genuinely aids understanding, at most one per slide, and only for something photographable (never an abstract/regulatory idea — put that in a callout, table, or diagram instead).
+- Flag "sensitive": true when the slide covers safety-critical, medical, legal, or regulatory-compliance content.
+${isStructural ? `- This is a ${slide.layout_kind} slide: keep it minimal — a strong title, and either no blueprint at all or a very light one.` : ""}
 
 ## Output
 Return ONLY valid JSON:
@@ -206,7 +189,6 @@ Return ONLY valid JSON:
   "intent": "${slide.intent}",
   "layout_kind": "${slide.layout_kind}",
   "title": "final slide title",
-  ${slide.layout_kind === "cover" ? `"subtitle": "short subtitle",` : ""}
   "blueprint": { …structural tree, or null for a bare structural slide… },
   "sensitive": false,
   "citations": [{ "source_doc_id": "file name it came from", "excerpt": "short supporting quote" }]
@@ -216,12 +198,13 @@ Return ONLY valid JSON:
     model: MODELS.slide_content,
     prompt,
     maxTokens: 16_000,
-    label: `Slide "${slide.title}"`,
+    label: `Slide design "${slide.title}"`,
   })
 
-  if (!result?.title) throw new Error("Slide content came back without a title")
+  if (!result?.title) throw new Error("Slide design came back without a title")
   result.layout_kind = slide.layout_kind
   if (!result.intent) result.intent = slide.intent
+  result.shape = result.blueprint?.type ?? null
 
   return result as SlideSourceContent
 }

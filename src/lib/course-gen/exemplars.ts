@@ -178,6 +178,46 @@ export const EXEMPLARS: Exemplar[] = [
       ],
     },
   },
+  {
+    name: "escalating flow — sequence with rising severity",
+    when: "Content is a sequence where position IS meaning — an escalation process, a lifecycle, a growing consequence. Steps read left to right, colour rising in intensity.",
+    blueprint: {
+      type: "flow", direction: "horizontal", escalate: true,
+      steps: [
+        { n: "1", heading: "Coaching", body: "Verbal feedback and guidance" },
+        { n: "2", heading: "Written Warning", body: "Formal notice, corrective action required" },
+        { n: "3", heading: "Penalty", body: "Financial consequence per contract" },
+        { n: "4", heading: "Suspension", body: "Temporary halt of activities" },
+        { n: "5", heading: "Termination", body: "Contract ended for cause" },
+      ],
+    },
+  },
+  {
+    name: "hub-and-satellites — one concept surrounded by related items",
+    when: "One central regulation, role, or system with several distinct related things attached to it — none of which are steps in a sequence, they're all simply connected to the hub.",
+    blueprint: {
+      type: "radial",
+      hub: { heading: "Aerodrome Certification", icon: "shield-check" },
+      spokes: [
+        { heading: "Personnel Licensing", body: "Qualification requirements", icon: "identification-badge" },
+        { heading: "Safety Management", body: "SMS integration", icon: "shield-check" },
+        { heading: "Emergency Planning", body: "Coordination requirements", icon: "siren" },
+        { heading: "Aeronautical Info", body: "NOTAM publication", icon: "map-pin" },
+      ],
+    },
+  },
+  {
+    name: "tiers — an authority hierarchy",
+    when: "Content describes levels of oversight or governance, each level setting direction for the one below it — never a plain enumeration.",
+    blueprint: {
+      type: "tiers",
+      bands: [
+        { heading: "STRATEGIC LEADERSHIP", items: ["Safety Policy", "Resource Allocation", "Accountability"], tone: "token:navy" },
+        { heading: "SYSTEM OVERSIGHT", items: ["Performance Monitoring", "Audit & Inspection", "Risk Management"], tone: "token:primary" },
+        { heading: "FUNCTIONAL EXECUTION", items: ["Operations", "Maintenance", "Safety"], tone: "token:surface-alt" },
+      ],
+    },
+  },
 ]
 
 /** Compact rendering of exemplars for the generation prompt. */
