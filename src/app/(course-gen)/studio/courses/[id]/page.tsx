@@ -29,6 +29,7 @@ export default function StudioCoursePage() {
   const router = useRouter()
   const [data, setData] = useState<any>(null)
   const [refs, setRefs] = useState<any[]>([])
+  const [libraryDocs, setLibraryDocs] = useState<any[]>([])
   const [busy, setBusy] = useState(false)
   const [outline, setOutline] = useState<any>(null)
   const [adjustments, setAdjustments] = useState("")
@@ -36,12 +37,14 @@ export default function StudioCoursePage() {
   const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
-    const [c, r] = await Promise.all([
+    const [c, r, d] = await Promise.all([
       fetch(`/api/course-gen/courses/${id}`).then(x => x.json()),
       fetch(`/api/course-gen/courses/${id}/references`).then(x => x.json()).catch(() => ({ references: [] })),
+      fetch(`/api/course-gen/courses/${id}/documents`).then(x => x.json()).catch(() => ({ documents: [] })),
     ])
     setData(c)
     setRefs(r.references ?? [])
+    setLibraryDocs(d.documents ?? [])
     fetch(`/api/course-gen/courses/${id}/export`).then(x => x.json())
       .then(e => setExports(e.exports ?? [])).catch(() => {})
     if (c?.course?.status === "outline_review") {
@@ -402,8 +405,20 @@ export default function StudioCoursePage() {
         </div>
         <div className="s-card" style={{ padding: "16px 18px" }}>
           <p className="s-label" style={{ marginBottom: 9 }}>Reference materials</p>
-          {refs.length === 0 ? <p className="s-meta">None uploaded.</p> : (
+          {libraryDocs.length === 0 && refs.length === 0 ? <p className="s-meta">None uploaded.</p> : (
             <div className="flex flex-col gap-2">
+              {libraryDocs.map(doc => (
+                <div key={doc.id} className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--s-primary)" }} />
+                  <span className="flex-1 truncate" style={{ fontSize: 12.5, color: "var(--s-body)" }}>{doc.title}</span>
+                  <span className="s-meta shrink-0" style={{ fontSize: 10 }}>
+                    {[doc.authority, doc.doc_reference].filter(Boolean).join(" · ")}
+                  </span>
+                  <span className={`s-pill ${doc.scan_status === "ready" ? "s-pill-ready" : "s-pill-neutral"}`} style={{ fontSize: 10, padding: "2px 8px" }}>
+                    {doc.scan_status === "ready" ? "LIBRARY" : doc.scan_status?.toUpperCase()}
+                  </span>
+                </div>
+              ))}
               {refs.map(r => (
                 <div key={r.id} className="flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--s-primary)" }} />
