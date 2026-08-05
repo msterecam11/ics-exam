@@ -454,6 +454,22 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         }</div>`
       }
 
+      case "band": {
+        // Full-bleed: no side padding on the wrapper itself, so it reads as
+        // breaking out to the content zone's own edges rather than as one
+        // more inset card. Deliberately a single line — this is a takeaway,
+        // not a place for a paragraph.
+        const sf = surface(n.style, {
+          defaultFill: "filled", defaultCorner: "sharp",
+          defaultDensity: "normal", accent: "token:primary",
+        })
+        const inverse = sf.onFill
+        const icon = n.icon
+          ? iconHtml({ name: n.icon, token: inverse ? "token:text-inverse" : "token:navy", resolved: inverse ? "#fff" : T("navy"), size: 22, extraStyle: "margin-right:10px" })
+          : ""
+        return `<div ${bakeAttr({ kind: "shape", props: sf.bake })} style="${sf.css}display:flex;align-items:center;justify-content:center;width:100%">${icon}<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: n.text, bold: true }], fontSize: TYPE_PX.h5, color: inverse ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${inverse ? "#fff" : T("navy")};text-align:center">${esc(n.text)}</span></div>`
+      }
+
       case "stat-equation": {
         const box = (label: string, sub: string | undefined, emphasise: boolean) =>
           `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${

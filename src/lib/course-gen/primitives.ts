@@ -188,6 +188,17 @@ export interface TiersNode extends BlueprintBase {
   style?: StyleParams
   bands: { heading: string; items?: string[]; tone?: TokenRef }[]
 }
+export interface BandNode extends BlueprintBase {
+  // Full-width strip, edge to edge — a takeaway line, a section break, a
+  // divider statement. The one primitive here that is meant to be placed as
+  // a DIRECT child of the slide's top-level stack, not nested inside a row,
+  // so it actually reads as breaking out of the composition's margins rather
+  // than as one more boxed card among others.
+  type: "band"
+  text: string
+  icon?: string
+  style?: StyleParams
+}
 export interface QuoteBannerNode extends BlueprintBase {
   type: "quote-banner" // one full-width oversized statement — the single idea the slide must leave behind
   text: string
@@ -238,6 +249,7 @@ export type BlueprintNode =
   | CalloutNode | IconRowNode | AlternatingListNode | QuestionRowsNode
   | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode
   | FlowNode | RadialNode | TiersNode | QuoteBannerNode | StatEquationNode | TagListNode
+  | BandNode
   | CustomNode
 
 /** What the Media Agent resolves into an actual image. */

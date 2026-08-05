@@ -23,6 +23,11 @@ import type { SlideContentPlan, SlideSourceContent } from "../primitives"
 
 const PRIMITIVE_REFERENCE = `Containers:  { "type":"row", "gap":"md", "weights":[2,3], "children":[…] }   horizontal split; weights are relative widths
              { "type":"stack", "gap":"md", "children":[…] }                  vertical flow
+"weights" is not limited to even splits. [1,3], [3,7], [2,5] are all real
+compositions — a narrow sidebar rail beside a wide main column, a small
+supporting figure beside dominant text. Reach for an asymmetric split when
+one side genuinely carries more weight than the other; [1,1] every time is
+its own kind of sameness.
 Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"heading", "text":"…", "level":4, "color":"token:accent-warm", "icon":"strategy", "accentBar":true, "eyebrow":"GOVERNANCE" }
   { "type":"body", "text":"…" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true},{"text":"the one phrase to spot at a glance","highlight":"token:tab-yellow"}] }
@@ -43,6 +48,7 @@ Relationship primitives (reach for these when the relationship IS the content �
   { "type":"radial", "hub":{"heading":"…","icon":"…"}, "spokes":[{"heading":"…","body":"…","icon":"…"}] }
   { "type":"tiers", "bands":[{"heading":"…","items":["…","…"],"tone":"token:navy"}] }
   { "type":"quote-banner", "text":"…", "attribution":"…" }
+  { "type":"band", "text":"…", "icon":"…" } — full-bleed single-line strip, e.g. a takeaway pinned under the rest of the content
   { "type":"stat-equation", "terms":[{"label":"…","sublabel":"…"}], "result":{"label":"…","sublabel":"…"} }
   { "type":"tag-list", "items":[{"label":"…","tag":"LEADING","tone":"success|warning|danger|neutral"}] }
 Tier 3 — for anything none of the above can express (a real timeline, a diagram with non-standard connectors, a hero treatment). Equally valid to reach for; not a last resort:
