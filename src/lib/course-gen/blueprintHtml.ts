@@ -12,10 +12,23 @@ import type { BlueprintNode, TextRun } from "./primitives"
 import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
+import { surfacePaint, fillCarriesInverseText, type FillStyleName } from "./surface"
 
 interface Bake {
   kind: "text" | "shape" | "icon" | "image" | "table" | "chart" | "line"
   props: Record<string, unknown>
+}
+
+/**
+ * Several primitives centre their text at compose time (flow steps, radial
+ * spokes, quote banners, stat equations, tier bands) but every text node used
+ * to bake with align "left" regardless. The box was measured around centred
+ * text and then re-rendered left-aligned inside it, which is a large part of
+ * why finished slides read as subtly misaligned. Anything that centres when
+ * it is drawn must say so when it is baked.
+ */
+function centred(props: Record<string, unknown>): Record<string, unknown> {
+  return { ...props, align: "center" }
 }
 
 /**
@@ -64,31 +77,103 @@ function runsHtml(text: string | TextRun[] | { text: string; bold?: boolean; col
   return { html, runs }
 }
 
+const CORNER_PX: Record<string, number> = { sharp: 0, soft: 8, round: 18, pill: 999 }
+const DENSITY_STEP: Record<string, string> = { tight: "sm", normal: "md", airy: "lg" }
+const ELEVATION_CSS: Record<string, string> = {
+  flat: "",
+  raised: "box-shadow:0 2px 6px rgba(11,43,69,.10);",
+  lifted: "box-shadow:0 12px 30px rgba(11,43,69,.16);",
+  inset: "box-shadow:inset 0 2px 8px rgba(11,43,69,.13);",
+  ring: "box-shadow:0 0 0 4px rgba(12,114,198,.16);",
+}
+
 export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkContext = false): string {
   const T = (k: string) => tokens.colors[k] ?? "#333"
   const textColor = darkContext ? T("text-inverse") : T("text")
   const gap = (g?: string) => `${spacingPx(g, tokens)}px`
 
+  /**
+   * Resolves a primitive's StyleParams into concrete CSS plus the bake props
+   * that reproduce it. This is what replaced the hardcoded padding/radius/fill
+   * that made every instance of a primitive identical.
+   *
+   * `intensity` (0-1) steps the fill's strength for ramped multi-item
+   * primitives, so a sequence reads as a progression rather than N copies of
+   * one colour.
+   */
+  function surface(style: any, opts: {
+    defaultFill?: string
+    defaultCorner?: string
+    defaultElevation?: string
+    defaultDensity?: string
+    accent?: string           // token ref
+    intensity?: number
+  }) {
+    const s = style ?? {}
+    const fill = s.fill ?? opts.defaultFill ?? "plain"
+    const corner = s.corner ?? opts.defaultCorner ?? "soft"
+    const elevation = s.elevation ?? opts.defaultElevation ?? "flat"
+    const density = s.density ?? opts.defaultDensity ?? "normal"
+    const accentToken = s.accent ?? opts.accent ?? "token:primary"
+    const accent = resolveToken(accentToken, tokens, T("primary"))
+    const i = opts.intensity ?? 1
+
+    const radius = CORNER_PX[corner] ?? 8
+    const pad = gap(DENSITY_STEP[density] ?? "md")
+
+    // Painted through the SHARED resolver so the PDF and the editor reproduce
+    // exactly this surface from the baked element (see surface.ts).
+    const paint = surfacePaint({
+      fill: fill as FillStyleName,
+      accent,
+      accentDeep: resolveToken("token:primary-dark", tokens, "#045089"),
+      surfaceHex: T("surface"),
+      borderHex: T("border-subtle"),
+      dark: darkContext,
+      intensity: i,
+    })
+
+    return {
+      css: `background:${paint.background};${paint.border ? `border:${paint.border};` : ""}`
+        + `${paint.blur ? `backdrop-filter:blur(${paint.blur}px);` : ""}`
+        + `border-radius:${radius}px;padding:${pad};${ELEVATION_CSS[elevation] ?? ""}`,
+      pad,
+      radius,
+      onFill: fillCarriesInverseText(fill as FillStyleName),
+      accent,
+      accentToken,
+      bake: {
+        shape: "rect",
+        fill: fill === "plain" ? "token:surface" : accentToken,
+        fillStyle: fill,
+        intensity: i,
+        elevation,
+        radius,
+        shadow: elevation === "raised" || elevation === "lifted",
+      },
+    }
+  }
+
   function render(n: BlueprintNode): string {
     switch (n.type) {
       case "row": {
         const weights = n.weights ?? n.children.map(() => 1)
-        // justify-content:center on each column: content shorter than the
-        // row's height used to top-align, dumping all the slack at the
-        // bottom of the shorter column and reading as unfinished rather than
-        // composed. Centering it is what a human laying this out by hand
-        // would do by default. A child that itself wants to fill the box
-        // (a figure, a growing flex item) is unaffected — flex-grow content
-        // still consumes the space before any is left to center.
+        // "safe center", not plain "center". Centering content shorter than
+        // its box is what a human would do — but plain `center` on content
+        // TALLER than its box overflows equally in BOTH directions, so the
+        // excess pushes up into the title zone and renders behind it. That
+        // is exactly how the closing slide's quote box ended up covering its
+        // own title. `safe` keeps the centering when it fits and falls back
+        // to flex-start when it doesn't, so overflow only ever goes down,
+        // where the compiler's overflow check can see and retry it.
         return `<div style="display:flex;flex-direction:row;gap:${gap(n.gap)};align-items:stretch;min-height:0">${
-          n.children.map((c, i) => `<div style="flex:${weights[i] ?? 1} 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center">${render(c)}</div>`).join("")
+          n.children.map((c, i) => `<div style="flex:${weights[i] ?? 1} 1 0;min-width:0;display:flex;flex-direction:column;justify-content:safe center">${render(c)}</div>`).join("")
         }</div>`
       }
       case "col":
       case "stack":
-        // Same reasoning as the row case above — a stack shorter than the
-        // box it's given centers instead of clinging to the top.
-        return `<div style="display:flex;flex-direction:column;gap:${gap(n.gap)};justify-content:center">${n.children.map(render).join("")}</div>`
+        // Same reasoning as the row case above.
+        return `<div style="display:flex;flex-direction:column;gap:${gap(n.gap)};justify-content:safe center">${n.children.map(render).join("")}</div>`
 
       case "heading": {
         const size = TYPE_PX[`h${n.level ?? 4}`] ?? TYPE_PX.h4
@@ -125,15 +210,33 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "card": {
-        const fill = n.tone === "cream" ? T("surface-cream")
-          : n.tone === "glass" ? T("glass")
-          : n.tone === "accent" ? `${T("primary")}14`
-          : T("surface")
-        const border = n.tone === "glass" ? "rgba(255,255,255,0.35)" : T("border-subtle")
-        const topBorder = n.tone === "glass" ? `border-top:2px solid rgba(255,255,255,0.7);` : ""
-        const accent = n.accent ? `border-left:4px solid ${resolveToken(n.accent, tokens, T("accent-warm"))};` : ""
-        return `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: n.tone === "glass" ? "token:glass" : n.tone === "cream" ? "token:surface-cream" : "token:surface", radius: tokens.radius?.md ?? 12, tone: n.tone ?? "plain" } })} style="background:${fill};border:1px solid ${border};${topBorder}${accent}border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("md")};display:flex;flex-direction:column;gap:${gap("sm")};flex:1">${
-          n.children.map(c => blueprintToHtml(c, tokens, n.tone === "glass" ? true : darkContext)).join("")
+        // `tone` still works and now simply picks the DEFAULT fill; an
+        // explicit `style` overrides it. That keeps every existing blueprint
+        // and exemplar rendering as before while giving the agent real
+        // control over how any individual card looks.
+        const toneFill = n.tone === "cream" ? "tinted"
+          : n.tone === "glass" ? "glass"
+          : n.tone === "accent" ? "tinted"
+          : "plain"
+        const toneAccent = n.tone === "cream" ? "token:accent-warm" : "token:primary"
+        const sf = surface(n.style, {
+          defaultFill: toneFill,
+          defaultCorner: "soft",
+          defaultDensity: "normal",
+          accent: n.accent ?? toneAccent,
+        })
+        const leftBar = n.accent && !n.style?.fill
+          ? `border-left:4px solid ${resolveToken(n.accent, tokens, T("accent-warm"))};`
+          : ""
+        // Deliberately NOT flex:1. A card that stretched to fill its column
+        // turned sparse content into a large empty box — and, because the
+        // box measured "full", hid the problem from the underfill check.
+        // Sized to its content, a short card reads as compact rather than
+        // unfinished; equal heights across a row still come from the row's
+        // own align-items:stretch.
+        const glassy = sf.onFill || n.tone === "glass"
+        return `<div ${bakeAttr({ kind: "shape", props: { ...sf.bake, tone: n.tone ?? "plain" } })} style="${sf.css}${leftBar}display:flex;flex-direction:column;gap:${gap("sm")}">${
+          n.children.map(c => blueprintToHtml(c, tokens, glassy ? true : darkContext)).join("")
         }</div>`
       }
 
@@ -222,14 +325,27 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         const connector = horizontal
           ? iconHtml({ name: "arrow-right", token: "token:border-subtle", resolved: T("border-subtle"), size: 18, extraStyle: "flex-shrink:0;align-self:center" })
           : `<div ${bakeAttr({ kind: "line", props: { stroke: "token:border-subtle" } })} style="width:2px;height:16px;background:${T("border-subtle")};margin-left:18px"></div>`
+        // A horizontal flow centres its step text; a vertical one reads as a
+        // left-aligned list. The bake has to follow whichever was drawn.
+        const fit = horizontal ? centred : (p: Record<string, unknown>) => p
         const cells = n.steps.map((s, i) => {
           const accent = n.escalate ? rampColor(i) : T("primary")
-          const card = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: n.escalate ? rampToken(i) : "token:surface", stroke: accent } })} style="flex:1;background:${n.escalate ? accent : T("surface")};border:1px solid ${T("border-subtle")};border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("md")};display:flex;flex-direction:column;gap:6px;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
+          // Escalation keeps its semantic green→red ramp. Otherwise the step
+          // takes the agent's chosen style, optionally stepping intensity
+          // across the sequence so progression reads without inventing a
+          // meaning-bearing colour that isn't there.
+          const stepIntensity = n.style?.intensityRamp && n.steps.length > 1
+            ? 0.35 + 0.65 * (i / (n.steps.length - 1))
+            : 1
+          const sf = n.escalate
+            ? surface({ ...n.style, fill: "filled", accent: rampToken(i) }, { defaultCorner: "soft" })
+            : surface(n.style, { defaultFill: "plain", defaultCorner: "soft", accent: "token:primary", intensity: stepIntensity })
+          const card = `<div ${bakeAttr({ kind: "shape", props: { ...sf.bake, stroke: accent } })} style="flex:1;${sf.css}display:flex;flex-direction:column;gap:6px;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
             s.n !== undefined
-              ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 } })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`
+              ? `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`
               : s.icon ? iconHtml({ name: s.icon, token: "token:navy", resolved: n.escalate ? "#fff" : T("navy"), size: 24 }) : ""
-            }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: s.heading, bold: true }], fontSize: TYPE_PX.h5, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${n.escalate ? "#fff" : T("navy")}">${esc(s.heading)}</span>${
-              s.body ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: s.body }], fontSize: TYPE_PX.small, color: n.escalate ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${n.escalate ? "rgba(255,255,255,0.9)" : T("text")}">${esc(s.body)}</span>` : ""
+            }<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: s.heading, bold: true }], fontSize: TYPE_PX.h5, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${n.escalate ? "#fff" : T("navy")}">${esc(s.heading)}</span>${
+              s.body ? `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: s.body }], fontSize: TYPE_PX.small, color: n.escalate ? "token:text-inverse" : "token:text" }) })} style="font-size:${TYPE_PX.small}px;color:${n.escalate ? "rgba(255,255,255,0.9)" : T("text")}">${esc(s.body)}</span>` : ""
             }</div>`
           return i === n.steps.length - 1 ? card : `${card}${connector}`
         })
@@ -244,8 +360,8 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           const accent = T("accent-warm")
           return `<div style="flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px"><div ${bakeAttr({ kind: "line", props: { stroke: "token:border-subtle" } })} style="width:100%;height:2px;background:${T("border-subtle")}"></div><div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:surface", stroke: "token:border-subtle" } })} style="width:100%;background:${T("surface")};border:1px solid ${T("border-subtle")};border-top:3px solid ${accent};border-radius:8px;padding:${gap("sm")};display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center">${
             sp.icon ? iconHtml({ name: sp.icon, token: "token:accent-warm", resolved: accent, size: 20 }) : ""
-          }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sp.heading, bold: true }], fontSize: TYPE_PX.small, color: "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${T("navy")}">${esc(sp.heading)}</span>${
-            sp.body ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sp.body }], fontSize: 12, color: "token:text" } })} style="font-size:12px;color:${T("text")}">${esc(sp.body)}</span>` : ""
+          }<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sp.heading, bold: true }], fontSize: TYPE_PX.small, color: "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${T("navy")}">${esc(sp.heading)}</span>${
+            sp.body ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sp.body }], fontSize: 12, color: "token:text" }) })} style="font-size:12px;color:${T("text")}">${esc(sp.body)}</span>` : ""
           }</div></div>`
         }).join("")}</div>`
         return `<div style="display:flex;flex-direction:column;gap:${gap("sm")};flex:1">${hub}${stem}${spokes}</div>`
@@ -256,7 +372,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           const fill = resolveToken(b.tone, tokens, i === 0 ? T("navy") : i === n.bands.length - 1 ? T("surface-alt") : T("primary"))
           const dark = i < n.bands.length - 1 || b.tone === "token:navy" || (!b.tone && i === 0)
           const textCol = dark ? "#fff" : T("text")
-          const band = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: b.tone ?? "token:navy", radius: 6 } })} style="background:${fill};border-radius:6px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;gap:6px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: b.heading, bold: true }], fontSize: TYPE_PX.h5, color: dark ? "token:text-inverse" : "token:text", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${textCol};text-align:center">${esc(b.heading)}</span>${
+          const band = `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: b.tone ?? "token:navy", radius: 6 } })} style="background:${fill};border-radius:6px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;gap:6px"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: b.heading, bold: true }], fontSize: TYPE_PX.h5, color: dark ? "token:text-inverse" : "token:text", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${textCol};text-align:center">${esc(b.heading)}</span>${
             b.items?.length ? `<div style="display:flex;gap:${gap("sm")};justify-content:center;flex-wrap:wrap">${b.items.map(it => `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: it }], fontSize: TYPE_PX.small, color: dark ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${dark ? "rgba(255,255,255,0.9)" : T("text")};background:${dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.05)"};padding:4px 10px;border-radius:6px">${esc(it)}</span>`).join("")}</div>` : ""
           }</div>`
           const arrow = i < n.bands.length - 1 ? `<div style="display:flex;justify-content:center">${iconHtml({ name: "arrow-down", token: "token:border-subtle", resolved: T("border-subtle"), size: 16 })}</div>` : ""
@@ -266,18 +382,21 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "quote-banner": {
-        const bg = T("navy")
-        return `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:navy", radius: tokens.radius?.md ?? 12 } })} style="background:${bg};border-radius:${tokens.radius?.md ?? 12}px;padding:${gap("lg")};display:flex;flex-direction:column;gap:8px;align-self:center;justify-content:center;flex:1"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text, bold: true }], fontSize: TYPE_PX.h2, lineHeight: 1.25, color: "token:text-inverse", fontWeight: 800 } })} style="font-size:${TYPE_PX.h2}px;font-weight:800;line-height:1.25;color:#fff;text-align:center">${esc(n.text)}</span>${
-          n.attribution ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.attribution }], fontSize: TYPE_PX.small, color: "token:text-inverse" } })} style="font-size:${TYPE_PX.small}px;color:rgba(255,255,255,0.75);text-align:center">${esc(n.attribution)}</span>` : ""
+        const sf = surface(n.style, {
+          defaultFill: "filled", defaultCorner: "soft",
+          defaultDensity: "airy", accent: "token:navy",
+        })
+        return `<div ${bakeAttr({ kind: "shape", props: sf.bake })} style="${sf.css}display:flex;flex-direction:column;gap:8px;align-self:center;justify-content:center;flex:1"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: n.text, bold: true }], fontSize: TYPE_PX.h2, lineHeight: 1.25, color: "token:text-inverse", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h2}px;font-weight:800;line-height:1.25;color:#fff;text-align:center">${esc(n.text)}</span>${
+          n.attribution ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: n.attribution }], fontSize: TYPE_PX.small, color: "token:text-inverse" }) })} style="font-size:${TYPE_PX.small}px;color:rgba(255,255,255,0.75);text-align:center">${esc(n.attribution)}</span>` : ""
         }</div>`
       }
 
       case "stat-equation": {
         const box = (label: string, sub: string | undefined, emphasise: boolean) =>
-          `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${
-            sub ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sub }], fontSize: 12, color: emphasise ? "token:text-inverse" : "token:text" } })} style="font-size:12px;color:${emphasise ? "rgba(255,255,255,0.85)" : T("text")}">${esc(sub)}</span>` : ""
+          `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${
+            sub ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sub }], fontSize: 12, color: emphasise ? "token:text-inverse" : "token:text" }) })} style="font-size:12px;color:${emphasise ? "rgba(255,255,255,0.85)" : T("text")}">${esc(sub)}</span>` : ""
           }</div>`
-        const op = (sym: string) => `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: sym, bold: true }], fontSize: TYPE_PX.h4, color: "token:text", fontWeight: 800 } })} style="font-size:${TYPE_PX.h4}px;font-weight:800;color:${T("text")};align-self:center">${sym}</span>`
+        const op = (sym: string) => `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sym, bold: true }], fontSize: TYPE_PX.h4, color: "token:text", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h4}px;font-weight:800;color:${T("text")};align-self:center">${sym}</span>`
         return `<div style="display:flex;align-items:stretch;gap:${gap("sm")}">${
           n.terms.map((t, i) => (i > 0 ? op("+") : "") + box(t.label, t.sublabel, false)).join("")
         }${op("=")}${box(n.result.label, n.result.sublabel, true)}</div>`

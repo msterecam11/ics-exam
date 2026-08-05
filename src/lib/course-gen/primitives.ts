@@ -16,6 +16,37 @@ export type TokenRef = `token:${string}` | string
 
 export type SpacingStep = "xs" | "sm" | "md" | "lg" | "xl"
 
+// ─── Style parameters ─────────────────────────────────────────────────────
+// Every primitive used to render with hardcoded padding, radius and fill, so
+// two `card` slides were the same component with different words in it — the
+// single biggest reason a deck with genuine structural variety still read as
+// "every slide looks the same". These let the design agent make real visual
+// decisions inside a bounded, always-on-brand range: still token-driven,
+// still bakes to plain editable elements, but no longer one fixed look.
+
+/** Corner language. `pill` is fully rounded; `sharp` is square. */
+export type CornerStyle = "sharp" | "soft" | "round" | "pill"
+/** How a surface is filled. `tinted` is a 12% wash of the accent; `glass` is
+ *  translucent white for dark/photographic grounds; `gradient` runs the accent
+ *  into its darker sibling. */
+export type FillStyle = "filled" | "outline" | "tinted" | "glass" | "gradient" | "plain"
+/** Depth. One level per slide — mixing them reads as inconsistent. */
+export type Elevation = "flat" | "raised" | "lifted" | "inset" | "ring"
+/** Internal breathing room. */
+export type Density = "tight" | "normal" | "airy"
+
+export interface StyleParams {
+  corner?: CornerStyle
+  fill?: FillStyle
+  elevation?: Elevation
+  density?: Density
+  /** Accent this surface derives its colour from. Defaults to the module accent. */
+  accent?: TokenRef
+  /** Multi-item primitives: step the accent's intensity across items so the
+   *  sequence itself carries meaning, rather than repeating one flat colour. */
+  intensityRamp?: boolean
+}
+
 export interface BlueprintBase {
   type: string
   /** Optional stable key so re-compiles can match nodes across edits. */
@@ -66,6 +97,8 @@ export interface CardNode extends BlueprintBase {
   type: "card"
   tone?: "plain" | "cream" | "glass" | "accent" // cream = requirement callout, glass = dark summary cards
   accent?: TokenRef // top/left border accent color
+  /** Overrides `tone`'s fixed look where set — corner, fill, depth, density. */
+  style?: StyleParams
   children: BlueprintNode[]
 }
 export interface BadgeNumberNode extends BlueprintBase {
@@ -130,6 +163,7 @@ export interface ComparisonNode extends BlueprintBase {
 export interface FlowNode extends BlueprintBase {
   type: "flow" // sequential stages connected by a directional line (process, lifecycle, escalation)
   direction?: "horizontal" | "vertical"
+  style?: StyleParams
   steps: { n?: number | string; heading: string; body?: string; icon?: string }[]
   /** Colour ramp low→high across steps (green→amber→orange→red) — for
    *  severity/escalation content where position in the sequence IS the point. */
@@ -138,16 +172,19 @@ export interface FlowNode extends BlueprintBase {
 export interface RadialNode extends BlueprintBase {
   type: "radial" // one hub concept with related items connected around it
   hub: { heading: string; icon?: string }
+  style?: StyleParams
   spokes: { heading: string; body?: string; icon?: string }[]
 }
 export interface TiersNode extends BlueprintBase {
   type: "tiers" // stacked horizontal bands where each governs the one below, linked by a downward arrow
+  style?: StyleParams
   bands: { heading: string; items?: string[]; tone?: TokenRef }[]
 }
 export interface QuoteBannerNode extends BlueprintBase {
   type: "quote-banner" // one full-width oversized statement — the single idea the slide must leave behind
   text: string
   attribution?: string
+  style?: StyleParams
 }
 export interface StatEquationNode extends BlueprintBase {
   type: "stat-equation" // terms joined by "+" resolving to a result joined by "=" — cumulative/compounding logic
@@ -275,7 +312,18 @@ export interface IconElement extends ElementBase {
 export interface ShapeElement extends ElementBase {
   type: "shape"
   shape: "rect" | "line" | "ellipse"
-  style: { fill?: TokenRef; stroke?: TokenRef; strokeWidth?: number; radius?: number; opacity?: number; shadow?: boolean; dashed?: boolean }
+  style: {
+    fill?: TokenRef; stroke?: TokenRef; strokeWidth?: number; radius?: number
+    opacity?: number; shadow?: boolean; dashed?: boolean
+    /** How `fill` is painted — solid, a tint of it, a gradient into its deeper
+     *  sibling, an outline, or glass. Baked so the PDF and the editor paint
+     *  the same surface the compiler measured. */
+    fillStyle?: FillStyle
+    /** 0-1, steps `filled`/`tinted` strength for ramped sequences. */
+    intensity?: number
+    /** Elevation name, kept so the editor can round-trip it. */
+    elevation?: Elevation
+  }
 }
 export interface TableCell { text: string; colSpan?: number; rowSpan?: number; style?: Record<string, TokenRef | number | string> }
 export interface TableElement extends ElementBase {

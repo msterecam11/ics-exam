@@ -13,6 +13,8 @@ import { handleMediaJob } from "./media"
 import { handleQaJob } from "./qa"
 import { handleFactCheckJob, type FactVerdict } from "./factCheck"
 import { compileBlueprint } from "../compiler"
+import { fitTitleFontSize, stripModulePrefix } from "../typefit"
+import { SLIDE_W, SLIDE_H } from "../tokens"
 import type { Master } from "../theme1"
 import type { ThemeTokens } from "../tokens"
 import type { BlueprintNode, CanvasElement, ModuleContentPlan } from "../primitives"
@@ -145,8 +147,24 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       content_plan: slidePlan,
       shapes_used: shapesUsed,
       module_accent: moduleAccentToken(mod.module_number),
+      tokens,
+      dark_background: master.background.tone === "dark",
     },
   })
+
+  // Cover and divider text is decided here, not by the agent, because it is
+  // about the COURSE and the module — facts the per-slide agent has no
+  // business restating. Every module's cover leads with the course title so
+  // a module extracted on its own still identifies the course it belongs to;
+  // the module's own name becomes the secondary line. The divider drops the
+  // "Module N:" prefix because the master already draws that number as a
+  // large ghost numeral beside it.
+  if (slide.layout_kind === "cover") {
+    source.title = course.title
+    if (!mod.is_module_zero) (source as any).subtitle = stripModulePrefix(mod.title)
+  } else if (slide.layout_kind === "section_divider") {
+    source.title = stripModulePrefix(source.title ?? mod.title)
+  }
 
   let elements: CanvasElement[] = []
   let verdictFeedback = ""
@@ -356,7 +374,15 @@ function titleOnlyElements(source: any, master: Master, tokens: ThemeTokens): Ca
       zIndex: 1,
       runs: [{ text: source.title, bold: true }],
       style: {
-        fontSize: (tokens.type_scale as any)?.[titleZone.token ?? "h2"] ?? 40,
+        // Shrunk to fit rather than fixed: the cover's title zone sits
+        // directly above the logo band, so a long course title rendered at
+        // the master's nominal size ran straight through it.
+        fontSize: fitTitleFontSize({
+          text: source.title,
+          widthPx: (titleZone.width / 100) * SLIDE_W,
+          heightPx: (titleZone.height / 100) * SLIDE_H,
+          baseSize: (tokens.type_scale as any)?.[titleZone.token ?? "h2"] ?? 40,
+        }),
         fontWeight: 800,
         color: dark ? "token:text-inverse" : "token:navy",
         align: "left", lineHeight: 1.2,
@@ -364,10 +390,12 @@ function titleOnlyElements(source: any, master: Master, tokens: ThemeTokens): Ca
     } as CanvasElement)
   }
   const subZone = master.zones.find(z => z.name === "subtitle")
-  // A zone with fixed brand text (the cover's standing tagline) always wins
-  // over anything the agent produced — that line is chrome, not per-course
-  // content, the same way the logo isn't agent-authored either.
-  const subText = subZone?.text ?? source.subtitle
+  // An explicitly-set subtitle wins over the zone's standing text. The only
+  // subtitles reaching here are set by the orchestrator itself (the module
+  // name on a module cover) — the design agent never runs for these masters
+  // — so this cannot reintroduce agent drift, and the brand tagline still
+  // renders wherever nothing more specific was supplied.
+  const subText = source.subtitle ?? subZone?.text
   if (subZone && subText) {
     out.push({
       id: "el-subtitle", type: "text",

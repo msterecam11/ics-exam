@@ -11,6 +11,7 @@ import type { BlueprintNode, CanvasElement } from "./primitives"
 import { blueprintToHtml } from "./blueprintHtml"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import { inlineFontFaces } from "./fonts"
+import { fitTitleFontSize } from "./typefit"
 import type { Master } from "./theme1"
 
 export interface CompileInput {
@@ -45,10 +46,18 @@ function buildPage(html: string, zone: { x: number; y: number; width: number; he
 </style></head><body><div id="zone">${html}</div></body></html>`
 }
 
-/** Below this fraction of the content zone's height, a slide reads as
- *  unfinished rather than composed — nothing previously checked for this, so
- *  a slide that was 40%+ empty white space passed QA legitimately. */
-const UNDERFILL_THRESHOLD = 0.55
+/**
+ * Below this fraction of the content zone's height covered by INK, a slide
+ * reads as unfinished rather than composed.
+ *
+ * "Ink" means text, icons, images, charts and tables — never `shape`. That
+ * distinction is the whole point: cards carry `flex:1`, so an almost-empty
+ * card STRETCHES to fill its zone. Measuring box extents therefore reported
+ * a half-empty self-assessment slide as 100% full, which is precisely why
+ * the first version of this check never fired on the slides that needed it.
+ */
+const UNDERFILL_THRESHOLD = 0.62
+const INK_KINDS = new Set(["text", "icon", "image", "chart", "table"])
 
 export async function compileBlueprint(input: CompileInput): Promise<{
   elements: CanvasElement[]
@@ -109,11 +118,12 @@ export async function compileBlueprint(input: CompileInput): Promise<{
     const zoneRight = ((zone.x + zone.width) / 100) * SLIDE_W
     const overflow = measured.some(m => m.y + m.h > zoneBottom + 2 || m.x + m.w > zoneRight + 2)
 
-    // The opposite failure: nothing previously checked for a slide that's
-    // mostly empty white space, so it passed QA legitimately. Cheap to check
-    // here — the same measurement pass already has every node's extent.
-    const contentBottom = measured.length ? Math.max(...measured.map(m => m.y + m.h)) : zoneTop
-    const filledRatio = (contentBottom - zoneTop) / Math.max(1, zoneBottom - zoneTop)
+    // The opposite failure: a slide that is mostly empty white space. Only
+    // ink counts (see INK_KINDS) — a stretched empty card is not content.
+    const ink = measured.filter(m => INK_KINDS.has(m.bake.kind))
+    const inkTop = ink.length ? Math.min(...ink.map(m => m.y)) : zoneTop
+    const inkBottom = ink.length ? Math.max(...ink.map(m => m.y + m.h)) : zoneTop
+    const filledRatio = (inkBottom - inkTop) / Math.max(1, zoneBottom - zoneTop)
     const underfill = filledRatio < UNDERFILL_THRESHOLD
 
     await page.close()
@@ -136,10 +146,16 @@ export async function compileBlueprint(input: CompileInput): Promise<{
       // element's getBoundingClientRect is its rotated envelope, not its
       // design size, and baking against that would corrupt x/y/w/h.
       const rotate = Number(p.rotate)
+      // Nothing may ever bake ABOVE its zone: everything above the content
+      // zone belongs to the master (title, logo), and an element landing
+      // there renders on top of the title and hides it. `safe center` in
+      // blueprintHtml is what stops this happening in the first place; this
+      // is the guarantee that no future layout change can reintroduce it.
+      const clampedY = Math.max(m.y, zoneTop)
       const base = {
         id: `el-${i}`,
         x: round2((m.x / SLIDE_W) * 100),
-        y: round2((m.y / SLIDE_H) * 100),
+        y: round2((clampedY / SLIDE_H) * 100),
         width: round2(((m.w + cushion) / SLIDE_W) * 100),
         height: round2((m.h / SLIDE_H) * 100),
         zIndex: z++,
@@ -160,7 +176,14 @@ export async function compileBlueprint(input: CompileInput): Promise<{
         }
         case "shape":
           elements.push({ ...base, type: "shape", shape: "rect",
-            style: { fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth, radius: p.radius ?? 8, opacity: 1, shadow: !!p.shadow, dashed: !!p.dashed } } as CanvasElement)
+            style: {
+              fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth,
+              radius: p.radius ?? 8, opacity: 1, shadow: !!p.shadow, dashed: !!p.dashed,
+              // Carried through so the PDF and editor repaint the SAME
+              // surface — a gradient card baked as a flat colour would be
+              // the bullets bug all over again.
+              fillStyle: p.fillStyle, intensity: p.intensity, elevation: p.elevation,
+            } } as CanvasElement)
           break
         case "line":
           elements.push({ ...base, type: "shape", shape: "line",
@@ -207,6 +230,7 @@ function titleZoneElements(input: CompileInput): CanvasElement[] {
   const titleZone = input.master.zones.find(zn => zn.name === "title")
   const titleText = titleZone?.text ?? input.title
   if (titleText && titleZone) {
+    const baseSize = (input.tokens.type_scale as any)?.[titleZone.token ?? "h3"] ?? 32
     elements.push({
       id: `el-title`,
       type: "text",
@@ -214,7 +238,12 @@ function titleZoneElements(input: CompileInput): CanvasElement[] {
       zIndex: z++,
       runs: [{ text: titleText, bold: true }],
       style: {
-        fontSize: (input.tokens.type_scale as any)?.[titleZone.token ?? "h3"] ?? 32,
+        fontSize: fitTitleFontSize({
+          text: titleText,
+          widthPx: (titleZone.width / 100) * SLIDE_W,
+          heightPx: (titleZone.height / 100) * SLIDE_H,
+          baseSize,
+        }),
         fontWeight: 800,
         color: darkContext ? "token:text-inverse" : "token:navy",
         align: "left",

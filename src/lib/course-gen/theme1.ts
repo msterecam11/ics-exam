@@ -174,8 +174,12 @@ export const ICS_THEME_1 = {
         { role: "partner_logo", x: 40, y: 8, width: 13, height: 9, tone: "dark" },
       ],
       zones: [
-        { name: "title", x: 7, y: 29, width: 50, height: 15, token: "h3" },
-        { name: "content", x: 8, y: 49, width: 44, height: 13, token: "body" },
+        { name: "title", x: 7, y: 22, width: 50, height: 13, token: "h3" },
+        // Was y:49 h:13 — 94px, far too small for any real closing content.
+        // The agent's composition needed ~3x that, overflowed, exhausted its
+        // retries and shipped anyway, colliding with the title. Sized to the
+        // space actually available on the photo's left side instead.
+        { name: "content", x: 8, y: 37, width: 46, height: 45, token: "body" },
         { name: "url", x: 8, y: 63, width: 42, height: 10 },
         { name: "socials", x: 12, y: 81, width: 40, height: 9 },
         // Phone screen in the background photo — QR image is placed here.

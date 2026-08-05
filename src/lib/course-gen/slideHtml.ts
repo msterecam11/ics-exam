@@ -11,6 +11,7 @@ import { inlineFontFaces } from "./fonts"
 import { effectsCss } from "./effects"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
+import { surfacePaint } from "./surface"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -67,7 +68,7 @@ function chromeHtml(input: RenderSlideInput): string {
   }).join("")
 }
 
-function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
+function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): string {
   // Unfilled master placeholders are editing prompts, never real content —
   // they must not appear in exports, QA screenshots, or presentations.
   if (el.placeholder) return ""
@@ -94,6 +95,21 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens): string {
           ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
           : `background:${color};`
         return `<div style="${box}${fill}"></div>`
+      }
+      // A surface with a fillStyle repaints through the SHARED resolver, so
+      // the exported deck shows the gradient/tint/glass the compiler
+      // measured rather than a flat approximation of it.
+      if (s.fillStyle) {
+        const paint = surfacePaint({
+          fill: s.fillStyle,
+          accent: resolveToken(s.fill, tokens, "#0C72C6"),
+          accentDeep: resolveToken("token:primary-dark", tokens, "#045089"),
+          surfaceHex: resolveToken("token:surface", tokens, "#FFFFFF"),
+          borderHex: resolveToken("token:border-subtle", tokens, "#DDE3EA"),
+          dark,
+          intensity: s.intensity,
+        })
+        return `<div style="${box}background:${paint.background};${paint.border ? `border:${paint.border};` : ""}${paint.blur ? `backdrop-filter:blur(${paint.blur}px);` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
       }
       return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
     }
@@ -144,7 +160,7 @@ export function renderSlideHtml(input: RenderSlideInput): string {
 <div id="slide">
   <img src="${bg}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />
   ${chromeHtml(input)}
-  ${input.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map(el => elementHtml(el, input.tokens)).join("")}
+  ${input.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map(el => elementHtml(el, input.tokens, master.background.tone === "dark")).join("")}
 </div>`
 
   return `<!doctype html><html><head><meta charset="utf-8">

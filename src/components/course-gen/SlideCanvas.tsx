@@ -9,6 +9,7 @@ import { SLIDE_W, SLIDE_H, resolveToken, type ThemeTokens } from "@/lib/course-g
 import { effectsCss } from "@/lib/course-gen/effects"
 import { iconSvg } from "@/lib/course-gen/icons"
 import { chartSvg } from "@/lib/course-gen/charts"
+import { surfacePaint } from "@/lib/course-gen/surface"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
 export interface Master {
@@ -53,6 +54,7 @@ function icsLogo(tone: string): string {
 
 export default function SlideCanvas(props: Props) {
   const { elements, master, tokens, interactive = false, selection = [] } = props
+  const darkMaster = master.background.tone === "dark"
 
   const pctX = (v: number) => `${(v / 100) * SLIDE_W}px`
   const pctY = (v: number) => `${(v / 100) * SLIDE_H}px`
@@ -160,6 +162,31 @@ export default function SlideCanvas(props: Props) {
                 ? `repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px)`
                 : undefined
               return <div key={el.id} {...common} style={{ ...box, background: s.dashed ? undefined : color, backgroundImage, ...cssStyle(effectsCss(el.effects, tokens)) }} />
+            }
+            // Surfaces with a fillStyle repaint through the shared resolver
+            // so the editor shows the same gradient/tint/glass the compiler
+            // measured and the PDF exports — one mapping, three paths.
+            if (s.fillStyle) {
+              const paint = surfacePaint({
+                fill: s.fillStyle,
+                accent: resolveToken(s.fill, tokens, "#0C72C6"),
+                accentDeep: resolveToken("token:primary-dark", tokens, "#045089"),
+                surfaceHex: resolveToken("token:surface", tokens, "#FFFFFF"),
+                borderHex: resolveToken("token:border-subtle", tokens, "#DDE3EA"),
+                dark: darkMaster,
+                intensity: s.intensity,
+              })
+              return <div key={el.id} {...common}
+                style={{
+                  ...box,
+                  background: paint.background,
+                  border: paint.border || undefined,
+                  backdropFilter: paint.blur ? `blur(${paint.blur}px)` : undefined,
+                  borderRadius: s.radius ?? 8,
+                  opacity: s.opacity ?? 1,
+                  boxShadow: s.shadow ? "0 8px 24px rgba(0,0,0,.12)" : undefined,
+                  ...cssStyle(effectsCss(el.effects, tokens)),
+                }} />
             }
             return <div key={el.id} {...common}
               style={{

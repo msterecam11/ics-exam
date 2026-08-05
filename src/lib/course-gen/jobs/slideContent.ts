@@ -64,6 +64,61 @@ Tier 3 — for anything none of the above can express (a real timeline, a diagra
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy,
 token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.`
 
+/**
+ * The palette, with real values.
+ *
+ * The agent used to receive token NAMES only — it was choosing colours from a
+ * list of words with no idea what any of them looked like, and was never told
+ * whether the slide it was designing had a dark background. That is exactly
+ * how dark navy headings ended up on the dark blue summary master, invisible.
+ * Showing the actual hex, plus stating the background outright, is the fix.
+ */
+function paletteBlock(tokens: any, dark: boolean): string {
+  const c = tokens?.colors ?? {}
+  const swatch = (name: string) => (c[name] ? `  token:${name} = ${c[name]}` : null)
+  const list = [
+    "primary", "primary-dark", "primary-light", "navy", "accent-warm",
+    "danger", "success", "tab-yellow", "text", "text-inverse",
+    "surface", "surface-alt", "surface-cream", "border-subtle",
+  ].map(swatch).filter(Boolean).join("\n")
+
+  const contrast = dark
+    ? `THIS SLIDE HAS A DARK BACKGROUND (deep blue).
+- Body text, headings and labels MUST use token:text-inverse. token:text and token:navy are near-black and will be invisible here.
+- For accents pick only the LIGHT end of the palette — token:primary-light, token:tab-yellow, token:success — never token:navy or token:primary-dark.
+- Cards on this master should use "tone":"glass" (translucent white), not "plain" or "cream".`
+    : `THIS SLIDE HAS A LIGHT BACKGROUND (white or pale blue).
+- Body text uses token:text; headings token:navy or the module accent.
+- token:text-inverse is white — use it ONLY as text sitting on a filled dark shape (a navy band, a coloured flow step), never on the slide background itself.`
+
+  return `${list}\n\n${contrast}`
+}
+
+const STYLE_REFERENCE = `card, callout, flow, radial, tiers and quote-banner each accept an optional "style":
+  "style": { "corner":"sharp|soft|round|pill", "fill":"plain|filled|tinted|outline|glass|gradient",
+             "elevation":"flat|raised|lifted|inset|ring", "density":"tight|normal|airy",
+             "accent":"token:…", "intensityRamp":true }
+
+This is what stops every slide looking the same. Two slides that both use
+"flow" should not be visually identical — pick treatments that suit THIS
+content, not the same defaults every time.
+
+How to choose, honestly:
+- fill "plain" — the neutral default; right when the content is the point and the container shouldn't compete.
+- fill "tinted" — a soft wash of the accent. Good for grouping related items without shouting.
+- fill "outline" — structure with no weight. Good when several items sit together and a filled block each would be heavy.
+- fill "filled" — a solid accent block. Reserve for the ONE thing that should be read first.
+- fill "gradient" — depth on a hero element: a quote-banner, a single closing statement. Never on a row of six cards.
+- fill "glass" — translucent, ONLY on a dark or photographic background. It does nothing on white.
+- elevation — ONE level per slide. "lifted" marks a focal object; "raised" is a gentle lift; "inset" recesses a
+  supporting panel; "ring" haloes a single element. Mixing levels on one slide reads as inconsistent, not layered.
+- corner — "sharp" reads formal and technical, "round" friendly, "pill" light. Keep it consistent WITHIN a slide;
+  vary it BETWEEN slides so the module doesn't feel stamped from one mould.
+- density — "airy" when there is little content and it would otherwise look stranded; "tight" when there is a lot.
+  This is the main lever for filling a slide honestly instead of leaving dead space.
+- intensityRamp (flow) — steps the accent's strength across the steps so a sequence reads as progression.
+  Use for ordered stages. Do NOT combine with "escalate", which already ramps green→red for severity.`
+
 const ICON_REFERENCE = `Use ONLY these icon names — anything else renders as a blank marker, exactly
 like an invented clause number. Pick by meaning, not by keyword: an icon should
 say something the text doesn't already say.
@@ -107,6 +162,8 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     content_plan,       // SlideContentPlan for THIS slide, from the module gather pass
     shapes_used,        // root blueprint `type`s already used by earlier slides in this module
     module_accent,       // this module's assigned branded accent token
+    tokens,              // the real theme — hex values, not just token names
+    dark_background,     // whether THIS slide's master is dark
     retry_feedback,     // set when QA bounced this slide back
   } = job.input ?? {}
 
@@ -136,7 +193,9 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     : "(structural slide — no substantive facts, just the title)"
 
   const varietyNote = shapes_used?.length
-    ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.`
+    ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.
+
+And when the shape MUST repeat because the content genuinely calls for it again, vary the treatment instead: a different fill, corner, density or elevation from the style parameters below. Two "flow" slides in one module are fine; two IDENTICAL-looking flow slides are not.`
     : "This is the first content slide in the module — no prior shape to avoid yet."
 
   const prompt = `You are the Design Agent for ICS Aviation's course generator. The material for this slide has already been researched and written — your ONLY job is to decide the most honest way to show it. You are not filling in a template; you are a presentation designer looking at finished content and reasoning about its shape, the way a person would before opening a design tool.
@@ -166,6 +225,12 @@ ${exemplarPromptBlock()}
 
 ### Primitive reference
 ${PRIMITIVE_REFERENCE}
+
+### Palette — real values, and this slide's background
+${paletteBlock(tokens, !!dark_background)}
+
+### Style parameters — how to make this slide look like itself
+${STYLE_REFERENCE}
 
 ### Icon vocabulary
 ${ICON_REFERENCE}
