@@ -44,7 +44,7 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
 Relationship primitives (reach for these when the relationship IS the content — see the reasoning step below):
-  { "type":"flow", "direction":"horizontal|vertical", "escalate":false, "steps":[{"n":"01","heading":"…","body":"…","icon":"…"}] }
+  { "type":"flow", "direction":"horizontal|vertical", "escalate":false, "marker":"text|circle", "steps":[{"n":"01","heading":"…","body":"…","icon":"…"}] }
   { "type":"radial", "hub":{"heading":"…","icon":"…"}, "spokes":[{"heading":"…","body":"…","icon":"…"}] }
   { "type":"tiers", "bands":[{"heading":"…","items":["…","…"],"tone":"token:navy"}] }
   { "type":"quote-banner", "text":"…", "attribution":"…" }
@@ -118,8 +118,13 @@ How to choose, honestly:
 - fill "glass" — translucent, ONLY on a dark or photographic background. It does nothing on white.
 - elevation — ONE level per slide. "lifted" marks a focal object; "raised" is a gentle lift; "inset" recesses a
   supporting panel; "ring" haloes a single element. Mixing levels on one slide reads as inconsistent, not layered.
-- corner — "sharp" reads formal and technical, "round" friendly, "pill" light. Keep it consistent WITHIN a slide;
-  vary it BETWEEN slides so the module doesn't feel stamped from one mould.
+- corner — "sharp" reads formal and technical, "round" friendly, "pill" light, "notched" (a cut top-right corner)
+  a deliberate, slightly technical accent — use it sparingly, on the one card that should look distinct, not
+  every card on a slide. Keep corner style consistent WITHIN a slide; vary it BETWEEN slides so the module
+  doesn't feel stamped from one mould.
+- flow "marker":"circle" — draws each step's number inside a solid circular badge instead of bare digits.
+  Reaches for a genuinely different look than the default numbered card; use when a step sequence is the
+  slide's main event, not for every flow reflexively.
 - density — "airy" when there is little content and it would otherwise look stranded; "tight" when there is a lot.
   This is the main lever for filling a slide honestly instead of leaving dead space.
 - intensityRamp (flow) — steps the accent's strength across the steps so a sequence reads as progression.

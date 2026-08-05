@@ -9,7 +9,7 @@ import { SLIDE_W, SLIDE_H, resolveToken, type ThemeTokens } from "@/lib/course-g
 import { effectsCss } from "@/lib/course-gen/effects"
 import { iconSvg } from "@/lib/course-gen/icons"
 import { chartSvg } from "@/lib/course-gen/charts"
-import { surfacePaint } from "@/lib/course-gen/surface"
+import { surfacePaint, cornerCss, type CornerName } from "@/lib/course-gen/surface"
 import { patternCss } from "@/lib/course-gen/decor"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
@@ -184,6 +184,9 @@ export default function SlideCanvas(props: Props) {
                   ...cssStyle(effectsCss(el.effects, tokens)),
                 }} />
             }
+            // Corner shape repaints through the same shared helper as the
+            // fill does — "notched"'s clip-path included.
+            const corners = cornerCss(s.corner as CornerName, s.radius ?? 8)
             // Surfaces with a fillStyle repaint through the shared resolver
             // so the editor shows the same gradient/tint/glass the compiler
             // measured and the PDF exports — one mapping, three paths.
@@ -203,7 +206,8 @@ export default function SlideCanvas(props: Props) {
                   background: paint.background,
                   border: paint.border || undefined,
                   backdropFilter: paint.blur ? `blur(${paint.blur}px)` : undefined,
-                  borderRadius: s.radius ?? 8,
+                  borderRadius: corners.borderRadius,
+                  clipPath: corners.clipPath || undefined,
                   opacity: s.opacity ?? 1,
                   boxShadow: s.shadow ? "0 8px 24px rgba(0,0,0,.12)" : undefined,
                   ...cssStyle(effectsCss(el.effects, tokens)),
@@ -214,7 +218,8 @@ export default function SlideCanvas(props: Props) {
                 ...box,
                 background: resolveToken(s.fill, tokens, "transparent"),
                 border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")}` : undefined,
-                borderRadius: s.radius ?? 8,
+                borderRadius: corners.borderRadius,
+                clipPath: corners.clipPath || undefined,
                 opacity: s.opacity ?? 1,
                 boxShadow: s.shadow ? "0 8px 24px rgba(0,0,0,.12)" : undefined,
                 ...cssStyle(effectsCss(el.effects, tokens)),

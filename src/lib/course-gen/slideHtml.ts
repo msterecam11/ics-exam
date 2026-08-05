@@ -11,7 +11,7 @@ import { inlineFontFaces } from "./fonts"
 import { effectsCss } from "./effects"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
-import { surfacePaint } from "./surface"
+import { surfacePaint, cornerCss, type CornerName } from "./surface"
 import { patternCss } from "./decor"
 
 export interface RenderSlideInput {
@@ -112,6 +112,10 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
         const col = resolveToken(s.fill, tokens, "#0C72C6")
         return `<div style="${box}${patternCss(s.pattern, col)}border-radius:${s.radius ?? 0}px;opacity:${s.opacity ?? 1};${effectsCss(el.effects, tokens)}"></div>`
       }
+      // Corner shape (including "notched"'s clip-path) repaints through the
+      // SAME shared helper the compiler measured with — see surface.ts.
+      const corners = cornerCss(s.corner as CornerName, s.radius ?? 8)
+      const cornerCssStr = `border-radius:${corners.borderRadius};${corners.clipPath ? `clip-path:${corners.clipPath};` : ""}`
       // A surface with a fillStyle repaints through the SHARED resolver, so
       // the exported deck shows the gradient/tint/glass the compiler
       // measured rather than a flat approximation of it.
@@ -125,9 +129,9 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
           dark,
           intensity: s.intensity,
         })
-        return `<div style="${box}background:${paint.background};${paint.border ? `border:${paint.border};` : ""}${paint.blur ? `backdrop-filter:blur(${paint.blur}px);` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
+        return `<div style="${box}background:${paint.background};${paint.border ? `border:${paint.border};` : ""}${paint.blur ? `backdrop-filter:blur(${paint.blur}px);` : ""}${cornerCssStr}opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
       }
-      return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}border-radius:${s.radius ?? 8}px;opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
+      return `<div style="${box}background:${resolveToken(s.fill, tokens, "transparent")};${s.stroke ? `border:${s.strokeWidth ?? 1}px solid ${resolveToken(s.stroke, tokens, "#DDE3EA")};` : ""}${cornerCssStr}opacity:${s.opacity ?? 1};${s.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,.12);" : ""}${effectsCss(el.effects, tokens)}"></div>`
     }
     case "icon": {
       // The real Phosphor glyph, filling its baked box. This path feeds both

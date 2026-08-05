@@ -25,7 +25,7 @@ export type SpacingStep = "xs" | "sm" | "md" | "lg" | "xl"
 // still bakes to plain editable elements, but no longer one fixed look.
 
 /** Corner language. `pill` is fully rounded; `sharp` is square. */
-export type CornerStyle = "sharp" | "soft" | "round" | "pill"
+export type CornerStyle = "sharp" | "soft" | "round" | "pill" | "notched"
 /** How a surface is filled. `tinted` is a 12% wash of the accent; `glass` is
  *  translucent white for dark/photographic grounds; `gradient` runs the accent
  *  into its darker sibling. */
@@ -172,6 +172,9 @@ export interface FlowNode extends BlueprintBase {
   type: "flow" // sequential stages connected by a directional line (process, lifecycle, escalation)
   direction?: "horizontal" | "vertical"
   style?: StyleParams
+  /** Draws each step's number inside a solid circular badge instead of as
+   *  bare numeral text — a real numbered-stage look, not just a bold digit. */
+  marker?: "text" | "circle"
   steps: { n?: number | string; heading: string; body?: string; icon?: string }[]
   /** Colour ramp low→high across steps (green→amber→orange→red) — for
    *  severity/escalation content where position in the sequence IS the point. */
@@ -350,6 +353,12 @@ export interface ShapeElement extends ElementBase {
     elevation?: Elevation
     /** Repeating texture drawn in `fill`, for decoration surfaces. */
     pattern?: "dots" | "grid" | "diagonal"
+    /** Corner style — border-radius values plus "notched" (a diagonal cut
+     *  top-right corner, via clip-path) and "circle" (a numeral marker drawn
+     *  as a perfect circle rather than a rounded square). Both are safe to
+     *  bake: clip-path affects paint only, never the box getBoundingClientRect
+     *  measures, so — unlike rotation — it never needs deferring to paint time. */
+    corner?: CornerStyle | "circle"
   }
 }
 export interface TableCell { text: string; colSpan?: number; rowSpan?: number; style?: Record<string, TokenRef | number | string> }

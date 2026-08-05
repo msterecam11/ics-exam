@@ -77,3 +77,35 @@ export function surfacePaint(opts: {
 export function fillCarriesInverseText(fill: FillStyleName): boolean {
   return fill === "filled" || fill === "gradient" || fill === "glass"
 }
+
+export type CornerName = "sharp" | "soft" | "round" | "pill" | "notched" | "circle"
+
+export interface CornerCss {
+  borderRadius: string
+  /** "" when the corner doesn't need one — only "notched" does. Safe to
+   *  apply at measurement time: clip-path is a paint-time operation and
+   *  never changes what getBoundingClientRect reports, unlike a transform. */
+  clipPath: string
+}
+
+/**
+ * A box's final rendered size isn't known where this runs (blueprintHtml
+ * emits an HTML string; the browser resolves actual layout afterward), so
+ * "notched"'s cut is a fixed px, the same way padding and radius already
+ * are — not scaled to a box size nothing here can see yet.
+ *
+ * @param radiusPx  the resolved px radius for "soft"/"round" (from theme tokens)
+ */
+export function cornerCss(corner: CornerName | undefined, radiusPx: number): CornerCss {
+  switch (corner) {
+    case "sharp": return { borderRadius: "0", clipPath: "" }
+    case "pill": return { borderRadius: "999px", clipPath: "" }
+    case "circle": return { borderRadius: "50%", clipPath: "" }
+    case "notched":
+      // 16px cut, inset from the padding so it reads as a deliberate cut
+      // corner rather than clipping whatever sits near it.
+      return { borderRadius: "0", clipPath: "polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%)" }
+    case "round": return { borderRadius: "18px", clipPath: "" }
+    default: return { borderRadius: `${radiusPx}px`, clipPath: "" }
+  }
+}

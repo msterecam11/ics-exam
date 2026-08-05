@@ -202,6 +202,11 @@ export async function compileBlueprint(input: CompileInput): Promise<{
             style: {
               fill: p.fill, stroke: p.stroke, strokeWidth: p.strokeWidth,
               radius: p.radius ?? 8, opacity: 1, shadow: !!p.shadow, dashed: !!p.dashed,
+              // "corner" (notched/circle/pill/...) takes precedence over the
+              // plain numeric radius when a primitive went through the
+              // shared surface() resolver; badge-number and Tier-3 custom
+              // shapes still bake a plain radius and never set this.
+              corner: p.corner,
               // Carried through so the PDF and editor repaint the SAME
               // surface — a gradient card baked as a flat colour would be
               // the bullets bug all over again.

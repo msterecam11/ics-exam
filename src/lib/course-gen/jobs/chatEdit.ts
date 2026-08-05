@@ -128,9 +128,9 @@ Each custom child ({"kind":"shape|line|text|icon","x","y","width","height","prop
 No other prop does anything — there is no "arrow"; for a pointer use an icon rotated to the angle you need. Check that no two children's x/y/width/height boxes overlap before finalizing.
 Never emit coordinates outside a custom node — structure only; the compiler lays it out inside the master.
 
-card, callout, flow, radial, tiers and quote-banner accept an optional "style":
-{"corner":"sharp|soft|round|pill","fill":"plain|filled|tinted|outline|glass|gradient","elevation":"flat|raised|lifted|inset|ring","density":"tight|normal|airy","accent":"token:…","intensityRamp":true}
-One elevation level per slide. "gradient" is for a hero element, never a row of cards. "glass" only over dark or photographic backgrounds. "density":"airy" is the lever for filling a sparse slide honestly instead of leaving dead space.
+card, callout, flow, radial, tiers, quote-banner and band accept an optional "style":
+{"corner":"sharp|soft|round|pill|notched","fill":"plain|filled|tinted|outline|glass|gradient","elevation":"flat|raised|lifted|inset|ring","density":"tight|normal|airy","accent":"token:…","intensityRamp":true}
+One elevation level per slide. "gradient" is for a hero element, never a row of cards. "glass" only over dark or photographic backgrounds. "density":"airy" is the lever for filling a sparse slide honestly instead of leaving dead space. "notched" is a sparing accent for one distinct card, not every card. flow also accepts "marker":"circle" for a numbered-badge look instead of bare digits.
 
 Layout masters available: ${Object.keys(masters).join(", ")}.
 Colour tokens: token:primary, token:primary-dark, token:primary-light, token:navy, token:accent-warm, token:danger, token:success, token:tab-yellow, token:text, token:text-inverse.

@@ -12,7 +12,7 @@ import type { BlueprintNode, TextRun } from "./primitives"
 import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
-import { surfacePaint, fillCarriesInverseText, type FillStyleName } from "./surface"
+import { surfacePaint, fillCarriesInverseText, cornerCss, type FillStyleName, type CornerName } from "./surface"
 import { effectsCss } from "./effects"
 
 interface Bake {
@@ -85,7 +85,6 @@ function runsHtml(text: string | TextRun[], tokens: ThemeTokens): { html: string
   return { html, runs }
 }
 
-const CORNER_PX: Record<string, number> = { sharp: 0, soft: 8, round: 18, pill: 999 }
 const DENSITY_STEP: Record<string, string> = { tight: "sm", normal: "md", airy: "lg" }
 const ELEVATION_CSS: Record<string, string> = {
   flat: "",
@@ -126,8 +125,8 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
     const accent = resolveToken(accentToken, tokens, T("primary"))
     const i = opts.intensity ?? 1
 
-    const radius = CORNER_PX[corner] ?? 8
     const pad = gap(DENSITY_STEP[density] ?? "md")
+    const corners = cornerCss(corner as CornerName, 8)
 
     // Painted through the SHARED resolver so the PDF and the editor reproduce
     // exactly this surface from the baked element (see surface.ts).
@@ -144,9 +143,10 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
     return {
       css: `background:${paint.background};${paint.border ? `border:${paint.border};` : ""}`
         + `${paint.blur ? `backdrop-filter:blur(${paint.blur}px);` : ""}`
-        + `border-radius:${radius}px;padding:${pad};${ELEVATION_CSS[elevation] ?? ""}`,
+        + `border-radius:${corners.borderRadius};${corners.clipPath ? `clip-path:${corners.clipPath};` : ""}`
+        + `padding:${pad};${ELEVATION_CSS[elevation] ?? ""}`,
       pad,
-      radius,
+      radius: corners.borderRadius,
       onFill: fillCarriesInverseText(fill as FillStyleName),
       accent,
       accentToken,
@@ -156,10 +156,22 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         fillStyle: fill,
         intensity: i,
         elevation,
-        radius,
+        corner,
         shadow: elevation === "raised" || elevation === "lifted",
       },
     }
+  }
+
+  /**
+   * A step number in a solid circle rather than bare bold text — box and
+   * numeral bake as two elements (box behind, number on top), the same
+   * pattern badge-number already uses, because a shape element carries no
+   * text of its own.
+   */
+  function numeralBadge(value: string, accentToken: string): string {
+    const resolved = resolveToken(accentToken, tokens, T("primary"))
+    const size = 40
+    return `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: accentToken, corner: "circle" } })} style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:${resolved};flex-shrink:0"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: value, bold: true }], fontSize: TYPE_PX.h5, color: "token:text-inverse", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:#fff">${esc(value)}</span></span>`
   }
 
   /**
@@ -405,7 +417,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
             : surface(n.style, { defaultFill: "plain", defaultCorner: "soft", accent: "token:primary", intensity: stepIntensity })
           const card = `<div ${bakeAttr({ kind: "shape", props: { ...sf.bake, stroke: accent } })} style="flex:1;${sf.css}display:flex;flex-direction:column;gap:6px;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
             s.n !== undefined
-              ? `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`
+              ? (n.marker === "circle" ? numeralBadge(String(s.n), n.escalate ? rampToken(i) : "token:primary") : `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`)
               : s.icon ? iconHtml({ name: s.icon, token: "token:navy", resolved: n.escalate ? "#fff" : T("navy"), size: 24 }) : ""
             }<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: s.heading, bold: true }], fontSize: TYPE_PX.h5, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${n.escalate ? "#fff" : T("navy")}">${esc(s.heading)}</span>${
               s.body ? `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: s.body }], fontSize: TYPE_PX.small, color: n.escalate ? "token:text-inverse" : "token:text" }) })} style="font-size:${TYPE_PX.small}px;color:${n.escalate ? "rgba(255,255,255,0.9)" : T("text")}">${esc(s.body)}</span>` : ""
