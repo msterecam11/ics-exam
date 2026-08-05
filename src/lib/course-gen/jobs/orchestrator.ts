@@ -188,6 +188,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
           master, tokens,
           title: source.title,
           subtitle: (source as any).subtitle,
+          decor: (source as any).decor,
         }))
       : { elements: titleOnlyElements(source, master, tokens), overflow: false, underfill: false }
     elements = compiled.elements

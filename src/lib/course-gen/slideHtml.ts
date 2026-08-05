@@ -12,6 +12,7 @@ import { effectsCss } from "./effects"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
 import { surfacePaint } from "./surface"
+import { patternCss } from "./decor"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -95,6 +96,11 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
           ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
           : `background:${color};`
         return `<div style="${box}${fill}"></div>`
+      }
+      // Decoration textures repaint from the same helper the compiler used.
+      if (s.pattern) {
+        const col = resolveToken(s.fill, tokens, "#0C72C6")
+        return `<div style="${box}${patternCss(s.pattern, col)}border-radius:${s.radius ?? 0}px;opacity:${s.opacity ?? 1};${effectsCss(el.effects, tokens)}"></div>`
       }
       // A surface with a fillStyle repaints through the SHARED resolver, so
       // the exported deck shows the gradient/tint/glass the compiler

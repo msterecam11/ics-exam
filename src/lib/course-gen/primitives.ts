@@ -323,6 +323,8 @@ export interface ShapeElement extends ElementBase {
     intensity?: number
     /** Elevation name, kept so the editor can round-trip it. */
     elevation?: Elevation
+    /** Repeating texture drawn in `fill`, for decoration surfaces. */
+    pattern?: "dots" | "grid" | "diagonal"
   }
 }
 export interface TableCell { text: string; colSpan?: number; rowSpan?: number; style?: Record<string, TokenRef | number | string> }
@@ -347,12 +349,38 @@ export type LayoutKind =
   | "cover" | "section_divider" | "content_white" | "content_lightblue"
   | "summary_dark" | "self_assessment" | "closing_cta"
 
+/**
+ * Slide-level decoration — everything that sits BEHIND the content.
+ *
+ * One mechanism, several devices. These are the marks a designer adds to stop
+ * a slide reading as a bare box of text: a huge faint numeral anchoring the
+ * step, a watermark glyph carrying the subject, a hairline accent along one
+ * edge. They never carry information the content doesn't already state, so
+ * they can be ignored entirely without losing meaning — which is exactly what
+ * makes them safe to add and safe to leave out.
+ */
+export interface DecorSpec {
+  /** Oversized faint numeral, back-left. Use for a step, stage or module. */
+  numeral?: string | number
+  /** Oversized faint glyph, back-right. Must be a name from the icon set. */
+  icon?: string
+  /** Repeating texture across the content zone. */
+  pattern?: "dots" | "grid" | "diagonal"
+  /** Hairline accent strip along one edge of the content zone. */
+  edge?: "left" | "top"
+  /** L-brackets framing the content zone's corners. */
+  corners?: boolean
+  /** Colour for all of the above. Defaults to the module accent. */
+  accent?: TokenRef
+}
+
 export interface SlideSourceContent {
   intent: string // e.g. "comparison", "numbered-process", "blank_master"
   layout_kind: LayoutKind
   title?: string
   subtitle?: string
   blueprint?: BlueprintNode // the interior composition (content zone only)
+  decor?: DecorSpec         // what sits behind the composition
   media_requests?: MediaRequest[]
   sensitive?: boolean // regulatory/safety/medical/legal → generated images need human review
   citations?: { source_doc_id: string; excerpt?: string }[]

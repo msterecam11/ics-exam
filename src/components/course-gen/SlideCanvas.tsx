@@ -10,6 +10,7 @@ import { effectsCss } from "@/lib/course-gen/effects"
 import { iconSvg } from "@/lib/course-gen/icons"
 import { chartSvg } from "@/lib/course-gen/charts"
 import { surfacePaint } from "@/lib/course-gen/surface"
+import { patternCss } from "@/lib/course-gen/decor"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
 export interface Master {
@@ -162,6 +163,17 @@ export default function SlideCanvas(props: Props) {
                 ? `repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px)`
                 : undefined
               return <div key={el.id} {...common} style={{ ...box, background: s.dashed ? undefined : color, backgroundImage, ...cssStyle(effectsCss(el.effects, tokens)) }} />
+            }
+            if (s.pattern) {
+              const col = resolveToken(s.fill, tokens, "#0C72C6")
+              return <div key={el.id} {...common}
+                style={{
+                  ...box,
+                  ...cssStyle(patternCss(s.pattern, col)),
+                  borderRadius: s.radius ?? 0,
+                  opacity: s.opacity ?? 1,
+                  ...cssStyle(effectsCss(el.effects, tokens)),
+                }} />
             }
             // Surfaces with a fillStyle repaint through the shared resolver
             // so the editor shows the same gradient/tint/glass the compiler

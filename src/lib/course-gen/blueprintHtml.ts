@@ -13,6 +13,7 @@ import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
 import { surfacePaint, fillCarriesInverseText, type FillStyleName } from "./surface"
+import { effectsCss } from "./effects"
 
 interface Bake {
   kind: "text" | "shape" | "icon" | "image" | "table" | "chart" | "line"
@@ -154,7 +155,50 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
     }
   }
 
+  /**
+   * Applies a node's `effects` — and this is a bug fix, not a feature.
+   *
+   * The prompt has advertised shadow / gradient / blur / opacity /
+   * textShadow on any node for several revisions, and NOTHING here ever read
+   * them: they were parsed out of the model's JSON and silently dropped. The
+   * final renderer could always draw them; nothing ever put them on an
+   * element to draw. That is why generated decks have never had any depth.
+   *
+   * Injecting into the first `style="` and the first `data-bake="` is safe
+   * because every case below returns one outer element and both attributes
+   * belong to it — the visual is applied at measurement time AND carried
+   * into the bake, so the PDF and editor reproduce it.
+   */
+  function withEffects(html: string, effects: any): string {
+    if (!effects || typeof effects !== "object") return html
+    let out = html
+
+    const css = effectsCss(effects, tokens)
+    if (css) {
+      const at = out.indexOf('style="')
+      if (at >= 0) out = `${out.slice(0, at + 7)}${css};${out.slice(at + 7)}`
+    }
+
+    const bakeAt = out.indexOf('data-bake="')
+    if (bakeAt >= 0) {
+      const end = out.indexOf('"', bakeAt + 11)
+      const raw = out.slice(bakeAt + 11, end)
+      try {
+        const parsed = JSON.parse(
+          raw.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+        )
+        parsed.props = { ...parsed.props, effects }
+        out = out.slice(0, bakeAt) + bakeAttr(parsed) + out.slice(end + 1)
+      } catch { /* malformed bake — leave the visual, skip the carry */ }
+    }
+    return out
+  }
+
   function render(n: BlueprintNode): string {
+    return withEffects(renderNode(n), (n as any).effects)
+  }
+
+  function renderNode(n: BlueprintNode): string {
     switch (n.type) {
       case "row": {
         const weights = n.weights ?? n.children.map(() => 1)

@@ -232,6 +232,23 @@ ${paletteBlock(tokens, !!dark_background)}
 ### Style parameters — how to make this slide look like itself
 ${STYLE_REFERENCE}
 
+### Decoration — what sits behind the content
+Alongside "blueprint" you may return an optional "decor" object. It renders
+BEHIND everything, faintly, and carries no information:
+  "decor": { "numeral":"03", "icon":"shield-check", "pattern":"dots|grid|diagonal",
+             "edge":"left|top", "corners":true, "accent":"token:…" }
+
+- numeral — a huge faint number anchoring a stage, step or module. Only when the
+  slide genuinely IS that numbered thing; never as a decorative digit.
+- icon — a huge faint glyph of the slide's subject, from the icon vocabulary below.
+- pattern — a texture across the zone. Use sparingly; never behind a table or chart,
+  where it competes with the data.
+- edge / corners — a hairline accent framing the zone. Quiet structure, not ornament.
+
+Pick AT MOST ONE of numeral / icon / pattern per slide — two faint layers behind
+each other is noise, not depth. Most slides need none of this: reach for it when a
+slide would otherwise read as a bare box of text, not as a habit.
+
 ### Icon vocabulary
 ${ICON_REFERENCE}
 
@@ -266,6 +283,7 @@ Return ONLY valid JSON:
   "layout_kind": "${slide.layout_kind}",
   "title": "final slide title",
   "blueprint": { …structural tree, or null for a bare structural slide… },
+  "decor": { …optional; omit entirely unless the slide genuinely benefits… },
   "sensitive": false,
   "citations": [{ "source_doc_id": "file name it came from", "excerpt": "short supporting quote" }]
 }`

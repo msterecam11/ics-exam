@@ -7,8 +7,9 @@
 // the output still ends up as ordinary, fully editable elements.
 
 import { getBrowser } from "@/lib/browser"
-import type { BlueprintNode, CanvasElement } from "./primitives"
+import type { BlueprintNode, CanvasElement, DecorSpec } from "./primitives"
 import { blueprintToHtml } from "./blueprintHtml"
+import { decorHtml } from "./decor"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import { inlineFontFaces } from "./fonts"
 import { fitTitleFontSize } from "./typefit"
@@ -21,6 +22,8 @@ export interface CompileInput {
   /** Optional title text placed into the master's title zone. */
   title?: string
   subtitle?: string
+  /** What sits behind the composition — see decor.ts. */
+  decor?: DecorSpec
 }
 
 interface MeasuredNode {
@@ -31,11 +34,18 @@ interface MeasuredNode {
 // Rendered once per compile — a bare page sized to the slide, with the
 // content zone as an absolutely-positioned box. Fonts are the self-hosted
 // Plus Jakarta Sans the rest of the app uses.
-function buildPage(html: string, zone: { x: number; y: number; width: number; height: number }): string {
+function buildPage(
+  html: string,
+  zone: { x: number; y: number; width: number; height: number },
+  decor = "",
+): string {
   const zx = (zone.x / 100) * SLIDE_W
   const zy = (zone.y / 100) * SLIDE_H
   const zw = (zone.width / 100) * SLIDE_W
   const zh = (zone.height / 100) * SLIDE_H
+  // The decoration layer is absolutely positioned, so it is out of flow and
+  // unaffected by `#zone > * {flex:1}`; being first in the DOM it also bakes
+  // with the lowest z-index and therefore sits behind every real element.
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
   ${inlineFontFaces()}
@@ -43,7 +53,8 @@ function buildPage(html: string, zone: { x: number; y: number; width: number; he
   body{width:${SLIDE_W}px;height:${SLIDE_H}px;font-family:'Jakarta',sans-serif;position:relative;overflow:hidden;background:#fff}
   #zone{position:absolute;left:${zx}px;top:${zy}px;width:${zw}px;height:${zh}px;display:flex;flex-direction:column;overflow:visible}
   #zone > *{flex:1;min-height:0}
-</style></head><body><div id="zone">${html}</div></body></html>`
+  #zone > .decor{flex:0 0 auto}
+</style></head><body><div id="zone">${decor}${html}</div></body></html>`
 }
 
 /**
@@ -93,7 +104,14 @@ export async function compileBlueprint(input: CompileInput): Promise<{
     //
     // The real guarantee that measurement uses the correct font is the
     // fonts.ready await below, not the navigation predicate.
-    await page.setContent(buildPage(html, zone), { waitUntil: "load", timeout: 60_000 })
+    const decor = decorHtml({
+      decor: input.decor,
+      tokens: input.tokens,
+      zoneW: (zone.width / 100) * SLIDE_W,
+      zoneH: (zone.height / 100) * SLIDE_H,
+      dark: darkContext,
+    })
+    await page.setContent(buildPage(html, zone, decor), { waitUntil: "load", timeout: 60_000 })
     await page.evaluate(async () => { await (document as any).fonts?.ready })
 
     const measured: MeasuredNode[] = await page.evaluate(() => {
@@ -120,7 +138,8 @@ export async function compileBlueprint(input: CompileInput): Promise<{
 
     // The opposite failure: a slide that is mostly empty white space. Only
     // ink counts (see INK_KINDS) — a stretched empty card is not content.
-    const ink = measured.filter(m => INK_KINDS.has(m.bake.kind))
+    // Decoration is explicitly not ink — see the note in decor.ts.
+    const ink = measured.filter(m => INK_KINDS.has(m.bake.kind) && !(m.bake.props as any)?.decor)
     const inkTop = ink.length ? Math.min(...ink.map(m => m.y)) : zoneTop
     const inkBottom = ink.length ? Math.max(...ink.map(m => m.y + m.h)) : zoneTop
     const filledRatio = (inkBottom - inkTop) / Math.max(1, zoneBottom - zoneTop)
@@ -160,6 +179,10 @@ export async function compileBlueprint(input: CompileInput): Promise<{
         height: round2((m.h / SLIDE_H) * 100),
         zIndex: z++,
         ...(Number.isFinite(rotate) && rotate !== 0 ? { rotation: rotate } : {}),
+        // Carried from the blueprint node. Until this existed the agent's
+        // effects were applied to the measured HTML and then thrown away,
+        // so shadow/opacity/gradient never reached a finished slide.
+        ...(p.effects && typeof p.effects === "object" ? { effects: p.effects } : {}),
       }
       switch (m.bake.kind) {
         case "text": {
@@ -183,6 +206,7 @@ export async function compileBlueprint(input: CompileInput): Promise<{
               // surface — a gradient card baked as a flat colour would be
               // the bullets bug all over again.
               fillStyle: p.fillStyle, intensity: p.intensity, elevation: p.elevation,
+              pattern: p.pattern,
             } } as CanvasElement)
           break
         case "line":
