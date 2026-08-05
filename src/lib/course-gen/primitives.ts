@@ -80,11 +80,15 @@ export interface HeadingNode extends BlueprintBase {
   color?: TokenRef // e.g. "token:accent-warm" for the orange section labels
   icon?: string    // phosphor icon name, rendered before the text
   accentBar?: boolean // vertical accent bar to the left (real-deck pattern)
+  /** Small letterspaced caps line above the heading — "GOVERNANCE", not a
+   *  second sentence. Names the category the heading belongs to; skip it
+   *  when the heading already says that on its own. */
+  eyebrow?: string
 }
 export interface BodyNode extends BlueprintBase {
   type: "body"
   /** Rich runs: plain string or array of styled runs (bold emphasis etc.). */
-  text: string | { text: string; bold?: boolean; color?: TokenRef }[]
+  text: string | TextRun[]
 }
 export interface BulletsNode extends BlueprintBase {
   type: "bullets"
@@ -131,6 +135,10 @@ export interface StatNode extends BlueprintBase {
   type: "stat"
   value: string
   label: string
+  /** "hero" makes the number the largest thing on the slide — the number
+   *  IS the message, not a caption under something else. Use for the one
+   *  figure the audience should leave remembering. */
+  size?: "normal" | "hero"
 }
 export interface FigureNode extends BlueprintBase {
   type: "figure" // image card with optional navy caption bar ("FIG 2.1 ...")
@@ -285,7 +293,12 @@ export interface ElementBase {
    *  and cleared on first edit. */
   placeholder?: boolean
 }
-export interface TextRun { text: string; bold?: boolean; italic?: boolean; color?: TokenRef }
+export interface TextRun {
+  text: string; bold?: boolean; italic?: boolean; color?: TokenRef
+  /** Marker-style background wash behind just this run — for the one phrase
+   *  in a paragraph that should be found at a glance, not the whole line. */
+  highlight?: TokenRef
+}
 export interface TextElement extends ElementBase {
   type: "text"
   runs: TextRun[]

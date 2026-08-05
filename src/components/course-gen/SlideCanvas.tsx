@@ -128,7 +128,16 @@ export default function SlideCanvas(props: Props) {
         switch (el.type) {
           case "text": {
             const s = el.style
-            const html = el.runs.map(r => r.bold ? `<b>${escapeHtml(r.text)}</b>` : escapeHtml(r.text)).join("")
+            // Must match blueprintHtml's runsHtml / slideHtml exactly.
+            const html = el.runs.map(r => {
+              let t = escapeHtml(r.text)
+              if (r.bold) t = `<b>${t}</b>`
+              if (r.highlight) {
+                const bg = resolveToken(r.highlight, tokens, "#F2C14E")
+                t = `<span style="background:${bg}44;padding:0 3px;border-radius:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone">${t}</span>`
+              }
+              return t
+            }).join("")
             // An unfilled placeholder reads as a prompt while editing, and is
             // simply skipped when rendering for real (export / QA / present).
             const isPrompt = !!el.placeholder && interactive

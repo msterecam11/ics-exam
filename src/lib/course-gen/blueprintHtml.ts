@@ -66,12 +66,19 @@ function bakeAttr(b: Bake): string {
   return `data-bake="${esc(JSON.stringify(b))}"`
 }
 
-function runsHtml(text: string | TextRun[] | { text: string; bold?: boolean; color?: string }[]): { html: string; runs: TextRun[] } {
+function runsHtml(text: string | TextRun[], tokens: ThemeTokens): { html: string; runs: TextRun[] } {
   if (typeof text === "string") return { html: esc(text), runs: [{ text }] }
   const runs = text as TextRun[]
   const html = runs.map(r => {
     let t = esc(r.text)
     if (r.bold) t = `<b>${t}</b>`
+    // Highlight is drawn here at compose time so the measured box includes
+    // its padding; the same wash is reproduced from the baked run's own
+    // `highlight` field at export/edit time (see slideHtml, SlideCanvas).
+    if (r.highlight) {
+      const bg = resolveToken(r.highlight, tokens, "#F2C14E")
+      t = `<span style="background:${bg}44;padding:0 3px;border-radius:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone">${t}</span>`
+    }
     if (r.color) t = `<span style="color:inherit">${t}</span>`
     return t
   }).join("")
@@ -228,11 +235,17 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         const icon = n.icon
           ? iconHtml({ name: n.icon, token: n.color ?? "token:accent-warm", resolved: color, size, extraStyle: "margin-right:8px" })
           : ""
-        return `<div style="display:flex;align-items:center">${bar}${icon}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text, bold: true }], fontSize: size, lineHeight: 1.25, color: n.color ?? (darkContext ? "token:text-inverse" : "token:navy"), fontWeight: 700 } })} style="font-size:${size}px;font-weight:700;color:${color};line-height:1.25">${esc(n.text)}</span></div>`
+        const headingLine = `<div style="display:flex;align-items:center">${bar}${icon}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.text, bold: true }], fontSize: size, lineHeight: 1.25, color: n.color ?? (darkContext ? "token:text-inverse" : "token:navy"), fontWeight: 700 } })} style="font-size:${size}px;font-weight:700;color:${color};line-height:1.25">${esc(n.text)}</span></div>`
+        if (!n.eyebrow) return headingLine
+        // Baked as its own element, above the heading line — a genuinely
+        // separate small caps label, not a styled span inside the heading's
+        // own text run (which would drag its metrics into the heading size).
+        const eyebrowLine = `<div ${bakeAttr({ kind: "text", props: { runs: [{ text: n.eyebrow.toUpperCase() }], fontSize: TYPE_PX.small, color: n.color ?? "token:accent-warm" } })} style="font-size:${TYPE_PX.small}px;font-weight:700;letter-spacing:1.5px;color:${color};margin-bottom:2px">${esc(n.eyebrow.toUpperCase())}</div>`
+        return `<div style="display:flex;flex-direction:column">${eyebrowLine}${headingLine}</div>`
       }
 
       case "body": {
-        const { html, runs } = runsHtml(n.text as any)
+        const { html, runs } = runsHtml(n.text as any, tokens)
         // lineHeight is baked so the renderer reproduces the EXACT metrics
         // this measurement was taken with — otherwise wrapped text reflows
         // into a box sized for different metrics and clips.
@@ -323,8 +336,14 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "rgba(255,255,255,0.55)", radius: 6 } })} style="background:rgba(255,255,255,0.55);border-left:4px solid ${T("primary-light")};border-radius:6px;padding:16px;display:flex;align-items:center;gap:12px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: "?", bold: true }], fontSize: TYPE_PX.h4, color: "token:primary", fontWeight: 800 } })} style="font-size:${TYPE_PX.h4}px;font-weight:800;color:${T("primary")}">?</span><span ${bakeAttr({ kind: "text", props: { runs: [{ text: q }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(q)}</span></div>`
         ).join("")}</div>`
 
-      case "stat":
-        return `<div style="display:flex;flex-direction:column;gap:2px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.value, bold: true }], fontSize: TYPE_PX.h2, color: "token:primary", fontWeight: 800 } })} style="font-size:${TYPE_PX.h2}px;font-weight:800;color:${T("primary")}">${esc(n.value)}</span><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.label }], fontSize: TYPE_PX.small, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${textColor}">${esc(n.label)}</span></div>`
+      case "stat": {
+        // "hero" is the number-as-graphic device: the figure fills roughly
+        // the height a title would, so it reads before anything else on the
+        // slide — the point of reaching for a stat at all, rather than a
+        // number the same size as its own label.
+        const valueSize = n.size === "hero" ? TYPE_PX.h1 * 1.6 : TYPE_PX.h2
+        return `<div style="display:flex;flex-direction:column;gap:2px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.value, bold: true }], fontSize: valueSize, color: "token:primary", fontWeight: 800 } })} style="font-size:${valueSize}px;font-weight:800;line-height:1;color:${T("primary")}">${esc(n.value)}</span><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.label }], fontSize: TYPE_PX.small, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;color:${textColor}">${esc(n.label)}</span></div>`
+      }
 
       case "figure": {
         const cap = n.caption

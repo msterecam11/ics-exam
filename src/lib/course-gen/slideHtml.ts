@@ -80,7 +80,17 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
     case "text": {
       const s = el.style
       const color = resolveToken(s.color, tokens, "#333333")
-      const html = el.runs.map(r => (r.bold ? `<b>${esc(r.text)}</b>` : esc(r.text))).join("")
+      // Must match blueprintHtml's runsHtml exactly — that is what this box
+      // was measured against.
+      const html = el.runs.map(r => {
+        let t = esc(r.text)
+        if (r.bold) t = `<b>${t}</b>`
+        if (r.highlight) {
+          const bg = resolveToken(r.highlight, tokens, "#F2C14E")
+          t = `<span style="background:${bg}44;padding:0 3px;border-radius:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone">${t}</span>`
+        }
+        return t
+      }).join("")
       // MUST be a plain block, never a flex container: in a flex column each
       // run (e.g. a <b>) becomes its own flex item and lands on its own line,
       // which reflows text the compiler measured as one flowing paragraph.

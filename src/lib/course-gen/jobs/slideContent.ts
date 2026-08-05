@@ -24,8 +24,8 @@ import type { SlideContentPlan, SlideSourceContent } from "../primitives"
 const PRIMITIVE_REFERENCE = `Containers:  { "type":"row", "gap":"md", "weights":[2,3], "children":[…] }   horizontal split; weights are relative widths
              { "type":"stack", "gap":"md", "children":[…] }                  vertical flow
 Fact/enumeration primitives (right when the content really is a plain list):
-  { "type":"heading", "text":"…", "level":4, "color":"token:accent-warm", "icon":"strategy", "accentBar":true }
-  { "type":"body", "text":"…" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true}] }
+  { "type":"heading", "text":"…", "level":4, "color":"token:accent-warm", "icon":"strategy", "accentBar":true, "eyebrow":"GOVERNANCE" }
+  { "type":"body", "text":"…" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true},{"text":"the one phrase to spot at a glance","highlight":"token:tab-yellow"}] }
   { "type":"bullets", "items":["…","…"] }
   { "type":"card", "tone":"plain|cream|glass|accent", "accent":"token:primary", "children":[…] }
   { "type":"badge-number", "n":"01", "variant":"navy|band-warm|band-blue", "heading":"…" }
@@ -33,7 +33,7 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"icon-row", "icon":"shield-check", "text":"…", "accent":"token:success" }
   { "type":"alternating-list", "items":[{"text":"…","icon":"check"}] }
   { "type":"question-rows", "questions":["…","…"] }
-  { "type":"stat", "value":"5 years", "label":"validity period" }
+  { "type":"stat", "value":"5 years", "label":"validity period", "size":"normal|hero" }
   { "type":"figure", "media":{"want":"photo","subject":"…","purpose":"…"}, "caption":"FIG 2.1: …", "shadow":true }
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
   { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
@@ -117,7 +117,12 @@ How to choose, honestly:
 - density — "airy" when there is little content and it would otherwise look stranded; "tight" when there is a lot.
   This is the main lever for filling a slide honestly instead of leaving dead space.
 - intensityRamp (flow) — steps the accent's strength across the steps so a sequence reads as progression.
-  Use for ordered stages. Do NOT combine with "escalate", which already ramps green→red for severity.`
+  Use for ordered stages. Do NOT combine with "escalate", which already ramps green→red for severity.
+
+Three more small tools, used sparingly — each is for ONE moment per slide at most, never decoration throughout:
+- heading "eyebrow" — a short letterspaced label above a heading naming its category ("GOVERNANCE"). Skip it when the heading already says that.
+- stat "size":"hero" — makes a number the largest thing on the slide. Reserve for the single figure the audience should leave remembering — never more than one hero stat per slide.
+- body run "highlight" — a marker wash behind one phrase in running text, for the one thing that must be found at a glance. One highlighted phrase per slide at most; a paragraph with three highlights has none.`
 
 const ICON_REFERENCE = `Use ONLY these icon names — anything else renders as a blank marker, exactly
 like an invented clause number. Pick by meaning, not by keyword: an icon should
