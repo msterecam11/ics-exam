@@ -152,6 +152,15 @@ export interface FigureNode extends BlueprintBase {
   mask?: "none" | "circle" | "rounded" | "squircle"
 }
 
+export interface MeterNode extends BlueprintBase {
+  // Labelled horizontal bars — a proportion read at a glance. Right when the
+  // point is "how far along / how much of the whole", which a donut states
+  // less clearly and a table not at all.
+  type: "meter"
+  items: { label: string; value: number; max?: number; caption?: string; accent?: TokenRef }[]
+  style?: StyleParams
+}
+
 export interface IconTileNode extends BlueprintBase {
   // A solid accent square holding a white glyph, with a heading and short
   // body beneath it. This is the single strongest device in the reference
@@ -271,7 +280,7 @@ export type BlueprintNode =
   | CalloutNode | IconRowNode | AlternatingListNode | QuestionRowsNode
   | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode
   | FlowNode | RadialNode | TiersNode | QuoteBannerNode | StatEquationNode | TagListNode
-  | BandNode | IconTileNode
+  | BandNode | IconTileNode | MeterNode
   | CustomNode
 
 /** What the Media Agent resolves into an actual image. */
@@ -455,6 +464,23 @@ export interface SlideContentPlan {
   relationship: "sequence" | "hierarchy" | "hub-and-satellites" | "comparison"
     | "cause-effect" | "escalation" | "cumulative" | "single-statement" | "enumeration"
   citations: { source_doc_id: string; excerpt?: string }[]
+  /**
+   * Comparable quantities this slide's material actually contains, pulled
+   * out as structured values rather than left inside prose.
+   *
+   * The chart primitives have always rendered correctly in all three paths
+   * and were used ZERO times across a real 46-slide course. The cause was
+   * never the prompt: the gather pass emitted only `facts: string[]`, so a
+   * figure like "renewal needs 6-12 months of lead time" reached the design
+   * agent as a sentence, and there was no series anywhere for a chart to
+   * draw. Extracted here, at the point the material is actually being read.
+   *
+   * Only ever populated when the numbers are genuinely comparable to each
+   * other — three durations, four counts, a set of percentages. A single
+   * lone figure is a `stat`, not a chart, and forcing it into one invents a
+   * comparison the source never made.
+   */
+  data?: { label: string; value: number; unit?: string }[]
 }
 export interface ModuleContentPlan {
   slides: SlideContentPlan[]

@@ -43,6 +43,7 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"figure", "media":{"want":"photo","subject":"…","purpose":"…"}, "caption":"FIG 2.1: …", "shadow":true, "mask":"none|circle|rounded|squircle" }  mask crops the photo — "circle" turns a stock shot into a deliberate portrait/vignette
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
   { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
+  { "type":"meter", "items":[{"label":"…","value":72,"max":100,"caption":"72%","accent":"token:primary"}] }  labelled proportion bars — "how far along / how much of the whole"
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
 Relationship primitives (reach for these when the relationship IS the content — see the reasoning step below):
   { "type":"flow", "direction":"horizontal|vertical", "escalate":false, "marker":"text|circle", "steps":[{"n":"01","heading":"…","body":"…","icon":"…"}] }
@@ -237,6 +238,7 @@ ${module_accent ? `This module's accent: **${module_accent}** — use it (not to
 ## The material for this slide (already gathered — do not invent new facts, only decide how to show these)
 ${factsBlock}
 ${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
+${plan?.data?.length ? `\nComparable quantities in this material — these are REAL numbers from the source, already extracted for you:\n${plan.data.map(d => `  - ${d.label}: ${d.value}${d.unit ? ` ${d.unit}` : ""}`).join("\n")}\nThis slide has genuinely chartable data. Showing it as a chart or meter almost always beats restating the numbers inside a sentence — a reader compares bars instantly and parses prose slowly. Use "chart" (bar for comparing categories, line for a trend over time, donut for parts of a whole with 5 or fewer slices) or "meter" for proportions. Keep the numbers exactly as given; never round them into something the source didn't say.` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}\nProduce less text and/or a simpler structure so everything fits comfortably.` : ""}
 
 ## Reasoning step — do this before composing

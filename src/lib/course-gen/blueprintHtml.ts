@@ -369,6 +369,21 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         return `<div style="display:flex;flex-direction:column;flex:1;${n.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,0.12);" : ""}border-radius:8px;overflow:hidden;border:1px solid ${T("border-subtle")}"><div ${bakeAttr({ kind: "image", props: { media: n.media, effects: maskEffects } })} style="flex:1;min-height:140px;${maskEffects ? effectsCss({ mask: n.mask }, tokens) : ""}background:linear-gradient(135deg,${T("surface-alt")},#e6edf5);display:flex;align-items:center;justify-content:center;color:${T("border-subtle")};font-size:12px">image</div>${cap}</div>`
       }
 
+      case "meter": {
+        return `<div style="display:flex;flex-direction:column;gap:${gap("md")}">${n.items.map(it => {
+          const accentToken = it.accent ?? n.style?.accent ?? "token:primary"
+          const accent = resolveToken(accentToken, tokens, T("primary"))
+          const max = it.max && it.max > 0 ? it.max : 100
+          const pctFilled = Math.max(0, Math.min(100, (it.value / max) * 100))
+          const readout = it.caption ?? (it.max ? `${it.value} / ${it.max}` : `${it.value}%`)
+          // Track and fill bake as two shapes (track behind, fill over it) —
+          // the fill's measured width IS the proportion, so the baked element
+          // carries the value geometrically and needs no re-computation.
+          const bar = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:surface-alt", corner: "pill" } })} style="display:block;width:100%;height:10px;border-radius:999px;background:${darkContext ? "rgba(255,255,255,0.18)" : T("surface-alt")};position:relative"><span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: accentToken, fillStyle: "filled", corner: "pill" } })} style="position:absolute;left:0;top:0;height:10px;width:${pctFilled}%;border-radius:999px;background:${accent}"></span></span>`
+          return `<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.label, bold: true }], fontSize: TYPE_PX.body, color: darkContext ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${darkContext ? T("text-inverse") : T("navy")}">${esc(it.label)}</span><span ${bakeAttr({ kind: "text", props: { runs: [{ text: readout, bold: true }], fontSize: TYPE_PX.small, color: accentToken, fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${accent}">${esc(readout)}</span></div>${bar}</div>`
+        }).join("")}</div>`
+      }
+
       case "icon-tile": {
         const accentToken = n.accent ?? "token:primary"
         const accent = resolveToken(accentToken, tokens, T("primary"))

@@ -79,6 +79,7 @@ ${refBlock ? `## Reference material (ground every claim in this; cite where used
 - "relationship": how these facts relate to EACH OTHER.
 ${RELATIONSHIP_GUIDE}
 - "citations": clause + document for every factual claim that comes from the reference material. Use the clause number the material actually shows — never invent one.
+- "data": OPTIONAL. If this slide's material contains quantities that are genuinely comparable TO EACH OTHER — several durations, several counts, a set of percentages, a before/after pair — pull them out as {label, value, unit} so the design pass can show them as a chart or meter rather than burying them in a sentence. Omit the field entirely otherwise. Do NOT invent numbers to fill it, do not convert a single lone figure into a one-item series (that is a stat, not a chart), and do not list quantities that measure different things and therefore cannot sit on one axis.
 
 Structural slides (cover, section_divider, closing_cta) still get a "relationship" of "single-statement" and minimal facts (just the title's substance).
 
@@ -86,7 +87,7 @@ Structural slides (cover, section_divider, closing_cta) still get a "relationshi
 Return ONLY valid JSON:
 {
   "slides": [
-    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "citations": [{"source_doc_id":"...","excerpt":"..."}] }
+    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
   ]
 }
 One entry per slide listed above, in the same order.`
