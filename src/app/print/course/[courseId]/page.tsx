@@ -401,6 +401,7 @@ export default async function PrintCoursePage({
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
 
   const totalCandidates = allCandidates.length
+  const uniqueCandidateCount = new Set(allCandidates.map((c: any) => c.full_name)).size
   const allPassedCount = allCandidates.filter((c: any) => c.passed).length
   const overallPassRate = totalCandidates > 0 ? (allPassedCount / totalCandidates) * 100 : 0
   const overallAvg =
@@ -468,7 +469,7 @@ export default async function PrintCoursePage({
             <div className="flex items-center gap-10">
               <div className="text-center">
                 <p className="text-2xl font-bold text-white flex items-center gap-1.5 justify-center">
-                  <Users className="h-5 w-5 text-white/60" />{totalCandidates}
+                  <Users className="h-5 w-5 text-white/60" />{uniqueCandidateCount}
                 </p>
                 <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Candidates</p>
               </div>
@@ -579,7 +580,7 @@ export default async function PrintCoursePage({
               {[
                 { label: "Overall Average",   value: isManual ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
                 { label: "Overall Pass Rate",  value: `${overallPassRate.toFixed(1)}%`, color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
-                { label: "Total Candidates",   value: `${totalCandidates}`,           color: "#64748b" },
+                { label: "Total Candidates",   value: `${uniqueCandidateCount}`,      color: "#64748b" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="py-4 px-3 text-center">
                   <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-1">{label}</p>

@@ -287,7 +287,7 @@ export async function GET(
 
   const { groupId } = await params
   const isManual = new URL(req.url).searchParams.get("mode") === "manual"
-  const { group, courseDataArr, allSubmissions, allScores, totalCandidates, allPassedCount, overallPassRate, overallAvg, totalExams } =
+  const { group, courseDataArr, allSubmissions, allScores, totalCandidates, allPassedCount, overallPassRate, overallAvg, totalExams, uniqueCandidateStats } =
     await fetchGroupData(groupId, { manual: isManual })
 
   if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -316,6 +316,7 @@ export async function GET(
       courseAvgScore,
       coursePassCount,
       courseTotalCandidates,
+      courseUniqueCandidateCount: courseLeaderboard.length,
       coursePassRate,
       courseLeaderboard,
       aggregatedSectionAvgs,
@@ -323,6 +324,7 @@ export async function GET(
     allSubmissions,
     allScores,
     totalCandidates,
+    uniqueCandidateCount: uniqueCandidateStats.length,
     allPassedCount,
     overallPassRate,
     overallAvg,

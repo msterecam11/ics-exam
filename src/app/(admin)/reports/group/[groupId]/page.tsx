@@ -281,7 +281,7 @@ export default function GroupReportViewPage() {
 
   const {
     group, courses, allSubmissions, allScores,
-    totalCandidates, allPassedCount, overallPassRate, overallAvg, totalExams, narrative,
+    totalCandidates, uniqueCandidateCount, allPassedCount, overallPassRate, overallAvg, totalExams, narrative,
   } = data
 
   const hasAI = !!narrative
@@ -401,7 +401,7 @@ export default function GroupReportViewPage() {
                 {[
                   { label: t("Groups").replace(/s$/, "s"), val: courses.length, labelSingular: t("Groups") },
                   { label: "Exams", val: totalExams },
-                  { label: "Candidates", val: totalCandidates },
+                  { label: "Candidates", val: uniqueCandidateCount },
                   { label: "Avg Score", val: mode === "manual" ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%` },
                   { label: "Avg Time", val: formatMinutes(avgTimeMins) },
                 ].map(({ label, val }, i, arr) => (
@@ -472,13 +472,13 @@ export default function GroupReportViewPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {courses.map(({ course, exams, courseAvgScore, coursePassCount, courseTotalCandidates, coursePassRate }: any, idx: number) => {
+                      {courses.map(({ course, exams, courseAvgScore, coursePassCount, courseTotalCandidates, courseUniqueCandidateCount, coursePassRate }: any, idx: number) => {
                         const col = mode === "manual" ? letterGrade(courseAvgScore) : scoreColor(courseAvgScore)
                         return (
                           <tr key={course.id} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                             <td className="px-3 py-2.5 text-xs font-semibold text-slate-700">{course.name}</td>
                             <td className="px-3 py-2.5 text-xs text-slate-600">{exams.length}</td>
-                            <td className="px-3 py-2.5 text-xs text-slate-600">{courseTotalCandidates}</td>
+                            <td className="px-3 py-2.5 text-xs text-slate-600">{courseUniqueCandidateCount}</td>
                             <td className="px-3 py-2.5"><span className="text-xs font-bold" style={{ color: col.text }}>{mode === "manual" ? letterGrade(courseAvgScore).letter : `${courseAvgScore.toFixed(1)}%`}</span></td>
                             <td className="px-3 py-2.5 text-xs text-slate-600">{coursePassRate.toFixed(0)}%</td>
                             <td className="px-3 py-2.5"><span className="text-xs font-semibold text-emerald-600">{coursePassCount}</span></td>
@@ -525,7 +525,7 @@ export default function GroupReportViewPage() {
                 {[
                   { label: "Overall Average",  value: mode === "manual" ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,       color: "#1B4F8A" },
                   { label: "Overall Pass Rate", value: `${overallPassRate.toFixed(1)}%`,  color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
-                  { label: "Total Candidates",  value: `${totalCandidates}`,              color: "#64748b" },
+                  { label: "Total Candidates",  value: `${uniqueCandidateCount}`,          color: "#64748b" },
                   { label: "Total Exams",       value: `${totalExams}`,                   color: "#64748b" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="py-3 px-2 text-center">

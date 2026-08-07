@@ -383,6 +383,7 @@ export default async function PrintGroupPage({
     .sort((a: any, b: any) => (b.total_score ?? 0) - (a.total_score ?? 0))
   const allScores = allSubmissions.map((c: any) => c.total_score ?? 0)
   const totalCandidates = allSubmissions.length
+  const uniqueCandidateCount = new Set(allSubmissions.map((c: any) => c.full_name)).size
   const allPassedCount = allSubmissions.filter((c: any) => c.passed).length
   const overallPassRate = totalCandidates > 0 ? (allPassedCount / totalCandidates) * 100 : 0
   const overallAvg = totalCandidates > 0 ? allSubmissions.reduce((s: number, c: any) => s + (c.total_score ?? 0), 0) / totalCandidates : 0
@@ -445,7 +446,7 @@ export default async function PrintGroupPage({
               {[
                 { label: t("Courses"),   val: courseDataArr.length },
                 { label: "Exams",        val: totalExams },
-                { label: "Candidates",   val: totalCandidates },
+                { label: "Candidates",   val: uniqueCandidateCount },
                 { label: "Avg Score",    val: isManual ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%` },
               ].map(({ label, val }, i, arr) => (
                 <div key={label} className="flex items-center gap-8">
@@ -509,13 +510,13 @@ export default async function PrintGroupPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {courseDataArr.map(({ course, examDataArr, courseAvgScore, coursePassCount, courseTotalCandidates, coursePassRate }: any, idx: number) => {
+                    {courseDataArr.map(({ course, examDataArr, courseAvgScore, coursePassCount, courseTotalCandidates, courseLeaderboard, coursePassRate }: any, idx: number) => {
                       const col = isManual ? letterGrade(courseAvgScore) : scoreColor(courseAvgScore)
                       return (
                         <tr key={course.id} className={`border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}>
                           <td className="px-3 py-2.5 text-xs font-semibold text-slate-700">{course.name}</td>
                           <td className="px-3 py-2.5 text-xs text-slate-600">{examDataArr.length}</td>
-                          <td className="px-3 py-2.5 text-xs text-slate-600">{courseTotalCandidates}</td>
+                          <td className="px-3 py-2.5 text-xs text-slate-600">{courseLeaderboard.length}</td>
                           <td className="px-3 py-2.5"><span className="text-xs font-bold" style={{ color: col.text }}>{isManual ? letterGrade(courseAvgScore).letter : `${courseAvgScore.toFixed(1)}%`}</span></td>
                           <td className="px-3 py-2.5 text-xs text-slate-600">{coursePassRate.toFixed(0)}%</td>
                           <td className="px-3 py-2.5"><span className="text-xs font-semibold text-emerald-600">{coursePassCount}</span></td>
@@ -562,7 +563,7 @@ export default async function PrintGroupPage({
               {[
                 { label: "Overall Average",   value: isManual ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
                 { label: "Overall Pass Rate", value: `${overallPassRate.toFixed(1)}%`, color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
-                { label: "Total Candidates",  value: `${totalCandidates}`,           color: "#64748b" },
+                { label: "Total Candidates",  value: `${uniqueCandidateCount}`,      color: "#64748b" },
                 { label: "Total Exams",       value: `${totalExams}`,                color: "#64748b" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="py-3 px-2 text-center">
@@ -688,7 +689,7 @@ export default async function PrintGroupPage({
         </Page>
 
         {/* ══ PAGES 4+ — PER-COURSE ══ */}
-        {courseDataArr.map(({ course, examDataArr, courseAvgScore, coursePassCount, courseTotalCandidates, coursePassRate, aggregatedSectionAvgs }: any, courseIdx: number) => {
+        {courseDataArr.map(({ course, examDataArr, courseAvgScore, coursePassCount, courseTotalCandidates, courseLeaderboard, coursePassRate, aggregatedSectionAvgs }: any, courseIdx: number) => {
           const col = scoreColor(courseAvgScore)
           const hasRadar = aggregatedSectionAvgs.length >= 3
           const courseAI = narrative?.course_analyses?.[course.name] ?? null
@@ -719,7 +720,7 @@ export default async function PrintGroupPage({
                 <div className="flex gap-2 flex-wrap avoid-break">
                   {[
                     { label: "Exams",      val: examDataArr.length,                     color: "bg-slate-100 text-slate-700" },
-                    { label: "Candidates", val: courseTotalCandidates,                  color: "bg-slate-100 text-slate-700" },
+                    { label: "Candidates", val: courseLeaderboard.length,               color: "bg-slate-100 text-slate-700" },
                     { label: "Passed",     val: coursePassCount,                        color: "bg-emerald-50 text-emerald-700" },
                     { label: "Failed",     val: courseTotalCandidates - coursePassCount, color: "bg-red-50 text-red-600" },
                     { label: "Pass Rate",  val: `${coursePassRate.toFixed(0)}%`,         color: "bg-blue-50 text-blue-700" },

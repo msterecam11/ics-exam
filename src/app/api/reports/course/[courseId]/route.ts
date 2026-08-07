@@ -178,12 +178,17 @@ export async function fetchCourseData(courseId: string, opts: { manual?: boolean
       ? allCandidatesRanked.reduce((s: number, c: any) => s + c.total_score, 0) / totalCandidates
       : 0
 
+  // Unique candidates (dedup by full_name — a candidate may have multiple exam submissions in this course)
+  const uniqueCandidateNames = new Set(allCandidatesRanked.map((c: any) => c.full_name))
+  const uniqueCandidateCount = uniqueCandidateNames.size
+
   return {
     course,
     examDataArr,
     allCandidatesRanked,
     allScores,
     totalCandidates,
+    uniqueCandidateCount,
     overallPassRate,
     overallAvg,
   }
@@ -201,7 +206,7 @@ export async function GET(
   const { courseId } = await params
   const isManual = new URL(req.url).searchParams.get("mode") === "manual"
 
-  const { course, examDataArr, allCandidatesRanked, allScores, totalCandidates, overallPassRate, overallAvg } =
+  const { course, examDataArr, allCandidatesRanked, allScores, totalCandidates, uniqueCandidateCount, overallPassRate, overallAvg } =
     await fetchCourseData(courseId, { manual: isManual })
 
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -234,6 +239,7 @@ export async function GET(
     allCandidatesRanked,
     allScores,
     totalCandidates,
+    uniqueCandidateCount,
     overallPassRate,
     overallAvg,
     narrative,

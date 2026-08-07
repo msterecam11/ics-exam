@@ -297,7 +297,7 @@ export default function CourseReportViewPage() {
     )
   }
 
-  const { course, exams, allCandidatesRanked, allScores, totalCandidates, overallPassRate, overallAvg, narrative } = data
+  const { course, exams, allCandidatesRanked, allScores, totalCandidates, uniqueCandidateCount, overallPassRate, overallAvg, narrative } = data
   const hasAI = !!narrative
   const allPassedCount = allCandidatesRanked.filter((c: any) => c.passed).length
 
@@ -419,7 +419,7 @@ export default function CourseReportViewPage() {
               <div className="flex items-center gap-10">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-white flex items-center gap-1.5 justify-center">
-                    <Users className="h-5 w-5 text-white/60" />{totalCandidates}
+                    <Users className="h-5 w-5 text-white/60" />{uniqueCandidateCount}
                   </p>
                   <p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Candidates</p>
                 </div>
@@ -539,7 +539,7 @@ export default function CourseReportViewPage() {
                 {[
                   { label: "Overall Average",  value: mode === "manual" ? letterGrade(overallAvg).letter : `${overallAvg.toFixed(1)}%`,    color: "#1B4F8A" },
                   { label: "Overall Pass Rate", value: `${overallPassRate.toFixed(1)}%`, color: overallPassRate >= 60 ? "#10b981" : "#ef4444" },
-                  { label: "Total Candidates",  value: `${totalCandidates}`,           color: "#64748b" },
+                  { label: "Total Candidates",  value: `${uniqueCandidateCount}`,      color: "#64748b" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="py-4 px-3 text-center">
                     <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-1">{label}</p>
