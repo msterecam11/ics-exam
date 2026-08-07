@@ -361,7 +361,27 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         const cap = n.caption
           ? `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: "token:primary-dark", caption: true } })} style="background:${T("primary-dark")};padding:8px 12px"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.caption }], fontSize: TYPE_PX.small, color: "token:text-inverse", fontWeight: 600 } })} style="color:#fff;font-size:${TYPE_PX.small}px;font-weight:600">${esc(n.caption)}</span></div>`
           : ""
-        return `<div style="display:flex;flex-direction:column;flex:1;${n.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,0.12);" : ""}border-radius:8px;overflow:hidden;border:1px solid ${T("border-subtle")}"><div ${bakeAttr({ kind: "image", props: { media: n.media } })} style="flex:1;min-height:140px;background:linear-gradient(135deg,${T("surface-alt")},#e6edf5);display:flex;align-items:center;justify-content:center;color:${T("border-subtle")};font-size:12px">image</div>${cap}</div>`
+        // A mask crops the photo itself, so it rides on the image element's
+        // own effects (where the renderer already knows how to apply it) —
+        // not on the surrounding card, which still needs square corners to
+        // sit its caption bar flush against.
+        const maskEffects = n.mask && n.mask !== "none" ? { mask: n.mask } : undefined
+        return `<div style="display:flex;flex-direction:column;flex:1;${n.shadow ? "box-shadow:0 8px 24px rgba(0,0,0,0.12);" : ""}border-radius:8px;overflow:hidden;border:1px solid ${T("border-subtle")}"><div ${bakeAttr({ kind: "image", props: { media: n.media, effects: maskEffects } })} style="flex:1;min-height:140px;${maskEffects ? effectsCss({ mask: n.mask }, tokens) : ""}background:linear-gradient(135deg,${T("surface-alt")},#e6edf5);display:flex;align-items:center;justify-content:center;color:${T("border-subtle")};font-size:12px">image</div>${cap}</div>`
+      }
+
+      case "icon-tile": {
+        const accentToken = n.accent ?? "token:primary"
+        const accent = resolveToken(accentToken, tokens, T("primary"))
+        const sq = 52
+        // Tile square and its glyph bake as two elements (square behind,
+        // glyph on top) — the same pattern badge-number and the circular
+        // flow marker use, because a shape element carries no glyph of its own.
+        const tile = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: accentToken, fillStyle: "filled", corner: n.style?.corner ?? "soft" } })} style="width:${sq}px;height:${sq}px;border-radius:${n.style?.corner === "pill" ? "50%" : "12px"};background:${accent};display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${
+          iconHtml({ name: n.icon, token: "token:text-inverse", resolved: "#fff", size: 26 })
+        }</span>`
+        return `<div style="display:flex;flex-direction:column;gap:${gap("sm")};align-items:flex-start">${tile}<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.heading, bold: true }], fontSize: TYPE_PX.h5, color: darkContext ? "token:text-inverse" : "token:navy", fontWeight: 700 } })} style="font-size:${TYPE_PX.h5}px;font-weight:700;color:${darkContext ? T("text-inverse") : T("navy")}">${esc(n.heading)}</span>${
+          n.body ? `<span ${bakeAttr({ kind: "text", props: { runs: [{ text: n.body }], fontSize: TYPE_PX.small, lineHeight: 1.5, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.small}px;line-height:1.5;color:${textColor}">${esc(n.body)}</span>` : ""
+        }</div>`
       }
 
       case "table": {

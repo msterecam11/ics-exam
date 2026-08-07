@@ -145,6 +145,25 @@ export interface FigureNode extends BlueprintBase {
   media: MediaRequest
   caption?: string
   shadow?: boolean
+  /** Crops the photo to a shape. A circle or arch turns a rectangular stock
+   *  photo into a deliberate portrait/vignette; "rounded" is the default
+   *  card look. The mechanism already existed on ElementEffects and rendered
+   *  correctly — nothing ever offered it at the blueprint level. */
+  mask?: "none" | "circle" | "rounded" | "squircle"
+}
+
+export interface IconTileNode extends BlueprintBase {
+  // A solid accent square holding a white glyph, with a heading and short
+  // body beneath it. This is the single strongest device in the reference
+  // decks we compared against and the one we had no equivalent for: it gives
+  // a card grid a real visual anchor instead of another line of text where
+  // the icon is just a small tinted glyph in the margin.
+  type: "icon-tile"
+  icon: string
+  heading: string
+  body?: string
+  accent?: TokenRef
+  style?: StyleParams
 }
 export interface TableNode extends BlueprintBase {
   type: "table"
@@ -252,7 +271,7 @@ export type BlueprintNode =
   | CalloutNode | IconRowNode | AlternatingListNode | QuestionRowsNode
   | StatNode | FigureNode | TableNode | ChartNode | ComparisonNode
   | FlowNode | RadialNode | TiersNode | QuoteBannerNode | StatEquationNode | TagListNode
-  | BandNode
+  | BandNode | IconTileNode
   | CustomNode
 
 /** What the Media Agent resolves into an actual image. */

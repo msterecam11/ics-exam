@@ -36,10 +36,11 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"badge-number", "n":"01", "variant":"navy|band-warm|band-blue", "heading":"…" }
   { "type":"callout", "tone":"requirement|definition|impact|note", "label":"DEF:", "text":"…" }
   { "type":"icon-row", "icon":"shield-check", "text":"…", "accent":"token:success" }
+  { "type":"icon-tile", "icon":"shield-check", "heading":"…", "body":"…", "accent":"token:primary" }  solid accent square + white glyph, then heading and body — put 3-4 in a row for a card grid with real visual anchors
   { "type":"alternating-list", "items":[{"text":"…","icon":"check"}] }
   { "type":"question-rows", "questions":["…","…"] }
   { "type":"stat", "value":"5 years", "label":"validity period", "size":"normal|hero" }
-  { "type":"figure", "media":{"want":"photo","subject":"…","purpose":"…"}, "caption":"FIG 2.1: …", "shadow":true }
+  { "type":"figure", "media":{"want":"photo","subject":"…","purpose":"…"}, "caption":"FIG 2.1: …", "shadow":true, "mask":"none|circle|rounded|squircle" }  mask crops the photo — "circle" turns a stock shot into a deliberate portrait/vignette
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
   { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
@@ -180,6 +181,8 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     module_accent,       // this module's assigned branded accent token
     tokens,              // the real theme — hex values, not just token names
     dark_background,     // whether THIS slide's master is dark
+    photos_used,         // how many earlier slides in this module carry a photo
+    slides_remaining,    // how many slides are left after this one
     retry_feedback,     // set when QA bounced this slide back
   } = job.input ?? {}
 
@@ -207,6 +210,15 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
   const factsBlock = plan?.facts?.length
     ? plan.facts.map((f: string) => `  - ${f}`).join("\n")
     : "(structural slide — no substantive facts, just the title)"
+
+  // Turns "use photos sometimes" into a decision this slide can actually
+  // make. Without the module's running count, every slide independently
+  // concluded its own subject was too abstract to photograph and the whole
+  // deck came out with no imagery at all.
+  const photoNote = isStructural ? ""
+    : (photos_used ?? 0) === 0
+      ? `No slide in this module carries a photograph yet${(slides_remaining ?? 0) <= 2 ? " and there are almost none left — if this slide's subject has any real physical setting at all, this is the moment to use it." : ". If this slide's subject has a genuine physical setting, prefer a figure here."}`
+      : `${photos_used} earlier slide(s) in this module already carry a photograph, so imagery is established — only add another if it genuinely earns its place.`
 
   const varietyNote = shapes_used?.length
     ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.
@@ -288,7 +300,7 @@ Ask the sharper question, not just "is this generic": **would I produce this exa
 - Aviation-professional register; precise, factual, no filler or marketing language.
 - Fit the slide: a diagram-shaped slide (flow/radial/tiers) needs less running prose than a bullet slide — let the shape carry meaning instead of restating it in a paragraph. As a ceiling, keep total body text under ~110 words.
 - Reproduce citations from the gathered material's "citations" list where you use that fact; never invent a clause number.
-- Use a figure/photo only when it genuinely aids understanding, at most one per slide, and only for something photographable (never an abstract/regulatory idea — put that in a callout, table, or diagram instead).
+- Photography: still never ask for a photo OF an abstract idea — "a compliance framework", "clause 139.15(b)" — no such photograph exists and the search returns something vaguely aviation-shaped and wrong. But that rule is about the SUBJECT, not a reason to avoid imagery: almost every module has slides whose subject has a real physical setting (an inspection walk, a control tower, a fire appliance, a works site, people in a briefing) even when the surrounding argument is abstract. Reach for those. ${photoNote} At most one figure per slide.
 - Flag "sensitive": true when the slide covers safety-critical, medical, legal, or regulatory-compliance content.
 ${isStructural ? `- This is a ${slide.layout_kind} slide: keep it minimal — a strong title, and either no blueprint at all or a very light one.` : ""}
 

@@ -133,12 +133,33 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     .map((p: any) => p.source_content?.shape)
     .filter(Boolean)
 
+  // How many earlier slides in this module actually carry a photo. The
+  // "never photograph an abstract idea" rule is right slide by slide, but
+  // applied to a module of governance content it fires on every slide and
+  // the result is forty slides of boxed text with no imagery anywhere. The
+  // agent can only weigh that trade-off if it knows what the module already
+  // has, so the count travels with the request.
+  const photosUsed = (priorPages ?? [])
+    .filter((p: any) => JSON.stringify(p.source_content?.blueprint ?? {}).includes('"figure"'))
+    .length
+
+  // Everything the design agent needs that ISN'T per-attempt. Held in one
+  // object so the QA retry path re-sends it verbatim instead of rebuilding
+  // the input by hand and quietly losing fields.
+  const retryCtx = {
+    photos_used: photosUsed,
+    slides_remaining: mod.slides.length - cursor.slide_index - 1,
+    tokens,
+    dark_background: master.background.tone === "dark",
+  }
+
   // ── 1. Design (Sonnet) ────────────────────────────────────────────────────
   await progress(job.id, `${stepLabel} — designing`, pct(doneBefore + 0.15, totalSlides))
   let source = await handleSlideContentJob({
     course_id: courseId,
     module_id: mod.module_id,
     input: {
+      ...retryCtx,
       slide,
       module_title: mod.title,
       module_number: mod.module_number,
@@ -147,8 +168,6 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       content_plan: slidePlan,
       shapes_used: shapesUsed,
       module_accent: moduleAccentToken(mod.module_number),
-      tokens,
-      dark_background: master.background.tone === "dark",
     },
   })
 
@@ -196,14 +215,14 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // Geometric overflow is detectable without a vision call — fix it first.
     if (compiled.overflow && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
       continue
     }
     // The opposite failure — nothing previously caught a slide that's mostly
     // empty white space; it passed QA legitimately because nothing checked.
     if (compiled.underfill && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "This composition leaves too much empty space for the size of its area — it will read as unfinished rather than intentional. Either add genuine supporting material (another fact from the gathered content, a supporting stat, a second example) or choose a shape that fills the space honestly — a larger single statement, a fuller flow/tiers/radial composition. Do not just stretch existing text bigger."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
       continue
     }
 
@@ -226,7 +245,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     const unresolvedImage = elements.some(e => e.type === "image" && !e.url)
     if (unresolvedImage && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
       continue
     }
 
@@ -280,7 +299,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     verdictFeedback = !factOk
       ? factVerdict!.feedback
       : verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
-    source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback)
+    source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
   }
 
   // ── 5. Persist the finished slide ────────────────────────────────────────
@@ -319,14 +338,25 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   }
 }
 
+/**
+ * `ctx` carries everything the first attempt had. It used to rebuild the
+ * input by hand and silently dropped `tokens` and `dark_background`, so a
+ * slide that failed QA was redesigned by an agent that could no longer see
+ * the palette or know its master was dark — reintroducing, on retry, exactly
+ * the invisible-text problem those fields were added to fix. Spreading the
+ * original context means a field added to the first call can never again go
+ * missing from the retry.
+ */
 async function regenerate(
   courseId: string, mod: any, slide: any, cursor: Cursor,
   slidePlan: unknown, shapesUsed: string[], feedback: string,
+  ctx: Record<string, unknown> = {},
 ) {
   return handleSlideContentJob({
     course_id: courseId,
     module_id: mod.module_id,
     input: {
+      ...ctx,
       slide,
       module_title: mod.title,
       module_number: mod.module_number,
