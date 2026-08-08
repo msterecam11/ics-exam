@@ -171,25 +171,29 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     },
   })
 
-  // Cover and divider text is decided here, not by the agent, because it is
-  // about the COURSE and the module — facts the per-slide agent has no
-  // business restating. Every module's cover leads with the course title so
-  // a module extracted on its own still identifies the course it belongs to;
-  // the module's own name becomes the secondary line. The divider drops the
-  // "Module N:" prefix because the master already draws that number as a
-  // large ghost numeral beside it.
-  if (slide.layout_kind === "cover") {
-    source.title = course.title
-    if (!mod.is_module_zero) (source as any).subtitle = stripModulePrefix(mod.title)
-  } else if (slide.layout_kind === "section_divider") {
-    source.title = stripModulePrefix(source.title ?? mod.title)
-  }
-
   let elements: CanvasElement[] = []
   let verdictFeedback = ""
   let factVerdict: FactVerdict | null = null
 
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
+    // Cover and divider text is decided here, not by the agent, because it is
+    // about the COURSE and the module — facts the per-slide agent has no
+    // business restating. Every module's cover leads with the course title so
+    // a module extracted on its own still identifies the course it belongs to;
+    // the module's own name becomes the secondary line. The divider drops the
+    // "Module N:" prefix because the master already draws that number as a
+    // large ghost numeral beside it. Re-applied every attempt (not just the
+    // first) because a QA/overflow/underfill retry reassigns `source` to a
+    // fresh, un-overridden design-agent result — without this inside the
+    // loop, a cover slide that fails QA once ships with the raw module title
+    // and no course name, silently undoing the override.
+    if (slide.layout_kind === "cover") {
+      source.title = course.title
+      if (!mod.is_module_zero) (source as any).subtitle = stripModulePrefix(mod.title)
+    } else if (slide.layout_kind === "section_divider") {
+      source.title = stripModulePrefix(source.title ?? mod.title)
+    }
+
     // ── 2. Compile (code — CSS resolves geometry, then bake) ───────────────
     await progress(job.id, `${stepLabel} — laying out`, pct(doneBefore + 0.3, totalSlides))
     // The compile step drives a real browser, which on a small instance can

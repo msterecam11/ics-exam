@@ -139,9 +139,17 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
       // judges is exactly what the client receives.
       const iconColor = resolveToken(el.color, tokens, "#0C72C6")
       const glyph = iconSvg(el.name, { size: "100%", color: iconColor })
+      // effectsCss is NOT optional here. The decoration layer expresses a
+      // watermark glyph's faintness as effects.opacity (see decor.ts), which
+      // means an icon rendered without effects paints at FULL strength. The
+      // editor (SlideCanvas) always applied it; this path did not, so the
+      // same slide was faint while editing and glaring in the PDF and in the
+      // QA screenshot — which is also why the vision reviewer never flagged
+      // the slide it was looking at as wrong: it was judging the broken one.
+      const fx = effectsCss(el.effects, tokens)
       return glyph
-        ? `<div style="${box}">${glyph}</div>`
-        : `<div style="${box}background:${iconColor};border-radius:4px;opacity:.9"></div>`
+        ? `<div style="${box}${fx}">${glyph}</div>`
+        : `<div style="${box}background:${iconColor};border-radius:4px;opacity:.9;${fx}"></div>`
     }
     case "image":
       return el.url
