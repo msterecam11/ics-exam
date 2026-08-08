@@ -21,7 +21,6 @@ import { compileBlueprint } from "@/lib/course-gen/compiler"
 import { screenshotSlide } from "@/lib/course-gen/jobs/qa"
 import { ICS_THEME_1, type Master } from "@/lib/course-gen/theme1"
 import { FIXTURES, FIXTURE_NAMES, type Fixture } from "@/lib/course-gen/harness/fixtures"
-import { probeGeometry } from "@/lib/course-gen/harness/probe"
 import type { ThemeTokens } from "@/lib/course-gen/tokens"
 
 const OUT_DIR = path.join(process.cwd(), ".harness", "out")
@@ -120,11 +119,15 @@ export async function POST(req: Request) {
         ms: Date.now() - started,
         note: fixture.note ?? null,
         elements: compiled.elements.length,
-        // What the pipeline currently decides…
         overflow: compiled.overflow,
-        underfill: compiled.underfill,
-        // …and what a geometry linter would have said instead.
-        probe: probeGeometry(compiled.elements, master),
+        // designLint.ts — exactly what production decides, not a second
+        // implementation of the same measurements. An earlier version of this
+        // route carried its own geometry probe; once the linter existed that
+        // was two copies of one calculation, which is the drift that has
+        // already caused four bugs in this system.
+        lintPass: compiled.lint.pass,
+        findings: compiled.lint.findings.map(f => `${f.gating ? "GATE" : "advise"} ${f.rule}: ${f.message}`),
+        metrics: compiled.lint.metrics,
       })
     } catch (err: any) {
       results.push({ name, error: String(err?.message ?? err) })

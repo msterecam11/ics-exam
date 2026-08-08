@@ -13,6 +13,7 @@ import { decorHtml } from "./decor"
 import { SLIDE_W, SLIDE_H, type ThemeTokens } from "./tokens"
 import { inlineFontFaces } from "./fonts"
 import { fitTitleFontSize } from "./typefit"
+import { lintSlide, type LintResult } from "./designLint"
 import type { Master } from "./theme1"
 
 export interface CompileInput {
@@ -57,23 +58,16 @@ function buildPage(
 </style></head><body><div id="zone">${decor}${html}</div></body></html>`
 }
 
-/**
- * Below this fraction of the content zone's height covered by INK, a slide
- * reads as unfinished rather than composed.
- *
- * "Ink" means text, icons, images, charts and tables — never `shape`. That
- * distinction is the whole point: cards carry `flex:1`, so an almost-empty
- * card STRETCHES to fill its zone. Measuring box extents therefore reported
- * a half-empty self-assessment slide as 100% full, which is precisely why
- * the first version of this check never fired on the slides that needed it.
- */
-const UNDERFILL_THRESHOLD = 0.62
-const INK_KINDS = new Set(["text", "icon", "image", "chart", "table"])
-
 export async function compileBlueprint(input: CompileInput): Promise<{
   elements: CanvasElement[]
   overflow: boolean
-  underfill: boolean
+  /** See designLint.ts. Replaces the old single `underfill` boolean, which
+   *  divided the ink's SPAN by the zone height — a measure that says nothing
+   *  about where the content actually sits, so content shoved into the
+   *  bottom two-thirds scored the same as content spread evenly and passed.
+   *  It also fired on 18 of 22 harness fixtures, i.e. on almost everything,
+   *  which meant every slide burned its retries and shipped regardless. */
+  lint: LintResult
 }> {
   // A master with no "content" zone (cover, section_divider) has deliberately
   // no place for agent content — those slides are chrome + title, full stop.
@@ -82,7 +76,15 @@ export async function compileBlueprint(input: CompileInput): Promise<{
   // instead of being rejected. Refusing here is the actual guarantee; the
   // prompt instruction alone was not.
   const zone = input.master.zones.find(z => z.name === "content")
-  if (!zone) return { elements: titleZoneElements(input), overflow: false, underfill: false }
+  if (!zone) {
+    // Chrome-only masters (cover, divider) have nothing to lint: there is no
+    // content zone, so every rule would be measuring an area that does not
+    // exist. Reported as clean rather than as a passing lint of nothing.
+    return {
+      elements: titleZoneElements(input), overflow: false,
+      lint: { pass: true, findings: [], feedback: "", metrics: { topGapPct: 0, bottomGapPct: 0, occupancy: 0, inkCount: 0, fontSizes: [], largestFont: 0 } },
+    }
+  }
 
   const darkContext = input.master.background.tone === "dark"
   const html = blueprintToHtml(input.blueprint, input.tokens, darkContext)
@@ -136,15 +138,6 @@ export async function compileBlueprint(input: CompileInput): Promise<{
     const zoneRight = ((zone.x + zone.width) / 100) * SLIDE_W
     const overflow = measured.some(m => m.y + m.h > zoneBottom + 2 || m.x + m.w > zoneRight + 2)
 
-    // The opposite failure: a slide that is mostly empty white space. Only
-    // ink counts (see INK_KINDS) — a stretched empty card is not content.
-    // Decoration is explicitly not ink — see the note in decor.ts.
-    const ink = measured.filter(m => INK_KINDS.has(m.bake.kind) && !(m.bake.props as any)?.decor)
-    const inkTop = ink.length ? Math.min(...ink.map(m => m.y)) : zoneTop
-    const inkBottom = ink.length ? Math.max(...ink.map(m => m.y + m.h)) : zoneTop
-    const filledRatio = (inkBottom - inkTop) / Math.max(1, zoneBottom - zoneTop)
-    const underfill = filledRatio < UNDERFILL_THRESHOLD
-
     await page.close()
 
     const elements: CanvasElement[] = titleZoneElements(input)
@@ -179,6 +172,10 @@ export async function compileBlueprint(input: CompileInput): Promise<{
         height: round2((m.h / SLIDE_H) * 100),
         zIndex: z++,
         ...(Number.isFinite(rotate) && rotate !== 0 ? { rotation: rotate } : {}),
+        // Carried so the linter can exclude decoration from every content
+        // measure. Without it a ghost numeral (which bakes as a text node)
+        // counts as ink and a near-empty slide measures as full.
+        ...(p.decor ? { decor: true } : {}),
         // Carried from the blueprint node. Until this existed the agent's
         // effects were applied to the measured HTML and then thrown away,
         // so shadow/opacity/gradient never reached a finished slide.
@@ -238,7 +235,7 @@ export async function compileBlueprint(input: CompileInput): Promise<{
       }
     })
 
-    return { elements, overflow, underfill }
+    return { elements, overflow, lint: lintSlide(elements, input.master, input.tokens) }
   } finally {
     await browser.close()
   }

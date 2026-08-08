@@ -335,6 +335,11 @@ export interface ElementBase {
   /** Stamped from a master and not yet filled in — rendered as a prompt
    *  and cleared on first edit. */
   placeholder?: boolean
+  /** Part of the decoration layer (see decor.ts): a ghost numeral, watermark
+   *  glyph or edge accent. Carries no information and must never be counted
+   *  as content — a huge faint numeral bakes as a text node, and without this
+   *  flag it would make an almost-empty slide measure as comfortably full. */
+  decor?: boolean
 }
 export interface TextRun {
   text: string; bold?: boolean; italic?: boolean; color?: TokenRef

@@ -329,10 +329,41 @@ export const FIXTURES: Record<string, Fixture> = {
     } as BlueprintNode,
   },
 
+  // ── Negative tests: these MUST fail the linter ─────────────────────────
+  // A gate that never fires is indistinguishable from no gate at all. After
+  // the relationship-primitive fix every real fixture passes, so these exist
+  // purely to prove the rules still bite. If one of them starts passing,
+  // the linter has regressed — that is the whole point of keeping them.
+  "neg-invisible-text": {
+    master: "summary_dark",
+    title: "Dark Master, Dark Text",
+    note: "MUST FAIL contrast — navy on the dark master is the original invisible-text bug (~1.0:1).",
+    blueprint: {
+      type: "stack", gap: "md",
+      children: [
+        { type: "heading", text: "Navy Heading on a Dark Background", level: 3, color: "token:navy" },
+        { type: "heading", text: "And a second one, equally invisible", level: 4, color: "token:primary-dark" },
+      ],
+    } as BlueprintNode,
+  },
+
+  "neg-unbalanced": {
+    master: "content_white",
+    title: "Content Pinned to the Bottom",
+    note: "MUST FAIL balance — all ink sits in the lower quarter of the zone.",
+    blueprint: {
+      type: "custom", justification: "deliberately unbalanced for the linter's negative test", aspect: 2.5,
+      children: [
+        { kind: "text", x: 2, y: 78, width: 60, height: 12, props: { text: "Everything is down here", fontSize: 24, color: "token:navy" } },
+        { kind: "text", x: 2, y: 90, width: 60, height: 8, props: { text: "and the top of the zone is empty", fontSize: 16, color: "token:text" } },
+      ],
+    } as BlueprintNode,
+  },
+
   "bug-sparse-top-gap": {
     master: "content_white",
     title: "Sparse Slide — Dead Space Above the Content",
-    note: "BUG REPRO — passes the current underfill check (span-based) despite an obvious empty top band.",
+    note: "Sparse but correctly centred — the linter should ADVISE on density, not gate.",
     blueprint: {
       type: "stack", gap: "md",
       children: [

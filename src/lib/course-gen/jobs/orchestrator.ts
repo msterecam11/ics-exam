@@ -213,7 +213,10 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
           subtitle: (source as any).subtitle,
           decor: (source as any).decor,
         }))
-      : { elements: titleOnlyElements(source, master, tokens), overflow: false, underfill: false }
+      : {
+          elements: titleOnlyElements(source, master, tokens), overflow: false,
+          lint: { pass: true, findings: [], feedback: "", metrics: { topGapPct: 0, bottomGapPct: 0, occupancy: 0, inkCount: 0, fontSizes: [], largestFont: 0 } },
+        }
     elements = compiled.elements
 
     // Geometric overflow is detectable without a vision call — fix it first.
@@ -222,10 +225,15 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
       continue
     }
-    // The opposite failure — nothing previously caught a slide that's mostly
-    // empty white space; it passed QA legitimately because nothing checked.
-    if (compiled.underfill && attempt < MAX_QA_RETRIES) {
-      verdictFeedback = "This composition leaves too much empty space for the size of its area — it will read as unfinished rather than intentional. Either add genuine supporting material (another fact from the gathered content, a supporting stat, a second example) or choose a shape that fills the space honestly — a larger single statement, a fuller flow/tiers/radial composition. Do not just stretch existing text bigger."
+    // Geometry the compiler can prove: balance, overlap, contrast (see
+    // designLint.ts). Free and deterministic, so it runs before any paid
+    // vision call and states the defect in numbers rather than impressions.
+    // Advisory findings ride along in the feedback — they never fail a slide
+    // on their own, but if the slide is being redesigned anyway, the agent
+    // may as well be told everything that was measured.
+    if (!compiled.lint.pass && attempt < MAX_QA_RETRIES) {
+      const advisory = compiled.lint.findings.filter(f => !f.gating).map(f => f.message).join(" ")
+      verdictFeedback = [compiled.lint.feedback, advisory].filter(Boolean).join(" ")
       source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
       continue
     }
