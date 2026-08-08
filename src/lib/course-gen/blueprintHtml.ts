@@ -370,7 +370,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "meter": {
-        return `<div style="display:flex;flex-direction:column;gap:${gap("md")}">${n.items.map(it => {
+        return `<div style="display:flex;flex-direction:column;gap:${gap("md")};flex:1;justify-content:safe center">${n.items.map(it => {
           const accentToken = it.accent ?? n.style?.accent ?? "token:primary"
           const accent = resolveToken(accentToken, tokens, T("primary"))
           const max = it.max && it.max > 0 ? it.max : 100
@@ -415,13 +415,16 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           chartSvg({ chartType: n.chartType, data: n.data, tokens, darkContext })
         }</div>`
 
+      // Same two-box reasoning as `flow`: the columns stretch to each other,
+      // then the pair is centred in the zone — rather than each column being
+      // as tall as the slide with its text floating in the middle.
       case "comparison":
-        return `<div style="display:flex;gap:${gap("lg")}">${n.columns.map(col => {
+        return `<div style="flex:1;display:flex;flex-direction:column;justify-content:safe center"><div style="display:flex;gap:${gap("lg")};align-items:stretch">${n.columns.map(col => {
           const accent = resolveToken(col.accent, tokens, T("accent-warm"))
-          return `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:${gap("sm")}"><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ${accent};padding-left:10px">${
+          return `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:${gap("sm")};justify-content:safe center"><div style="display:flex;align-items:center;gap:8px;border-left:3px solid ${accent};padding-left:10px">${
             col.icon ? iconHtml({ name: col.icon, token: col.accent ?? "token:accent-warm", resolved: accent, size: 20 }) : ""
           }<span ${bakeAttr({ kind: "text", props: { runs: [{ text: col.heading, bold: true }], fontSize: TYPE_PX.h5, color: col.accent ?? "token:accent-warm", fontWeight: 800 } })} style="font-size:${TYPE_PX.h5}px;font-weight:800;color:${accent};letter-spacing:0.5px">${esc(col.heading)}</span></div>${col.children.map(c => blueprintToHtml(c, tokens, darkContext)).join("")}</div>`
-        }).join("")}</div>`
+        }).join("")}</div></div>`
 
       case "flow": {
         const horizontal = (n.direction ?? "horizontal") === "horizontal"
@@ -450,7 +453,13 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           const sf = n.escalate
             ? surface({ ...n.style, fill: "filled", accent: rampToken(i) }, { defaultCorner: "soft" })
             : surface(n.style, { defaultFill: "plain", defaultCorner: "soft", accent: "token:primary", intensity: stepIntensity })
-          const card = `<div ${bakeAttr({ kind: "shape", props: { ...sf.bake, stroke: accent } })} style="flex:1;${sf.css}display:flex;flex-direction:column;gap:6px;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
+          // `justify-content: safe center` on the card, not just the row.
+          // A horizontal flow's cards stretch to the full content zone via
+          // align-items:stretch, but their contents stacked from the TOP —
+          // so a three-step flow drew three full-height cards each with half
+          // its box empty below the text. That empty space is inside the
+          // card, which is why "add more content" retries never closed it.
+          const card = `<div ${bakeAttr({ kind: "shape", props: { ...sf.bake, stroke: accent } })} style="flex:1;${sf.css}display:flex;flex-direction:column;gap:6px;justify-content:safe center;align-items:${horizontal ? "center" : "flex-start"};text-align:${horizontal ? "center" : "left"}">${
             s.n !== undefined
               ? (n.marker === "circle" ? numeralBadge(String(s.n), n.escalate ? rampToken(i) : "token:primary") : `<span ${bakeAttr({ kind: "text", props: fit({ runs: [{ text: String(s.n), bold: true }], fontSize: TYPE_PX.h3, color: n.escalate ? "token:text-inverse" : "token:navy", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h3}px;font-weight:800;color:${n.escalate ? "#fff" : T("navy")}">${esc(String(s.n))}</span>`)
               : s.icon ? iconHtml({ name: s.icon, token: "token:navy", resolved: n.escalate ? "#fff" : T("navy"), size: 24 }) : ""
@@ -459,7 +468,22 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
             }</div>`
           return i === n.steps.length - 1 ? card : `${card}${connector}`
         })
-        return `<div style="display:flex;flex-direction:${horizontal ? "row" : "column"};align-items:${horizontal ? "stretch" : "flex-start"};gap:${gap("sm")}">${cells.join("")}</div>`
+        // Two nested boxes, not one, and the nesting is the point.
+        //
+        // The inner row is AUTO height, so its cards stretch only to the
+        // tallest card's own content — equal heights, sized to what is
+        // actually in them. The outer box takes the full content zone and
+        // centres that row within it.
+        //
+        // One box cannot do both: a single full-height row with
+        // align-items:stretch gives equal cards that are also as tall as the
+        // zone, which is how three steps of one line each ended up drawn as
+        // three 440px boxes of mostly air. `tiers` already reads well because
+        // it happens to have this shape; this gives `flow` the same one.
+        const inner = `<div style="display:flex;flex-direction:${horizontal ? "row" : "column"};align-items:${horizontal ? "stretch" : "flex-start"};gap:${gap("sm")}">${cells.join("")}</div>`
+        return horizontal
+          ? `<div style="flex:1;display:flex;flex-direction:column;justify-content:safe center">${inner}</div>`
+          : inner
       }
 
       case "radial": {
@@ -474,7 +498,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
             sp.body ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sp.body }], fontSize: 12, color: "token:text" }) })} style="font-size:12px;color:${T("text")}">${esc(sp.body)}</span>` : ""
           }</div></div>`
         }).join("")}</div>`
-        return `<div style="display:flex;flex-direction:column;gap:${gap("sm")};flex:1">${hub}${stem}${spokes}</div>`
+        return `<div style="display:flex;flex-direction:column;gap:${gap("sm")};flex:1;justify-content:safe center">${hub}${stem}${spokes}</div>`
       }
 
       case "tiers": {
@@ -530,7 +554,7 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
 
       case "tag-list": {
         const toneColor = (t?: string) => t === "success" ? T("success") : t === "warning" ? T("tab-yellow") : t === "danger" ? T("danger") : T("primary")
-        return `<div style="display:flex;flex-direction:column;gap:8px">${n.items.map(it => {
+        return `<div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:safe center">${n.items.map(it => {
           const c = toneColor(it.tone)
           // Box and label bake as two elements (box behind, text on top) —
           // baking one node as both "shape" and the text carrier would drop
