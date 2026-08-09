@@ -491,6 +491,17 @@ export interface SlideContentPlan {
    *  should drive the visual structure, not a menu pick. */
   relationship: "sequence" | "hierarchy" | "hub-and-satellites" | "comparison"
     | "cause-effect" | "escalation" | "cumulative" | "single-statement" | "enumeration"
+  /**
+   * This slide's weight in the MODULE's arc, decided once for the whole
+   * module rather than by each slide about itself.
+   *
+   * Every slide previously judged its own prominence in isolation, and a
+   * slide asked "should this be striking?" always answers yes — which is how
+   * a module of individually-reasonable slides ends up reading as uniform.
+   * Nothing is emphatic if everything is. A module gets one or two "peak"
+   * slides at most; "quiet" slides exist to make them land.
+   */
+  emphasis?: "peak" | "normal" | "quiet"
   citations: { source_doc_id: string; excerpt?: string }[]
   /**
    * Comparable quantities this slide's material actually contains, pulled

@@ -81,13 +81,17 @@ ${RELATIONSHIP_GUIDE}
 - "citations": clause + document for every factual claim that comes from the reference material. Use the clause number the material actually shows — never invent one.
 - "data": OPTIONAL. If this slide's material contains quantities that are genuinely comparable TO EACH OTHER — several durations, several counts, a set of percentages, a before/after pair — pull them out as {label, value, unit} so the design pass can show them as a chart or meter rather than burying them in a sentence. Omit the field entirely otherwise. Do NOT invent numbers to fill it, do not convert a single lone figure into a one-item series (that is a stat, not a chart), and do not list quantities that measure different things and therefore cannot sit on one axis.
 
-Structural slides (cover, section_divider, closing_cta) still get a "relationship" of "single-statement" and minimal facts (just the title's substance).
+- "emphasis": this slide's weight in the MODULE, decided across the whole module at once — this is the one judgement no individual slide can make about itself.
+  You are looking at every slide in this module together, which is exactly why you assign this here. Ask which one or two slides carry the idea a learner should still have a week later: the point everything else supports, the figure that reframes the topic, the consequence that makes the rest matter. Those are "peak". Assign "quiet" to the genuinely supporting slides — a definition, a list of references, a short bridge. Everything else is "normal".
+  AT MOST TWO peaks per module, and a module of six or more slides should have at least two quiet ones. This is a budget, not a rating: if you mark everything "normal" the module reads flat, and if you mark half of it "peak" nothing stands out at all. A peak earns its prominence from the quiet slides around it.
+
+Structural slides (cover, section_divider, closing_cta) still get a "relationship" of "single-statement", minimal facts (just the title's substance), and "emphasis":"normal".
 
 ## Output
 Return ONLY valid JSON:
 {
   "slides": [
-    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
+    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "emphasis": "peak|normal|quiet", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
   ]
 }
 One entry per slide listed above, in the same order.`
@@ -102,5 +106,28 @@ One entry per slide listed above, in the same order.`
   if (!Array.isArray(result?.slides) || result.slides.length === 0)
     throw new Error(`Module content gather for "${mod.title}" came back without slides`)
 
+  enforceEmphasisBudget(result.slides)
   return result as ModuleContentPlan
+}
+
+/** At most this many slides per module may be the emphatic ones. */
+const MAX_PEAKS = 2
+
+/**
+ * A budget, held in code rather than trusted to the prompt.
+ *
+ * "At most two peaks" is the kind of instruction a model agrees with and then
+ * drifts past on a long module — and the failure is silent and total: mark six
+ * slides emphatic and the module reads exactly as flat as marking none, since
+ * emphasis is entirely relative. Extra peaks are demoted from the END, keeping
+ * the earliest-chosen ones, on the reasoning that a module's first-nominated
+ * peaks are its most considered.
+ */
+function enforceEmphasisBudget(slides: { emphasis?: string }[]): void {
+  let kept = 0
+  for (const s of slides) {
+    if (s.emphasis !== "peak" && s.emphasis !== "quiet") s.emphasis = "normal"
+    if (s.emphasis !== "peak") continue
+    if (++kept > MAX_PEAKS) s.emphasis = "normal"
+  }
 }

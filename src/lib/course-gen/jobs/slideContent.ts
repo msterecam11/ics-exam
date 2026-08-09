@@ -231,6 +231,16 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
       ? `No slide in this module carries a photograph yet${(slides_remaining ?? 0) <= 2 ? " and there are almost none left — if this slide's subject has any real physical setting at all, this is the moment to use it." : ". If this slide's subject has a genuine physical setting, prefer a figure here."}`
       : `${photos_used} earlier slide(s) in this module already carry a photograph, so imagery is established — only add another if it genuinely earns its place.`
 
+  // Emphasis is assigned once for the whole module by the gather pass, which
+  // is the only stage that sees every slide at once. A slide asked about its
+  // own importance in isolation always says "important", which is precisely
+  // how a module of individually-reasonable slides comes out uniform.
+  const emphasisNote = isStructural ? "" : ({
+    peak: `\n## This slide is a PEAK of its module\nOf all the slides here, this is one of at most two carrying what a learner should still have a week from now. Give it a genuinely different visual weight from its neighbours — a hero stat, a quote-banner, a full-bleed band, a dominant figure, a level 1-2 heading. This is the slide the quiet ones around it exist to set up, so it must not look like one more content slide with slightly bolder text.`,
+    quiet: `\n## This slide is a QUIET one\nIt supports the module rather than carrying it. Compose it cleanly and plainly: no hero stat, no gradient, no full-bleed band, no level 1-2 heading. Restraint here is not laziness — it is what gives this module's peak slides room to land. A deck where every slide competes has no emphasis at all.`,
+    normal: `\n## Emphasis: normal\nA regular content slide. Compose it well, but leave the loudest devices — hero stats, gradients, full-bleed banners — to this module's peak slides.`,
+  } as Record<string, string>)[plan?.emphasis ?? "normal"] ?? ""
+
   const varietyNote = shapes_used?.length
     ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.
 
@@ -248,6 +258,7 @@ ${module_accent ? `This module's accent: **${module_accent}** — use it (not to
 ## The material for this slide (already gathered — do not invent new facts, only decide how to show these)
 ${factsBlock}
 ${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
+${emphasisNote}
 ${plan?.data?.length ? `\nComparable quantities in this material — these are REAL numbers from the source, already extracted for you:\n${plan.data.map(d => `  - ${d.label}: ${d.value}${d.unit ? ` ${d.unit}` : ""}`).join("\n")}\nThis slide has genuinely chartable data. Showing it as a chart or meter almost always beats restating the numbers inside a sentence — a reader compares bars instantly and parses prose slowly. Use "chart" (bar for comparing categories, line for a trend over time, donut for parts of a whole with 5 or fewer slices) or "meter" for proportions. Keep the numbers exactly as given; never round them into something the source didn't say.` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}` : ""}${render_png ? `\n\nThe image attached to this message IS your previous attempt, rendered exactly as a reader will see it. Look at it before changing anything. The note above is what a reviewer measured; the picture is the thing itself, so trust your eyes over the paraphrase. Then compose a DIFFERENT arrangement that fixes what you can see — do not resubmit the same structure with the wording tweaked.` : ""}
 
