@@ -83,10 +83,18 @@ export async function handleOutlineJob(job: any): Promise<OutlineOutput> {
     `- EVERY numbered module follows this exact grammar, in order:`,
     `    1. cover  (module cover)`,
     `    2. section_divider  (module number + title)`,
-    `    3. content_white / content_lightblue slides  (the substance — vary intents)`,
+    `    3. content_white slides  (the substance — vary intents)`,
     `    4. summary_dark  ("Summary and Key Takeaways")`,
     assessment ? `    5. self_assessment  ("Self-Assessment" review questions${briefModules.length > 1 ? " + preview of next module where applicable" : ""})` : null,
     `- ONLY the FINAL module additionally ends with one closing_cta slide (feedback/QR).`,
+    // Masters carry meaning, so the background is not a variety lever. Teaching
+    // content is always on white; the tinted master is reserved for the moments
+    // where the learner is asked to DO something, so a change of background
+    // always signals a change of activity rather than decoration.
+    `- MASTER RULES, and these are not stylistic choices:`,
+    `    · content_white — ALL teaching content, without exception.`,
+    `    · content_lightblue — ONLY a knowledge check, exercise, scenario or practice task: a slide the learner is asked to work through, not read. Never for explanation.`,
+    `    · Do not alternate backgrounds for visual variety. Variety comes from the composition inside the slide, never from the master. A tinted background means "your turn"; using it for ordinary content destroys that signal.`,
   ].filter(Boolean).join("\n")
 
   const prompt = `You are the Content Agent of ICS Aviation's course generator. Draft a slide-by-slide outline for a professional aviation training course. This outline goes to a human instructional designer for review BEFORE any slides are generated — clarity and sensible structure matter more than prose.
@@ -152,10 +160,34 @@ layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short
       throw new Error(`Module "${m.title}" has no slides`)
     for (const s of m.slides) {
       if (!LAYOUT_KINDS.includes(s.layout_kind)) s.layout_kind = "content_white"
+      // The tinted master means "your turn" — a knowledge check, exercise or
+      // scenario the learner works through. Left to a prompt rule alone it
+      // gets used to alternate backgrounds for variety, which spends the
+      // signal on decoration: once every third slide is tinted, a tint stops
+      // meaning anything. A slide claiming it while describing nothing the
+      // learner does is put back on white.
+      if (s.layout_kind === "content_lightblue" && !isLearnerActivity(s)) {
+        s.layout_kind = "content_white"
+      }
       if (!Array.isArray(s.key_points)) s.key_points = []
       if (!Array.isArray(s.covers)) s.covers = []
     }
   }
 
   return result as OutlineOutput
+}
+
+/**
+ * Does this slide ask the learner to DO something?
+ *
+ * Deliberately a keyword test over the slide's own title and intent, not a
+ * model call: this runs on every slide of every outline and the question is
+ * narrow. It is a guard against the tinted master being used decoratively,
+ * not a classifier — a genuine exercise that avoids all of these words gets
+ * put on white, which is a far cheaper mistake than a deck where the tint
+ * has stopped meaning anything.
+ */
+function isLearnerActivity(slide: { title?: string; intent?: string }): boolean {
+  const hay = `${slide.title ?? ""} ${slide.intent ?? ""}`.toLowerCase()
+  return /\b(check|exercise|practice|practise|scenario|activity|task|quiz|apply|application|workshop|drill|case study|worked example|try|discussion|reflect)\b/.test(hay)
 }

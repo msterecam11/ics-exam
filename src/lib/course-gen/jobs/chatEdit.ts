@@ -109,6 +109,7 @@ Decide freely what the instruction requires — rewriting content, restructuring
 
 - {"op":"rewrite_slide","page_index":N,"title":"…","intent":"…","blueprint":{…}} — replace a slide's content and structure. PREFER THIS over many small text edits.
 - {"op":"add_slide","after_index":N,"layout_kind":"content_white","title":"…","intent":"…","blueprint":{…}}
+  Teaching content is ALWAYS content_white. content_lightblue is reserved for a knowledge check, exercise or scenario — a slide the learner works through, not reads. Never alternate backgrounds for variety: a tint means "your turn", and spending it on ordinary content destroys that signal.
 - {"op":"delete_slide","page_index":N}
 - {"op":"reorder_slide","page_index":N,"to_index":M}
 - {"op":"update_element","page_index":N,"element_id":"el-3","patch":{…}} — targeted tweak (style, geometry, runs)
