@@ -122,6 +122,7 @@ Fact/enumeration primitives: row/stack/heading/body/bullets/card/badge-number/ca
 Relationship primitives — reach for these whenever the relationship IS the content:
   flow (sequence/escalation, with optional "escalate":true for a severity colour ramp), radial (hub-and-satellites), tiers (stacked hierarchy bands), quote-banner (one statement worth landing on its own), stat-equation (terms + operators resolving to one outcome), tag-list (label + status pill), band (full-bleed single-line strip, e.g. a takeaway), icon-tile (solid accent square + white glyph, then heading and body — 3-4 in a row makes a card grid with real visual anchors).
 figure accepts "mask":"circle|rounded|squircle" to crop the photo to a shape.
+heading "level" 1-5 spans the full type scale (60/50/40/30/25px) — a slide whose every heading is level 4 has no hierarchy. body accepts "size":"lead|body|caption": "lead" is a standfirst, ONE larger opening line framing what follows (at most one per slide); "caption" is the small note under a figure or table.
 meter (labelled proportion bars: {"type":"meter","items":[{"label":"…","value":72,"max":100,"caption":"72%"}]}) — use when the point is "how far along / how much of the whole". Real numbers only; never invent them.
 "weights" on a row need not be even — [1,3], [3,7] are real sidebar/main splits, not just [1,1].
 Tier 3 — a "custom" node (justification + small relative-coordinate children) for anything none of the above express. Equally valid to reach for, not a last resort.

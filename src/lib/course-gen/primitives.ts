@@ -89,6 +89,13 @@ export interface BodyNode extends BlueprintBase {
   type: "body"
   /** Rich runs: plain string or array of styled runs (bold emphasis etc.). */
   text: string | TextRun[]
+  /**
+   * Running text had exactly one size, so the only way to open a slide with a
+   * standfirst — a larger opening line that sets up everything beneath it —
+   * was to misuse a heading. "lead" is that line; "caption" is the small note
+   * under a figure or table.
+   */
+  size?: "lead" | "body" | "caption"
 }
 export interface BulletsNode extends BlueprintBase {
   type: "bullets"

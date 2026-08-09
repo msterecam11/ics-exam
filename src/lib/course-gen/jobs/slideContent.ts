@@ -30,7 +30,13 @@ one side genuinely carries more weight than the other; [1,1] every time is
 its own kind of sameness.
 Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"heading", "text":"…", "level":4, "color":"token:accent-warm", "icon":"strategy", "accentBar":true, "eyebrow":"GOVERNANCE" }
-  { "type":"body", "text":"…" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true},{"text":"the one phrase to spot at a glance","highlight":"token:tab-yellow"}] }
+    "level" 1-5 spans the whole type scale — 60 / 50 / 40 / 30 / 25px. It is the main size lever you have, so
+    use its range: a slide where every heading is level 4 has no hierarchy, whatever else is on it. Level 1-2
+    is for the ONE line a slide is built around, not for section labels.
+  { "type":"body", "text":"…", "size":"lead|body|caption" }  OR  { "type":"body", "text":[{"text":"Plain "},{"text":"bold bit","bold":true},{"text":"the one phrase to spot at a glance","highlight":"token:tab-yellow"}] }
+    size "lead" is a standfirst: ONE larger opening line that frames everything beneath it, the way a subtitle
+    does. At most one per slide, and only where the slide genuinely opens with a framing statement instead of
+    diving straight in. "caption" is the small note under a figure or table. Omit it for ordinary running text.
   { "type":"bullets", "items":["…","…"] }
   { "type":"card", "tone":"plain|cream|glass|accent", "accent":"token:primary", "children":[…] }
   { "type":"badge-number", "n":"01", "variant":"navy|band-warm|band-blue", "heading":"…" }

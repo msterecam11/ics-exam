@@ -42,11 +42,12 @@ export const FIXTURES: Record<string, Fixture> = {
     blueprint: {
       type: "stack", gap: "md",
       children: [
-        { type: "heading", text: "Heading level 3", level: 3, eyebrow: "EYEBROW LABEL", accentBar: true },
+        { type: "heading", text: "Heading level 2", level: 2, eyebrow: "EYEBROW LABEL", accentBar: true },
+        { type: "body", text: "A standfirst line, set at lead size to frame what follows.", size: "lead" },
         { type: "heading", text: "Heading level 4", level: 4 },
         { type: "body", text: lorem.med },
+        { type: "body", text: "FIG 1.1: a caption, at the small step.", size: "caption" },
         { type: "body", text: [{ text: "Body with " }, { text: "bold", bold: true }, { text: " and " }, { text: "a highlight", highlight: "token:tab-yellow" }] },
-        { type: "bullets", items: ["First bullet item", "Second bullet item", "Third bullet item"] },
       ],
     } as BlueprintNode,
   },

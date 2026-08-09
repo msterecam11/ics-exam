@@ -9,7 +9,7 @@
 // token-driven — no freestyle colors.
 
 import type { BlueprintNode, TextRun } from "./primitives"
-import { resolveToken, spacingPx, TYPE_PX, type ThemeTokens } from "./tokens"
+import { resolveToken, spacingPx, typeScale, type ThemeTokens } from "./tokens"
 import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
 import { surfacePaint, fillCarriesInverseText, cornerCss, type FillStyleName, type CornerName } from "./surface"
@@ -98,6 +98,12 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
   const T = (k: string) => tokens.colors[k] ?? "#333"
   const textColor = darkContext ? T("text-inverse") : T("text")
   const gap = (g?: string) => `${spacingPx(g, tokens)}px`
+  // Deliberately shadows the imported fallback, so every `TYPE_PX.body` below
+  // reads THIS theme's scale rather than a hardcoded second opinion. Shadowing
+  // rather than renaming ~40 call sites is the point: a rename would silently
+  // miss one, and a single primitive left on the old constant is exactly the
+  // kind of drift that has already caused several bugs here.
+  const TYPE_PX = typeScale(tokens)
 
   /**
    * Resolves a primitive's StyleParams into concrete CSS plus the bake props
@@ -258,10 +264,15 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
 
       case "body": {
         const { html, runs } = runsHtml(n.text as any, tokens)
+        // A standfirst leads at h4 and rides a looser line; a caption drops to
+        // the small step. Longer measures want tighter leading, which is why
+        // the line height moves with the size rather than staying at 1.55.
+        const bodySize = n.size === "lead" ? TYPE_PX.h4 : n.size === "caption" ? TYPE_PX.small : TYPE_PX.body
+        const bodyLh = n.size === "lead" ? 1.35 : 1.55
         // lineHeight is baked so the renderer reproduces the EXACT metrics
         // this measurement was taken with — otherwise wrapped text reflows
         // into a box sized for different metrics and clips.
-        return `<div ${bakeAttr({ kind: "text", props: { runs, fontSize: TYPE_PX.body, lineHeight: 1.55, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${textColor};line-height:1.55">${html}</div>`
+        return `<div ${bakeAttr({ kind: "text", props: { runs, fontSize: bodySize, lineHeight: bodyLh, color: darkContext ? "token:text-inverse" : "token:text" } })} style="font-size:${bodySize}px;color:${textColor};line-height:${bodyLh}">${html}</div>`
       }
 
       case "bullets": {
