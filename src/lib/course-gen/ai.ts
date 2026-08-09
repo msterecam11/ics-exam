@@ -125,14 +125,22 @@ export async function claudeVisionJSON(opts: {
     })),
     { type: "text", text: opts.prompt },
   ]
-  const msg = await withRetry(() =>
-    anthropic.messages.create({
+  // No `temperature`, for the same reason claudeJSON has none: Sonnet 5 400s
+  // on any non-default value. This call carried `temperature: 0` unnoticed
+  // because its only caller was the QA reviewer on Haiku, which accepts it.
+  // The moment the design agent (Sonnet) was given vision, every sighted
+  // retry failed with "`temperature` is deprecated for this model".
+  //
+  // Streamed like claudeJSON: an image plus a 16k-token design response is
+  // long enough to hit the SDK's non-streaming timeout, which the short QA
+  // verdicts never did.
+  const msg = await withRetry(async () =>
+    anthropic.messages.stream({
       model: opts.model,
       max_tokens: opts.maxTokens ?? 1024,
-      temperature: 0,
       system: opts.system,
       messages: [{ role: "user", content }],
-    })
+    }).finalMessage()
   )
   assertUsableResponse(msg, opts.label ?? "Claude vision call")
   return parseJsonLoose(extractText(msg))

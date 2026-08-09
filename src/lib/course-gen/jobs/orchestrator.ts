@@ -10,7 +10,7 @@ import { db } from "@/lib/db"
 import { handleSlideContentJob } from "./slideContent"
 import { handleModuleContentJob } from "./moduleContent"
 import { handleMediaJob } from "./media"
-import { handleQaJob, type QaVerdict } from "./qa"
+import { handleQaJob, screenshotSlide, type QaVerdict } from "./qa"
 import { handleFactCheckJob, type FactVerdict } from "./factCheck"
 import { compileBlueprint } from "../compiler"
 import { fitTitleFontSize, stripModulePrefix } from "../typefit"
@@ -175,6 +175,31 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   let verdictFeedback = ""
   let factVerdict: FactVerdict | null = null
   let qaVerdict: QaVerdict | null = null
+  // The rejected attempt, as the reader would have seen it. Handed to the
+  // design agent on every retry so it revises with eyes open instead of from
+  // a one-line paraphrase of someone else's look at the picture.
+  let renderPng: string | null = null
+
+  /** Screenshot for the retry, reusing QA's if it already took one. */
+  const renderFor = async (els: CanvasElement[]): Promise<string | null> => {
+    if (renderPng) return renderPng
+    try {
+      renderPng = await screenshotSlide({
+        elements: els, master, tokens,
+        pageNumber: cursor.slide_index + 1,
+        moduleNumber: mod.module_number,
+        partnerLogoLight: course.partner_logo_light_url,
+        partnerLogoDark: course.partner_logo_dark_url,
+      })
+      return renderPng
+    } catch (err) {
+      // A failed screenshot must not abort a retry that would otherwise have
+      // proceeded on text alone — sighted revision is an improvement on the
+      // old path, not a new dependency of it.
+      console.error("[course-gen] could not render the rejected attempt:", err)
+      return null
+    }
+  }
 
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
     // Cover and divider text is decided here, not by the agent, because it is
@@ -206,6 +231,9 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // Captured before the closure: `source` is reassigned on retry, so the
     // narrowing would not survive into the callback.
     const blueprint = source.blueprint
+    // Every attempt renders anew, so last attempt's picture must not be shown
+    // as if it were this one's.
+    renderPng = null
     const compiled = blueprint
       ? await withBrowserRetry(() => compileBlueprint({
           blueprint,
@@ -223,7 +251,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // Geometric overflow is detectable without a vision call — fix it first.
     if (compiled.overflow && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
       continue
     }
     // Geometry the compiler can prove: balance, overlap, contrast (see
@@ -235,7 +263,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     if (!compiled.lint.pass && attempt < MAX_QA_RETRIES) {
       const advisory = compiled.lint.findings.filter(f => !f.gating).map(f => f.message).join(" ")
       verdictFeedback = [compiled.lint.feedback, advisory].filter(Boolean).join(" ")
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
       continue
     }
 
@@ -258,7 +286,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     const unresolvedImage = elements.some(e => e.type === "image" && !e.url)
     if (unresolvedImage && attempt < MAX_QA_RETRIES) {
       verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
+      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
       continue
     }
 
@@ -297,7 +325,11 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
       }
       break
     }
-    qaVerdict = verdict
+    // QA already rendered this slide; reuse that image rather than launching
+    // a second browser to take the same picture.
+    const { screenshotPng, ...verdictOnly } = verdict
+    renderPng = screenshotPng
+    qaVerdict = verdictOnly
 
     // ── 4b. Factual check — does it match the clause it cites? ─────────────
     // Runs only once the slide looks right, so a slide destined for a layout
@@ -329,7 +361,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     verdictFeedback = !factOk
       ? factVerdict!.feedback
       : verdict.feedback || verdict.issues.map(i => i.detail).join("; ")
-    source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx)
+    source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, renderPng)
   }
 
   // ── 5. Persist the finished slide ────────────────────────────────────────
@@ -382,6 +414,7 @@ async function regenerate(
   courseId: string, mod: any, slide: any, cursor: Cursor,
   slidePlan: unknown, shapesUsed: string[], feedback: string,
   ctx: Record<string, unknown> = {},
+  renderPng: string | null = null,
 ) {
   return handleSlideContentJob({
     course_id: courseId,
@@ -397,6 +430,7 @@ async function regenerate(
       shapes_used: shapesUsed,
       module_accent: moduleAccentToken(mod.module_number),
       retry_feedback: feedback,
+      ...(renderPng ? { render_png: renderPng } : {}),
     },
   })
 }

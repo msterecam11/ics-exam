@@ -16,7 +16,7 @@
 //   Tier 3  gated `custom` node for anything primitives + relationship
 //           shapes still can't express — a normal tool, not a last resort.
 
-import { MODELS, claudeJSON } from "../ai"
+import { MODELS, claudeJSON, claudeVisionJSON } from "../ai"
 import { exemplarPromptBlock } from "../exemplars"
 import { iconPromptBlock } from "../icons"
 import type { SlideContentPlan, SlideSourceContent } from "../primitives"
@@ -194,6 +194,7 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     photos_used,         // how many earlier slides in this module carry a photo
     slides_remaining,    // how many slides are left after this one
     retry_feedback,     // set when QA bounced this slide back
+    render_png,         // base64 PNG of the attempt being rejected — see below
   } = job.input ?? {}
 
   // Cover and section_divider carry ONLY master-zone text — the real ICS
@@ -248,7 +249,7 @@ ${module_accent ? `This module's accent: **${module_accent}** — use it (not to
 ${factsBlock}
 ${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
 ${plan?.data?.length ? `\nComparable quantities in this material — these are REAL numbers from the source, already extracted for you:\n${plan.data.map(d => `  - ${d.label}: ${d.value}${d.unit ? ` ${d.unit}` : ""}`).join("\n")}\nThis slide has genuinely chartable data. Showing it as a chart or meter almost always beats restating the numbers inside a sentence — a reader compares bars instantly and parses prose slowly. Use "chart" (bar for comparing categories, line for a trend over time, donut for parts of a whole with 5 or fewer slices) or "meter" for proportions. Keep the numbers exactly as given; never round them into something the source didn't say.` : ""}
-${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}\nProduce less text and/or a simpler structure so everything fits comfortably.` : ""}
+${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}` : ""}${render_png ? `\n\nThe image attached to this message IS your previous attempt, rendered exactly as a reader will see it. Look at it before changing anything. The note above is what a reviewer measured; the picture is the thing itself, so trust your eyes over the paraphrase. Then compose a DIFFERENT arrangement that fixes what you can see — do not resubmit the same structure with the wording tweaked.` : ""}
 
 ## Reasoning step — do this before composing
 1. Look at the relationship named above. What does it actually mean about how these facts connect — is one leading to another, is one central and the rest orbit it, are two things being weighed, does severity build?
@@ -327,12 +328,26 @@ Return ONLY valid JSON:
   "citations": [{ "source_doc_id": "file name it came from", "excerpt": "short supporting quote" }]
 }`
 
-  const result = await claudeJSON({
-    model: MODELS.slide_content,
-    prompt,
-    maxTokens: 16_000,
-    label: `Slide design "${slide.title}"`,
-  })
+  // With a render attached the designer SEES the slide it is fixing. Until now
+  // its only channel was one sentence: the reviewer looked at a picture, formed
+  // a visual judgement, compressed it to a line, and the designer rebuilt the
+  // problem from that line and worked blind. The first attempt has nothing to
+  // show, so it stays a text call and costs what it always did; only a retry
+  // pays for vision, which is exactly when it is worth paying for.
+  const result = render_png
+    ? await claudeVisionJSON({
+        model: MODELS.slide_content,
+        prompt,
+        imagesBase64Png: [render_png],
+        maxTokens: 16_000,
+        label: `Slide redesign (sighted) "${slide.title}"`,
+      })
+    : await claudeJSON({
+        model: MODELS.slide_content,
+        prompt,
+        maxTokens: 16_000,
+        label: `Slide design "${slide.title}"`,
+      })
 
   if (!result?.title) throw new Error("Slide design came back without a title")
   result.layout_kind = slide.layout_kind

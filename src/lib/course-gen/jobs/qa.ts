@@ -118,7 +118,17 @@ logo, the client logo, the footer rule and the page number. None of them are
 the slide's imagery and none can be changed — do not score or comment on
 them.`
 
-export async function handleQaJob(job: any): Promise<QaVerdict> {
+/**
+ * The verdict, plus the render it was formed from.
+ *
+ * `screenshotPng` is deliberately OUTSIDE QaVerdict: the verdict is persisted
+ * to cg_pages.qa_check, and a base64 PNG on every row would bloat the table
+ * for no gain. Returning it as a sibling means the caller must destructure it
+ * off before storing, which is the point — it cannot be persisted by accident.
+ */
+export type QaResult = QaVerdict & { screenshotPng: string }
+
+export async function handleQaJob(job: any): Promise<QaResult> {
   const { elements, master, tokens, slide_title, page_number, module_number,
           partner_logo_light, partner_logo_dark, is_custom } = job.input as any
 
@@ -199,6 +209,7 @@ Return ONLY:
       issues: [{ kind: "qa_unparseable", severity: "major", detail: "The reviewer returned no usable scores." }],
       fix_layer: "none",
       feedback: "The quality review could not be read. Recompose the slide more simply.",
+      screenshotPng: shot,
     }
   }
 
@@ -209,6 +220,7 @@ Return ONLY:
   const modelFeedback = typeof (raw as any)?.feedback === "string" ? (raw as any).feedback : ""
 
   return {
+    screenshotPng: shot,
     checked: true,
     pass: failing.length === 0,
     scores,

@@ -19,6 +19,7 @@ import { writeFile, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { compileBlueprint } from "@/lib/course-gen/compiler"
 import { screenshotSlide, handleQaJob } from "@/lib/course-gen/jobs/qa"
+import { handleSlideContentJob } from "@/lib/course-gen/jobs/slideContent"
 import { ICS_THEME_1, type Master } from "@/lib/course-gen/theme1"
 import { FIXTURES, FIXTURE_NAMES, type Fixture } from "@/lib/course-gen/harness/fixtures"
 import type { ThemeTokens } from "@/lib/course-gen/tokens"
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const qa = body?.qa === true
+  const revise = body?.revise === true
   const tokens = ICS_THEME_1.tokens as unknown as ThemeTokens
   const masters = ICS_THEME_1.layout_templates as unknown as Record<string, Master>
 
@@ -135,6 +137,14 @@ export async function POST(req: Request) {
         // discipline that caught the linter's contrast cutoff rejecting the
         // client's own brand colours.
         ...(qa ? { qa: await handleQaJob({ input: { elements: compiled.elements, master, tokens, slide_title: fixture.title, page_number: 1, module_number: 1 } }) } : {}),
+        // Drives the Phase 6 loop end to end: render the failing attempt, hand
+        // the design agent BOTH the picture and the linter's findings, and
+        // render whatever it composes instead. Costs one Sonnet vision call,
+        // which is why it is opt-in — but it is the only way to see whether
+        // sighted revision actually revises.
+        ...(revise && !compiled.lint.pass
+          ? { revision: await reviseFixture(name, fixture, compiled, master, tokens) }
+          : {}),
       })
     } catch (err: any) {
       results.push({ name, error: String(err?.message ?? err) })
@@ -142,4 +152,62 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ outDir: OUT_DIR, count: results.length, results })
+}
+
+/**
+ * One turn of the sighted-revision loop, outside a real generation.
+ *
+ * The design agent is handed the render of its own rejected slide plus the
+ * linter's findings, and its replacement is compiled and screenshotted so the
+ * before and after sit side by side on disk.
+ */
+async function reviseFixture(
+  name: string, fixture: Fixture,
+  compiled: { elements: any[]; lint: any },
+  master: Master, tokens: ThemeTokens,
+) {
+  const before = await screenshotSlide({
+    elements: compiled.elements, master, tokens, pageNumber: 1, moduleNumber: 1,
+  })
+  await writeFile(path.join(OUT_DIR, `${name}.before.png`), Buffer.from(before, "base64"))
+
+  const advisory = compiled.lint.findings.filter((f: any) => !f.gating).map((f: any) => f.message).join(" ")
+  const revised = await handleSlideContentJob({
+    input: {
+      slide: { title: fixture.title, layout_kind: fixture.master, intent: "revision", key_points: [] },
+      module_title: "Harness", module_number: 1, slide_index: 0, slide_total: 1,
+      // The design agent is forbidden from inventing facts, so an empty plan
+      // correctly makes it return nothing. In production the module's gathered
+      // material is already there; here the rejected slide's own text stands
+      // in for it, so the agent has the same job it really has — rearrange
+      // existing material, not write new material.
+      content_plan: {
+        facts: compiled.elements
+          .filter((e: any) => e.type === "text" && !e.decor)
+          .flatMap((e: any) => (e.runs ?? []).map((r: any) => r.text))
+          .filter((t: string) => t && t.trim().length > 2),
+        relationship: "enumeration",
+      },
+      shapes_used: [], module_accent: "token:accent-warm",
+      tokens, dark_background: master.background.tone === "dark",
+      photos_used: 1, slides_remaining: 0,
+      retry_feedback: [compiled.lint.feedback, advisory].filter(Boolean).join(" "),
+      render_png: before,
+    },
+  })
+
+  if (!revised?.blueprint) return { error: "agent returned no blueprint", shape: revised?.shape ?? null }
+
+  const after = await compileBlueprint({
+    blueprint: revised.blueprint, master, tokens, title: fixture.title, decor: (revised as any).decor,
+  })
+  const shot = await screenshotSlide({ elements: after.elements, master, tokens, pageNumber: 1, moduleNumber: 1 })
+  await writeFile(path.join(OUT_DIR, `${name}.after.png`), Buffer.from(shot, "base64"))
+
+  return {
+    shapeBefore: (fixture.blueprint as any).type,
+    shapeAfter: revised.blueprint.type,
+    lintBefore: { pass: compiled.lint.pass, findings: compiled.lint.findings.map((f: any) => `${f.rule}`) },
+    lintAfter: { pass: after.lint.pass, metrics: after.lint.metrics, findings: after.lint.findings.map((f: any) => `${f.gating ? "GATE" : "advise"} ${f.rule}`) },
+  }
 }
