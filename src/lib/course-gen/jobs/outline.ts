@@ -145,10 +145,27 @@ Return ONLY valid JSON (no markdown fences):
 }
 layout_kind must be one of: ${LAYOUT_KINDS.join(", ")}. key_points are 2-5 short phrases naming what the slide will actually cover (used later to write the full slide). "covers" is only for modules that listed required coverage — copy those lines verbatim.`
 
+  // A flat 32k cap was sized for a small course and never revisited. The
+  // outline emits one JSON object per slide (title, layout_kind, intent,
+  // key_points[], and — when the designer pasted required coverage — a
+  // "covers" array quoting those lines verbatim), so the true cost scales
+  // with total requested slides AND with how much coverage text there is to
+  // quote back. A 4-module, ~30-slides-each brief with substantial per-module
+  // coverage blows past 32k before the model finishes the last module, which
+  // fails closed (assertUsableResponse throws on stop_reason "max_tokens")
+  // rather than silently truncating — but it still shouldn't have been the
+  // default ceiling. Budgeted per slide plus a per-character allowance for
+  // the coverage text actually being quoted back, floored at the old 32k so
+  // small courses see no change, ceilinged at Sonnet 5's real output limit.
+  const totalSlides = briefModules.reduce((s, m) => s + (m.slide_count || 10), 0)
+  const coverageChars = briefModules.reduce((s, m) => s + (m.coverage?.length ?? 0), 0)
+  const estimatedTokens = 4_000 + totalSlides * 220 + Math.ceil(coverageChars / 3)
+  const maxTokens = Math.min(64_000, Math.max(32_000, estimatedTokens))
+
   const result = await claudeJSON({
     model: MODELS.outline,
     prompt,
-    maxTokens: 32_000,
+    maxTokens,
     label: "Outline generation",
   })
 
