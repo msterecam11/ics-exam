@@ -18,7 +18,7 @@ import { NextResponse } from "next/server"
 import { writeFile, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { compileBlueprint } from "@/lib/course-gen/compiler"
-import { screenshotSlide } from "@/lib/course-gen/jobs/qa"
+import { screenshotSlide, handleQaJob } from "@/lib/course-gen/jobs/qa"
 import { ICS_THEME_1, type Master } from "@/lib/course-gen/theme1"
 import { FIXTURES, FIXTURE_NAMES, type Fixture } from "@/lib/course-gen/harness/fixtures"
 import type { ThemeTokens } from "@/lib/course-gen/tokens"
@@ -53,6 +53,7 @@ export async function POST(req: Request) {
   if (blocked) return blocked
 
   const body = await req.json().catch(() => ({}))
+  const qa = body?.qa === true
   const tokens = ICS_THEME_1.tokens as unknown as ThemeTokens
   const masters = ICS_THEME_1.layout_templates as unknown as Record<string, Master>
 
@@ -128,6 +129,12 @@ export async function POST(req: Request) {
         lintPass: compiled.lint.pass,
         findings: compiled.lint.findings.map(f => `${f.gating ? "GATE" : "advise"} ${f.rule}: ${f.message}`),
         metrics: compiled.lint.metrics,
+        // Opt-in, because unlike everything else here it costs money: one
+        // Haiku vision call per fixture. Worth it to calibrate the rubric's
+        // threshold against real renders rather than guessing it — the same
+        // discipline that caught the linter's contrast cutoff rejecting the
+        // client's own brand colours.
+        ...(qa ? { qa: await handleQaJob({ input: { elements: compiled.elements, master, tokens, slide_title: fixture.title, page_number: 1, module_number: 1 } }) } : {}),
       })
     } catch (err: any) {
       results.push({ name, error: String(err?.message ?? err) })

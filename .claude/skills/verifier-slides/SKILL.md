@@ -27,6 +27,11 @@ PNGs land in `.harness/out/<name>.png` (gitignored). **Read the PNG** — the JS
 response is not the verification, the image is.
 
 - `{"all":true}` renders every fixture (~10s each, sequential by design)
+- `{"fixture":"…","qa":true}` also runs the vision reviewer. This is the only
+  option here that costs money (one Haiku vision call). Use it to calibrate a
+  rubric or threshold change against real renders — never guess a threshold,
+  the last three were all wrong in the same direction (too strict, firing on
+  things the design agent could not act on)
 - `{"blueprint":{...},"master":"content_white","title":"…"}` renders an ad-hoc
   blueprint without adding a fixture — use while iterating on a shape
 - `GET` the same URL lists available fixtures

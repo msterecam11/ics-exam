@@ -1,13 +1,24 @@
 // QA job — renders the COMPOSED slide (background + chrome + elements) and
-// has a vision model look at it, exactly as a reviewer would. This is a
-// standard pass, not a safety net: dynamic layout earns its quality here.
+// has a vision model look at it, exactly as a reviewer would.
 //
-// Failures are routed to the layer that can actually fix them:
-//   text_overflow / too_much_content -> content layer (rewrite shorter)
-//   structure / crowding             -> blueprint layer (simpler shape)
-//   contrast / image_fit             -> style or media layer
-// Tier-3 (custom) slides additionally face a "does this look professionally
-// designed and on-brand?" rubric, because freeform is where variance lives.
+// This runs AFTER designLint.ts, which has already gated on everything
+// geometry can prove (balance, overlap, unreadable contrast). What is left
+// is what only eyes can judge: whether the composition reads as deliberate,
+// whether the imagery is apt, whether it looks like a professional deck.
+//
+// ── Two things this deliberately does NOT do ───────────────────────────────
+//
+// It does not ask the model for a verdict. It asks for SCORES and computes
+// the verdict here. A model asked "did this pass?" answers a social question
+// and is agreeable; a model asked "rate the hierarchy 1-5" answers an
+// observational one. The threshold then lives in code, where it can be
+// changed deliberately and reviewed.
+//
+// It does not fail open. The previous version returned `verdict?.pass !==
+// false`, so a malformed response, a missing field, or a truncated JSON body
+// all counted as a pass — and a thrown error was caught upstream and the
+// slide accepted with a console.error. Three separate paths by which an
+// unreviewed slide became an approved one.
 
 import { getBrowser } from "@/lib/browser"
 import { MODELS, claudeVisionJSON } from "../ai"
@@ -16,8 +27,39 @@ import { SLIDE_W, SLIDE_H, type ThemeTokens } from "../tokens"
 import type { CanvasElement } from "../primitives"
 import type { Master } from "../theme1"
 
+/** Axes the reviewer scores. Imagery is skipped when the slide has none. */
+export const QA_AXES = ["composition", "hierarchy", "alignment", "readability", "brand", "imagery"] as const
+export type QaAxis = (typeof QA_AXES)[number]
+
+/**
+ * Fail when any axis is BROKEN (1), or when several are simultaneously weak.
+ *
+ * Not an average: averaging hides the failure that matters most — a slide
+ * that is beautiful, on-brand, well-spaced and completely unreadable
+ * averages fine.
+ *
+ * The numbers come from running this rubric over the harness fixtures rather
+ * than from taste. Haiku grades conservatively and clusters at 2-3, so an
+ * "any axis <= 2 fails" rule rejected 6 of 7 slides, including ones verified
+ * by eye as correct. That is the same over-firing that made the old underfill
+ * check worthless: a gate that rejects nearly everything just triples the
+ * cost and ships anyway.
+ *
+ * A single 2 is therefore treated as "could be better" (which is what the
+ * model means by it) and only a 1, or a cluster of weak axes, fails.
+ * Geometry defects do not depend on this bar at all — designLint.ts has
+ * already gated on balance, overlap and unreadable contrast before QA runs.
+ */
+const BROKEN_SCORE = 1
+const WEAK_SCORE = 2
+const MAX_WEAK_AXES = 2
+
 export interface QaVerdict {
+  /** False when the reviewer could not run. Not the same as "passed". */
+  checked: boolean
+  /** Computed here from `scores` — never read from the model's own output. */
   pass: boolean
+  scores: Partial<Record<QaAxis, number>>
   issues: { kind: string; severity: "minor" | "major"; detail: string }[]
   fix_layer: "content" | "blueprint" | "style" | "media" | "none"
   feedback: string
@@ -54,6 +96,28 @@ export async function screenshotSlide(opts: {
   }
 }
 
+const RUBRIC = `Score each axis 1-5. Use the whole scale — most competent slides sit at 3-4.
+
+  5  exemplary; you would put it in a portfolio
+  4  good; nothing you would change before sending it
+  3  acceptable; a client would not remark on it
+  2  a client WOULD remark on it — visibly off, not merely improvable
+  1  broken; would embarrass whoever presented it
+
+Axes:
+- composition   Is the content deliberately placed and balanced in its area, rather than drifting to one side or floating in space?
+- hierarchy     Is there ONE clear focal element, with everything else visibly deferring to it? Six things shouting equally scores 2.
+- alignment     Are edges, gaps and repeated element sizes consistent? Ragged, near-but-not-quite alignment scores 2.
+- readability   Is every piece of text legible against what sits behind it, unclipped and not cramped?
+- brand         Does this read as a professional corporate aviation deck — not a generated template with the words swapped?
+- imagery       Photos, charts, icons placed ON the slide: apt to the message, correctly fitted, not stretched or decorative filler.
+
+The faint aircraft graphic and the coloured wash behind the content are the
+theme's own background, fixed for every slide in the deck. So is the ICS
+logo, the client logo, the footer rule and the page number. None of them are
+the slide's imagery and none can be changed — do not score or comment on
+them.`
+
 export async function handleQaJob(job: any): Promise<QaVerdict> {
   const { elements, master, tokens, slide_title, page_number, module_number,
           partner_logo_light, partner_logo_dark, is_custom } = job.input as any
@@ -66,44 +130,92 @@ export async function handleQaJob(job: any): Promise<QaVerdict> {
     partnerLogoDark: partner_logo_dark,
   })
 
-  const customRubric = is_custom
-    ? `\nThis slide uses a CUSTOM composition. Hold it to a higher bar: does it read as professionally designed, deliberately aligned, and on-brand for a corporate aviation deck — not like an ad-hoc arrangement of boxes?`
+  // Whether the slide HAS imagery is a fact about the elements, so it is
+  // decided here rather than left to the reviewer to notice. Asked to score
+  // imagery on a slide that has none, the model scored the theme's own
+  // background watermark — 1s and 2s on six of seven fixtures, none of which
+  // the design agent could have acted on.
+  // Photos and charts only. Icons were counted here at first and it put the
+  // axis back on nearly every slide: `flow` draws arrow-right connectors
+  // between its steps, `tiers` draws arrow-down between bands, `comparison`
+  // puts a glyph beside each heading. Those are structural marks, not the
+  // slide's imagery, and asking a reviewer to grade "the imagery" on a slide
+  // whose only picture is a 16px connector arrow produced 1s and 2s that no
+  // redesign could have answered.
+  const hasImagery = (elements as CanvasElement[]).some(
+    e => (e.type === "image" || e.type === "chart") && !e.decor
+  )
+
+  const customNote = is_custom
+    ? `\nThis slide uses a CUSTOM (freeform) composition rather than a standard primitive, so its alignment and spacing were decided element by element. Look at those two axes especially carefully.`
     : ""
 
-  const verdict = await claudeVisionJSON({
+  const raw = await claudeVisionJSON({
     model: MODELS.qa_vision,
     imagesBase64Png: [shot],
     maxTokens: 1200,
     label: `Visual QA of "${slide_title}"`,
-    prompt: `You are the quality reviewer for ICS Aviation's generated training slides. Inspect this rendered slide (1280x720) and report problems a professional designer would reject.
+    prompt: `You are the quality reviewer for ICS Aviation's generated training slides. Inspect this rendered slide (1280x720) and score it as a professional presentation designer would.
 
-Slide title: "${slide_title}"
+Slide title: "${slide_title}"${customNote}
 
-Check for:
-1. text_overflow — text clipped, running past its container, or off the slide
-2. crowding — elements touching/overlapping, no breathing room, unbalanced density
-3. contrast — text unreadable against its background (especially over photos)
-4. alignment — visibly misaligned edges, ragged columns, inconsistent spacing
-5. chrome_conflict — content colliding with the logo, footer rule, or page number
-6. image_fit — imagery that is stretched, empty, or unrelated to the message
-7. underfill — the content area reads as mostly empty white space relative to what a finished slide should look like — not a deliberately spacious composition, genuinely sparse${customRubric}
+${RUBRIC}
 
-Ignore: subjective wording choices, and the deliberate brand style (blue palette, orange accents, rounded cards).
+${hasImagery
+  ? "This slide DOES contain its own imagery — score the imagery axis."
+  : "This slide contains NO imagery of its own. OMIT the imagery axis entirely; the only pictures visible are the theme's fixed background."}
+
+Geometry has already been checked automatically — overlap, balance and unreadable colour combinations are handled elsewhere. Judge what only a viewer can: whether this looks composed and deliberate.
+
+Ignore: subjective wording choices, and the deliberate brand style (blue palette, orange accents, rounded cards). The ICS orange and teal accents are the client's own brand and are not defects.
 
 Return ONLY:
 {
-  "pass": true|false,
-  "issues": [{ "kind": "text_overflow|crowding|contrast|alignment|chrome_conflict|image_fit|underfill|design_quality", "severity": "minor|major", "detail": "what and where" }],
+  "scores": { "composition": 1-5, "hierarchy": 1-5, "alignment": 1-5, "readability": 1-5, "brand": 1-5, "imagery": 1-5 },
+  "issues": [{ "kind": "short_slug", "severity": "minor|major", "detail": "what and where" }],
   "fix_layer": "content|blueprint|style|media|none",
-  "feedback": "one instruction to whoever regenerates this slide"
-}
-Set pass=false only for MAJOR issues that a client would notice. Minor imperfections pass.`,
+  "feedback": "one specific instruction to whoever regenerates this slide"
+}`,
   })
 
+  // Keep only real numeric scores on known axes. A missing axis is not a
+  // zero — "imagery" is legitimately absent on a text slide — but a response
+  // carrying no usable scores at all cannot be treated as a review.
+  const scores: Partial<Record<QaAxis, number>> = {}
+  for (const axis of QA_AXES) {
+    // Discarded rather than trusted when the slide has no imagery: told to
+    // omit the axis, the model scores the background anyway.
+    if (axis === "imagery" && !hasImagery) continue
+    const v = Number((raw as any)?.scores?.[axis])
+    if (Number.isFinite(v) && v >= 1 && v <= 5) scores[axis] = v
+  }
+
+  const values = Object.values(scores)
+  if (values.length === 0) {
+    // Fail CLOSED. The old code's `pass: verdict?.pass !== false` turned this
+    // exact case — a malformed or truncated response — into an approval.
+    return {
+      checked: false, pass: false, scores: {},
+      issues: [{ kind: "qa_unparseable", severity: "major", detail: "The reviewer returned no usable scores." }],
+      fix_layer: "none",
+      feedback: "The quality review could not be read. Recompose the slide more simply.",
+    }
+  }
+
+  const entries = Object.entries(scores) as [QaAxis, number][]
+  const broken = entries.filter(([, v]) => v <= BROKEN_SCORE)
+  const weak = entries.filter(([, v]) => v <= WEAK_SCORE)
+  const failing = broken.length > 0 || weak.length > MAX_WEAK_AXES ? weak : []
+  const modelFeedback = typeof (raw as any)?.feedback === "string" ? (raw as any).feedback : ""
+
   return {
-    pass: verdict?.pass !== false,
-    issues: Array.isArray(verdict?.issues) ? verdict.issues : [],
-    fix_layer: verdict?.fix_layer ?? "none",
-    feedback: verdict?.feedback ?? "",
+    checked: true,
+    pass: failing.length === 0,
+    scores,
+    issues: Array.isArray((raw as any)?.issues) ? (raw as any).issues : [],
+    fix_layer: (raw as any)?.fix_layer ?? "none",
+    feedback: failing.length
+      ? `${failing.map(([a, v]) => `${a} scored ${v}/5`).join(", ")}. ${modelFeedback}`.trim()
+      : modelFeedback,
   }
 }

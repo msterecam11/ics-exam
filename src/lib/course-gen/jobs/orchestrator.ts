@@ -10,7 +10,7 @@ import { db } from "@/lib/db"
 import { handleSlideContentJob } from "./slideContent"
 import { handleModuleContentJob } from "./moduleContent"
 import { handleMediaJob } from "./media"
-import { handleQaJob } from "./qa"
+import { handleQaJob, type QaVerdict } from "./qa"
 import { handleFactCheckJob, type FactVerdict } from "./factCheck"
 import { compileBlueprint } from "../compiler"
 import { fitTitleFontSize, stripModulePrefix } from "../typefit"
@@ -174,6 +174,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   let elements: CanvasElement[] = []
   let verdictFeedback = ""
   let factVerdict: FactVerdict | null = null
+  let qaVerdict: QaVerdict | null = null
 
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
     // Cover and divider text is decided here, not by the agent, because it is
@@ -277,9 +278,26 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
         },
       })
     } catch (err) {
-      console.error("[course-gen] QA step failed (accepting slide):", err)
+      // An unavailable reviewer must not silently become a clean bill of
+      // health — the same rule the fact checker already follows below. This
+      // used to `break`, which accepted the slide outright, so a bad API key
+      // or an exhausted quota shipped an entire course unreviewed behind a
+      // single console line.
+      //
+      // It does NOT regenerate: without a verdict there is no feedback, so a
+      // retry would re-roll the design blind and spend a second content call
+      // to do it. The slide is kept and the gap is recorded on the row, where
+      // a reviewer can find it.
+      console.error("[course-gen] QA step failed (slide kept, recorded as unreviewed):", err)
+      qaVerdict = {
+        checked: false, pass: false, scores: {},
+        issues: [{ kind: "qa_unavailable", severity: "major", detail: String((err as any)?.message ?? err) }],
+        fix_layer: "none",
+        feedback: `Visual QA could not run: ${(err as any)?.message ?? "unknown error"}`,
+      }
       break
     }
+    qaVerdict = verdict
 
     // ── 4b. Factual check — does it match the clause it cites? ─────────────
     // Runs only once the slide looks right, so a slide destined for a layout
@@ -327,6 +345,7 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // Kept on the slide so a reviewer can see WHY it was accepted — including
     // "unverified", which is a real state and not the same as "correct".
     fact_check: factVerdict,
+    qa_check: qaVerdict,
   })
 
   // ── 6. Advance ───────────────────────────────────────────────────────────
