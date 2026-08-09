@@ -81,6 +81,13 @@ ${RELATIONSHIP_GUIDE}
 - "citations": clause + document for every factual claim that comes from the reference material. Use the clause number the material actually shows — never invent one.
 - "data": OPTIONAL. If this slide's material contains quantities that are genuinely comparable TO EACH OTHER — several durations, several counts, a set of percentages, a before/after pair — pull them out as {label, value, unit} so the design pass can show them as a chart or meter rather than burying them in a sentence. Omit the field entirely otherwise. Do NOT invent numbers to fill it, do not convert a single lone figure into a one-item series (that is a stat, not a chart), and do not list quantities that measure different things and therefore cannot sit on one axis.
 
+- "role": the job this slide does in the module's ARGUMENT. Assigned across the whole module at once, like emphasis, because a throughline is a property of the sequence and not of any one slide.
+    · "setup" — establishes the frame, the problem, or why the rest matters. Usually early, usually few elements.
+    · "evidence" — the substance that proves or specifies the case: the figures, the bands, the requirements, the procedure. Most slides are this.
+    · "turn" — where the understanding changes: the consequence of getting it wrong, the constraint that reframes everything before it, the point the module is actually FOR. At most two per module, often exactly one.
+    · "consequence" — what follows from the turn in practice: what someone must now do, check or provision.
+    · "reference" — a lookup a learner returns to rather than reads through. Honest to label a table this rather than dressing it up as an argument.
+  A module that is entirely "evidence" is a reference document, not a lesson: it states things correctly and builds to nothing. If nothing here genuinely turns, say so by not marking one — do not promote an ordinary slide to make the shape look right.
 - "emphasis": this slide's weight in the MODULE, decided across the whole module at once — this is the one judgement no individual slide can make about itself.
   You are looking at every slide in this module together, which is exactly why you assign this here. Ask which one or two slides carry the idea a learner should still have a week later: the point everything else supports, the figure that reframes the topic, the consequence that makes the rest matter. Those are "peak". Assign "quiet" to the genuinely supporting slides — a definition, a list of references, a short bridge. Everything else is "normal".
   AT MOST TWO peaks per module, and a module of six or more slides should have at least two quiet ones. This is a budget, not a rating: if you mark everything "normal" the module reads flat, and if you mark half of it "peak" nothing stands out at all. A peak earns its prominence from the quiet slides around it.
@@ -91,7 +98,7 @@ Structural slides (cover, section_divider, closing_cta) still get a "relationshi
 Return ONLY valid JSON:
 {
   "slides": [
-    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "emphasis": "peak|normal|quiet", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
+    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "role": "setup|evidence|turn|consequence|reference", "emphasis": "peak|normal|quiet", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
   ]
 }
 One entry per slide listed above, in the same order.`
@@ -112,6 +119,9 @@ One entry per slide listed above, in the same order.`
 
 /** At most this many slides per module may be the emphatic ones. */
 const MAX_PEAKS = 2
+/** And at most this many may be the point the module turns on. */
+const MAX_TURNS = 2
+const ROLES = new Set(["setup", "evidence", "turn", "consequence", "reference"])
 
 /**
  * A budget, held in code rather than trusted to the prompt.
@@ -123,11 +133,19 @@ const MAX_PEAKS = 2
  * the earliest-chosen ones, on the reasoning that a module's first-nominated
  * peaks are its most considered.
  */
-function enforceEmphasisBudget(slides: { emphasis?: string }[]): void {
+function enforceEmphasisBudget(slides: { emphasis?: string; role?: string }[]): void {
   let kept = 0
+  let turns = 0
   for (const s of slides) {
     if (s.emphasis !== "peak" && s.emphasis !== "quiet") s.emphasis = "normal"
-    if (s.emphasis !== "peak") continue
-    if (++kept > MAX_PEAKS) s.emphasis = "normal"
+    if (s.emphasis === "peak" && ++kept > MAX_PEAKS) s.emphasis = "normal"
+
+    // An unrecognised role is dropped rather than coerced: guessing "evidence"
+    // would state something about the slide that nothing established, and the
+    // design agent is better off with no guidance than with invented guidance.
+    if (!s.role || !ROLES.has(s.role)) { delete s.role; continue }
+    // Everything cannot be the turning point, for the same reason everything
+    // cannot be the peak — the label only means anything by contrast.
+    if (s.role === "turn" && ++turns > MAX_TURNS) s.role = "evidence"
   }
 }

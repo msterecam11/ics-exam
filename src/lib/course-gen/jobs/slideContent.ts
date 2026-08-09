@@ -247,6 +247,18 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     normal: `\n## Emphasis: normal\nA regular content slide. Compose it well, but leave the loudest devices — hero stats, gradients, full-bleed banners — to this module's peak slides.`,
   } as Record<string, string>)[plan?.emphasis ?? "normal"] ?? ""
 
+  // Role answers a different question from emphasis and from relationship,
+  // and the three are deliberately independent: relationship decides the
+  // SHAPE, emphasis decides how LOUD, role decides what the slide is FOR.
+  // A quiet slide can still be the turn; evidence is very often a table.
+  const roleNote = isStructural ? "" : ({
+    setup: `\n## This slide's job: SETUP\nIt frames what follows — the problem, the stakes, or why any of the rest matters. Keep it uncluttered: a setup slide crowded with detail stops setting anything up. A lead line, one strong image or a single statement usually does more here than a full grid.`,
+    evidence: `\n## This slide's job: EVIDENCE\nIt specifies or proves the case — figures, bands, requirements, procedure. Density is legitimate here in a way it is not elsewhere: a table, a chart or a full comparison is the honest answer when the detail IS the point. Do not decorate it into something lighter than it is.`,
+    turn: `\n## This slide's job: THE TURN\nThis is where the learner's understanding changes — the constraint that reframes everything before it, or the consequence of getting it wrong. It should not look like the slides around it. Reach for the strongest device the content honestly supports: a single statement, a hero figure, a full-bleed band, a stark comparison. This is the slide the module exists for.`,
+    consequence: `\n## This slide's job: CONSEQUENCE\nWhat follows in practice — what must now be done, checked or provisioned. Concrete and actionable in tone; a checklist, an ordered flow or a tag-list of states usually fits better than prose.`,
+    reference: `\n## This slide's job: REFERENCE\nSomething a learner returns to and looks up rather than reads through. A clean table or a plain structured list is the RIGHT answer here — do not dress lookup material as an argument. Legibility and scanability beat visual interest.`,
+  } as Record<string, string>)[plan?.role ?? ""] ?? ""
+
   const varietyNote = shapes_used?.length
     ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.
 
@@ -264,7 +276,7 @@ ${module_accent ? `This module's accent: **${module_accent}** — use it (not to
 ## The material for this slide (already gathered — do not invent new facts, only decide how to show these)
 ${factsBlock}
 ${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
-${emphasisNote}
+${roleNote}${emphasisNote}
 ${plan?.data?.length ? `\nComparable quantities in this material — these are REAL numbers from the source, already extracted for you:\n${plan.data.map(d => `  - ${d.label}: ${d.value}${d.unit ? ` ${d.unit}` : ""}`).join("\n")}\nThis slide has genuinely chartable data. Showing it as a chart or meter almost always beats restating the numbers inside a sentence — a reader compares bars instantly and parses prose slowly. Use "chart" (bar for comparing categories, line for a trend over time, donut for parts of a whole with 5 or fewer slices) or "meter" for proportions. Keep the numbers exactly as given; never round them into something the source didn't say.` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}` : ""}${render_png ? `\n\nThe image attached to this message IS your previous attempt, rendered exactly as a reader will see it. Look at it before changing anything. The note above is what a reviewer measured; the picture is the thing itself, so trust your eyes over the paraphrase. Then compose a DIFFERENT arrangement that fixes what you can see — do not resubmit the same structure with the wording tweaked.` : ""}
 

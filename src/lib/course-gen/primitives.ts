@@ -509,6 +509,19 @@ export interface SlideContentPlan {
    * slides at most; "quiet" slides exist to make them land.
    */
   emphasis?: "peak" | "normal" | "quiet"
+  /**
+   * What job this slide does in the module's ARGUMENT, as opposed to what
+   * shape its facts have (`relationship`) or how loud it should be
+   * (`emphasis`). The three are independent and answer different questions:
+   * a quiet slide can still be the turn, and evidence is often a table.
+   *
+   * Without this a module is a correct sequence of correct slides with no
+   * throughline — every slide states something, none of them build on the
+   * one before. It is the difference between a reference document and a
+   * lesson, and it is the half of the gap that adding more layout options
+   * was never going to close.
+   */
+  role?: "setup" | "evidence" | "turn" | "consequence" | "reference"
   citations: { source_doc_id: string; excerpt?: string }[]
   /**
    * Comparable quantities this slide's material actually contains, pulled
