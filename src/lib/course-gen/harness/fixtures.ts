@@ -331,6 +331,27 @@ export const FIXTURES: Record<string, Fixture> = {
     } as BlueprintNode,
   },
 
+  "timeline-connectors": {
+    master: "content_white",
+    title: "Timeline — Connectors With Direction",
+    note: "Proves the arrow prop: a real axis with a direction, which no primitive could draw before.",
+    blueprint: {
+      type: "custom", justification: "a dated axis with direction — no primitive expresses this", aspect: 2.6,
+      children: [
+        // The axis itself, running the width of the box and pointing forward.
+        { kind: "line", x: 2, y: 47, width: 96, height: 3, props: { stroke: "token:primary", arrow: "end" } },
+        { kind: "shape", x: 6, y: 40, width: 3.5, height: 14, props: { fill: "token:primary", radius: 20 } },
+        { kind: "text", x: 1, y: 20, width: 16, height: 12, props: { text: "Detection", fontSize: 20, color: "token:navy", align: "center" } },
+        { kind: "shape", x: 34, y: 40, width: 3.5, height: 14, props: { fill: "token:accent-warm", radius: 20 } },
+        { kind: "text", x: 29, y: 62, width: 16, height: 12, props: { text: "Turnout", fontSize: 20, color: "token:navy", align: "center" } },
+        { kind: "shape", x: 62, y: 40, width: 3.5, height: 14, props: { fill: "token:primary-light", radius: 20 } },
+        { kind: "text", x: 57, y: 20, width: 16, height: 12, props: { text: "Travel", fontSize: 20, color: "token:navy", align: "center" } },
+        { kind: "shape", x: 88, y: 40, width: 3.5, height: 14, props: { fill: "token:success", radius: 20 } },
+        { kind: "text", x: 83, y: 62, width: 16, height: 12, props: { text: "On scene", fontSize: 20, color: "token:navy", align: "center" } },
+      ],
+    } as BlueprintNode,
+  },
+
   // ── Negative tests: these MUST fail the linter ─────────────────────────
   // A gate that never fires is indistinguishable from no gate at all. After
   // the relationship-primitive fix every real fixture passes, so these exist

@@ -68,12 +68,18 @@ Tier 3 — for anything none of the above can express (a real timeline, a diagra
     — x/y/width/height are % of THIS node's own box (never the slide).
     THE ONLY props each kind reads — anything else is silently dropped, so do not invent others:
       shape: "fill" (token), "radius" (number), "dashed" (boolean, dashed fill pattern)
-      line:  "stroke" (token), "dashed" (boolean)
+      line:  "stroke" (token), "dashed" (boolean), "arrow" ("none"|"end"|"start"|"both")
+             An arrow turns a rule into a CONNECTOR, which is what makes a real diagram possible:
+             a timeline with direction, a process chain, a feedback loop, one box leading to another.
+             Direction follows the box you give it — wider than tall points right, taller than wide
+             points down. This is the piece that was missing when a "custom" composition could place
+             boxes but never say which one leads to which.
       text:  "text" (string), "fontSize" (number), "color" (token), "align" ("left"|"center"|"right"), "rotate" (degrees)
       icon:  "name" (from the icon vocabulary below), "color" (token), "rotate" (degrees)
-    "rotate" works on shape/icon/text (not line). There is no "arrow" prop — for a
-    pointer or directional cue, use an icon (e.g. "arrow-right") with "rotate" set
-    to the angle you need, not a line.
+    "rotate" works on shape/icon/text (not line); a line takes "arrow" instead.
+    For a connector that runs along a horizontal or vertical axis use a line with
+    "arrow" — it is the real thing and stays crisp at any size. Reserve a rotated
+    "arrow-right" icon for a diagonal cue, which a line cannot express.
     Two labels must not land in overlapping x/y/width/height boxes — check the
     numbers against each other before finalizing, the way you'd eyeball a real
     layout before shipping it.

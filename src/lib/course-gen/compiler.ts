@@ -213,7 +213,7 @@ export async function compileBlueprint(input: CompileInput): Promise<{
           break
         case "line":
           elements.push({ ...base, type: "shape", shape: "line",
-            style: { fill: p.stroke, radius: 0, dashed: !!p.dashed } } as CanvasElement)
+            style: { fill: p.stroke, radius: 0, dashed: !!p.dashed, arrow: p.arrow } } as CanvasElement)
           break
         case "icon":
           elements.push({ ...base, type: "icon", name: String(p.name ?? "circle"), color: p.color } as CanvasElement)

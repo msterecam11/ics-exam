@@ -11,6 +11,8 @@
 // ─── Token references ────────────────────────────────────────────────────────
 // A style slot holds either a literal (rare, editor-set) or "token:<name>".
 export type TokenRef = `token:${string}` | string
+import type { ArrowEnds } from "./connectors"
+export type { ArrowEnds }
 
 // ─── Blueprint (structural) layer ────────────────────────────────────────────
 
@@ -393,6 +395,11 @@ export interface ShapeElement extends ElementBase {
   style: {
     fill?: TokenRef; stroke?: TokenRef; strokeWidth?: number; radius?: number
     opacity?: number; shadow?: boolean; dashed?: boolean
+    /** shape "line" only — arrowheads, so a rule can become a connector.
+     *  Without this the agent could draw a line between two boxes but never
+     *  say which one leads to the other, which is why no timeline or process
+     *  chain could be composed. */
+    arrow?: ArrowEnds
     /** How `fill` is painted — solid, a tint of it, a gradient into its deeper
      *  sibling, an outline, or glass. Baked so the PDF and the editor paint
      *  the same surface the compiler measured. */

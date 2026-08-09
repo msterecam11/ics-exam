@@ -14,6 +14,7 @@ import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
 import { surfacePaint, fillCarriesInverseText, cornerCss, type FillStyleName, type CornerName } from "./surface"
 import { effectsCss } from "./effects"
+import { connectorSvg, type ArrowEnds } from "./connectors"
 
 interface Bake {
   kind: "text" | "shape" | "icon" | "image" | "table" | "chart" | "line"
@@ -598,6 +599,17 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           if (ch.kind === "line") {
             const color = resolveToken(String(ch.props.stroke ?? ""), tokens, T("primary"))
             const horizontal = Number(ch.width) >= Number(ch.height)
+            const arrow = ch.props.arrow as ArrowEnds | undefined
+            // With an arrow the line is real SVG, so the head is drawn rather
+            // than faked; without one it stays a painted div, which is cheaper
+            // and is what every existing rule already measures as.
+            if (arrow && arrow !== "none") {
+              // Percent of the parent box — resolved to px only at paint time,
+              // so the measured rect is unaffected by the head.
+              return `<div ${bakeAttr({ kind: "line", props: ch.props })} style="${st}">${
+                connectorSvg({ width: Math.max(1, Number(ch.width) * 6), height: Math.max(1, Number(ch.height) * 6), color, arrow, dashed: !!ch.props.dashed })
+              }</div>`
+            }
             const fill = ch.props.dashed
               ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
               : `background:${color};`

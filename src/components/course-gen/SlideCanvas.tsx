@@ -11,6 +11,7 @@ import { iconSvg } from "@/lib/course-gen/icons"
 import { chartSvg } from "@/lib/course-gen/charts"
 import { surfacePaint, cornerCss, type CornerName } from "@/lib/course-gen/surface"
 import { patternCss } from "@/lib/course-gen/decor"
+import { connectorSvg } from "@/lib/course-gen/connectors"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
 
 export interface Master {
@@ -167,6 +168,11 @@ export default function SlideCanvas(props: Props) {
             const s = el.style
             if (el.shape === "line") {
               const color = resolveToken(s.fill, tokens, "#0C72C6")
+              // Same shared renderer as the compiler and the PDF path.
+              if (s.arrow && s.arrow !== "none") {
+                return <div key={el.id} {...common} style={box}
+                  dangerouslySetInnerHTML={{ __html: connectorSvg({ width: (el.width / 100) * SLIDE_W, height: (el.height / 100) * SLIDE_H, color, arrow: s.arrow, dashed: !!s.dashed }) }} />
+              }
               const horizontal = el.width >= el.height
               const backgroundImage = s.dashed
                 ? `repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px)`

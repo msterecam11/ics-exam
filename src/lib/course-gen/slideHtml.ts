@@ -13,6 +13,7 @@ import { iconSvg } from "./icons"
 import { chartSvg } from "./charts"
 import { surfacePaint, cornerCss, type CornerName } from "./surface"
 import { patternCss } from "./decor"
+import { connectorSvg } from "./connectors"
 
 export interface RenderSlideInput {
   elements: CanvasElement[]
@@ -101,6 +102,12 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
       const s = el.style
       if (el.shape === "line") {
         const color = resolveToken(s.fill, tokens, "#0C72C6")
+        // Same shared renderer the measurement pass used — a connector drawn
+        // one way while measuring and another when exported is the drift this
+        // codebase keeps paying for.
+        if (s.arrow && s.arrow !== "none") {
+          return `<div style="${box}">${connectorSvg({ width: (el.width / 100) * SLIDE_W, height: (el.height / 100) * SLIDE_H, color, arrow: s.arrow, dashed: !!s.dashed })}</div>`
+        }
         const horizontal = el.width >= el.height
         const fill = s.dashed
           ? `background-image:repeating-linear-gradient(${horizontal ? "to right" : "to bottom"},${color} 0 6px,transparent 6px 12px);`
