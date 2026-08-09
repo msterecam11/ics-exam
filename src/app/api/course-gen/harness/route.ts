@@ -20,11 +20,14 @@ import path from "node:path"
 import { compileBlueprint } from "@/lib/course-gen/compiler"
 import { screenshotSlide, handleQaJob } from "@/lib/course-gen/jobs/qa"
 import { handleSlideContentJob } from "@/lib/course-gen/jobs/slideContent"
+import { compareToBaseline, writeBaseline } from "@/lib/course-gen/harness/imageDiff"
 import { ICS_THEME_1, type Master } from "@/lib/course-gen/theme1"
 import { FIXTURES, FIXTURE_NAMES, type Fixture } from "@/lib/course-gen/harness/fixtures"
 import type { ThemeTokens } from "@/lib/course-gen/tokens"
 
 const OUT_DIR = path.join(process.cwd(), ".harness", "out")
+// Committed, unlike OUT_DIR — see imageDiff.ts.
+const BASELINE_DIR = path.join(process.cwd(), ".harness", "baseline")
 
 /** Refuses to exist in production — this endpoint renders arbitrary input. */
 function devOnly(): NextResponse | null {
@@ -56,6 +59,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const qa = body?.qa === true
   const revise = body?.revise === true
+  // Promote what renders now to the reference images. Deliberately explicit:
+  // a baseline that refreshed itself would record whatever today's code does,
+  // bug included, and then defend it as correct forever after.
+  const snapshot = body?.snapshot === true
   const tokens = ICS_THEME_1.tokens as unknown as ThemeTokens
   const masters = ICS_THEME_1.layout_templates as unknown as Record<string, Master>
 
@@ -114,13 +121,21 @@ export async function POST(req: Request) {
       })
 
       const file = path.join(OUT_DIR, `${name}.png`)
-      await writeFile(file, Buffer.from(png, "base64"))
+      const pngBuf = Buffer.from(png, "base64")
+      await writeFile(file, pngBuf)
+
+      if (snapshot) await writeBaseline({ name, outDir: OUT_DIR, baselineDir: BASELINE_DIR })
+      const diff = snapshot
+        ? { status: "baseline-written" as const }
+        : await compareToBaseline({ name, currentPng: pngBuf, baselineDir: BASELINE_DIR, outDir: OUT_DIR })
 
       results.push({
         name,
         file,
         ms: Date.now() - started,
         note: fixture.note ?? null,
+        // Whether this render still matches its committed reference image.
+        diff,
         elements: compiled.elements.length,
         overflow: compiled.overflow,
         // designLint.ts — exactly what production decides, not a second

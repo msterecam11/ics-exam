@@ -36,6 +36,34 @@ response is not the verification, the image is.
   blueprint without adding a fixture — use while iterating on a shape
 - `GET` the same URL lists available fixtures
 
+## Snapshot diffing — read this before dismissing a `changed`
+
+Every fixture has a **committed** reference image in `.harness/baseline/`. Each
+render is compared against it and the result comes back as `diff`:
+
+| status | meaning |
+|---|---|
+| `match` | pixel-identical within the noise floor — nothing moved |
+| `changed` | **something you did moved pixels.** A `<name>.diff.png` is written; open it |
+| `new` | no baseline for this fixture yet (a fixture you just added) |
+| `size-mismatch` | the slide's dimensions changed — almost never intentional |
+
+`changed` is information, not a failure. Half this codebase's visual work
+*should* change pixels. The question it answers is **"did it change only what I
+meant to change?"** — which is the one thing reading a diff cannot tell you. A
+`changed` on a fixture unrelated to your edit is the finding.
+
+After confirming the new renders are correct, promote them:
+
+```bash
+curl -s -X POST http://localhost:3000/api/course-gen/harness \
+  -H "Content-Type: application/json" -d '{"all":true,"snapshot":true}'
+```
+
+**Never snapshot to make a diff go away.** A baseline records whatever the code
+does at that moment, bug included, and then defends it as correct forever after.
+Snapshot only once you have looked at the PNG and decided it is right.
+
 ## What the response tells you
 
 `overflow` / `underfill` are what the production pipeline currently decides.

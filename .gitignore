@@ -42,5 +42,8 @@ next-env.d.ts
 
 .vercel
 
-# Slide render harness output (dev only)
-.harness/
+# Slide render harness. Renders and reports are throwaway, but the BASELINE
+# images are committed on purpose: a gitignored baseline only guards the
+# session that produced it, and the regression worth catching is next month's.
+.harness/out/
+.harness/*.json
