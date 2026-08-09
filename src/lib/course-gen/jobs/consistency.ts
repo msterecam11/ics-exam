@@ -41,7 +41,7 @@ export async function handleConsistencyJob(job: any): Promise<ConsistencyReport>
   const now = new Date().toISOString()
 
   const { data: modules } = await db
-    .from("cg_modules").select("id, order_index, title").eq("course_id", courseId).order("order_index")
+    .from("cg_modules").select("id, order_index, title, is_module_zero").eq("course_id", courseId).order("order_index")
   if (!modules || modules.length === 0) {
     return { checked: false, slide_count: 0, truncated: false, issues: [], checked_at: now }
   }
@@ -57,7 +57,16 @@ export async function handleConsistencyJob(job: any): Promise<ConsistencyReport>
     return { checked: true, slide_count: pages?.length ?? 0, truncated: false, issues: [], checked_at: now }
   }
 
-  const moduleIndex = new Map(modules.map((m, i) => [m.id, i + 1]))
+  // Numbered the way the DECK numbers itself, not by array position. Front
+  // matter is module ZERO — it carries the cover, agenda and prerequisites,
+  // and the design agent is told so. Numbering by position made front matter
+  // "M1" and the real first module "M2", and the checker then reported the
+  // slides as contradictory for calling themselves Module 1. They were
+  // correct; this line was the contradiction.
+  let realModuleN = 0
+  const moduleIndex = new Map(
+    modules.map(m => [m.id, (m as any).is_module_zero ? 0 : ++realModuleN] as [string, number])
+  )
   const moduleTitle = new Map(modules.map(m => [m.id, m.title]))
 
   type Row = { module: number; moduleTitle: string; slide: number; title: string; text: string }
