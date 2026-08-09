@@ -230,7 +230,8 @@ export async function compileBlueprint(input: CompileInput): Promise<{
             tableStyle: { headerRow: !!p.headerRow, altRowFill: "token:surface-alt", borders: "token:border-subtle" } } as CanvasElement)
           break
         case "chart":
-          elements.push({ ...base, type: "chart", chartType: p.chartType ?? "bar", data: p.data ?? { labels: [], datasets: [] } } as CanvasElement)
+          elements.push({ ...base, type: "chart", chartType: p.chartType ?? "bar", data: p.data ?? { labels: [], datasets: [] },
+            unit: p.unit, xTitle: p.xTitle, yTitle: p.yTitle } as CanvasElement)
           break
       }
     })

@@ -171,7 +171,7 @@ function elementHtml(el: CanvasElement, tokens: ThemeTokens, dark = false): stri
       // Vector means it stays sharp at print resolution — a generated raster
       // would not, quite apart from inventing its own numbers.
       return `<div style="${box}" data-chart='${esc(JSON.stringify({ chartType: el.chartType, data: el.data }))}'>${
-        chartSvg({ chartType: el.chartType, data: el.data, tokens })
+        chartSvg({ chartType: el.chartType, data: el.data, tokens, unit: el.unit, xTitle: el.xTitle, yTitle: el.yTitle })
       }</div>`
     default:
       return ""

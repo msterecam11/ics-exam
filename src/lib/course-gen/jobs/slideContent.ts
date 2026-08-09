@@ -48,7 +48,10 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"stat", "value":"5 years", "label":"validity period", "size":"normal|hero" }
   { "type":"figure", "media":{"want":"photo","subject":"…","purpose":"…"}, "caption":"FIG 2.1: …", "shadow":true, "mask":"none|circle|rounded|squircle" }  mask crops the photo — "circle" turns a stock shot into a deliberate portrait/vignette
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
-  { "type":"chart", "chartType":"bar|line|donut", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
+  { "type":"chart", "chartType":"bar|line|donut", "unit":"m", "xTitle":"…", "yTitle":"…", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
+    ALWAYS set "unit" when the numbers have one — it is what tells the reader whether a bar means metres,
+    minutes or per cent, and the gathered material already carries it. Axis titles name what each axis IS;
+    skip one only when its own labels already say so. At most 5 series: past that colour identifies nothing.
   { "type":"meter", "items":[{"label":"…","value":72,"max":100,"caption":"72%","accent":"token:primary"}] }  labelled proportion bars — "how far along / how much of the whole"
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
 Relationship primitives (reach for these when the relationship IS the content — see the reasoning step below):

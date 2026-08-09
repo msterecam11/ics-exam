@@ -422,8 +422,8 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       case "chart":
         // Drawn for real during measurement too, so the compiler bakes a box
         // sized to an actual chart rather than to a placeholder.
-        return `<div ${bakeAttr({ kind: "chart", props: { chartType: n.chartType, data: n.data } })} style="flex:1;min-height:180px;display:flex;align-items:stretch;justify-content:stretch">${
-          chartSvg({ chartType: n.chartType, data: n.data, tokens, darkContext })
+        return `<div ${bakeAttr({ kind: "chart", props: { chartType: n.chartType, data: n.data, unit: n.unit, xTitle: n.xTitle, yTitle: n.yTitle } })} style="flex:1;min-height:180px;display:flex;align-items:stretch;justify-content:stretch">${
+          chartSvg({ chartType: n.chartType, data: n.data, tokens, darkContext, unit: n.unit, xTitle: n.xTitle, yTitle: n.yTitle })
         }</div>`
 
       // Same two-box reasoning as `flow`: the columns stretch to each other,

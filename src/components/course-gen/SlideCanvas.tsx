@@ -275,7 +275,7 @@ export default function SlideCanvas(props: Props) {
             // not an approximation of it.
             return <div key={el.id} {...common}
               style={{ ...box, ...cssStyle(effectsCss(el.effects, tokens)) }}
-              dangerouslySetInnerHTML={{ __html: chartSvg({ chartType: el.chartType, data: el.data, tokens }) }} />
+              dangerouslySetInnerHTML={{ __html: chartSvg({ chartType: el.chartType, data: el.data, tokens, unit: el.unit, xTitle: el.xTitle, yTitle: el.yTitle }) }} />
           default:
             return null
         }

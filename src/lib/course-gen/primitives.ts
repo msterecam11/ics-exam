@@ -190,6 +190,16 @@ export interface ChartNode extends BlueprintBase {
   type: "chart"
   chartType: "bar" | "line" | "donut"
   data: { labels: string[]; datasets: { label: string; data: number[] }[] }
+  /**
+   * What the numbers ARE — "metres", "%", "minutes". The gather pass has
+   * always extracted a unit alongside each value (SlideContentPlan.data) and
+   * the chart schema had nowhere to put it, so every chart drew bare numbers
+   * against an unlabelled axis and the reader had to guess.
+   */
+  unit?: string
+  /** Axis captions. Omit either when the labels already say it. */
+  xTitle?: string
+  yTitle?: string
 }
 export interface ComparisonNode extends BlueprintBase {
   type: "comparison" // 2-column labeled comparison (p3/p14 pattern)
@@ -412,6 +422,12 @@ export interface ChartElement extends ElementBase {
   type: "chart"
   chartType: "bar" | "line" | "donut"
   data: { labels: string[]; datasets: { label: string; data: number[] }[] }
+  /** Carried from the blueprint so the PDF and the editor draw the SAME
+   *  captioned axes the measurement pass drew — a caption present only at
+   *  compose time is the bug class this system keeps hitting. */
+  unit?: string
+  xTitle?: string
+  yTitle?: string
 }
 
 export type CanvasElement =

@@ -292,9 +292,10 @@ export const FIXTURES: Record<string, Fixture> = {
   "bug-chart-bare": {
     master: "content_lightblue",
     title: "RFFS Category Table: Length and Width Bands",
-    note: "BUG REPRO — no axis titles, no units, no frame. Compare against the dataviz rules.",
+    note: "Captioned axis + units. Was: bare numbers against an unlabelled axis.",
     blueprint: {
       type: "chart", chartType: "bar",
+      unit: "m", xTitle: "Maximum aeroplane length", yTitle: "RFFS category",
       data: {
         labels: ["Cat 1", "Cat 2", "Cat 3", "Cat 4", "Cat 5", "Cat 6", "Cat 7", "Cat 8", "Cat 9", "Cat 10"],
         datasets: [{ label: "Max length", data: [9, 12, 18, 24, 28, 39, 49, 61, 76, 90] }],

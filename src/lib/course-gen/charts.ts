@@ -40,17 +40,43 @@ const MAX_CATEGORIES = 24
 
 const MAX_LABEL_CHARS = 22
 
-/** Series palette, in order. Token-driven so a re-theme repaints charts too. */
+/**
+ * Series palette, in FIXED order — assigned by position, never cycled.
+ *
+ * Cut from eight brand tokens to five, and the cut is measured rather than
+ * chosen. Running the eight through the categorical checks (lightness band,
+ * chroma floor, colour-vision separation, contrast) fails three of them:
+ *   token:tab-yellow    L 0.83  — above the band, and only 1.6:1 on white
+ *   token:primary-dark  L 0.42  — below the band
+ *   token:navy          L 0.36, chroma 0.099 — below the band AND reads gray
+ * The remaining five pass every check, with the worst adjacent pair still
+ * separated by ΔE 11.2 for deuteranopia.
+ *
+ * Three of the five sit under 3:1 against white (orange 2.6, teal 2.5, green
+ * 2.8). That is allowed only where something other than colour also carries
+ * the value — which is why single-series charts keep their direct value
+ * labels and multi-series charts always draw a legend. Neither is optional.
+ */
 const SERIES_TOKENS = [
   "token:primary",
   "token:accent-warm",
   "token:primary-light",
   "token:success",
-  "token:tab-yellow",
-  "token:primary-dark",
   "token:danger",
-  "token:navy",
 ]
+
+/**
+ * Past this many series, colour stops being an identity channel — a ninth
+ * category cannot get a "new" hue without inventing one outside the brand,
+ * and cycling silently gives two categories the same colour. Extra series
+ * are dropped and reported rather than drawn in a colour that lies.
+ */
+const MAX_SERIES = SERIES_TOKENS.length
+
+/** Bars never exceed this. A slot's leftover width is air, not more bar. */
+const MAX_BAR_PX = 24
+/** Surface-coloured gap that separates touching bars. */
+const BAR_GAP_PX = 2
 
 function esc(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -61,8 +87,24 @@ function truncate(s: string, max = MAX_LABEL_CHARS): string {
   return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t
 }
 
+/** Fixed-order assignment. No modulo: see MAX_SERIES. */
 function seriesColor(i: number, tokens: ThemeTokens): string {
-  return resolveToken(SERIES_TOKENS[i % SERIES_TOKENS.length], tokens, "#0C72C6")
+  return resolveToken(SERIES_TOKENS[Math.min(i, SERIES_TOKENS.length - 1)], tokens, "#0C72C6")
+}
+
+/**
+ * A bar with its data-end rounded and its baseline square, drawn as a path
+ * because an `rx` on a rect rounds all four corners — which detaches the bar
+ * from its own baseline and makes short bars read as floating pills.
+ */
+function barPath(x: number, y: number, w: number, h: number, dir: "up" | "right"): string {
+  const r = Math.min(4, w / 2, h / 2)
+  if (h <= 0 || w <= 0) return ""
+  return dir === "up"
+    // grows upward: round the top, square on the baseline
+    ? `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h} Z`
+    // grows rightward: round the right end, square at the axis
+    : `M${x},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x},${y + h} Z`
 }
 
 /** "1,240" / "12.5" — keeps value labels readable without a formatting lib. */
@@ -100,16 +142,24 @@ export function normalizeChart(chartType: ChartType, data: ChartData): Normalize
 
   const n = Math.min(rawLabels.length, MAX_CATEGORIES)
   const labels = rawLabels.slice(0, n).map(l => truncate(String(l ?? "")))
-  const datasets = (rawSets.length ? rawSets : [{ label: "", data: [] }]).map(ds => ({
-    label: String(ds?.label ?? ""),
-    data: (Array.isArray(ds?.data) ? ds.data : []).slice(0, n).map(v => (Number.isFinite(Number(v)) ? Number(v) : 0)),
-  }))
+  // Capped, never cycled. Past the palette's length a further series could
+  // only be drawn in a colour already spoken for, which silently tells the
+  // reader two different things are the same thing.
+  const datasets = (rawSets.length ? rawSets : [{ label: "", data: [] }])
+    .slice(0, MAX_SERIES)
+    .map(ds => ({
+      label: String(ds?.label ?? ""),
+      data: (Array.isArray(ds?.data) ? ds.data : []).slice(0, n).map(v => (Number.isFinite(Number(v)) ? Number(v) : 0)),
+    }))
 
   let type: ChartType = chartType
   let note: string | undefined
 
   if (rawLabels.length > MAX_CATEGORIES) {
     note = `Showing the first ${MAX_CATEGORIES} of ${rawLabels.length} categories.`
+  }
+  if (rawSets.length > MAX_SERIES) {
+    note = `Showing ${MAX_SERIES} of ${rawSets.length} series — beyond that colour stops identifying anything.`
   }
 
   // A donut with too many slices carries the data worse than bars do.
@@ -131,6 +181,30 @@ interface RenderOpts {
   width?: number
   height?: number
   darkContext?: boolean
+  /** What the values are measured in — "m", "%", "minutes". */
+  unit?: string
+  xTitle?: string
+  yTitle?: string
+}
+
+/** Axis caption. Falls back to the unit alone, which is the part that matters. */
+function axisCaption(title: string | undefined, unit: string | undefined): string {
+  const t = (title ?? "").trim()
+  const u = (unit ?? "").trim()
+  if (t && u) return `${t} (${u})`
+  return t || u
+}
+
+/** A value-axis caption, rotated up the left edge. */
+function yCaption(text: string, x: number, plotTop: number, plotH: number, muted: string): string {
+  if (!text) return ""
+  const cy = plotTop + plotH / 2
+  return `<text x="${x}" y="${cy}" font-size="12" fill="${muted}" text-anchor="middle" transform="rotate(-90 ${x} ${cy})" letter-spacing="0.3">${esc(text)}</text>`
+}
+
+function xCaption(text: string, w: number, y: number, muted: string): string {
+  if (!text) return ""
+  return `<text x="${w / 2}" y="${y}" font-size="12" fill="${muted}" text-anchor="middle" letter-spacing="0.3">${esc(text)}</text>`
 }
 
 /**
@@ -141,7 +215,11 @@ interface RenderOpts {
  * PDF at full print resolution — no rasterisation, no blur.
  */
 export function chartSvg(opts: RenderOpts): string {
-  const { chartType, data, tokens, width = 640, height = 360, darkContext = false } = opts
+  // Default viewBox matches a CONTENT ZONE's aspect (~2.6:1), not a slide's
+  // 16:9. The SVG scales with preserveAspectRatio "meet", so a 16:9 viewBox
+  // inside a wide, short zone fits by height and letterboxes — roughly 40% of
+  // the available width went to empty margins on either side of every chart.
+  const { chartType, data, tokens, width = 1000, height = 385, darkContext = false, unit, xTitle, yTitle } = opts
   const { type, horizontal, labels, datasets } = normalizeChart(chartType, data)
 
   const ink = darkContext ? "#FFFFFF" : resolveToken("token:text", tokens, "#333333")
@@ -152,11 +230,17 @@ export function chartSvg(opts: RenderOpts): string {
     return emptyState(width, height, muted)
   }
 
+  // On a value axis the unit belongs with the caption, not repeated on every
+  // tick. Which axis carries the value flips with orientation.
+  const valueCaption = axisCaption(horizontal ? xTitle : yTitle, unit)
+  const catCaption = axisCaption(horizontal ? yTitle : xTitle, undefined)
+  const cap = { valueCaption, catCaption }
+
   const body =
     type === "donut" ? donut(labels, datasets, tokens, width, height, ink, muted)
-    : type === "line" ? line(labels, datasets, tokens, width, height, ink, muted, grid)
-    : horizontal ? barsHorizontal(labels, datasets, tokens, width, height, ink, muted, grid)
-    : barsVertical(labels, datasets, tokens, width, height, ink, muted, grid)
+    : type === "line" ? line(labels, datasets, tokens, width, height, ink, muted, grid, cap)
+    : horizontal ? barsHorizontal(labels, datasets, tokens, width, height, ink, muted, grid, cap)
+    : barsVertical(labels, datasets, tokens, width, height, ink, muted, grid, cap)
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block;overflow:visible" font-family="Plus Jakarta Sans, system-ui, sans-serif">${body}</svg>`
 }
@@ -182,17 +266,18 @@ function legend(datasets: { label: string }[], tokens: ThemeTokens, w: number, y
 
 function barsVertical(
   labels: string[], datasets: { label: string; data: number[] }[],
-  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string
+  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string,
+  cap: { valueCaption: string; catCaption: string },
 ): string {
   const hasLegend = datasets.length > 1
-  const padL = 46, padR = 14, padT = 14
-  const padB = 38 + (hasLegend ? 22 : 0)
+  const padL = 46 + (cap.valueCaption ? 18 : 0), padR = 14, padT = 14
+  const padB = 38 + (hasLegend ? 22 : 0) + (cap.catCaption ? 20 : 0)
   const plotW = w - padL - padR
   const plotH = h - padT - padB
 
   const max = niceMax(Math.max(...datasets.flatMap(d => d.data), 0))
   const groupW = plotW / labels.length
-  const barW = Math.max(4, Math.min(46, (groupW * 0.62) / datasets.length))
+  const barW = Math.max(4, Math.min(MAX_BAR_PX, (groupW * 0.62) / datasets.length))
 
   const ticks = 4
   const gridLines = Array.from({ length: ticks + 1 }, (_, i) => {
@@ -210,9 +295,10 @@ function barsVertical(
       const bh = max > 0 ? Math.max(0, (v / max) * plotH) : 0
       const x = cx - clusterW / 2 + di * barW
       const y = padT + plotH - bh
+      const bw = Math.max(1, barW - BAR_GAP_PX)
       const showValue = labels.length <= 12 && datasets.length === 1
-      return `<rect x="${x}" y="${y}" width="${Math.max(1, barW - 3)}" height="${bh}" rx="3" fill="${seriesColor(di, tokens)}"/>` +
-        (showValue ? `<text x="${x + (barW - 3) / 2}" y="${y - 5}" font-size="11" font-weight="700" fill="${ink}" text-anchor="middle">${esc(fmtValue(v))}</text>` : "")
+      return `<path d="${barPath(x, y, bw, bh, "up")}" fill="${seriesColor(di, tokens)}"/>` +
+        (showValue ? `<text x="${x + bw / 2}" y="${y - 6}" font-size="11" font-weight="700" fill="${ink}" text-anchor="middle">${esc(fmtValue(v))}</text>` : "")
     }).join("")
     // Long labels on a crowded axis tilt rather than overlap.
     const tilt = labels.length > 6
@@ -223,22 +309,26 @@ function barsVertical(
     return inner + labelEl
   }).join("")
 
-  return gridLines + bars + legend(datasets, tokens, w, h - 8, ink)
+  return gridLines + bars
+    + yCaption(cap.valueCaption, 16, padT, plotH, muted)
+    + xCaption(cap.catCaption, w, h - (hasLegend ? 28 : 6), muted)
+    + legend(datasets, tokens, w, h - 8, ink)
 }
 
 function barsHorizontal(
   labels: string[], datasets: { label: string; data: number[] }[],
-  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string
+  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string,
+  cap: { valueCaption: string; catCaption: string },
 ): string {
   const hasLegend = datasets.length > 1
-  const padL = 108, padR = 44, padT = 12
-  const padB = 24 + (hasLegend ? 22 : 0)
+  const padL = 108 + (cap.catCaption ? 18 : 0), padR = 44, padT = 12
+  const padB = 24 + (hasLegend ? 22 : 0) + (cap.valueCaption ? 20 : 0)
   const plotW = w - padL - padR
   const plotH = h - padT - padB
 
   const max = niceMax(Math.max(...datasets.flatMap(d => d.data), 0))
   const rowH = plotH / labels.length
-  const barH = Math.max(3, Math.min(26, (rowH * 0.66) / datasets.length))
+  const barH = Math.max(3, Math.min(MAX_BAR_PX, (rowH * 0.66) / datasets.length))
 
   const axis = `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + plotH}" stroke="${grid}" stroke-width="1"/>`
 
@@ -249,25 +339,31 @@ function barsHorizontal(
       const v = ds.data[li] ?? 0
       const bw = max > 0 ? Math.max(0, (v / max) * plotW) : 0
       const y = cy - clusterH / 2 + di * barH
-      return `<rect x="${padL}" y="${y}" width="${bw}" height="${Math.max(1, barH - 2)}" rx="3" fill="${seriesColor(di, tokens)}"/>` +
+      const bh = Math.max(1, barH - BAR_GAP_PX)
+      return `<path d="${barPath(padL, y, bw, bh, "right")}" fill="${seriesColor(di, tokens)}"/>` +
         (datasets.length === 1
-          ? `<text x="${padL + bw + 6}" y="${y + (barH - 2) / 2}" font-size="11" font-weight="700" fill="${ink}" dominant-baseline="middle">${esc(fmtValue(v))}</text>`
+          ? `<text x="${padL + bw + 6}" y="${y + bh / 2}" font-size="11" font-weight="700" fill="${ink}" dominant-baseline="middle">${esc(fmtValue(v))}</text>`
           : "")
     }).join("")
     return inner +
       `<text x="${padL - 8}" y="${cy}" font-size="11" fill="${muted}" text-anchor="end" dominant-baseline="middle">${esc(label)}</text>`
   }).join("")
 
-  return axis + rows + legend(datasets, tokens, w, h - 8, ink)
+  return axis + rows
+    // Orientation flips which axis carries the value, so the captions swap too.
+    + xCaption(cap.valueCaption, w, h - (hasLegend ? 28 : 6), muted)
+    + yCaption(cap.catCaption, 16, padT, plotH, muted)
+    + legend(datasets, tokens, w, h - 8, ink)
 }
 
 function line(
   labels: string[], datasets: { label: string; data: number[] }[],
-  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string
+  tokens: ThemeTokens, w: number, h: number, ink: string, muted: string, grid: string,
+  cap: { valueCaption: string; catCaption: string },
 ): string {
   const hasLegend = datasets.length > 1
-  const padL = 46, padR = 16, padT = 14
-  const padB = 34 + (hasLegend ? 22 : 0)
+  const padL = 46 + (cap.valueCaption ? 18 : 0), padR = 16, padT = 14
+  const padB = 34 + (hasLegend ? 22 : 0) + (cap.catCaption ? 20 : 0)
   const plotW = w - padL - padR
   const plotH = h - padT - padB
 
@@ -299,7 +395,10 @@ function line(
       : ""
   ).join("")
 
-  return gridLines + series + xLabels + legend(datasets, tokens, w, h - 8, ink)
+  return gridLines + series + xLabels
+    + yCaption(cap.valueCaption, 16, padT, plotH, muted)
+    + xCaption(cap.catCaption, w, h - (hasLegend ? 28 : 6), muted)
+    + legend(datasets, tokens, w, h - 8, ink)
 }
 
 function donut(
