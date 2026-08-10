@@ -29,20 +29,46 @@ export const MODELS = {
 // course — slide 4 of module 1 sat at "running" for 20+ minutes with no
 // error recorded, because there was nothing to time it out and force an
 // error in the first place.
-const REQUEST_TIMEOUT_MS = 5 * 60 * 1000 // 5 min — a 16k-64k token design call genuinely can take a couple of minutes; this bounds the hang, not the normal case.
+/**
+ * Wall-clock budget for one attempt, derived from how much output was asked
+ * for. A flat 5 minutes was wrong in BOTH directions: too short for a gather
+ * call that legitimately streams ~18k tokens (that is several minutes of
+ * generation, not a hang), and — combined with the SDK's own retries, below
+ * — far too long before anything surfaced as an error.
+ *
+ * ~30ms/token is a deliberately conservative sustained rate, floored so small
+ * calls still get a sane window and ceilinged so nothing waits a quarter hour.
+ */
+function timeoutForTokens(maxTokens: number): number {
+  return Math.min(15 * 60_000, Math.max(3 * 60_000, maxTokens * 30))
+}
 
 export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY ?? "placeholder",
-  timeout: REQUEST_TIMEOUT_MS,
+  // The SDK retries timeouts ITSELF, twice, by default — its own docs warn
+  // "request timeouts are retried by default, so in a worst-case scenario you
+  // may wait much longer than this timeout". Layered under withRetry's 4
+  // attempts that is 12 tries, so a 5-minute timeout meant an HOUR before the
+  // job failed. That is precisely why the RAC course sat "running" for 28
+  // minutes with no error after the timeout was supposedly in place.
+  //
+  // Retry policy belongs in exactly one place, and withRetry is already that
+  // place for this repo.
+  maxRetries: 0,
 })
 
-// Exponential backoff on rate limits / overload / a hung connection — same
-// resilience pattern the rest of the repo uses for Groq, adapted to
-// Anthropic's error shapes. A timeout is now a real, thrown error (SDK's
-// APIConnectionTimeoutError, no HTTP status), and IS retried — a stalled
-// network path is very plausibly transient, and three attempts costs at
-// most ~15 minutes rather than blocking forever.
+/**
+ * A timeout costs MINUTES per attempt, where a 429 costs milliseconds. Giving
+ * both the same retry budget is what turns a stalled call into a job that
+ * looks frozen: 4 attempts × a multi-minute timeout is half an hour of
+ * silence. Rate limits keep the generous budget because retrying them is
+ * cheap and usually works; a stall gets one second chance and then fails
+ * loudly, which is the outcome that is actually useful to a human watching.
+ */
+const MAX_TIMEOUT_ATTEMPTS = 2
+
 export async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1500): Promise<T> {
+  let timeoutAttempts = 0
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn()
@@ -50,6 +76,7 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 
       const status = err?.status ?? err?.response?.status
       const isTimeout = err instanceof Anthropic.APIConnectionTimeoutError
         || err?.name === "APIConnectionTimeoutError" || err?.code === "ETIMEDOUT"
+      if (isTimeout && ++timeoutAttempts >= MAX_TIMEOUT_ATTEMPTS) throw err
       const retryable = status === 429 || status === 529 || status === 503 || isTimeout
       if (attempt === retries || !retryable) throw err
       await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)))
@@ -115,13 +142,14 @@ export async function claudeJSON(opts: {
   // requests, and thinking makes these turns longer than the token count
   // alone suggests. Streaming removes that ceiling; the final message is
   // identical either way.
+  const maxTokens = opts.maxTokens ?? 8192
   const msg = await withRetry(async () =>
     anthropic.messages.stream({
       model: opts.model,
-      max_tokens: opts.maxTokens ?? 8192,
+      max_tokens: maxTokens,
       system: opts.system,
       messages: [{ role: "user", content: opts.prompt }],
-    }).finalMessage()
+    }, { timeout: timeoutForTokens(maxTokens) }).finalMessage()
   )
   assertUsableResponse(msg, opts.label ?? "Claude call")
   return parseJsonLoose(extractText(msg))
@@ -152,13 +180,14 @@ export async function claudeVisionJSON(opts: {
   // Streamed like claudeJSON: an image plus a 16k-token design response is
   // long enough to hit the SDK's non-streaming timeout, which the short QA
   // verdicts never did.
+  const maxTokens = opts.maxTokens ?? 1024
   const msg = await withRetry(async () =>
     anthropic.messages.stream({
       model: opts.model,
-      max_tokens: opts.maxTokens ?? 1024,
+      max_tokens: maxTokens,
       system: opts.system,
       messages: [{ role: "user", content }],
-    }).finalMessage()
+    }, { timeout: timeoutForTokens(maxTokens) }).finalMessage()
   )
   assertUsableResponse(msg, opts.label ?? "Claude vision call")
   return parseJsonLoose(extractText(msg))
