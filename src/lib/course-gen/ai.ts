@@ -30,17 +30,20 @@ export const MODELS = {
 // error recorded, because there was nothing to time it out and force an
 // error in the first place.
 /**
- * Wall-clock budget for one attempt, derived from how much output was asked
- * for. A flat 5 minutes was wrong in BOTH directions: too short for a gather
- * call that legitimately streams ~18k tokens (that is several minutes of
- * generation, not a hang), and — combined with the SDK's own retries, below
- * — far too long before anything surfaced as an error.
+ * Wall-clock budget for one attempt.
  *
- * ~30ms/token is a deliberately conservative sustained rate, floored so small
- * calls still get a sane window and ceilinged so nothing waits a quarter hour.
+ * Deliberately NOT a straight multiple of max_tokens. max_tokens is a ceiling
+ * that callers are encouraged to set generously (it costs nothing unused), so
+ * treating it as the expected output length made every generous cap buy an
+ * absurd timeout — a 32k ceiling would have meant a sixteen-minute window on
+ * a call that realistically streams a third of that.
+ *
+ * A fraction of the ceiling, bounded at both ends: enough that a call using
+ * most of its budget still finishes, short enough that a genuine stall
+ * surfaces as an error while someone is still watching the screen.
  */
 function timeoutForTokens(maxTokens: number): number {
-  return Math.min(15 * 60_000, Math.max(3 * 60_000, maxTokens * 30))
+  return Math.min(10 * 60_000, Math.max(4 * 60_000, maxTokens * 12))
 }
 
 export const anthropic = new Anthropic({

@@ -75,7 +75,7 @@ export async function handleModuleContentJob(
   // every chunk is still shown the WHOLE module, because "emphasis" and
   // "role" are explicitly judgements across the module rather than about one
   // slide — chunking without that context would quietly break both.
-  const CHUNK_SIZE = 10
+  const CHUNK_SIZE = 8
 
   const describe = (s: any, i: number) =>
     `${i + 1}. "${s.title}" (${s.layout_kind}) — intent: ${s.intent}\n   key points: ${JSON.stringify(s.key_points ?? [])}${s.covers?.length ? `\n   required coverage: ${JSON.stringify(s.covers)}` : ""}`
@@ -146,9 +146,21 @@ ${chunks.length === 1
   ? "One entry per slide listed above, in the same order."
   : `Return EXACTLY ${to - from} entries — one for each of slides ${from + 1}-${to}, in that order. Do not write entries for the other slides; they are shown only so you can judge emphasis and role across the whole module.`}`
 
-    // Sized for THIS chunk, so the cap stays generous per slide while the
-    // request itself stays small enough to finish inside its timeout.
-    const maxTokens = Math.min(32_000, Math.max(6_000, 2_000 + (to - from) * 550))
+    // max_tokens is a CEILING, not a budget. You are billed on tokens actually
+    // generated, so setting it high costs nothing and setting it low fails the
+    // whole job — I got this backwards three times running, tuning it downward
+    // as if it were a spend.
+    //
+    // The 550/slide estimate was also measuring the wrong thing. `output_tokens`
+    // INCLUDES thinking, and reasoning about ten slides of aviation research
+    // (plus judging emphasis and role across the whole module) is thousands of
+    // tokens before a single character of JSON is emitted. A 10-slide chunk
+    // died at 7500 with the answer unfinished for exactly that reason.
+    //
+    // So: a flat, generous allowance for thinking, plus real headroom per
+    // slide. Overshooting is free; undershooting is another failed run.
+    const THINKING_HEADROOM = 10_000
+    const maxTokens = Math.min(32_000, THINKING_HEADROOM + (to - from) * 1_400)
 
     const result = await claudeJSON({
       model: MODELS.slide_content,
