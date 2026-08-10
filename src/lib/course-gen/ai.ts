@@ -20,19 +20,37 @@ export const MODELS = {
   media_scoring: process.env.CG_MODEL_MEDIA   ?? "claude-haiku-4-5-20251001",
 } as const
 
+// No timeout meant a call that never got a response never threw either — it
+// just sat there. The worker loop processes exactly one job step at a time
+// (see worker.ts), so one hung call didn't fail that slide, it froze the
+// ENTIRE queue indefinitely: nothing else in the course, or in any OTHER
+// course generating on this instance, could advance until a human noticed
+// and restarted the process. That is exactly what happened on the RAC
+// course — slide 4 of module 1 sat at "running" for 20+ minutes with no
+// error recorded, because there was nothing to time it out and force an
+// error in the first place.
+const REQUEST_TIMEOUT_MS = 5 * 60 * 1000 // 5 min — a 16k-64k token design call genuinely can take a couple of minutes; this bounds the hang, not the normal case.
+
 export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY ?? "placeholder",
+  timeout: REQUEST_TIMEOUT_MS,
 })
 
-// Exponential backoff on rate limits / overload — same resilience pattern
-// the rest of the repo uses for Groq, adapted to Anthropic's error shapes.
+// Exponential backoff on rate limits / overload / a hung connection — same
+// resilience pattern the rest of the repo uses for Groq, adapted to
+// Anthropic's error shapes. A timeout is now a real, thrown error (SDK's
+// APIConnectionTimeoutError, no HTTP status), and IS retried — a stalled
+// network path is very plausibly transient, and three attempts costs at
+// most ~15 minutes rather than blocking forever.
 export async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1500): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn()
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status
-      const retryable = status === 429 || status === 529 || status === 503
+      const isTimeout = err instanceof Anthropic.APIConnectionTimeoutError
+        || err?.name === "APIConnectionTimeoutError" || err?.code === "ETIMEDOUT"
+      const retryable = status === 429 || status === 529 || status === 503 || isTimeout
       if (attempt === retries || !retryable) throw err
       await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)))
     }
