@@ -103,10 +103,21 @@ Return ONLY valid JSON:
 }
 One entry per slide listed above, in the same order.`
 
+  // Same flat-cap bug as outline.ts's original 32k, one file over: this call
+  // writes real substantive facts — "aviation-professional register... write
+  // real content, not placeholders" — for EVERY slide in the module, in one
+  // response. A 16k ceiling was sized for a small module and never revisited;
+  // a real module with ~30 slides each carrying several written facts plus
+  // citations, role and emphasis blows past it before finishing, and that is
+  // exactly what happened on "Data Collection & Sources" (16000 tokens, still
+  // unfinished). Budgeted from the actual slide count for this module rather
+  // than guessed, floored at the old 16k so small modules see no change.
+  const maxTokens = Math.min(64_000, Math.max(16_000, 2_000 + mod.slides.length * 550))
+
   const result = await claudeJSON({
     model: MODELS.slide_content,
     prompt,
-    maxTokens: 16_000,
+    maxTokens,
     label: `Module content gather "${mod.title}"`,
   })
 
