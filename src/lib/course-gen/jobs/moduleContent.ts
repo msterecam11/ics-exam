@@ -30,7 +30,12 @@ const RELATIONSHIP_GUIDE = `For each slide, name the RELATIONSHIP its facts actu
 - "single-statement" — one idea worth landing on its own, not a list of facts
 - "enumeration" — genuinely just a set of facts with no inherent order or relation (the correct answer for plain reference material — don't force a diagram onto content that is honestly just a list)`
 
-export async function handleModuleContentJob(job: any): Promise<ModuleContentPlan> {
+export async function handleModuleContentJob(
+  job: any,
+  /** Reports which chunk is in flight, so a multi-minute gather shows movement
+   *  instead of one frozen line for its whole duration. */
+  onProgress?: (step: string) => Promise<void>,
+): Promise<ModuleContentPlan> {
   const { course_id, module_id } = job
   const { mod } = job.input as { mod: any }
 
@@ -56,9 +61,45 @@ export async function handleModuleContentJob(job: any): Promise<ModuleContentPla
   })
   const refBlock = [formatSections(retrieved), legacyBlock].filter(Boolean).join("\n\n")
 
-  const slideLines = mod.slides.map((s: any, i: number) =>
+  // ── Why this is chunked ────────────────────────────────────────────────
+  // This call writes real substantive facts for every slide it is asked
+  // about, in ONE response. For a 5-slide module that is a small generation.
+  // For a 30-slide module it is ~18k tokens in a single uninterruptible
+  // request: many minutes long, the likeliest thing in the pipeline to time
+  // out, and it loses the ENTIRE module's research when it does. The RAC
+  // course stalled here for ten minutes on exactly that, and raising the
+  // token cap only made the call bigger.
+  //
+  // Splitting it fixes the cost profile without changing the architecture:
+  // the gather still finishes completely before any slide is designed, and
+  // every chunk is still shown the WHOLE module, because "emphasis" and
+  // "role" are explicitly judgements across the module rather than about one
+  // slide — chunking without that context would quietly break both.
+  const CHUNK_SIZE = 10
+
+  const describe = (s: any, i: number) =>
     `${i + 1}. "${s.title}" (${s.layout_kind}) — intent: ${s.intent}\n   key points: ${JSON.stringify(s.key_points ?? [])}${s.covers?.length ? `\n   required coverage: ${JSON.stringify(s.covers)}` : ""}`
-  ).join("\n")
+
+  const allSlideLines = mod.slides.map(describe).join("\n")
+  const chunks: { from: number; to: number }[] = []
+  for (let i = 0; i < mod.slides.length; i += CHUNK_SIZE) {
+    chunks.push({ from: i, to: Math.min(i + CHUNK_SIZE, mod.slides.length) })
+  }
+
+  const gathered: any[] = []
+  for (const { from, to } of chunks) {
+    const single = chunks.length === 1
+    await onProgress?.(single
+      ? "gathering module content"
+      : `gathering module content — ${to} of ${mod.slides.length} slides`)
+
+    const slideLines = single
+      ? allSlideLines
+      : `## The full module, for context — judge "emphasis" and "role" against ALL of it
+${allSlideLines}
+
+## Write output for slides ${from + 1}-${to} ONLY
+${mod.slides.slice(from, to).map((s: any, i: number) => describe(s, from + i)).join("\n")}`
 
   const prompt = `You are the Research/Content stage of ICS Aviation's course generator — you gather and write the real material for a module BEFORE anyone thinks about how it will look. Your only job here is substance: facts, precision, citations. Design happens in a separate pass that hasn't run yet.
 
@@ -101,31 +142,41 @@ Return ONLY valid JSON:
     { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "role": "setup|evidence|turn|consequence|reference", "emphasis": "peak|normal|quiet", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
   ]
 }
-One entry per slide listed above, in the same order.`
+${chunks.length === 1
+  ? "One entry per slide listed above, in the same order."
+  : `Return EXACTLY ${to - from} entries — one for each of slides ${from + 1}-${to}, in that order. Do not write entries for the other slides; they are shown only so you can judge emphasis and role across the whole module.`}`
 
-  // Same flat-cap bug as outline.ts's original 32k, one file over: this call
-  // writes real substantive facts — "aviation-professional register... write
-  // real content, not placeholders" — for EVERY slide in the module, in one
-  // response. A 16k ceiling was sized for a small module and never revisited;
-  // a real module with ~30 slides each carrying several written facts plus
-  // citations, role and emphasis blows past it before finishing, and that is
-  // exactly what happened on "Data Collection & Sources" (16000 tokens, still
-  // unfinished). Budgeted from the actual slide count for this module rather
-  // than guessed, floored at the old 16k so small modules see no change.
-  const maxTokens = Math.min(64_000, Math.max(16_000, 2_000 + mod.slides.length * 550))
+    // Sized for THIS chunk, so the cap stays generous per slide while the
+    // request itself stays small enough to finish inside its timeout.
+    const maxTokens = Math.min(32_000, Math.max(6_000, 2_000 + (to - from) * 550))
 
-  const result = await claudeJSON({
-    model: MODELS.slide_content,
-    prompt,
-    maxTokens,
-    label: `Module content gather "${mod.title}"`,
-  })
+    const result = await claudeJSON({
+      model: MODELS.slide_content,
+      prompt,
+      maxTokens,
+      label: `Module content gather "${mod.title}"${chunks.length > 1 ? ` (slides ${from + 1}-${to})` : ""}`,
+    })
 
-  if (!Array.isArray(result?.slides) || result.slides.length === 0)
-    throw new Error(`Module content gather for "${mod.title}" came back without slides`)
+    if (!Array.isArray(result?.slides) || result.slides.length === 0)
+      throw new Error(`Module content gather for "${mod.title}" returned nothing for slides ${from + 1}-${to}`)
 
-  enforceEmphasisBudget(result.slides)
-  return result as ModuleContentPlan
+    gathered.push(...result.slides)
+  }
+
+  // A chunk returning the wrong count would silently misalign every later
+  // slide's facts against its title — content that looks written but belongs
+  // to a different slide. Caught here rather than discovered as mysteriously
+  // wrong material somewhere downstream.
+  if (gathered.length !== mod.slides.length) {
+    throw new Error(
+      `Module content gather for "${mod.title}" returned ${gathered.length} entries for ${mod.slides.length} slides`
+    )
+  }
+
+  // Budgets apply to the MERGED module: two peaks per module means two in
+  // total, not two in every batch of ten.
+  enforceEmphasisBudget(gathered)
+  return { slides: gathered } as ModuleContentPlan
 }
 
 /** At most this many slides per module may be the emphatic ones. */

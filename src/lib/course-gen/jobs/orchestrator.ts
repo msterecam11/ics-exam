@@ -118,7 +118,12 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   // reasons about FINISHED material instead of inventing facts and composing
   // a layout in the same breath.
   await progress(job.id, `${stepLabel} — gathering module content`, pct(doneBefore, totalSlides))
-  const contentPlan = await getOrGatherModuleContent(courseId, mod)
+  // A big module's gather is several sequential calls now; surfacing which
+  // one is in flight is the difference between "working" and "frozen" to
+  // anyone watching the progress panel.
+  const contentPlan = await getOrGatherModuleContent(courseId, mod, async (step) => {
+    await progress(job.id, `${stepLabel} — ${step}`, pct(doneBefore, totalSlides))
+  })
   const slidePlan = contentPlan.slides[cursor.slide_index]
 
   // Shapes already used earlier in this module — read from what's already
@@ -441,7 +446,10 @@ async function regenerate(
  * mid-module doesn't re-spend it, and so every slide's design pass in this
  * module sees the exact same material.
  */
-async function getOrGatherModuleContent(courseId: string, mod: any): Promise<ModuleContentPlan> {
+async function getOrGatherModuleContent(
+  courseId: string, mod: any,
+  onProgress?: (step: string) => Promise<void>,
+): Promise<ModuleContentPlan> {
   const { data: row } = await db
     .from("cg_modules")
     .select("content_plan")
@@ -453,7 +461,7 @@ async function getOrGatherModuleContent(courseId: string, mod: any): Promise<Mod
     course_id: courseId,
     module_id: mod.module_id,
     input: { mod },
-  })
+  }, onProgress)
   await db.from("cg_modules").update({ content_plan: plan }).eq("id", mod.module_id)
   return plan
 }
