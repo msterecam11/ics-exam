@@ -164,12 +164,22 @@ export async function compileBlueprint(input: CompileInput): Promise<{
       // blueprintHtml is what stops this happening in the first place; this
       // is the guarantee that no future layout change can reintroduce it.
       const clampedY = Math.max(m.y, zoneTop)
+      // The equivalent guarantee for the BOTTOM edge was missing entirely.
+      // `overflow` (below) retries the design agent when content exceeds the
+      // zone, but that retry budget is finite (MAX_QA_RETRIES in
+      // orchestrator.ts) — on real, dense course content it sometimes runs
+      // out, and the slide ships exactly as measured: text baked past
+      // zoneBottom, straight on top of the partner logo and footer rule
+      // below it. Height is capped here so the worst case if retries are
+      // exhausted is a line honestly clipped at the zone edge, never legible
+      // text sitting on the client's logo.
+      const clampedH = Math.max(0, Math.min(m.y + m.h, zoneBottom) - clampedY)
       const base = {
         id: `el-${i}`,
         x: round2((m.x / SLIDE_W) * 100),
         y: round2((clampedY / SLIDE_H) * 100),
         width: round2(((m.w + cushion) / SLIDE_W) * 100),
-        height: round2((m.h / SLIDE_H) * 100),
+        height: round2((clampedH / SLIDE_H) * 100),
         zIndex: z++,
         ...(Number.isFinite(rotate) && rotate !== 0 ? { rotation: rotate } : {}),
         // Carried so the linter can exclude decoration from every content

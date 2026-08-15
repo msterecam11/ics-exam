@@ -16,6 +16,8 @@ export interface EditorPage {
   elements: CanvasElement[]
   source_content?: any
   manually_diverged?: boolean
+  /** Shipped with an unresolved geometric/QA defect — see orchestrator.ts. */
+  needs_review?: boolean
   notes?: string | null
   updated_at: string
 }

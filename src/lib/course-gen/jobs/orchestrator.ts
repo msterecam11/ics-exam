@@ -180,6 +180,14 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   let verdictFeedback = ""
   let factVerdict: FactVerdict | null = null
   let qaVerdict: QaVerdict | null = null
+  // Set true only when a GEOMETRIC defect (overflow, overlap, unresolved
+  // image) was still present on the FINAL attempt and there was no budget
+  // left to fix it — the slide ships as compiled rather than being blocked
+  // forever, but that is a compromise, not a clean bill of health, and
+  // previously left no trace anywhere once the slide was saved. A course
+  // could ship with a dozen of these and nothing surfaced it until someone
+  // scrolled through every slide by hand.
+  let needsReview = false
   // The rejected attempt, as the reader would have seen it. Handed to the
   // design agent on every retry so it revises with eyes open instead of from
   // a one-line paraphrase of someone else's look at the picture.
@@ -254,10 +262,16 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     elements = compiled.elements
 
     // Geometric overflow is detectable without a vision call — fix it first.
-    if (compiled.overflow && attempt < MAX_QA_RETRIES) {
-      verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
-      continue
+    if (compiled.overflow) {
+      if (attempt < MAX_QA_RETRIES) {
+        verdictFeedback = "The content overflowed its area. Produce noticeably less text and a simpler structure."
+        source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
+        continue
+      }
+      // Out of retries. compiler.ts's bottom-zone clamp keeps this from
+      // overlapping the footer, but clipped content is still a defect a
+      // human should look at, not a silent pass.
+      needsReview = true
     }
     // Geometry the compiler can prove: balance, overlap, contrast (see
     // designLint.ts). Free and deterministic, so it runs before any paid
@@ -265,11 +279,14 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // Advisory findings ride along in the feedback — they never fail a slide
     // on their own, but if the slide is being redesigned anyway, the agent
     // may as well be told everything that was measured.
-    if (!compiled.lint.pass && attempt < MAX_QA_RETRIES) {
-      const advisory = compiled.lint.findings.filter(f => !f.gating).map(f => f.message).join(" ")
-      verdictFeedback = [compiled.lint.feedback, advisory].filter(Boolean).join(" ")
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
-      continue
+    if (!compiled.lint.pass) {
+      if (attempt < MAX_QA_RETRIES) {
+        const advisory = compiled.lint.findings.filter(f => !f.gating).map(f => f.message).join(" ")
+        verdictFeedback = [compiled.lint.feedback, advisory].filter(Boolean).join(" ")
+        source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
+        continue
+      }
+      needsReview = true
     }
 
     // ── 3. Media (library-first, generation fallback, validated) ───────────
@@ -289,10 +306,13 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // since nothing downstream caught it. Same retry pattern as overflow:
     // fix it at the content layer rather than let a broken box through.
     const unresolvedImage = elements.some(e => e.type === "image" && !e.url)
-    if (unresolvedImage && attempt < MAX_QA_RETRIES) {
-      verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
-      source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
-      continue
+    if (unresolvedImage) {
+      if (attempt < MAX_QA_RETRIES) {
+        verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
+        source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
+        continue
+      }
+      needsReview = true
     }
 
     // ── 4. QA vision check ────────────────────────────────────────────────
@@ -358,7 +378,11 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     }
 
     const factOk = !factVerdict || factVerdict.pass
-    if ((verdict.pass && factOk) || attempt === MAX_QA_RETRIES) break
+    if (verdict.pass && factOk) break
+    if (attempt === MAX_QA_RETRIES) {
+      needsReview = true
+      break
+    }
 
     // Route the fix to the layer that can actually resolve it. A factual
     // failure always goes back to the content layer — no layout change can
@@ -383,6 +407,11 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     // "unverified", which is a real state and not the same as "correct".
     fact_check: factVerdict,
     qa_check: qaVerdict,
+    // True only when a geometric or QA defect was still open when the retry
+    // budget ran out and the slide shipped anyway. Lets the course page
+    // surface exactly which slides to check by hand, instead of a defect
+    // only being found weeks later by scrolling the finished deck.
+    needs_review: needsReview,
   })
 
   // ── 6. Advance ───────────────────────────────────────────────────────────

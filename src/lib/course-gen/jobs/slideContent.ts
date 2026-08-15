@@ -50,8 +50,11 @@ Fact/enumeration primitives (right when the content really is a plain list):
   { "type":"table", "headerRow":true, "rows":[{"cells":[{"text":"…"},{"text":"…"}]}] }
   { "type":"chart", "chartType":"bar|line|donut", "unit":"m", "xTitle":"…", "yTitle":"…", "data":{"labels":["…"],"datasets":[{"label":"…","data":[1,2]}]} }
     ALWAYS set "unit" when the numbers have one — it is what tells the reader whether a bar means metres,
-    minutes or per cent, and the gathered material already carries it. Axis titles name what each axis IS;
-    skip one only when its own labels already say so. At most 5 series: past that colour identifies nothing.
+    minutes or per cent, and the gathered material already carries it. The renderer appends "(unit)" onto
+    the axis title FOR you — xTitle/yTitle must name what the axis IS ("Runway Occupancy Time") and NEVER
+    already contain the unit or its own parentheses, or it prints doubled ("Runway Occupancy Time (s) (s)").
+    Axis titles name what each axis IS; skip one only when its own labels already say so. At most 5 series:
+    past that colour identifies nothing.
   { "type":"meter", "items":[{"label":"…","value":72,"max":100,"caption":"72%","accent":"token:primary"}] }  labelled proportion bars — "how far along / how much of the whole"
   { "type":"comparison", "columns":[{"heading":"CERTIFICATION","icon":"airplane-takeoff","accent":"token:accent-warm","children":[…]}] }
 Relationship primitives (reach for these when the relationship IS the content — see the reasoning step below):
@@ -62,6 +65,8 @@ Relationship primitives (reach for these when the relationship IS the content �
   { "type":"band", "text":"…", "icon":"…" } — full-bleed single-line strip, e.g. a takeaway pinned under the rest of the content
   { "type":"stat-equation", "terms":[{"label":"…","sublabel":"…"}], "result":{"label":"…","sublabel":"…"} }
   { "type":"tag-list", "items":[{"label":"…","tag":"LEADING","tone":"success|warning|danger|neutral"}] }
+    "tag" is REQUIRED and must be a real per-item status/category word ("REQUIRED", "GAP", "ON TRACK") — every item needs one that actually differs in meaning from its neighbours.
+    If the items are just a plain enumeration with nothing per-item to tag (a list of technique names, checklist items with no individual status), use "bullets" instead — do not invent a filler tag just to satisfy the shape.
 Tier 3 — for anything none of the above can express (a real timeline, a diagram with non-standard connectors, a hero treatment). Equally valid to reach for; not a last resort:
   { "type":"custom", "justification":"why nothing else fits", "aspect":2.5,
     "children":[{"kind":"shape|line|text|icon","x":0,"y":40,"width":100,"height":4,"props":{…}}] }

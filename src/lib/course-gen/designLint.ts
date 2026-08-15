@@ -258,6 +258,24 @@ export function lintSlide(
     })
   }
 
+  // ── GATING: chart boxed too small to read ──────────────────────────────────
+  // chartSvg draws one SVG with a FIXED viewBox (1000×385) and fixed font
+  // sizes in viewBox units, scaled uniformly to whatever box it's given —
+  // that's how SVG viewBox scaling works, nothing here can special-case just
+  // the text. A chart placed in, say, a half-width column next to a table
+  // renders its 11px axis labels at roughly half that in real pixels:
+  // unreadable. There's no way to fix this by drawing differently; the box
+  // itself has to be wide enough. 420px is ~34% of the 1233px content zone —
+  // below that, real courses showed axis text shrunk past legibility.
+  const MIN_CHART_WIDTH_PX = 420
+  const undersizedCharts = inZone.filter(el => el.type === "chart" && boxOf(el).right - boxOf(el).left < MIN_CHART_WIDTH_PX)
+  if (undersizedCharts.length) {
+    findings.push({
+      rule: "balance", gating: true,
+      message: `A chart is boxed too narrow to read (under ${MIN_CHART_WIDTH_PX}px of a ${Math.round(SLIDE_W * 0.89)}px content zone) — its axis labels render illegibly small. Give the chart most of the row's width, or stack it above/below its neighbour instead of splitting the row evenly.`,
+    })
+  }
+
   // ── contrast: gating when unreadable, advisory when merely marginal ───────
   const unreadable: string[] = []
   const marginal: string[] = []

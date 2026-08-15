@@ -189,7 +189,13 @@ interface RenderOpts {
 
 /** Axis caption. Falls back to the unit alone, which is the part that matters. */
 function axisCaption(title: string | undefined, unit: string | undefined): string {
-  const t = (title ?? "").trim()
+  // The agent sometimes bakes the unit into the title text itself ("Runway
+  // Occupancy Time (s)") on top of setting `unit` separately — appending
+  // blindly then produced "Runway Occupancy Time (s) (%)" on every chart
+  // that did this. A trailing "(...)" on the title is always that same
+  // mistake, never a legitimate second parenthetical, so it's dropped before
+  // the real unit is appended.
+  const t = (title ?? "").trim().replace(/\s*\([^()]*\)\s*$/, "").trim()
   const u = (unit ?? "").trim()
   if (t && u) return `${t} (${u})`
   return t || u

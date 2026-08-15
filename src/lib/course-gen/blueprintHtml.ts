@@ -554,9 +554,16 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "stat-equation": {
+        // A bold 2-line label ("Shift-Level Checks" wrapping) plus a sublabel
+        // right underneath it, separated by only 2px and the browser's
+        // default (tight) line-height, read on real content as the two
+        // running into each other — never surfaced in the fixtures because
+        // those exemplar labels were short enough to stay on one line.
+        // Explicit line-height keeps the label compact while a real gap
+        // gives the sublabel its own space underneath it.
         const box = (label: string, sub: string | undefined, emphasise: boolean) =>
-          `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700 }) })} style="font-size:${TYPE_PX.body}px;font-weight:700;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${
-            sub ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sub }], fontSize: 12, color: emphasise ? "token:text-inverse" : "token:text" }) })} style="font-size:12px;color:${emphasise ? "rgba(255,255,255,0.85)" : T("text")}">${esc(sub)}</span>` : ""
+          `<div ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: emphasise ? "token:primary" : "token:surface-alt", radius: 8 } })} style="flex:1;background:${emphasise ? T("primary") : T("surface-alt")};border-radius:8px;padding:${gap("sm")} ${gap("md")};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center"><span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: label, bold: true }], fontSize: TYPE_PX.body, color: emphasise ? "token:text-inverse" : "token:navy", fontWeight: 700, lineHeight: 1.25 }) })} style="font-size:${TYPE_PX.body}px;font-weight:700;line-height:1.25;color:${emphasise ? "#fff" : T("navy")}">${esc(label)}</span>${
+            sub ? `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sub }], fontSize: 12, color: emphasise ? "token:text-inverse" : "token:text", lineHeight: 1.3 }) })} style="font-size:12px;line-height:1.3;color:${emphasise ? "rgba(255,255,255,0.85)" : T("text")}">${esc(sub)}</span>` : ""
           }</div>`
         const op = (sym: string) => `<span ${bakeAttr({ kind: "text", props: centred({ runs: [{ text: sym, bold: true }], fontSize: TYPE_PX.h4, color: "token:text", fontWeight: 800 }) })} style="font-size:${TYPE_PX.h4}px;font-weight:800;color:${T("text")};align-self:center">${sym}</span>`
         return `<div style="display:flex;align-items:stretch;gap:${gap("sm")}">${
@@ -568,6 +575,15 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         const toneColor = (t?: string) => t === "success" ? T("success") : t === "warning" ? T("tab-yellow") : t === "danger" ? T("danger") : T("primary")
         return `<div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:safe center">${n.items.map(it => {
           const c = toneColor(it.tone)
+          // The design agent sometimes reaches for tag-list on a plain
+          // enumeration that has no natural per-item status — "Duplicate-key
+          // checks", "Owner assigned" — and leaves `tag` empty. Baking
+          // esc(undefined) printed the literal string "undefined" onto the
+          // slide. A row with nothing to tag just doesn't get a pill, same as
+          // it would if the agent had picked "bullets" for this content.
+          if (!it.tag) {
+            return `<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid ${T("border-subtle")}"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.label }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(it.label)}</span></div>`
+          }
           // Box and label bake as two elements (box behind, text on top) —
           // baking one node as both "shape" and the text carrier would drop
           // the label, since a shape element carries no text (see badge-number).

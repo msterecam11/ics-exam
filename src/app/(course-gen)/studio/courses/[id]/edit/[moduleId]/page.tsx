@@ -12,7 +12,7 @@ import { toast } from "sonner"
 import {
   ArrowLeft, Loader2, Undo2, Redo2, Plus, Play, Type, Square, ImageIcon,
   Table2, BarChart3, Save, X, Trash2, Sparkles, SlidersHorizontal,
-  PanelRightClose, PanelRightOpen,
+  PanelRightClose, PanelRightOpen, AlertTriangle,
 } from "lucide-react"
 import SlideCanvas, { type Master } from "@/components/course-gen/SlideCanvas"
 import PropertiesPanel from "@/components/course-gen/PropertiesPanel"
@@ -351,6 +351,12 @@ export default function ModuleEditorPage() {
                   </div>
                 </button>
                 <span className="absolute top-1 left-1 text-[10px] font-bold text-white bg-black/45 px-1.5 rounded">{i + 1}</span>
+                {p.needs_review && (
+                  <span title="Shipped with an unresolved layout/QA issue — check it by eye"
+                    className="absolute bottom-1 left-1 flex items-center gap-1 text-[9px] font-bold text-white bg-[#C05252] px-1.5 py-0.5 rounded">
+                    <AlertTriangle className="h-2.5 w-2.5" /> Review
+                  </span>
+                )}
                 <button onClick={() => deleteSlide(p.id)} title="Delete slide"
                   className="absolute top-1 right-1 p-1 rounded bg-black/45 text-white/80 opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-opacity">
                   <Trash2 className="h-3 w-3" />

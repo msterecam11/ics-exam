@@ -26,7 +26,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ moduleId: 
       .select("id, title, partner_name, partner_logo_light_url, partner_logo_dark_url, cg_themes(id, name, tokens, layout_templates)")
       .eq("id", mod.course_id).single(),
     db.from("cg_pages")
-      .select("id, order_index, layout_kind, background, elements, source_content, manually_diverged, notes, updated_at")
+      .select("id, order_index, layout_kind, background, elements, source_content, manually_diverged, needs_review, notes, updated_at")
       .eq("module_id", moduleId).order("order_index"),
     db.from("cg_modules")
       .select("id, title, order_index, is_module_zero")
