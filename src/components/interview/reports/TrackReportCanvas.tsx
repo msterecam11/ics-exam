@@ -200,7 +200,15 @@ function GroupBulletPanel({ text, label, color = "blue", hasExpert = false, onGe
   }
 
   const nlLines = text.split("\n").map(l => l.replace(/^[•\-\*\d\.]\s*/, "").trim()).filter(Boolean)
-  const lines   = nlLines.length > 1 ? nlLines : (text.match(/[^.!?]+[.!?]+/g) ?? [text]).map(s => s.trim()).filter(Boolean)
+  // Single-paragraph AI output falls back to splitting on sentence-ending
+  // punctuation — but a decimal point ("4.29/5.00") is indistinguishable
+  // from a period there, so a naive split chopped scores into fragments
+  // ("4.", "29/5."). Decimal points are protected before splitting and
+  // restored after.
+  const protectedText = text.replace(/(\d)\.(\d)/g, "$1@@DEC@@$2")
+  const lines = nlLines.length > 1
+    ? nlLines
+    : (protectedText.match(/[^.!?]+[.!?]+/g) ?? [protectedText]).map(s => s.replace(/@@DEC@@/g, ".").trim()).filter(Boolean)
 
   return (
     <div className="avoid-break rounded-xl overflow-hidden border">
