@@ -203,6 +203,7 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     tokens,              // the real theme — hex values, not just token names
     dark_background,     // whether THIS slide's master is dark
     photos_used,         // how many earlier slides in this module carry a photo
+    photo_target,        // how many slides in this module SHOULD carry one
     slides_remaining,    // how many slides are left after this one
     retry_feedback,     // set when QA bounced this slide back
     render_png,         // base64 PNG of the attempt being rejected — see below
@@ -237,10 +238,26 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
   // make. Without the module's running count, every slide independently
   // concluded its own subject was too abstract to photograph and the whole
   // deck came out with no imagery at all.
-  const photoNote = isStructural ? ""
-    : (photos_used ?? 0) === 0
-      ? `No slide in this module carries a photograph yet${(slides_remaining ?? 0) <= 2 ? " and there are almost none left — if this slide's subject has any real physical setting at all, this is the moment to use it." : ". If this slide's subject has a genuine physical setting, prefer a figure here."}`
-      : `${photos_used} earlier slide(s) in this module already carry a photograph, so imagery is established — only add another if it genuinely earns its place.`
+  //
+  // Stated as a QUOTA, not a yes/no. The previous version flipped to "imagery
+  // is established — only add another if it earns its place" as soon as one
+  // figure existed anywhere in the module, which read as a stop sign and drove
+  // the whole system to about one photo per module. The running gap is what
+  // makes this actionable on the slide in front of you.
+  const photoNote = (() => {
+    if (isStructural) return ""
+    const used = photos_used ?? 0
+    const target = photo_target ?? 0
+    const left = slides_remaining ?? 0
+    const gap = target - used
+    if (gap <= 0) {
+      return `This module has met its imagery target (${used} of ${target}). Add another figure only if this slide genuinely calls for one.`
+    }
+    if (gap >= left) {
+      return `IMAGERY IS BEHIND: ${used} of ${target} slides in this module carry a photograph and only ${left} slide(s) remain after this one. Unless this slide's subject is genuinely un-photographable, use a figure here.`
+    }
+    return `Imagery so far: ${used} of a target ${target} slides in this module, with ${left} slide(s) left after this one. Prefer a figure here if this slide's subject has any real physical setting.`
+  })()
 
   // Emphasis is assigned once for the whole module by the gather pass, which
   // is the only stage that sees every slide at once. A slide asked about its

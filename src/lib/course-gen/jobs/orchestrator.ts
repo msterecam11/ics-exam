@@ -151,8 +151,21 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   // Everything the design agent needs that ISN'T per-attempt. Held in one
   // object so the QA retry path re-sends it verbatim instead of rebuilding
   // the input by hand and quietly losing fields.
+  // How many slides in THIS module should carry a photograph. The old guidance
+  // was binary — "none yet, add one" flipping to "imagery is established, only
+  // add another if it earns its place" the moment a single figure existed. That
+  // is a one-photo-per-module attractor, and it produced exactly that: the
+  // 46-slide GSE deck asked for four figures in total. A target expressed
+  // against the module's own content-slide count gives the agent something it
+  // can actually aim at, and the honest-subject rule below still governs WHICH
+  // slides get one — a quota never justifies photographing an abstraction.
+  const contentSlideCount = (mod.slides ?? []).filter((s: any) =>
+    s.layout_kind === "content_white" || s.layout_kind === "content_lightblue").length
+  const photoTarget = Math.max(1, Math.round(contentSlideCount * 0.45))
+
   const retryCtx = {
     photos_used: photosUsed,
+    photo_target: photoTarget,
     slides_remaining: mod.slides.length - cursor.slide_index - 1,
     tokens,
     dark_background: master.background.tone === "dark",
@@ -188,6 +201,9 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
   // could ship with a dozen of these and nothing surfaced it until someone
   // scrolled through every slide by hand.
   let needsReview = false
+  // Counts media misses on THIS slide, so the first one can ask for a better
+  // subject and only a repeat failure gives up on imagery. See the retry below.
+  let imageRetries = 0
   // The rejected attempt, as the reader would have seen it. Handed to the
   // design agent on every retry so it revises with eyes open instead of from
   // a one-line paraphrase of someone else's look at the picture.
@@ -308,7 +324,16 @@ export async function handleOrchestratorTick(job: any): Promise<OrchestratorTick
     const unresolvedImage = elements.some(e => e.type === "image" && !e.url)
     if (unresolvedImage) {
       if (attempt < MAX_QA_RETRIES) {
-        verdictFeedback = "The requested photo/illustration could not be sourced or generated. Do not use a figure for this content — represent it instead with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
+        // A media miss used to mean "give up on imagery for this slide", which
+        // is how a deck ends up with almost no photographs: one failed search
+        // permanently converted the slide to boxed text. Usually the subject
+        // was simply too abstract to photograph, so the first retry asks for a
+        // more concrete one and keeps the figure. Only once that has also
+        // failed is the non-visual fallback allowed.
+        imageRetries += 1
+        verdictFeedback = imageRetries === 1
+          ? "The requested photo could not be sourced — the subject was probably too abstract or too specific to exist as a photograph. Keep the figure, but rewrite media.subject as a concrete, physically observable scene a stock library would actually hold (people, equipment, a place, an action in progress) rather than a concept or a document."
+          : "The requested photo could not be sourced on two attempts. Drop the figure and represent this content with a callout, table, chart, or one of the relationship primitives (flow/radial/tiers/custom)."
         source = await regenerate(courseId, mod, slide, cursor, slidePlan, shapesUsed, verdictFeedback, retryCtx, await renderFor(elements))
         continue
       }
