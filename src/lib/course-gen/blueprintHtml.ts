@@ -39,10 +39,14 @@ function centred(props: Record<string, unknown>): Record<string, unknown> {
  * The bake attribute always carries the icon's NAME, never its geometry, so a
  * re-theme or an icon-set swap repaints it the same way a colour token does.
  *
- * An unknown name falls back to the tinted block this used to draw for every
- * icon. That keeps a hallucinated or stale name visible in review rather than
- * silently leaving a hole in the layout — and, because the block occupies the
- * same box, it cannot shift anything around it.
+ * An unknown name used to fall back to a tinted block, deliberately, so that a
+ * hallucinated or stale name stayed VISIBLE in review instead of leaving a hole
+ * in the layout. In practice that backfired: a solid square in an accent colour
+ * is indistinguishable from an intentional design element, so nobody reading
+ * the deck registered it as a fault — real slides shipped with orange squares
+ * beside their headings and were reviewed as if that were the design. The
+ * signal now goes to the console, where it says what is actually wrong, and the
+ * slide simply loses an icon it was never able to draw.
  */
 function iconHtml(opts: {
   name: string
@@ -54,9 +58,19 @@ function iconHtml(opts: {
   const { name, token, resolved, size, extraStyle = "" } = opts
   const bake = bakeAttr({ kind: "icon", props: { name, color: token } })
   const glyph = iconSvg(name, { size, color: resolved })
-  return glyph
-    ? `<span ${bake} style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;flex-shrink:0;${extraStyle}">${glyph}</span>`
-    : `<span ${bake} style="display:inline-block;width:${size}px;height:${size}px;background:${resolved};opacity:.85;border-radius:4px;flex-shrink:0;${extraStyle}"></span>`
+  if (glyph) {
+    return `<span ${bake} style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;flex-shrink:0;${extraStyle}">${glyph}</span>`
+  }
+  // An icon name the vocabulary does not have used to fall back to a SOLID
+  // BLOCK of the icon's own colour, which reads as a deliberate design element
+  // rather than as a missing glyph — a heading asking for a non-existent icon
+  // rendered as an opaque orange square beside its text, and nothing flagged
+  // it. Emitting nothing is the honest failure: the slide loses an icon it was
+  // never able to draw, and the layout closes up around the gap.
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(`[course-gen] unknown icon "${name}" — omitted. Add it to icons.ts or use a name from the vocabulary.`)
+  }
+  return ""
 }
 
 function esc(s: string): string {
@@ -581,7 +595,16 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
         const toneToken = (t?: string) => t === "success" ? "token:success"
           : t === "warning" ? "token:tab-yellow"
           : t === "danger" ? "token:danger" : "token:primary"
+        // The chip's tint and its LABEL cannot always be the same colour. The
+        // theme's amber (#F2C14E) is right as a background wash and far too
+        // light as text on one — 1.7:1, which the linter correctly gates as
+        // unreadable. Every other tone is legible as its own colour, so only
+        // the warning label steps down to the darker brand orange (2.7:1,
+        // the same marginal-but-intended pairing the ICS palette already uses
+        // for accent headings). The chip stays amber, so the tone still reads.
+        const toneTextToken = (t?: string) => t === "warning" ? "token:accent-warm" : toneToken(t)
         const toneColor = (t?: string) => resolveToken(toneToken(t), tokens, T("primary"))
+        const toneTextColor = (t?: string) => resolveToken(toneTextToken(t), tokens, T("primary"))
         return `<div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:safe center">${n.items.map(it => {
           const c = toneColor(it.tone)
           // The design agent sometimes reaches for tag-list on a plain
@@ -597,7 +620,9 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           // baking one node as both "shape" and the text carrier would drop
           // the label, since a shape element carries no text (see badge-number).
           const tt = toneToken(it.tone)
-          const pill = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: tt, fillStyle: "tinted", radius: 4 } })} style="background:${c}22;border:1px solid ${c}55;border-radius:4px;padding:2px 10px;display:inline-flex"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.tag, bold: true }], fontSize: TYPE_PX.small, color: tt, fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${c}">${esc(it.tag)}</span></span>`
+          const ttText = toneTextToken(it.tone)
+          const cText = toneTextColor(it.tone)
+          const pill = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: tt, fillStyle: "tinted", radius: 4 } })} style="background:${c}22;border:1px solid ${c}55;border-radius:4px;padding:2px 10px;display:inline-flex"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.tag, bold: true }], fontSize: TYPE_PX.small, color: ttText, fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${cText}">${esc(it.tag)}</span></span>`
           return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid ${T("border-subtle")}"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.label }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(it.label)}</span>${pill}</div>`
         }).join("")}</div>`
       }

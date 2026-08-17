@@ -149,7 +149,10 @@ function contains(outer: Box, inner: Box): boolean {
  * verdict is worse than a miss, because it would send a correct slide back
  * for a redesign it does not need.
  */
-function backdropFor(el: CanvasElement, all: CanvasElement[], master: Master, tokens: ThemeTokens): string | null {
+function backdropFor(el: CanvasElement, all: CanvasElement[], master: Master, tokens: ThemeTokens,
+  /** Filled in with a description of whichever shape supplied the colour. */
+  via?: { from?: string },
+): string | null {
   const box = boxOf(el)
   const z = el.zIndex ?? 0
   const behind = all
@@ -167,6 +170,21 @@ function backdropFor(el: CanvasElement, all: CanvasElement[], master: Master, to
     }
     const fill = top.style?.fill
     if (!fill) return null
+    if (via) via.from = `${top.type}/${String(fill)}${fs ? `/${fs}` : "/no-fillStyle"}`
+    // A shape that never declared HOW it paints cannot be trusted as an opaque
+    // backdrop. Several primitives bake a decorative accent rule or stripe as a
+    // plain rect with no `fillStyle`, and the geometry alone cannot tell that
+    // apart from a solid filled card. Treating those as opaque produced a
+    // GATING "text is invisible" verdict on an accent heading that renders
+    // perfectly legibly (#E8833A on #E8833A, real slide, orange-on-light-blue
+    // in the PNG) — and a false gate is expensive twice over: the slide burns
+    // every retry, and the agent is told to change a colour that was correct.
+    //
+    // This is the behaviour the docstring above already asks for: when the
+    // backdrop cannot be established confidently, miss rather than misfire. The
+    // case that motivated the contrast rule — navy text on the dark master —
+    // comes from the master branch below, not from a shape, so it still gates.
+    if (!fs) return null
     const resolved = resolveToken(String(fill), tokens, "")
     return resolved && resolved.startsWith("#") ? resolved : null
   }
@@ -285,11 +303,19 @@ export function lintSlide(
     if (!color) continue
     const fg = resolveToken(String(color), tokens, "")
     if (!fg || !fg.startsWith("#")) continue
-    const bg = backdropFor(el, elements, master, tokens)
+    const via: { from?: string } = {}
+    const bg = backdropFor(el, elements, master, tokens, via)
     if (!bg) continue
     const ratio = contrastRatio(fg, bg)
     if (ratio === null) continue
-    const pair = `${fg} on ${bg} (${ratio.toFixed(1)}:1)`
+    // Name the offending text, not just the colour pair. "#E8833A on #E8833A"
+    // identifies a collision but not WHICH element caused it, so neither a
+    // human debugging the slide nor the design agent receiving this as retry
+    // feedback can act on it — the agent is being told to fix something it
+    // cannot locate. A few words of the actual run makes it findable.
+    const runs = (el as any).runs as { text?: string }[] | undefined
+    const excerpt = (runs ?? []).map(r => r?.text ?? "").join("").trim().slice(0, 40)
+    const pair = `${fg} on ${bg} (${ratio.toFixed(1)}:1)${excerpt ? ` — "${excerpt}"` : ""}${via.from ? ` [behind: ${via.from}]` : ""}`
     if (ratio < UNREADABLE_CONTRAST) unreadable.push(pair)
     else if (ratio < MARGINAL_CONTRAST) marginal.push(pair)
   }
