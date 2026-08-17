@@ -153,6 +153,44 @@ export const FIXTURES: Record<string, Fixture> = {
     } as BlueprintNode,
   },
 
+  // The GSE deck put a left rail through the first characters of whatever led
+  // the slide on three separate pages, and no fixture exercised decor.edge, so
+  // nothing caught it. The rail belongs in the gutter, clear of the column.
+  "bug-decor-edge-rail": {
+    master: "content_white",
+    title: "Decor Rail Beside the Content Column",
+    note: "BUG REPRO — the left rail must sit in the margin, NOT strike through the eyebrow/heading text.",
+    decor: { edge: "left", accent: "token:primary-light" },
+    blueprint: {
+      type: "stack",
+      gap: "sm",
+      children: [
+        { type: "heading", level: 6, text: "COMPLIANCE REPORT WORKFLOW", color: "token:primary-light" },
+        { type: "heading", level: 2, text: "Three Decisions Close the Report" },
+        { type: "body", text: "The rail is decoration. It must never share an x-coordinate with the text column beside it." },
+      ],
+    } as BlueprintNode,
+  },
+
+  // Long labels wrap to three lines and used to collide with their own
+  // sublabel. The stat-equation fixture above has short labels and never
+  // reproduced it.
+  "bug-stat-equation-wrap": {
+    master: "content_white",
+    title: "Stat Equation — Long Labels That Wrap",
+    note: "BUG REPRO — 3-line term labels must not overlap their sublabels or spill past the box.",
+    blueprint: {
+      type: "stat-equation",
+      style: { fill: "tinted", accent: "token:primary", corner: "soft" },
+      terms: [
+        { label: "Regulatory Framework Baseline", sublabel: "Applies across every operating station" },
+        { label: "Recordkeeping Discipline", sublabel: "Retained, accessible, owned" },
+        { label: "Reporting Timeliness", sublabel: "Notification through correction" },
+      ],
+      result: { label: "One Integrated Compliance Responsibility", sublabel: "Supervisors and technicians jointly accountable" },
+    } as BlueprintNode,
+  },
+
   "quote-banner": {
     master: "content_white",
     title: "Quote Banner",

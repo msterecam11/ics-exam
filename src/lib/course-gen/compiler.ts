@@ -146,12 +146,26 @@ export async function compileBlueprint(input: CompileInput): Promise<{
     // Bake measured nodes → absolute elements, in DOM order so painting
     // order (and therefore z-index) matches what the browser rendered.
     measured.forEach((m, i) => {
-      // Text boxes get a ~2px cushion: percentages are rounded to 2dp, and a
-      // box even a fraction of a pixel narrower than measured re-wraps its
-      // last word onto a new line at render time, colliding with whatever
-      // sits below. Non-text boxes are exact.
-      const cushion = m.bake.kind === "text" ? 2 : 0
       const p = m.bake.props as any
+      // Text boxes get a cushion: a box even a fraction of a pixel narrower
+      // than measured re-wraps its last word onto a new line at render time.
+      // Because slideHtml renders text with `overflow:visible` (so nothing is
+      // ever clipped), that extra line does not get hidden — it spills onto
+      // whichever element is baked below, which is the shared cause behind the
+      // icon-tile grid, stat-equation and band overlaps in the GSE deck.
+      //
+      // Single-line text is already immune: it bakes `noWrap` below. Multi-line
+      // text is the exposed case, and a flat 2px was too thin for it — most of
+      // these spans shrink-wrap to their longest line, so the baked width sits
+      // exactly at the wrap threshold where one hair of drift costs a line.
+      // Scaling with font size tracks the real risk: the bigger the type, the
+      // wider the word that has to fit.
+      const fsForCushion = Number(p.fontSize) || 16
+      const lhForCushion = Number(p.lineHeight) || 1.45
+      const isMultiLine = m.h > fsForCushion * lhForCushion * 1.35
+      const cushion = m.bake.kind !== "text" ? 0
+        : isMultiLine ? Math.max(2, Math.round(fsForCushion * 0.4))
+        : 2
       // Rotation rides through from the Tier-3 child's own props (see the
       // comment in blueprintHtml.ts's "custom" case) rather than ever being
       // applied as a CSS transform before this measurement — a rotated
@@ -199,7 +213,9 @@ export async function compileBlueprint(input: CompileInput): Promise<{
           // collides with the element below it.
           const fs = p.fontSize ?? 16
           const lh = p.lineHeight ?? 1.45
-          const singleLine = m.h <= fs * lh * 1.35
+          // Same test the cushion above used — kept as one value so the two
+          // can never disagree about whether this box is single- or multi-line.
+          const singleLine = !isMultiLine
           elements.push({ ...base, type: "text", runs: p.runs ?? [{ text: "" }],
             style: { fontSize: fs, fontWeight: p.fontWeight, color: p.color, align: p.align ?? "left", lineHeight: lh, noWrap: singleLine } } as CanvasElement)
           break

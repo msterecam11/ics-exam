@@ -95,15 +95,22 @@ export function decorHtml(opts: {
     }
   }
 
+  // The rail sits in the MARGIN, not on top of the text. At left:0 it shared
+  // its x with the content column — every heading, table and eyebrow started
+  // at the same coordinate, so the bar struck through the first characters of
+  // whatever led the slide (seen on three separate slides of the GSE deck).
+  // The content zone has a ~70px gutter to the slide edge, so pulling the rail
+  // out of the column is free and matches how the reference decks draw it.
+  const RAIL_GUTTER = 14
   if (decor.edge === "left") {
     parts.push(
       `<div ${bake("shape", { shape: "rect", fill: accentToken, radius: 2 })} ` +
-      `style="position:absolute;left:0;top:0;width:4px;height:100%;background:${accent};border-radius:2px"></div>`
+      `style="position:absolute;left:-${RAIL_GUTTER}px;top:0;width:4px;height:100%;background:${accent};border-radius:2px"></div>`
     )
   } else if (decor.edge === "top") {
     parts.push(
       `<div ${bake("shape", { shape: "rect", fill: accentToken, radius: 2 })} ` +
-      `style="position:absolute;left:0;top:0;width:100%;height:4px;background:${accent};border-radius:2px"></div>`
+      `style="position:absolute;left:0;top:-${RAIL_GUTTER}px;width:100%;height:4px;background:${accent};border-radius:2px"></div>`
     )
   }
 

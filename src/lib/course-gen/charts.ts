@@ -197,8 +197,18 @@ function axisCaption(title: string | undefined, unit: string | undefined): strin
   // the real unit is appended.
   const t = (title ?? "").trim().replace(/\s*\([^()]*\)\s*$/, "").trim()
   const u = (unit ?? "").trim()
-  if (t && u) return `${t} (${u})`
-  return t || u
+  if (!t || !u) return t || u
+  // The agent also states the unit as part of the title itself — a real axis
+  // read "Incidents per 1,000 Turnarounds (per 1,000 Turnarounds)" because the
+  // title ENDED with the unit rather than carrying it in parentheses, so the
+  // strip above had nothing to remove. Appending is skipped when the title
+  // already says it. The 3-char floor keeps short units ("s", "m", "%") on the
+  // append path, where a bare substring test would false-positive constantly
+  // (every title containing an "s" would look like it already had its unit).
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
+  const nt = norm(t), nu = norm(u)
+  if (nt === nu || (nu.length >= 3 && nt.endsWith(nu))) return t
+  return `${t} (${u})`
 }
 
 /** A value-axis caption, rotated up the left edge. */
