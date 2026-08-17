@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
-  BookOpen, Clock, Users, QrCode, List, BarChart2, ChevronRight, Lock
+  BookOpen, Clock, Users, QrCode, List, BarChart2, ChevronRight, Lock, UserPlus
 } from "lucide-react"
 import { formatDuration } from "@/lib/utils"
 import ExamStatusToggle from "@/components/admin/ExamStatusToggle"
@@ -81,6 +81,14 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
       desc: "QR code & printable page",
       color: "text-emerald-600",
       bg: "bg-emerald-50",
+    },
+    {
+      href: `/exams/${id}/invites`,
+      icon: UserPlus,
+      title: "Invites",
+      desc: "Personal, pre-filled links",
+      color: "text-amber-600",
+      bg: "bg-amber-50",
     },
   ]
 
@@ -158,7 +166,7 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
       <Separator />
 
       {/* Action cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {actions.map(({ href, icon: Icon, title, desc, color, bg }) => (
           <Link key={href} href={href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">

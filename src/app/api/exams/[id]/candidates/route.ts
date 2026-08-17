@@ -13,7 +13,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id: exam_id } = await params
   const body = await req.json()
-  const { full_name, email, job_title, years_of_experience, company, custom_field_values } = body
+  const { full_name, email, job_title, years_of_experience, company, custom_field_values, invite_token } = body
+
+  // Personal-invite submission — the token is re-validated here (not just at
+  // the GET that displayed the prefilled form) so a link can't be replayed
+  // to create a second candidate after it's already been completed.
+  let invite: any = null
+  if (invite_token) {
+    const { data } = await db.from("exam_invites").select("*").eq("token", invite_token).eq("exam_id", exam_id).single()
+    if (!data) return NextResponse.json({ error: "Invite not found" }, { status: 404 })
+    if (data.status === "completed" || data.status === "revoked")
+      return NextResponse.json({ error: "This invite is no longer valid" }, { status: 410 })
+    invite = data
+  }
 
   // Input validation
   const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -57,6 +69,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (invite) {
+    await db.from("exam_invites")
+      .update({ status: "completed", completed_at: new Date().toISOString(), candidate_id: data.id })
+      .eq("id", invite.id)
+  }
 
   // Multi-bank exam (exam_question_banks has rows) — draw from each linked
   // bank per its own config, combine into one frozen snapshot. Takes
