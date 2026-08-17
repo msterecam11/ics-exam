@@ -226,6 +226,76 @@ export const FIXTURES: Record<string, Fixture> = {
     } as BlueprintNode,
   },
 
+  // The agent reaches for tag-list on plain enumerations that have no
+  // per-item status and leaves `tag` unset. Baking esc(undefined) printed the
+  // literal word "undefined" on three slides. The fixture above tags every
+  // item, so it never covered this.
+  "bug-tag-list-untagged": {
+    master: "content_white",
+    title: "Tag List — Items With No Tag",
+    note: "BUG REPRO — untagged items must render as plain rows, NEVER the literal text 'undefined'.",
+    blueprint: {
+      type: "tag-list",
+      items: [
+        { label: "Duplicate-key checks" },
+        { label: "Record-count reconciliation" },
+        { label: "Trend outlier analysis", tag: "SAMPLED", tone: "neutral" },
+        { label: "Periodic manual sampling" },
+      ],
+    } as BlueprintNode,
+  },
+
+  // A 2x2 tile grid: row-2 tiles landed on row-1 body text because the body
+  // spans re-wrapped a line taller at render than they measured. The
+  // single-row icon-tiles fixture has nothing below it to collide with.
+  "bug-icon-tile-grid": {
+    master: "content_white",
+    title: "Icon Tiles — Two-Row Grid",
+    note: "BUG REPRO — row-2 tiles must not overlap row-1 body text.",
+    blueprint: {
+      type: "row", gap: "lg",
+      children: [
+        {
+          type: "col", gap: "lg",
+          children: [
+            { type: "icon-tile", icon: "user-focus", heading: "Human Factors & Fatigue", body: "Extended shifts and complacency during repetitive turnarounds reduce awareness of moving equipment." },
+            { type: "icon-tile", icon: "wrench", heading: "Equipment Malfunction", body: "Deferred maintenance, worn brakes, faulty lighting and inoperative reverse alarms on tugs." },
+          ],
+        },
+        {
+          type: "col", gap: "lg",
+          children: [
+            { type: "icon-tile", icon: "megaphone", heading: "Poor Ramp Communication", body: "Missing hand signals, radio lapses and unclear marshaller-to-driver coordination during pushback." },
+            { type: "icon-tile", icon: "cloud", heading: "Environmental & Weather", body: "Low visibility, wet apron surfaces, high winds and inadequate lighting during night operations." },
+          ],
+        },
+      ],
+    } as BlueprintNode,
+  },
+
+  // The agent states the unit inside the title AND in `unit`, so the axis read
+  // "Incidents per 1,000 Turnarounds (per 1,000 Turnarounds)". bug-chart-bare
+  // parenthesises its unit, so it never reproduced the doubling.
+  "bug-chart-unit-echo": {
+    master: "content_white",
+    title: "Chart — Unit Already Stated in the Axis Title",
+    note: "BUG REPRO — the unit must appear ONCE on the y-axis, not doubled.",
+    blueprint: {
+      type: "chart",
+      chartType: "line",
+      unit: "per 1,000 turnarounds",
+      yTitle: "Incidents per 1,000 turnarounds",
+      xTitle: "Reporting period",
+      data: {
+        labels: ["2022", "2023", "2024"],
+        datasets: [
+          { label: "Station rate", data: [5.8, 5.0, 4.6] },
+          { label: "Industry benchmark", data: [4.0, 4.0, 4.0] },
+        ],
+      },
+    } as BlueprintNode,
+  },
+
   // ── Fact primitives ────────────────────────────────────────────────────
   "icon-tiles": {
     master: "content_white",

@@ -572,7 +572,16 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
       }
 
       case "tag-list": {
-        const toneColor = (t?: string) => t === "success" ? T("success") : t === "warning" ? T("tab-yellow") : t === "danger" ? T("danger") : T("primary")
+        // `tone` is a semantic name ("success"), NOT a token reference. It was
+        // being handed straight to the bake as `fill`/`color`, where a
+        // "token:*" string is expected — so the baked pill and its label both
+        // resolved to a fallback and the chip vanished from the finished
+        // slide while looking correct during measurement. Mapped to a real
+        // token once, then used for both surfaces.
+        const toneToken = (t?: string) => t === "success" ? "token:success"
+          : t === "warning" ? "token:tab-yellow"
+          : t === "danger" ? "token:danger" : "token:primary"
+        const toneColor = (t?: string) => resolveToken(toneToken(t), tokens, T("primary"))
         return `<div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:safe center">${n.items.map(it => {
           const c = toneColor(it.tone)
           // The design agent sometimes reaches for tag-list on a plain
@@ -587,7 +596,8 @@ export function blueprintToHtml(node: BlueprintNode, tokens: ThemeTokens, darkCo
           // Box and label bake as two elements (box behind, text on top) —
           // baking one node as both "shape" and the text carrier would drop
           // the label, since a shape element carries no text (see badge-number).
-          const pill = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: it.tone ?? "token:primary", radius: 4 } })} style="background:${c}22;border:1px solid ${c}55;border-radius:4px;padding:2px 10px;display:inline-flex"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.tag, bold: true }], fontSize: TYPE_PX.small, color: it.tone ?? "token:primary", fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${c}">${esc(it.tag)}</span></span>`
+          const tt = toneToken(it.tone)
+          const pill = `<span ${bakeAttr({ kind: "shape", props: { shape: "rect", fill: tt, fillStyle: "tinted", radius: 4 } })} style="background:${c}22;border:1px solid ${c}55;border-radius:4px;padding:2px 10px;display:inline-flex"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.tag, bold: true }], fontSize: TYPE_PX.small, color: tt, fontWeight: 700 } })} style="font-size:${TYPE_PX.small}px;font-weight:700;color:${c}">${esc(it.tag)}</span></span>`
           return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid ${T("border-subtle")}"><span ${bakeAttr({ kind: "text", props: { runs: [{ text: it.label }], fontSize: TYPE_PX.body, color: "token:text" } })} style="font-size:${TYPE_PX.body}px;color:${T("text")}">${esc(it.label)}</span>${pill}</div>`
         }).join("")}</div>`
       }
