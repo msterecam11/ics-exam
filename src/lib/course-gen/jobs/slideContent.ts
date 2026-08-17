@@ -281,11 +281,36 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     reference: `\n## This slide's job: REFERENCE\nSomething a learner returns to and looks up rather than reads through. A clean table or a plain structured list is the RIGHT answer here — do not dress lookup material as an argument. Legibility and scanability beat visual interest.`,
   } as Record<string, string>)[plan?.role ?? ""] ?? ""
 
-  const varietyNote = shapes_used?.length
-    ? `Shapes already used earlier in this module: ${JSON.stringify(shapes_used)}. Do not repeat the same root shape back-to-back unless the relationship genuinely forces it — a module where every slide is the same silhouette reads as templated, which is the exact failure mode this system exists to avoid.
+  // Counted, not "avoid back-to-back". The previous wording forbade only
+  // consecutive repeats and then said in as many words that "two flow slides in
+  // one module are fine" — so the agent settled on its favourite and stayed
+  // there: `flow` was the root shape on 24% of the 46-slide GSE deck while
+  // badge-number, alternating-list, meter and radial were never chosen once.
+  // Naming the over-used shape as spent, and naming what is still unspent, is
+  // what actually widens the vocabulary.
+  const varietyNote = (() => {
+    const used: string[] = shapes_used ?? []
+    if (!used.length) return "This is the first content slide in the module — no prior shape to avoid yet."
 
-And when the shape MUST repeat because the content genuinely calls for it again, vary the treatment instead: a different fill, corner, density or elevation from the style parameters below. Two "flow" slides in one module are fine; two IDENTICAL-looking flow slides are not.`
-    : "This is the first content slide in the module — no prior shape to avoid yet."
+    const counts = used.reduce<Record<string, number>>((a, s) => { a[s] = (a[s] ?? 0) + 1; return a }, {})
+    const spent = Object.entries(counts).filter(([, n]) => n >= 2).map(([s]) => s)
+    const ALTERNATIVES = ["comparison", "tiers", "radial", "alternating-list", "meter", "table",
+      "stat-equation", "quote-banner", "icon-tile", "row (asymmetric split with a figure)", "custom"]
+    const unspent = ALTERNATIVES.filter(a => !used.includes(a.split(" ")[0]))
+
+    const tally = Object.entries(counts).map(([s, n]) => `${s}×${n}`).join(", ")
+    const lines = [`Root shapes already used in this module: ${tally}.`]
+    if (spent.length) {
+      lines.push(`ALREADY USED TWICE OR MORE — do NOT choose ${spent.map(s => `"${s}"`).join(" or ")} for this slide. Reach for a different root shape even if your first instinct is to repeat one of them; only override this if the content is genuinely inexpressible any other way, and say so in "justification".`)
+    } else {
+      lines.push(`Do not repeat a root shape back-to-back unless the relationship forces it.`)
+    }
+    if (unspent.length) {
+      lines.push(`Not yet used in this module — prefer one of these where the content fits: ${unspent.slice(0, 7).join(", ")}.`)
+    }
+    lines.push(`When a shape must repeat, vary the treatment too: a different fill, corner, density or elevation. Two identical-looking slides are the failure mode this system exists to avoid.`)
+    return lines.join("\n\n")
+  })()
 
   const prompt = `You are the Design Agent for ICS Aviation's course generator. The material for this slide has already been researched and written — your ONLY job is to decide the most honest way to show it. You are not filling in a template; you are a presentation designer looking at finished content and reasoning about its shape, the way a person would before opening a design tool.
 

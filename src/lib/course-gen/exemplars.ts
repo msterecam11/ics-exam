@@ -59,6 +59,48 @@ export const EXEMPLARS: Exemplar[] = [
     },
   },
   {
+    // The badge-number pattern WITHOUT an image. The exemplar above pairs it
+    // with a figure, so when imagery was scarce the whole pattern became
+    // unreachable and the agent fell back to `flow` every time — badge-number
+    // was chosen zero times across a 46-slide deck. A numbered list of named
+    // steps does not need a photograph to work.
+    name: "numbered steps, full width, no image",
+    when: "A 2-4 step sequence of NAMED stages where each stage needs a sentence of explanation. Use this instead of `flow` when the steps carry real prose rather than a few words, and when no photograph is involved.",
+    blueprint: {
+      type: "stack", gap: "md",
+      children: [
+        { type: "badge-number", n: "01", variant: "navy", heading: "Pre-Application Verification" },
+        { type: "body", text: [{ text: "Before submitting, the applicant bears " }, { text: "full responsibility", bold: true }, { text: " for ensuring all requirements are met." }] },
+        { type: "badge-number", n: "02", variant: "navy", heading: "Formal Submission" },
+        { type: "body", text: "Once compliance is verified, the application must be submitted in a form acceptable to the authority." },
+      ],
+    },
+  },
+  {
+    // Second reference pattern: a lead statement, then conditions as icon rows.
+    // Distinct from `tag-list` (which pairs each row with a status pill) and
+    // from `bullets` (no icons, no row surface).
+    name: "lead statement then iconed condition rows",
+    when: "A criteria/definition statement followed by 3-5 conditions that must all hold. Each condition gets its own iconed row on a tinted surface. Use when the conditions are parallel requirements rather than a sequence — this is NOT a tag-list (no status pills) and NOT plain bullets (the rows are a surface).",
+    blueprint: {
+      type: "stack", gap: "md",
+      children: [
+        { type: "heading", level: 4, text: "Issuance Criteria" },
+        { type: "body", text: [{ text: "Authorization is issued when the authority confirms all requirements are met. There must be " }, { text: "no outstanding findings or deviations", bold: true }, { text: " or accepted corrective action plans must be in place." }] },
+        { type: "heading", level: 5, text: "Conditions for Validity", icon: "checks", color: "token:accent-warm" },
+        {
+          type: "alternating-list",
+          items: [
+            { icon: "arrows-clockwise", text: "Organization maintains continuous compliance" },
+            { icon: "magnifying-glass", text: "Provides authority access for inspections" },
+            { icon: "file-text", text: "Authorization is not surrendered or revoked" },
+            { icon: "prohibit", text: "Authority does not suspend or cancel it" },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Real deck p7 — "Authorization Issuance and Validity Conditions"
     name: "definition block plus condition list plus status figure",
     when: "A lead definition/criteria statement, then a checklist of conditions as alternating rows, with a status/stamp style figure.",

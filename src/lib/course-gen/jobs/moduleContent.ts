@@ -113,7 +113,22 @@ Language: ${course.language === "ar" ? "Arabic" : "English"}
 Slides to write:
 ${slideLines}
 
-${refBlock ? `## Reference material (ground every claim in this; cite where used)\n${refBlock}\n` : ""}
+${refBlock
+  ? `## Reference material (ground every claim in this; cite where used)\n${refBlock}\n`
+  // With no documents attached this section used to be silently omitted, which
+  // left "cite the clause the material shows" governing a module that had no
+  // material at all — so the model cited from memory instead. A real course
+  // generated this way produced 34 citations and a regulation number
+  // ("GACA CAR 139.373") that does not exist in any attached source. For a
+  // compliance audience an invented clause number is the worst possible
+  // defect, so the absence of sources is now stated rather than implied.
+  : `## NO REFERENCE MATERIAL IS ATTACHED TO THIS COURSE
+You have no source documents for this module. That changes what you may write:
+- Return "citations": [] on EVERY slide. Do not cite anything.
+- Never state a specific regulation, clause, section, paragraph or standard NUMBER (e.g. "GACAR 139.373", "Annex 14 §3.9.2", "IATA AHM 913"). You cannot verify one without the document, and a wrong number is worse than none.
+- You MAY name a framework or authority in general terms where it is genuinely well established ("GACA", "ICAO Annex 14", "an aerodrome SMS") — but attach no number to it and do not quote it.
+- Write the substance from established professional practice, and prefer describing the OBLIGATION ("operators must record every defect before the unit returns to service") over pinning it to a citation you cannot check.
+`}
 
 ## What to produce, per slide
 - "facts": the actual substantive points this slide must convey — precise, factual, aviation-professional register. Write real content, not placeholders. Cover every key point and every required-coverage line (reproduce bracketed reference codes verbatim).
