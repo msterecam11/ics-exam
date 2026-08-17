@@ -522,6 +522,23 @@ export interface SlideContentPlan {
    * was never going to close.
    */
   role?: "setup" | "evidence" | "turn" | "consequence" | "reference"
+  /**
+   * The MEDIUM this slide should lean on — its visual register, planned across
+   * the whole module the same way `emphasis` and `role` are.
+   *
+   * `relationship` says what shape the facts have; this says what the slide
+   * should be MADE of. They are not the same question: a sequence can be a
+   * numbered diagram or a photograph of the sequence happening, and both are
+   * honest. Nothing chose between them before, because each slide was designed
+   * in isolation by an agent that only saw its own content — so every slide
+   * independently picked the safest medium and a real 46-slide course came out
+   * as 24% `flow`, 8.7% imagery, and one repeated silhouette throughout.
+   *
+   * Deciding the mix once, where the whole module is visible, is what gives a
+   * module rhythm instead of only avoiding collisions. Left unset when no
+   * register is clearly right — an absent steer beats an invented one.
+   */
+  visual?: "image-led" | "data" | "diagram" | "statement" | "reference-table"
   citations: { source_doc_id: string; excerpt?: string }[]
   /**
    * Comparable quantities this slide's material actually contains, pulled

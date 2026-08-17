@@ -148,13 +148,21 @@ ${RELATIONSHIP_GUIDE}
   You are looking at every slide in this module together, which is exactly why you assign this here. Ask which one or two slides carry the idea a learner should still have a week later: the point everything else supports, the figure that reframes the topic, the consequence that makes the rest matter. Those are "peak". Assign "quiet" to the genuinely supporting slides — a definition, a list of references, a short bridge. Everything else is "normal".
   AT MOST TWO peaks per module, and a module of six or more slides should have at least two quiet ones. This is a budget, not a rating: if you mark everything "normal" the module reads flat, and if you mark half of it "peak" nothing stands out at all. A peak earns its prominence from the quiet slides around it.
 
+- "visual": the MEDIUM this slide should lean on. Assigned across the whole module at once, for the same reason as emphasis — no individual slide can judge the module's variety from inside itself, and when every slide picks independently they all pick the same safe answer. This is not a restatement of "relationship": a sequence can be a numbered diagram OR a photograph of that sequence happening, and this is where you choose which.
+    · "image-led" — the slide's subject has a real physical setting and a photograph of it teaches more than a box of text would. An inspection walk, a control room, equipment on a ramp, people in a briefing. Never for an abstraction.
+    · "data" — the slide's point IS its numbers. Requires a populated "data" array; do not mark this without one.
+    · "diagram" — the relationship between the parts is the point: a sequence, a hierarchy, a hub, an escalation.
+    · "statement" — one sentence carries the slide. A definition that must land exactly, a consequence, a rule. Very few elements, very large type.
+    · "reference-table" — lookup material a learner returns to. Rows and columns, honestly labelled as such.
+  DISTRIBUTE THESE. A module where every slide is "diagram" reads as templated no matter how well each slide is built — that is the single most common failure of this system. Across a module of six or more content slides, use at least THREE different registers, and aim for roughly a third of the content slides to be "image-led" where the subject genuinely supports a photograph. If a slide has no clearly right register, omit the field rather than guessing.
+
 Structural slides (cover, section_divider, closing_cta) still get a "relationship" of "single-statement", minimal facts (just the title's substance), and "emphasis":"normal".
 
 ## Output
 Return ONLY valid JSON:
 {
   "slides": [
-    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "role": "setup|evidence|turn|consequence|reference", "emphasis": "peak|normal|quiet", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
+    { "slide_title": "...", "facts": ["...", "..."], "relationship": "sequence|hierarchy|hub-and-satellites|comparison|cause-effect|escalation|cumulative|single-statement|enumeration", "role": "setup|evidence|turn|consequence|reference", "emphasis": "peak|normal|quiet", "visual": "image-led|data|diagram|statement|reference-table", "citations": [{"source_doc_id":"...","excerpt":"..."}], "data": [{"label":"...","value":12,"unit":"months"}] }
   ]
 }
 ${chunks.length === 1
@@ -203,6 +211,9 @@ ${chunks.length === 1
   // Budgets apply to the MERGED module: two peaks per module means two in
   // total, not two in every batch of ten.
   enforceEmphasisBudget(gathered)
+  // Runs on the merged array, never per chunk — a per-chunk cap would let each
+  // chunk fill its own quota with the same register and defeat the point.
+  enforceVisualBudget(gathered)
   return { slides: gathered } as ModuleContentPlan
 }
 
@@ -222,6 +233,33 @@ const ROLES = new Set(["setup", "evidence", "turn", "consequence", "reference"])
  * the earliest-chosen ones, on the reasoning that a module's first-nominated
  * peaks are its most considered.
  */
+const VISUAL_REGISTERS = new Set(["image-led", "data", "diagram", "statement", "reference-table"])
+
+/**
+ * Caps how much of a module may share one visual register.
+ *
+ * "Distribute these" is exactly the kind of instruction that survives three
+ * slides and then collapses — and the collapse is invisible per slide, because
+ * every individual choice looks defensible. It is only wrong in aggregate,
+ * which is precisely what no single slide can see. The real 46-slide course
+ * came out 24% one shape for this reason.
+ *
+ * Over-quota registers are UNSET rather than reassigned: relabelling a table as
+ * a "statement" would order the design agent to do something the content
+ * cannot support, whereas removing the steer just returns that slide to
+ * judging for itself. Same reasoning as the unrecognised-role case below.
+ */
+function enforceVisualBudget(slides: { visual?: string }[]): void {
+  const eligible = slides.filter(s => s.visual && VISUAL_REGISTERS.has(s.visual))
+  const cap = Math.max(2, Math.ceil(eligible.length * 0.45))
+  const seen: Record<string, number> = {}
+  for (const s of slides) {
+    if (!s.visual || !VISUAL_REGISTERS.has(s.visual)) { delete s.visual; continue }
+    seen[s.visual] = (seen[s.visual] ?? 0) + 1
+    if (seen[s.visual] > cap) delete s.visual
+  }
+}
+
 function enforceEmphasisBudget(slides: { emphasis?: string; role?: string }[]): void {
   let kept = 0
   let turns = 0

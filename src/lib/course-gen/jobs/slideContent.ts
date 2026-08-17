@@ -281,6 +281,19 @@ export async function handleSlideContentJob(job: any): Promise<SlideSourceConten
     reference: `\n## This slide's job: REFERENCE\nSomething a learner returns to and looks up rather than reads through. A clean table or a plain structured list is the RIGHT answer here — do not dress lookup material as an argument. Legibility and scanability beat visual interest.`,
   } as Record<string, string>)[plan?.role ?? ""] ?? ""
 
+  // The module's art direction, decided by the gather pass where every slide
+  // was visible at once. Deliberately phrased as the medium already chosen for
+  // this slide rather than as a suggestion — the whole point is that the choice
+  // was made with knowledge this slide does not have. Absent when the gather
+  // had no clear answer, in which case the agent judges for itself as before.
+  const visualNote = isStructural ? "" : ({
+    "image-led": `\n## This slide's medium: IMAGE-LED\nThe module's art direction assigns a photograph to this slide, because its subject has a real physical setting and seeing it teaches more than reading about it. Build around the figure — give it genuine size (an asymmetric split, or a full-width figure with a caption), not a thumbnail bolted onto a wall of text. Write media.subject as a concrete observable scene a stock library would hold.`,
+    data: `\n## This slide's medium: DATA\nThe numbers ARE the point here, and the gathered material carries them as a series. Draw them — a chart, or meters if they are proportions of a whole. Do not bury comparable quantities in sentences, and give the chart most of the row's width so its axis labels stay legible.`,
+    diagram: `\n## This slide's medium: DIAGRAM\nThe relationship between the parts is the point, so the structure should carry it: a flow, a radial hub, tiers, a comparison. Pick the one that matches the relationship named above rather than the one you reached for last.`,
+    statement: `\n## This slide's medium: STATEMENT\nOne sentence carries this slide. Set it large and give it room — a quote-banner, a full-bleed band, or hero-scale type with almost nothing else. Resist adding supporting boxes; the emptiness is what makes it land.`,
+    "reference-table": `\n## This slide's medium: REFERENCE TABLE\nThis is lookup material. A clean table is the right answer — rows, columns, a header row, no decoration competing with the data. Scanability beats visual interest here.`,
+  } as Record<string, string>)[plan?.visual ?? ""] ?? ""
+
   // Counted, not "avoid back-to-back". The previous wording forbade only
   // consecutive repeats and then said in as many words that "two flow slides in
   // one module are fine" — so the agent settled on its favourite and stayed
@@ -323,7 +336,7 @@ ${module_accent ? `This module's accent: **${module_accent}** — use it (not to
 ## The material for this slide (already gathered — do not invent new facts, only decide how to show these)
 ${factsBlock}
 ${plan?.relationship ? `\nRelationship these facts have to each other: **${plan.relationship}**` : ""}
-${roleNote}${emphasisNote}
+${roleNote}${visualNote}${emphasisNote}
 ${plan?.data?.length ? `\nComparable quantities in this material — these are REAL numbers from the source, already extracted for you:\n${plan.data.map(d => `  - ${d.label}: ${d.value}${d.unit ? ` ${d.unit}` : ""}`).join("\n")}\nThis slide has genuinely chartable data. Showing it as a chart or meter almost always beats restating the numbers inside a sentence — a reader compares bars instantly and parses prose slowly. Use "chart" (bar for comparing categories, line for a trend over time, donut for parts of a whole with 5 or fewer slices) or "meter" for proportions. Keep the numbers exactly as given; never round them into something the source didn't say.` : ""}
 ${retry_feedback ? `\n## FIX REQUIRED (previous attempt failed quality review)\n${retry_feedback}` : ""}${render_png ? `\n\nThe image attached to this message IS your previous attempt, rendered exactly as a reader will see it. Look at it before changing anything. The note above is what a reviewer measured; the picture is the thing itself, so trust your eyes over the paraphrase. Then compose a DIFFERENT arrangement that fixes what you can see — do not resubmit the same structure with the wording tweaked.` : ""}
 
