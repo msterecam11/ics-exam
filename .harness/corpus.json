@@ -1,0 +1,1219 @@
+{
+  "courseId": "5eb09595-e991-4ba2-ab0f-8af68e24eb06",
+  "capturedAt": "2026-08-17T09:27:06.113Z",
+  "slides": [
+    {
+      "name": "corpus-m0s1",
+      "master": "content_white",
+      "title": "Course Overview & Objectives",
+      "shape": "body>heading>row>row>body",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "size": "lead",
+            "text": [
+              {
+                "text": "This course consolidates "
+              },
+              {
+                "bold": true,
+                "text": "GSE safety, operations, and regulatory compliance"
+              },
+              {
+                "text": " into one framework aligned with "
+              },
+              {
+                "text": "GACA CAR Part 139 and ICAO Annex 14",
+                "highlight": "token:accent-warm"
+              },
+              {
+                "text": ", which govern aerodrome and ground handling safety."
+              }
+            ],
+            "type": "body"
+          },
+          {
+            "icon": "target",
+            "text": "Learning Objectives",
+            "type": "heading",
+            "color": "token:accent-warm",
+            "level": 2,
+            "accentBar": true
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "body": "Equipment types and their operational role on the ramp.",
+                "icon": "list-checks",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Identify GSE Categories"
+              },
+              {
+                "body": "GSE safety and inspection procedures.",
+                "icon": "shield-check",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Apply Safety Procedures"
+              }
+            ]
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "body": "GSE-related incident causes and prevention measures.",
+                "icon": "warning-diamond",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Prevent Incidents"
+              },
+              {
+                "body": "Regulatory compliance and recordkeeping requirements.",
+                "icon": "file-text",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Explain Compliance"
+              }
+            ]
+          },
+          {
+            "size": "caption",
+            "text": "Internal test/demo build used to verify content and design fixes for GSE-focused training material.",
+            "type": "body",
+            "color": "token:text"
+          }
+        ]
+      },
+      "decor": {
+        "edge": "right",
+        "icon": "target",
+        "accent": "token:accent-warm"
+      }
+    },
+    {
+      "name": "corpus-m1s2",
+      "master": "content_white",
+      "title": "The Role of GSE in Ramp Operations",
+      "shape": "body>stat-equation>row",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "size": "lead",
+            "text": [
+              {
+                "text": "GSE is the mobile and fixed apparatus that services, loads, moves, and supplies aircraft between flights — "
+              },
+              {
+                "bold": true,
+                "text": "distinct from the aircraft itself.",
+                "highlight": "token:tab-yellow"
+              }
+            ],
+            "type": "body"
+          },
+          {
+            "type": "stat-equation",
+            "style": {
+              "fill": "tinted",
+              "accent": "token:primary-light",
+              "corner": "soft",
+              "elevation": "raised"
+            },
+            "terms": [
+              {
+                "label": "Aircraft Interface",
+                "sublabel": "Connects to doors, cargo holds, fuel ports, electrical/pneumatic receptacles"
+              },
+              {
+                "label": "Turnaround Reliability",
+                "sublabel": "Positioning and serviceability directly set gate schedule performance"
+              },
+              {
+                "label": "Apron Safety Governance",
+                "sublabel": "FOD prevention and vehicle procedures on the movement area"
+              }
+            ],
+            "result": {
+              "label": "Ramp Operations Continuity",
+              "sublabel": "GSE as the operational link between airside and aircraft"
+            }
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "icon": "clock-countdown",
+                "text": "Delayed positioning or equipment malfunction is a recognized cause of gate schedule deviation.",
+                "type": "icon-row",
+                "accent": "token:primary-light"
+              },
+              {
+                "icon": "shield-warning",
+                "text": "GSE operates under apron safety and FOD prevention procedures governing vehicles on the movement area.",
+                "type": "icon-row",
+                "accent": "token:primary-light"
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "icon": "truck",
+        "accent": "token:primary-light"
+      }
+    },
+    {
+      "name": "corpus-m1s3",
+      "master": "content_white",
+      "title": "Categories of Ground Support Equipment",
+      "shape": "body>row",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "size": "lead",
+            "text": "GSE is grouped into four functional categories, each defined by the role it plays during aircraft turnaround.",
+            "type": "body"
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "children": [
+              {
+                "body": "Services the aircraft directly during turnaround — lavatory/water trucks, de-icing rigs, air-conditioning and air-start units.",
+                "icon": "truck",
+                "type": "icon-tile",
+                "accent": "token:primary-light",
+                "heading": "Aircraft Servicing"
+              },
+              {
+                "body": "Moves people and freight between terminal and aircraft — boarding stairs and bridges, belt loaders, container/pallet loaders.",
+                "icon": "package",
+                "type": "icon-tile",
+                "accent": "token:primary-light",
+                "heading": "Passenger/Cargo Handling"
+              },
+              {
+                "body": "Repositions aircraft and moves loaded dollies and carts across the apron — tow tractors, pushback tugs, baggage tractors.",
+                "icon": "tire",
+                "type": "icon-tile",
+                "accent": "token:primary-light",
+                "heading": "Towing & Mobility"
+              },
+              {
+                "body": "Supplies external electrical power and compressed air when aircraft engines or APU are inactive — GPUs, air start units.",
+                "icon": "lightning",
+                "type": "icon-tile",
+                "accent": "token:primary-light",
+                "heading": "Power & Pneumatic Supply"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "corpus-m1s4",
+      "master": "content_white",
+      "title": "GSE Types, Function & Capacity Overview",
+      "shape": "heading>body>row",
+      "blueprint": {
+        "gap": "md",
+        "type": "stack",
+        "children": [
+          {
+            "icon": "toolbox",
+            "text": "Ground Support Equipment Reference",
+            "type": "heading",
+            "color": "token:primary-light",
+            "level": 4,
+            "accentBar": true
+          },
+          {
+            "size": "caption",
+            "text": "Eight core GSE types — rated function, capacity, and aircraft compatibility.",
+            "type": "body"
+          },
+          {
+            "gap": "lg",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "rows": [
+                  {
+                    "cells": [
+                      {
+                        "text": "GSE Type"
+                      },
+                      {
+                        "text": "Function & Capacity"
+                      },
+                      {
+                        "text": "Compatibility"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Ground Power Unit"
+                      },
+                      {
+                        "text": "External power, 90–120 kVA, 400 Hz"
+                      },
+                      {
+                        "text": "Narrow & wide-body, std receptacles"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Air Start Unit"
+                      },
+                      {
+                        "text": "Compressed air, 3–4 bar"
+                      },
+                      {
+                        "text": "Turbine aircraft, pneumatic start"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Belt Loader"
+                      },
+                      {
+                        "text": "Bulk baggage, 600–800 kg/min"
+                      },
+                      {
+                        "text": "Narrow-body bulk-loaded"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Container/Pallet Loader"
+                      },
+                      {
+                        "text": "ULD lift ~6 m, up to 7 t"
+                      },
+                      {
+                        "text": "Wide-body containerized"
+                      }
+                    ]
+                  }
+                ],
+                "type": "table",
+                "style": {
+                  "corner": "sharp",
+                  "density": "tight"
+                },
+                "headerRow": true
+              },
+              {
+                "rows": [
+                  {
+                    "cells": [
+                      {
+                        "text": "GSE Type"
+                      },
+                      {
+                        "text": "Function & Capacity"
+                      },
+                      {
+                        "text": "Compatibility"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Tow Tractor/Tug"
+                      },
+                      {
+                        "text": "Pushback, drawbar pull ~40–80 t"
+                      },
+                      {
+                        "text": "Matched to weight class"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Boarding Bridge/Stairs"
+                      },
+                      {
+                        "text": "Boarding, adjustable sill height"
+                      },
+                      {
+                        "text": "Within bridge sill-height range"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "De-icing Truck"
+                      },
+                      {
+                        "text": "Heated Type I/IV fluid, 1,500–4,500 L"
+                      },
+                      {
+                        "text": "All aircraft, icing conditions"
+                      }
+                    ]
+                  },
+                  {
+                    "cells": [
+                      {
+                        "text": "Lavatory/Water Truck"
+                      },
+                      {
+                        "text": "Potable water/waste, 1,000–2,000 L"
+                      },
+                      {
+                        "text": "All commercial aircraft"
+                      }
+                    ]
+                  }
+                ],
+                "type": "table",
+                "style": {
+                  "corner": "sharp",
+                  "density": "tight"
+                },
+                "headerRow": true
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "edge": "left",
+        "accent": "token:primary-light"
+      }
+    },
+    {
+      "name": "corpus-m2s2",
+      "master": "content_white",
+      "title": "Building a GSE Safety Culture",
+      "shape": "body>radial",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "size": "lead",
+            "text": [
+              {
+                "text": "Ramp safety is not the responsibility of the last technician who touched the equipment — it belongs to "
+              },
+              {
+                "bold": true,
+                "text": "everyone who operates, dispatches, or authorizes GSE for use.",
+                "highlight": "token:tab-yellow"
+              }
+            ],
+            "type": "body"
+          },
+          {
+            "hub": {
+              "icon": "shield-check",
+              "heading": "Shared Responsibility"
+            },
+            "type": "radial",
+            "style": {
+              "fill": "filled",
+              "accent": "token:primary-dark",
+              "corner": "round",
+              "density": "normal",
+              "elevation": "ring"
+            },
+            "spokes": [
+              {
+                "body": "Verify inspection compliance, authorize equipment for use, enforce corrective action.",
+                "icon": "user-gear",
+                "heading": "Supervisors"
+              },
+              {
+                "body": "Perform the physical checks and accurately report defects.",
+                "icon": "wrench",
+                "heading": "Technicians"
+              },
+              {
+                "body": "Skipped checks, undocumented defects, and informal sign-offs are a direct precursor to ramp incidents, ground damage, and injury.",
+                "icon": "warning",
+                "heading": "Weak Culture"
+              },
+              {
+                "body": "Complete checklists, timely reporting, and enforced sign-off are the control most directly linked to reduced GSE-related incident rates.",
+                "icon": "check-circle",
+                "heading": "Inspection Discipline"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "corpus-m2s3",
+      "master": "content_white",
+      "title": "Pre-Operation Inspection Checklist",
+      "shape": "heading>table>row",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "icon": "clipboard-text",
+            "text": "Two-Part Checklist",
+            "type": "heading",
+            "color": "token:primary-dark",
+            "level": 4,
+            "accentBar": true
+          },
+          {
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "text": "CHECK TYPE"
+                  },
+                  {
+                    "text": "ITEMS VERIFIED"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "bold": true,
+                    "text": "Visual Inspection"
+                  },
+                  {
+                    "text": "Tyres and wheels · Hydraulic or fuel leaks · Structural damage · Lighting and reflective markings · Condition of safety guards/rails"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "bold": true,
+                    "text": "Functional / Operational Checks"
+                  },
+                  {
+                    "text": "Braking system · Steering response · Lift or elevation mechanism · Horn/backup alarm · Interlocks or emergency stop controls"
+                  }
+                ]
+              }
+            ],
+            "type": "table",
+            "headerRow": true
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "text": "Any defect found during a visual or functional check must be logged — date, unit ID, defect description, and inspector name.",
+                "tone": "requirement",
+                "type": "callout",
+                "label": "DOCUMENTATION"
+              },
+              {
+                "text": "Equipment stays off the ramp until a qualified inspector or supervisor signs off the checklist as serviceable, or formally removes the unit from service.",
+                "tone": "requirement",
+                "type": "callout",
+                "label": "DISPATCH GATE"
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "edge": "left",
+        "accent": "token:primary-dark"
+      }
+    },
+    {
+      "name": "corpus-m2s5",
+      "master": "content_white",
+      "title": "PPE and Safety Zone Requirements",
+      "shape": "stack>figure",
+      "blueprint": {
+        "gap": "lg",
+        "type": "row",
+        "weights": [
+          3,
+          2
+        ],
+        "children": [
+          {
+            "gap": "md",
+            "type": "stack",
+            "children": [
+              {
+                "gap": "md",
+                "type": "row",
+                "weights": [
+                  1,
+                  1
+                ],
+                "children": [
+                  {
+                    "body": "Mandatory for all personnel near GSE on the apron.",
+                    "icon": "eye",
+                    "type": "icon-tile",
+                    "accent": "token:primary-dark",
+                    "heading": "High-Visibility Clothing"
+                  },
+                  {
+                    "body": "Hearing protection near engines/APUs; eye protection during maintenance or fluid-handling.",
+                    "icon": "headset",
+                    "type": "icon-tile",
+                    "accent": "token:primary-dark",
+                    "heading": "Hearing & Eye Protection"
+                  }
+                ]
+              },
+              {
+                "gap": "md",
+                "type": "row",
+                "weights": [
+                  1,
+                  1
+                ],
+                "children": [
+                  {
+                    "body": "Maintained around aircraft during GSE approach, positioning, and servicing.",
+                    "icon": "shield",
+                    "type": "icon-tile",
+                    "accent": "token:primary-dark",
+                    "heading": "Safety Exclusion Zones"
+                  },
+                  {
+                    "body": "Hand signals or radio protocols between GSE operators and ground crew.",
+                    "icon": "radio",
+                    "type": "icon-tile",
+                    "accent": "token:primary-dark",
+                    "heading": "Standardized Communication"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "figure",
+            "media": {
+              "want": "photo",
+              "purpose": "illustrate mandatory apron PPE",
+              "subject": "ground crew wearing high-visibility vests near aircraft"
+            },
+            "shadow": true,
+            "caption": "FIG: GROUND CREW IN HIGH-VISIBILITY PPE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "corpus-m3s3",
+      "master": "content_white",
+      "title": "Common Causes of GSE Incidents",
+      "shape": "heading>body>row>row",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "icon": "warning-diamond",
+            "text": "Common Causes of GSE Incidents",
+            "type": "heading",
+            "color": "token:navy",
+            "level": 2,
+            "eyebrow": "INCIDENT TAXONOMY",
+            "accentBar": true
+          },
+          {
+            "size": "lead",
+            "text": "Occurrence investigations classify contributing factors into four recurring categories — not a single dominant cause.",
+            "type": "body"
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "body": "Extended shifts and complacency during repetitive turnarounds reduce awareness of moving GSE.",
+                "icon": "user-focus",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Human Factors & Fatigue"
+              },
+              {
+                "body": "Missing hand signals, radio lapses, and unclear marshaller-to-driver coordination during pushback.",
+                "icon": "megaphone",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Poor Ramp Communication"
+              }
+            ]
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "body": "Deferred maintenance, worn brakes, faulty lighting, and inoperative reverse alarms on tugs and loaders.",
+                "icon": "wrench",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Equipment Malfunction"
+              },
+              {
+                "body": "Low visibility, wet apron surfaces, high winds, and inadequate lighting during night operations.",
+                "icon": "cloud",
+                "type": "icon-tile",
+                "accent": "token:accent-warm",
+                "heading": "Environmental & Weather"
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "edge": "left",
+        "icon": "warning-diamond",
+        "accent": "token:accent-warm"
+      }
+    },
+    {
+      "name": "corpus-m3s7",
+      "master": "content_lightblue",
+      "title": "Knowledge Check: Root Cause Analysis",
+      "shape": "callout>flow>row",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "text": "A belt loader strikes a baggage cart during a rushed turnaround — no cause or control is pre-assigned. Work it forward using the Ramp Collision sequence.",
+            "tone": "note",
+            "type": "callout",
+            "label": "SCENARIO:",
+            "style": {
+              "fill": "tinted",
+              "accent": "token:accent-warm",
+              "corner": "soft"
+            }
+          },
+          {
+            "type": "flow",
+            "steps": [
+              {
+                "n": "1",
+                "body": "Human factors, equipment, communication, or environment.",
+                "icon": "magnifying-glass",
+                "heading": "Identify the Root Cause"
+              },
+              {
+                "n": "2",
+                "body": "Elimination, engineering, administrative, or PPE.",
+                "icon": "shield-check",
+                "heading": "Select the Control Tier"
+              },
+              {
+                "n": "3",
+                "body": "Confirm the control fits the cause exactly.",
+                "icon": "scales",
+                "heading": "Justify Proportionality"
+              }
+            ],
+            "style": {
+              "fill": "outline",
+              "accent": "token:accent-warm",
+              "corner": "round",
+              "density": "tight"
+            },
+            "marker": "circle",
+            "escalate": false,
+            "direction": "horizontal"
+          },
+          {
+            "gap": "lg",
+            "type": "row",
+            "weights": [
+              1,
+              1
+            ],
+            "children": [
+              {
+                "gap": "sm",
+                "type": "stack",
+                "children": [
+                  {
+                    "icon": "warning",
+                    "text": "Cause Categories",
+                    "type": "heading",
+                    "color": "token:accent-warm",
+                    "level": 5
+                  },
+                  {
+                    "type": "tag-list",
+                    "items": [
+                      {
+                        "tone": "neutral",
+                        "label": "Human Factors"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "Equipment Malfunction"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "Communication"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "Environmental"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "gap": "sm",
+                "type": "stack",
+                "children": [
+                  {
+                    "icon": "shield-check",
+                    "text": "Control Tiers",
+                    "type": "heading",
+                    "color": "token:accent-warm",
+                    "level": 5
+                  },
+                  {
+                    "type": "tag-list",
+                    "items": [
+                      {
+                        "tone": "neutral",
+                        "label": "Elimination/Substitution"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "Engineering"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "Administrative"
+                      },
+                      {
+                        "tone": "neutral",
+                        "label": "PPE"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "icon": "target",
+        "accent": "token:accent-warm",
+        "pattern": "dots"
+      }
+    },
+    {
+      "name": "corpus-m3s8",
+      "master": "summary_dark",
+      "title": "Summary and Key Takeaways",
+      "shape": "body>row>card",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "size": "lead",
+            "text": [
+              {
+                "text": "Most GSE incidents are preventable — when root causes are correctly identified and controls are applied in the right order."
+              }
+            ],
+            "type": "body"
+          },
+          {
+            "gap": "md",
+            "type": "row",
+            "weights": [
+              1,
+              1,
+              1
+            ],
+            "children": [
+              {
+                "tone": "glass",
+                "type": "card",
+                "style": {
+                  "fill": "glass",
+                  "corner": "soft",
+                  "density": "normal",
+                  "elevation": "raised"
+                },
+                "children": [
+                  {
+                    "icon": "warning-circle",
+                    "text": "Common Causes",
+                    "type": "heading",
+                    "color": "token:accent-warm",
+                    "level": 5
+                  },
+                  {
+                    "text": "Human factors and fatigue, equipment malfunction from inadequate maintenance, poor crew communication, and environmental conditions.",
+                    "type": "body"
+                  }
+                ]
+              },
+              {
+                "tone": "glass",
+                "type": "card",
+                "style": {
+                  "fill": "glass",
+                  "corner": "soft",
+                  "density": "normal",
+                  "elevation": "raised"
+                },
+                "children": [
+                  {
+                    "icon": "shield-check",
+                    "text": "Prevention Hierarchy",
+                    "type": "heading",
+                    "color": "token:accent-warm",
+                    "level": 5
+                  },
+                  {
+                    "text": "Elimination and substitution first, then engineering controls, then administrative controls and SOPs — PPE is the last line of defense.",
+                    "type": "body"
+                  }
+                ]
+              },
+              {
+                "tone": "glass",
+                "type": "card",
+                "style": {
+                  "fill": "glass",
+                  "corner": "soft",
+                  "density": "normal",
+                  "elevation": "raised"
+                },
+                "children": [
+                  {
+                    "icon": "clipboard-text",
+                    "text": "Next: Compliance",
+                    "type": "heading",
+                    "color": "token:accent-warm",
+                    "level": 5
+                  },
+                  {
+                    "text": "Module 4 covers documentation, incident reporting, and audit trails required under GACA CAR Part 139 SMS provisions.",
+                    "type": "body"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tone": "glass",
+            "type": "card",
+            "style": {
+              "fill": "glass",
+              "corner": "soft",
+              "density": "airy",
+              "elevation": "raised"
+            },
+            "children": [
+              {
+                "icon": "target",
+                "text": "Core Takeaway",
+                "type": "heading",
+                "color": "token:accent-warm",
+                "level": 5
+              },
+              {
+                "text": [
+                  {
+                    "text": "Sustained reduction in GSE incident rates depends on "
+                  },
+                  {
+                    "bold": true,
+                    "text": "correct root-cause identification"
+                  },
+                  {
+                    "text": " and "
+                  },
+                  {
+                    "text": "controls applied in the proper order of effectiveness",
+                    "highlight": "token:tab-yellow"
+                  },
+                  {
+                    "text": " — the discipline Module 4 formalizes through recordkeeping and reporting."
+                  }
+                ],
+                "type": "body"
+              }
+            ]
+          }
+        ]
+      },
+      "decor": {
+        "edge": "left",
+        "icon": "shield-check",
+        "accent": "token:accent-warm"
+      }
+    },
+    {
+      "name": "corpus-m4s3",
+      "master": "content_white",
+      "title": "GSE Recordkeeping Requirements",
+      "shape": "heading>body>table>callout",
+      "blueprint": {
+        "gap": "lg",
+        "type": "stack",
+        "children": [
+          {
+            "icon": "clipboard-text",
+            "text": "Retention & Responsibility by Record Type",
+            "type": "heading",
+            "color": "token:primary-light",
+            "level": 3,
+            "accentBar": true
+          },
+          {
+            "size": "lead",
+            "text": [
+              {
+                "text": "Daily pre-use checklists and periodic maintenance logs must be completed and kept current for every GSE unit "
+              },
+              {
+                "bold": true,
+                "text": "[GACA CAR 139.331 – Self-Inspection Program]"
+              }
+            ],
+            "type": "body"
+          },
+          {
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "text": "Record Type"
+                  },
+                  {
+                    "text": "Retention Period"
+                  },
+                  {
+                    "text": "Responsible Party"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Maintenance/Inspection Logs"
+                  },
+                  {
+                    "text": "24 months"
+                  },
+                  {
+                    "text": "GSE maintenance technician/supervisor"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Pre-Use Checklists"
+                  },
+                  {
+                    "text": "12 months"
+                  },
+                  {
+                    "text": "Ramp/GSE operator"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Defect/Incident Reports"
+                  },
+                  {
+                    "text": "60 months"
+                  },
+                  {
+                    "text": "Station safety/quality manager"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Training/Certification Records"
+                  },
+                  {
+                    "text": "24 months post-employment"
+                  },
+                  {
+                    "text": "Training department"
+                  }
+                ]
+              }
+            ],
+            "type": "table",
+            "headerRow": true
+          },
+          {
+            "text": "Records must be stored at the station (physical or electronic) and made readily available to GACA inspectors and internal auditors upon request.",
+            "tone": "note",
+            "type": "callout",
+            "label": "Storage & Access"
+          }
+        ]
+      }
+    },
+    {
+      "name": "corpus-m4s6",
+      "master": "content_white",
+      "title": "Documentation Categories",
+      "shape": "heading>body>table",
+      "blueprint": {
+        "gap": "md",
+        "type": "stack",
+        "children": [
+          {
+            "icon": "clipboard-text",
+            "text": "Four Categories of GSE Records",
+            "type": "heading",
+            "color": "token:primary-light",
+            "level": 4,
+            "accentBar": true
+          },
+          {
+            "size": "body",
+            "text": "Every GSE unit and operator generates records across four categories. Each serves a distinct compliance purpose and must be retrievable on request.",
+            "type": "body"
+          },
+          {
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "text": "Category"
+                  },
+                  {
+                    "text": "What It Captures"
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Maintenance Logs"
+                  },
+                  {
+                    "text": "Chronological record of scheduled and unscheduled maintenance on each GSE unit, including parts replaced and technician sign-off."
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Inspection Checklists"
+                  },
+                  {
+                    "text": "Standardized pre-use and periodic inspection forms confirming GSE serviceability before deployment to ramp operations."
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Incident/Defect Reports"
+                  },
+                  {
+                    "text": "Formal documentation of any GSE malfunction, damage, or safety event, including description, immediate action taken, and follow-up status."
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "text": "Training & Certification Records"
+                  },
+                  {
+                    "text": "Evidence that GSE operators hold current authorization and have completed required initial and recurrent training."
+                  }
+                ]
+              }
+            ],
+            "type": "table",
+            "style": {
+              "accent": "token:primary-light",
+              "corner": "sharp",
+              "density": "normal"
+            },
+            "headerRow": true
+          }
+        ]
+      }
+    }
+  ]
+}

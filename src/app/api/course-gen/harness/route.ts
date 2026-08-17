@@ -15,7 +15,7 @@
 export const maxDuration = 120
 
 import { NextResponse } from "next/server"
-import { writeFile, mkdir } from "node:fs/promises"
+import { writeFile, mkdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import { compileBlueprint } from "@/lib/course-gen/compiler"
 import { screenshotSlide, handleQaJob } from "@/lib/course-gen/jobs/qa"
@@ -28,6 +28,8 @@ import type { ThemeTokens } from "@/lib/course-gen/tokens"
 const OUT_DIR = path.join(process.cwd(), ".harness", "out")
 // Committed, unlike OUT_DIR — see imageDiff.ts.
 const BASELINE_DIR = path.join(process.cwd(), ".harness", "baseline")
+// Frozen real slides — see the `corpus` branch below for why these are not fixtures.
+const CORPUS_FILE = path.join(process.cwd(), ".harness", "corpus.json")
 
 /** Refuses to exist in production — this endpoint renders arbitrary input. */
 function devOnly(): NextResponse | null {
@@ -48,7 +50,7 @@ export async function GET() {
       note: FIXTURES[name].note ?? null,
     })),
     outDir: OUT_DIR,
-    usage: 'POST { "fixture": "<name>" } | { "all": true } | { "blueprint": {...}, "master": "content_white", "title": "..." }',
+    usage: 'POST { "fixture": "<name>" } | { "all": true } | { "corpus": true } | { "blueprint": {...}, "master": "content_white", "title": "..." }',
   })
 }
 
@@ -75,6 +77,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Unknown fixture "${body.fixture}"`, known: FIXTURE_NAMES }, { status: 400 })
     }
     jobs = [{ name: body.fixture, fixture }]
+  } else if (body?.corpus) {
+    // The frozen real-slide corpus (.harness/corpus.json, written by
+    // scripts/export-harness-corpus.mjs).
+    //
+    // NOT fixtures, and deliberately kept out of FIXTURES: a fixture is
+    // hand-written and tests ONE primitive, and copying agent output into that
+    // set would make it drift with the agent's taste. This set answers the
+    // opposite question — "did a rendering change disturb real, dense decks?"
+    // Every geometry bug users reported needed that density (three-line wraps,
+    // a chart beside a table, a 2x2 grid) and slipped past hand-written
+    // fixtures precisely because those are small and tidy by design.
+    let loaded: { slides?: any[] }
+    try {
+      loaded = JSON.parse(await readFile(CORPUS_FILE, "utf8"))
+    } catch {
+      return NextResponse.json({
+        error: "No corpus captured yet",
+        hint: "node scripts/export-harness-corpus.mjs <course-id> [max]",
+      }, { status: 400 })
+    }
+    const slides = loaded.slides ?? []
+    if (!slides.length) return NextResponse.json({ error: "Corpus file has no slides" }, { status: 400 })
+    jobs = slides.map(s => ({
+      name: s.name,
+      fixture: { master: s.master, title: s.title, blueprint: s.blueprint, decor: s.decor, note: s.shape },
+    }))
   } else if (body?.blueprint) {
     // Ad-hoc: render a blueprint pasted straight in, for iterating on a shape
     // before it becomes a fixture.
@@ -88,7 +116,7 @@ export async function POST(req: Request) {
       },
     }]
   } else {
-    return NextResponse.json({ error: "Pass { fixture } , { all: true } or { blueprint }" }, { status: 400 })
+    return NextResponse.json({ error: "Pass { fixture }, { all: true }, { corpus: true } or { blueprint }" }, { status: 400 })
   }
 
   await mkdir(OUT_DIR, { recursive: true })

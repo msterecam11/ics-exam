@@ -47,3 +47,8 @@ next-env.d.ts
 # session that produced it, and the regression worth catching is next month's.
 .harness/out/
 .harness/*.json
+# ...except the captured real-slide corpus, which is a frozen INPUT rather than
+# a report. Same reasoning as the baselines above: a corpus that only exists on
+# one machine guards nothing, and the point of it is that hand-written fixtures
+# are too tidy to reproduce how real decks actually fail.
+!.harness/corpus.json
