@@ -13,6 +13,7 @@ import { formatDuration } from "@/lib/utils"
 import ExamStatusToggle from "@/components/admin/ExamStatusToggle"
 import AnalyzeExamButton from "@/components/admin/AnalyzeExamButton"
 import ExamEditModal from "@/components/admin/ExamEditModal"
+import ShuffleSettingsButton from "@/components/admin/ShuffleSettingsButton"
 import DeleteExamButton from "@/components/admin/DeleteExamButton"
 import MoveExamButton from "@/components/admin/MoveExamButton"
 
@@ -109,6 +110,11 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ id:
         <div className="flex items-center gap-3 flex-wrap">
           <MoveExamButton examId={id} currentCourseId={(exam.courses as any)?.id} />
           <ExamEditModal exam={exam} />
+          <ShuffleSettingsButton
+            examId={id}
+            shuffleQuestions={exam.shuffle_questions !== false}
+            shuffleOptions={exam.shuffle_options !== false}
+          />
           <AnalyzeExamButton
             examId={id}
             initialAnalysis={analysis}

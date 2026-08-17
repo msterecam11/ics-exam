@@ -38,7 +38,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params
   const body = await req.json()
   const { title, description, duration_minutes, passing_score, show_results, language, status, password,
-          question_bank_id, bank_draw_config } = body
+          question_bank_id, bank_draw_config, shuffle_questions, shuffle_options } = body
 
   // If a new password is provided, hash it
   const passwordUpdates: Record<string, string> = {}
@@ -55,7 +55,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { data, error } = await db
     .from("exams")
-    .update({ title, description, duration_minutes, passing_score, show_results, language, status, ...passwordUpdates, ...bankUpdates })
+    .update({ title, description, duration_minutes, passing_score, show_results, language, status, shuffle_questions, shuffle_options, ...passwordUpdates, ...bankUpdates })
     .eq("id", id)
     .select()
     .single()

@@ -16,7 +16,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: exam } = await db
     .from("exams")
-    .select("id, title, description, status, password, password_hash, duration_minutes, language, courses(name, groups(name)), exam_custom_fields(*)")
+    .select("id, title, description, status, password, password_hash, duration_minutes, language, shuffle_questions, shuffle_options, courses(name, groups(name)), exam_custom_fields(*)")
     .eq("id", id)
     .single()
 
@@ -53,7 +53,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const { data: exam } = await db
     .from("exams")
-    .select("id, title, description, status, language, duration_minutes, passing_score, courses(name, groups(name))")
+    .select("id, title, description, status, language, duration_minutes, passing_score, shuffle_questions, shuffle_options, courses(name, groups(name))")
     .eq("id", id)
     .single()
 

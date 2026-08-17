@@ -7,8 +7,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params
   const candidateId = new URL(req.url).searchParams.get("candidate_id")
 
-  const { data: exam } = await db.from("exams").select("id").eq("id", id).single()
+  const { data: exam } = await db.from("exams").select("id, shuffle_options").eq("id", id).single()
   if (!exam) return NextResponse.json([], { status: 200 })
+  const shuffleOptions = (exam as any).shuffle_options !== false
 
   let questions: any[] | null = null
 
@@ -58,16 +59,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // question.score values via submit/route.ts.
   const displayScores = scaleToTarget(questions.map((q: any) => q.score ?? 0))
 
-  // Shuffle ordering items so candidates don't see the correct order
+  // Shuffle ordering items so candidates don't see the correct order — gated
+  // per-exam by shuffle_options (defaults to true, matching prior behavior).
   const sanitized = questions.map((q: any, i: number) => ({
     ...q,
     display_score: displayScores[i],
     ordering_items: q.ordering_items
-      ? [...q.ordering_items].sort(() => Math.random() - 0.5)
+      ? (shuffleOptions ? [...q.ordering_items].sort(() => Math.random() - 0.5) : q.ordering_items)
       : [],
-    // Shuffle choices too for variety
     choices: q.choices
-      ? [...q.choices].sort(() => Math.random() - 0.5)
+      ? (shuffleOptions ? [...q.choices].sort(() => Math.random() - 0.5) : q.choices)
       : [],
   }))
 

@@ -132,36 +132,45 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       if (res.ok) {
         const qs = await res.json()
 
-        // Question randomization — check if we already have an order stored
-        const storedOrder = sessionStorage.getItem(`q_order_${id}`)
+        // Question randomization — gated per-exam (defaults to true, matching
+        // prior behavior). Check if we already have an order stored.
+        const shuffleQuestions = examData.shuffle_questions !== false
+        const shuffleOptions = examData.shuffle_options !== false
         let orderedQs: any[]
-        if (storedOrder) {
-          const order: string[] = JSON.parse(storedOrder)
-          orderedQs = order.map((qid) => qs.find((q: any) => q.id === qid)).filter(Boolean)
-          // Add any new questions not in stored order
-          const missing = qs.filter((q: any) => !order.includes(q.id))
-          orderedQs = [...orderedQs, ...missing]
+        if (!shuffleQuestions) {
+          orderedQs = qs
         } else {
-          orderedQs = shuffleArray(qs)
-          sessionStorage.setItem(`q_order_${id}`, JSON.stringify(orderedQs.map((q: any) => q.id)))
+          const storedOrder = sessionStorage.getItem(`q_order_${id}`)
+          if (storedOrder) {
+            const order: string[] = JSON.parse(storedOrder)
+            orderedQs = order.map((qid) => qs.find((q: any) => q.id === qid)).filter(Boolean)
+            // Add any new questions not in stored order
+            const missing = qs.filter((q: any) => !order.includes(q.id))
+            orderedQs = [...orderedQs, ...missing]
+          } else {
+            orderedQs = shuffleArray(qs)
+            sessionStorage.setItem(`q_order_${id}`, JSON.stringify(orderedQs.map((q: any) => q.id)))
+          }
         }
 
         // Answer randomization — shuffle choices for MCQ questions
-        orderedQs = orderedQs.map((q: any) => {
-          if ((q.type === "mcq_single" || q.type === "mcq_multi") && q.choices?.length) {
-            const storedChoiceOrder = sessionStorage.getItem(`c_order_${q.id}`)
-            let shuffledChoices: any[]
-            if (storedChoiceOrder) {
-              const order: string[] = JSON.parse(storedChoiceOrder)
-              shuffledChoices = order.map((cid) => q.choices.find((c: any) => c.id === cid)).filter(Boolean)
-            } else {
-              shuffledChoices = shuffleArray(q.choices)
-              sessionStorage.setItem(`c_order_${q.id}`, JSON.stringify(shuffledChoices.map((c: any) => c.id)))
+        if (shuffleOptions) {
+          orderedQs = orderedQs.map((q: any) => {
+            if ((q.type === "mcq_single" || q.type === "mcq_multi") && q.choices?.length) {
+              const storedChoiceOrder = sessionStorage.getItem(`c_order_${q.id}`)
+              let shuffledChoices: any[]
+              if (storedChoiceOrder) {
+                const order: string[] = JSON.parse(storedChoiceOrder)
+                shuffledChoices = order.map((cid) => q.choices.find((c: any) => c.id === cid)).filter(Boolean)
+              } else {
+                shuffledChoices = shuffleArray(q.choices)
+                sessionStorage.setItem(`c_order_${q.id}`, JSON.stringify(shuffledChoices.map((c: any) => c.id)))
+              }
+              return { ...q, choices: shuffledChoices }
             }
-            return { ...q, choices: shuffledChoices }
-          }
-          return q
-        })
+            return q
+          })
+        }
 
         setQuestions(orderedQs)
       }
