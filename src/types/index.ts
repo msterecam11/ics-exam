@@ -93,6 +93,7 @@ export interface Question {
   score: number
   order_index: number
   ai_scoring_guide: string | null
+  image_url?: string | null
   choices?: Choice[]
   matching_pairs?: MatchingPair[]
   ordering_items?: OrderingItem[]

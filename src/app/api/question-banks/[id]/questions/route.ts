@@ -22,12 +22,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id: question_bank_id } = await params
   const body = await req.json()
-  const { type, text, score, order_index, ai_scoring_guide, choices, matching_pairs, ordering_items } = body
+  const { type, text, score, order_index, ai_scoring_guide, image_url, choices, matching_pairs, ordering_items } = body
 
   // Insert question
   const { data: question, error: qErr } = await db
     .from("questions")
-    .insert({ question_bank_id, type, text, score, order_index: order_index ?? 0, ai_scoring_guide: ai_scoring_guide ?? null })
+    .insert({ question_bank_id, type, text, score, order_index: order_index ?? 0, ai_scoring_guide: ai_scoring_guide ?? null, image_url: image_url ?? null })
     .select()
     .single()
 

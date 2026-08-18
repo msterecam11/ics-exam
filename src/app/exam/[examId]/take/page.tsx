@@ -387,6 +387,15 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
               <CardContent className="pt-6 pb-6">
                 <p className="font-semibold text-base mb-5 leading-relaxed">{question.text}</p>
 
+                {question.image_url && (
+                  <img
+                    src={question.image_url}
+                    alt=""
+                    className="max-h-80 w-auto rounded-lg border mb-5 select-none"
+                    draggable={false}
+                  />
+                )}
+
                 {question.type === "mcq_single" && (
                   <MCQSingleQuestion question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} />
                 )}

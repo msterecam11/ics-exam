@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Trash2, GripVertical, Pencil, Loader2, CheckCircle2, AlertCircle, Upload, FileSpreadsheet, Download, XCircle } from "lucide-react"
+import { Plus, Trash2, GripVertical, Pencil, Loader2, CheckCircle2, AlertCircle, Upload, FileSpreadsheet, Download, XCircle, Image as ImageIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import type { Question } from "@/types"
 import MCQEditor from "./question-editors/MCQEditor"
@@ -50,6 +50,7 @@ function blankQuestion(type: string) {
     text: "",
     score: 10,
     ai_scoring_guide: "",
+    image_url: null,
     choices: type === "mcq_single" || type === "mcq_multi"
       ? [{ text: "", is_correct: false, score: 0 }, { text: "", is_correct: false, score: 0 }]
       : undefined,
@@ -77,6 +78,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [csvImporting, setCsvImporting] = useState(false)
   const [csvErrors, setCsvErrors] = useState<{ row: number; message: string }[]>([])
+  const [uploadingFigure, setUploadingFigure] = useState(false)
 
   const totalScore = questions.reduce((s, q) => s + q.score, 0)
   const scoreOk = requireTotal100 ? Math.abs(totalScore - 100) < 0.01 : true
@@ -177,6 +179,22 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
       setCsvOpen(false)
       const qRes = await fetch(`${baseUrl}/questions`)
       if (qRes.ok) setQuestions(await qRes.json())
+    }
+  }
+
+  async function handleFigureUpload(file: File) {
+    setUploadingFigure(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/questions/figure", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Upload failed")
+      setDraft((d: any) => ({ ...d, image_url: data.url }))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed")
+    } finally {
+      setUploadingFigure(false)
     }
   }
 
@@ -445,6 +463,34 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
                   onChange={(e) => setDraft((d: any) => ({ ...d, score: Number(e.target.value) }))}
                   className="w-28"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Figure (optional)</Label>
+                {draft.image_url ? (
+                  <div className="relative inline-block">
+                    <img src={draft.image_url} alt="" className="max-h-48 rounded-lg border" />
+                    <button
+                      type="button"
+                      onClick={() => setDraft((d: any) => ({ ...d, image_url: null }))}
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 border border-dashed rounded-lg px-4 py-3 text-sm text-muted-foreground cursor-pointer hover:bg-muted w-fit">
+                    {uploadingFigure ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                    {uploadingFigure ? "Uploading…" : "Add an image to this question"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingFigure}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFigureUpload(f); e.target.value = "" }}
+                    />
+                  </label>
+                )}
               </div>
 
               {renderEditor()}

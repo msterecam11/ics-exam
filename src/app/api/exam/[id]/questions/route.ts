@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .select(`
         order_index,
         questions(
-          id, type, text, score,
+          id, type, text, score, image_url,
           choices(id, text, order_index),
           matching_pairs(id, left_item, right_item, order_index),
           ordering_items(id, text, order_index)
@@ -40,7 +40,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { data } = await db
       .from("questions")
       .select(`
-        id, type, text, score, order_index,
+        id, type, text, score, order_index, image_url,
         choices(id, text, order_index),
         matching_pairs(id, left_item, right_item, order_index),
         ordering_items(id, text, order_index)

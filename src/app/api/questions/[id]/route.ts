@@ -9,12 +9,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params
   const body = await req.json()
-  const { text, score, ai_scoring_guide, choices, matching_pairs, ordering_items } = body
+  const { text, score, ai_scoring_guide, image_url, choices, matching_pairs, ordering_items } = body
 
   // Fetch exam_id and old score before updating (needed for proportional open_ended rescaling)
   const { data: existing } = await db.from("questions").select("exam_id, score").eq("id", id).single()
 
-  await db.from("questions").update({ text, score, ai_scoring_guide }).eq("id", id)
+  await db.from("questions").update({ text, score, ai_scoring_guide, image_url: image_url ?? null }).eq("id", id)
 
   // Replace related data
   if (choices !== undefined) {
