@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { UserPlus, Loader2, Copy, Mail, Ban } from "lucide-react"
+import { UserPlus, Loader2, Copy, Mail, Ban, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface CustomField {
@@ -106,12 +106,27 @@ export default function ExamInvitesManager({
   async function handleRevoke(id: string) {
     setBusyId(id)
     try {
-      const res = await fetch(`/api/exams/${examId}/invites/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/exams/${examId}/invites/${id}`, { method: "PATCH" })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to revoke") }
       setInvites((list) => list.map((i) => (i.id === id ? { ...i, status: "revoked" } : i)))
       toast.success("Invite revoked")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to revoke")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Delete the invite for "${name}"?\n\nThis removes it from the list and retires the link. It does not affect their exam results if they already completed it.`)) return
+    setBusyId(id)
+    try {
+      const res = await fetch(`/api/exams/${examId}/invites/${id}`, { method: "DELETE" })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to delete") }
+      setInvites((list) => list.filter((i) => i.id !== id))
+      toast.success("Invite deleted")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete")
     } finally {
       setBusyId(null)
     }
@@ -223,6 +238,14 @@ export default function ExamInvitesManager({
                       </Button>
                     </>
                   )}
+                  <Button
+                    variant="outline" size="sm" className="gap-1.5 text-red-600 hover:text-red-700"
+                    disabled={busyId === inv.id}
+                    onClick={() => handleDelete(inv.id, inv.full_name)}
+                  >
+                    {busyId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    Delete
+                  </Button>
                 </div>
               </CardContent>
             </Card>
