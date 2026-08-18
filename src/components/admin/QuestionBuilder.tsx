@@ -504,7 +504,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
 
       {/* Question editor dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingQ ? "Edit Question" : `New — ${TYPE_LABELS[draft?.type ?? ""]}`}
@@ -542,7 +542,14 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
                       value={draft.section_id ?? "none"}
                       onValueChange={(v) => setDraft((d: any) => ({ ...d, section_id: v === "none" ? null : v }))}
                     >
-                      <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
+                      <SelectTrigger>
+                        {/* Base UI's SelectValue doesn't resolve a label from the
+                           matching SelectItem the way Radix does — it shows the
+                           raw value unless given a render function. */}
+                        <SelectValue placeholder="No section">
+                          {(v: string) => v === "none" ? "No section" : sections.find((s) => s.id === v)?.title ?? "No section"}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No section</SelectItem>
                         {sections.map((s) => (
