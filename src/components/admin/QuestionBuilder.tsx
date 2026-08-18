@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -90,6 +90,26 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
   const totalScore = questions.reduce((s, q) => s + q.score, 0)
   const scoreOk = requireTotal100 ? Math.abs(totalScore - 100) < 0.01 : true
 
+  async function refetchSections() {
+    if (!examId) return
+    const res = await fetch(`${baseUrl}/sections`)
+    if (res.ok) setSections(await res.json())
+  }
+
+  // Sections and questions can change server-side without this component
+  // knowing — a CSV import auto-creates sections, and switching the parent's
+  // Manual/Bank toggle unmounts this component entirely, so the NEXT mount
+  // must re-pull real data rather than trust props that may be stale by
+  // then. Re-fetching both on every mount makes this self-healing instead
+  // of silently drifting from the database.
+  useEffect(() => {
+    refetchSections()
+    if (examId) {
+      fetch(`${baseUrl}/questions`).then((r) => (r.ok ? r.json() : null)).then((data) => { if (data) setQuestions(data) })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function openNew(type: string) {
     setEditingQ(null)
     setDraft(blankQuestion(type))
@@ -160,6 +180,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
     // Reload questions from server
     const qRes = await fetch(`${baseUrl}/questions`)
     if (qRes.ok) setQuestions(await qRes.json())
+    await refetchSections()
   }
 
   async function handleCSVImport() {
@@ -186,6 +207,9 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
       setCsvOpen(false)
       const qRes = await fetch(`${baseUrl}/questions`)
       if (qRes.ok) setQuestions(await qRes.json())
+      // The import may have auto-created sections from the CSV's `section`
+      // column — refetch so they actually show up without a page reload.
+      await refetchSections()
     }
   }
 
