@@ -68,7 +68,8 @@ No explanation, no markdown — only the JSON array.`
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 1500,
@@ -105,10 +106,14 @@ Respond with only the title.`
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 30,
+      // gpt-oss models spend some of this budget on hidden reasoning tokens
+      // before the visible answer — 30 was tight enough with the old model
+      // to sometimes come back empty; 100 leaves headroom for a short title.
+      max_tokens: 100,
     })
     return completion.choices[0]?.message?.content?.trim() || defaultTitle
   } catch {
@@ -146,10 +151,11 @@ Respond with only the title.`
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 30,
+      max_tokens: 100,
     })
     return completion.choices[0]?.message?.content?.trim() || defaultTitle
   } catch {

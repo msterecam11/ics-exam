@@ -84,7 +84,8 @@ Based on ALL of these items, produce a structured analysis that reflects the FUL
 
   try {
     const res = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 1000,
@@ -137,7 +138,8 @@ Produce a structured analysis of this assignment. Respond ONLY with a JSON objec
 
   try {
     const res = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 400,
@@ -216,7 +218,8 @@ ${!hasContent ? "Note: sessions have no content logged yet — infer from sessio
 
   try {
     const res = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 400,

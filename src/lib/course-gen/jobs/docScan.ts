@@ -22,7 +22,7 @@ import { isOcrConfigured, ocrPdfPages } from "../ocr"
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_COURSEGEN || process.env.GROQ_API_KEY || "placeholder",
 })
-const LABEL_MODEL = process.env.CG_MODEL_REFERENCE ?? "llama-3.3-70b-versatile"
+const LABEL_MODEL = process.env.CG_MODEL_REFERENCE ?? "openai/gpt-oss-120b"
 
 /** Sections labelled per tick — keeps each job step short and resumable. */
 const BATCH = 12
@@ -191,6 +191,7 @@ Return ONLY JSON:
   try {
     const completion = await groq.chat.completions.create({
       model: LABEL_MODEL,
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
       max_tokens: 400,
@@ -238,6 +239,7 @@ async function rollUp(documentId: string, doc: any) {
   try {
     const completion = await groq.chat.completions.create({
       model: LABEL_MODEL,
+      reasoning_effort: "low",
       messages: [{
         role: "user",
         content: `These are the section headings and topics of "${doc.doc_reference || doc.title}". In 2-3 sentences, describe what this document covers and who it applies to. Factual only.\n\n${toc.slice(0, 80).join("\n")}\n\nTopics: ${topTopics.join(", ")}`,

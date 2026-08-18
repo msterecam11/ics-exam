@@ -131,10 +131,12 @@ Be specific, professional, and constructive. Each recommendation must target a D
   let raw = ""
   try {
     const completion = await groq.chat.completions.create({
-      // 70b gives far sharper, less repetitive analysis than 8b-instant; a report
-      // is a single on-demand call (rate-limited per user), so free-tier throughput
-      // is fine. If the free-tier limit is hit, the catch below returns a friendly 429.
-      model: "llama-3.3-70b-versatile",
+      // 120b gives far sharper, less repetitive analysis than the 20b model; a
+      // report is a single on-demand call (rate-limited per user), so free-tier
+      // throughput is fine. If the free-tier limit is hit, the catch below
+      // returns a friendly 429.
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
       // Scales with module count (a per-module analysis each) — enough headroom so a
@@ -183,7 +185,8 @@ Write a professional 3-4 sentence behavioral assessment describing the pattern o
 {"risk_level":"${s.riskLevel}","behavioral_assessment":"your 3-4 sentence assessment"}`
     try {
       const secCompletion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
+        reasoning_effort: "low",
         messages: [{ role: "user", content: secPrompt }],
         temperature: 0.4, max_tokens: 400,
       })

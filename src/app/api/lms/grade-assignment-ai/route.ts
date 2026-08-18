@@ -131,7 +131,8 @@ Grade each rubric criterion fairly and objectively. Respond ONLY with valid JSON
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 1024,

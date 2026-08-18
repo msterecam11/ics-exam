@@ -36,7 +36,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 async function runGroqPrompt(prompt: string, maxTokens: number): Promise<string | null> {
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
       max_tokens: maxTokens,

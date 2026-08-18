@@ -127,7 +127,8 @@ Return ONLY valid JSON:
   try {
     const secCompletion = await withRetry(() =>
       groq.chat.completions.create({
-        model      : "llama-3.1-8b-instant",
+        model      : "openai/gpt-oss-120b",
+        reasoning_effort: "low",
         messages   : [{ role: "user", content: secPrompt }],
         temperature: 0.4,
         max_tokens : 500,
@@ -190,7 +191,8 @@ Be specific, professional, constructive, and base all insights strictly on the s
     const maxTokens = Math.min(8000, 600 + sectionData.length * 180)
     const completion = await withRetry(() =>
       groq.chat.completions.create({
-        model      : "llama-3.1-8b-instant",
+        model      : "openai/gpt-oss-120b",
+        reasoning_effort: "low",
         messages   : [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens : maxTokens,
@@ -229,7 +231,8 @@ Be specific, professional, constructive, and base all insights strictly on the s
 
   const overviewCompletion = await withRetry(() =>
     groq.chat.completions.create({
-      model      : "llama-3.1-8b-instant",
+      model      : "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages   : [{ role: "user", content: overviewPrompt }],
       temperature: 0.3,
       max_tokens : 700,
@@ -270,7 +273,8 @@ Be specific, professional, constructive, and base all insights strictly on the s
     const maxTokens = Math.min(8000, 400 + batch.length * 180)
     const completion = await withRetry(() =>
       groq.chat.completions.create({
-        model      : "llama-3.1-8b-instant",
+        model      : "openai/gpt-oss-120b",
+        reasoning_effort: "low",
         messages   : [{ role: "user", content: batchPrompt }],
         temperature: 0.3,
         max_tokens : maxTokens,

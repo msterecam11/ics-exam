@@ -5,7 +5,7 @@
  * fails gracefully (returns null — UI shows skeleton), and uses the same
  * retry pattern as the existing ai-scoring.ts.
  *
- * Model: llama-3.3-70b-versatile (same as exam scoring)
+ * Model: openai/gpt-oss-120b (same as exam scoring)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -25,11 +25,12 @@ import { normaliseVerdictThresholds, buildVerdictLabels } from "./interview-scor
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_INTERVIEW ?? process.env.GROQ_API_KEY ?? "placeholder" })
 
 // ── Models ────────────────────────────────────────────────────────────────────
-// Both calls now use 8b-instant — 14,400 TPM pool (vs 70b's 6,000 TPM).
-// Groq rate limits are per-account, not per-key, so the 70b pool was shared
-// across all test runs and exhausted quickly. 8b handles structured JSON well.
-const MODEL_INSIGHT = "llama-3.1-8b-instant"  // main insights call (large TPM pool)
-const MODEL_FAST    = "llama-3.1-8b-instant"  // evidence rephrase
+// llama-3.1-8b-instant / llama-3.3-70b-versatile were retired from this Groq
+// account (404 model_not_found) — replaced with the current gpt-oss lineup.
+// Both calls use the small model — same rationale as before (large TPM pool,
+// handles structured JSON well), now just on gpt-oss-20b instead of 8b-instant.
+const MODEL_INSIGHT = "openai/gpt-oss-20b"  // main insights call (large TPM pool)
+const MODEL_FAST    = "openai/gpt-oss-20b"  // evidence rephrase
 
 // ── Retry helper ──────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ async function askGroq(
   const res = await withRetry(() =>
     groq.chat.completions.create({
       model,
+      reasoning_effort: "low",
       messages:    [{ role: "user", content: prompt }],
       temperature: 0.35,
       max_tokens:  maxTokens,

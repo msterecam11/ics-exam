@@ -82,21 +82,37 @@ Rules:
   let completion: Awaited<ReturnType<typeof groq.chat.completions.create>>
   try {
     completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.1,
       max_tokens: 2000,
     })
   } catch (err: any) {
     console.error("[Analyze] Groq error — status:", err?.status, "| message:", err?.message)
-    const isQuota = err?.status === 429 || err?.status === 413 || err?.message?.includes("rate") || err?.message?.includes("quota") || err?.message?.includes("too large")
-    if (isQuota) {
+    // 429 = actually rate-limited. 413/"too large" = payload too big for the
+    // model's context window. 404 = the model itself is gone from the
+    // account (this is what "model_not_found" looks like) — surfacing that
+    // as "quota reached" sent us chasing a rate limit that was never real.
+    if (err?.status === 429 || err?.message?.includes("rate_limit")) {
       return NextResponse.json(
         { error: "AI quota reached. Please wait a few minutes and try again." },
         { status: 429 }
       )
     }
-    return NextResponse.json({ error: "AI service unavailable. Please try again." }, { status: 503 })
+    if (err?.status === 413 || err?.message?.includes("too large")) {
+      return NextResponse.json(
+        { error: "This exam has too many questions for the AI to analyze in one pass." },
+        { status: 413 }
+      )
+    }
+    if (err?.status === 404 || err?.code === "model_not_found" || err?.message?.includes("model_not_found")) {
+      return NextResponse.json(
+        { error: "The AI model configured for this feature is no longer available. Contact an admin." },
+        { status: 502 }
+      )
+    }
+    return NextResponse.json({ error: `AI service unavailable: ${err?.message ?? "unknown error"}` }, { status: 503 })
   }
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? ""
