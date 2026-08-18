@@ -85,6 +85,18 @@ export interface ExamCustomField {
   order_index: number
 }
 
+// Exam-only grouping — a question bank question can never carry a
+// section_id, since a section belongs to one exam and a bank question is
+// meant to be reused across many. See exam_sections.sql for the full
+// reasoning.
+export interface ExamSection {
+  id: string
+  exam_id: string
+  title: string
+  description: string | null
+  order_index: number
+}
+
 export interface Question {
   id: string
   exam_id: string
@@ -94,6 +106,7 @@ export interface Question {
   order_index: number
   ai_scoring_guide: string | null
   image_url?: string | null
+  section_id?: string | null
   choices?: Choice[]
   matching_pairs?: MatchingPair[]
   ordering_items?: OrderingItem[]

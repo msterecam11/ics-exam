@@ -11,7 +11,7 @@ import { Loader2, Library, PenLine, Shuffle, Plus, X, Wand2 } from "lucide-react
 import { toast } from "sonner"
 import QuestionBuilder from "./QuestionBuilder"
 import { distributeProportional } from "@/lib/distribute"
-import type { Question } from "@/types"
+import type { Question, ExamSection } from "@/types"
 
 interface Bank { id: string; name: string; question_count: number }
 interface BankQuestion { id: string; score: number; topic: string | null }
@@ -19,11 +19,12 @@ interface DrawConfig { total?: number; by_topic?: Record<string, number> }
 interface BankLink { question_bank_id: string; name?: string; draw_config: DrawConfig }
 
 export default function ExamQuestionSource({
-  examId, initialHasBankLink, initialQuestions,
+  examId, initialHasBankLink, initialQuestions, initialSections,
 }: {
   examId: string
   initialHasBankLink: boolean
   initialQuestions: Question[]
+  initialSections?: ExamSection[]
 }) {
   const [mode, setMode] = useState<"manual" | "bank">(initialHasBankLink ? "bank" : "manual")
   const [banks, setBanks] = useState<Bank[]>([])
@@ -182,7 +183,7 @@ export default function ExamQuestionSource({
       </div>
 
       {mode === "manual" ? (
-        <QuestionBuilder examId={examId} initialQuestions={initialQuestions} />
+        <QuestionBuilder examId={examId} initialQuestions={initialQuestions} initialSections={initialSections} />
       ) : loadingLinks ? (
         <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : (

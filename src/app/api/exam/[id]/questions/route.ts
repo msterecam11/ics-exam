@@ -37,10 +37,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   if (!questions) {
     // Manual exam (or no draw found) — unchanged from before this feature existed.
+    // Sections are exam-only (never on bank questions, see exam_sections.sql),
+    // so this is the only branch that ever needs the section join.
     const { data } = await db
       .from("questions")
       .select(`
-        id, type, text, score, order_index, image_url,
+        id, type, text, score, order_index, image_url, section_id,
+        section:exam_sections(id, title, description, order_index),
         choices(id, text, order_index),
         matching_pairs(id, left_item, right_item, order_index),
         ordering_items(id, text, order_index)

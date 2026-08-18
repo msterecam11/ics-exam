@@ -27,10 +27,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     )
   }
 
+  // Resolve each row's `section` title to a section_id, creating the
+  // section on first use — importing a CSV with a `section` column is
+  // enough to both create the sections and populate them in one action.
+  // Existing sections' titles reused so re-importing a corrected CSV
+  // doesn't create duplicates.
+  const { data: existingSections } = await db.from("exam_sections").select("id, title").eq("exam_id", examId)
+  const sectionIdByTitle = new Map<string, string>((existingSections ?? []).map((s) => [s.title, s.id]))
+  let nextSectionOrder = existingSections?.length ?? 0
+
+  async function resolveSectionId(title: string | undefined): Promise<string | null> {
+    if (!title) return null
+    const existing = sectionIdByTitle.get(title)
+    if (existing) return existing
+    const { data, error } = await db
+      .from("exam_sections")
+      .insert({ exam_id: examId, title, order_index: nextSectionOrder++ })
+      .select("id")
+      .single()
+    if (error || !data) return null
+    sectionIdByTitle.set(title, data.id)
+    return data.id
+  }
+
   let orderIndex = start_index
   let created = 0
 
   for (const q of questions) {
+    const section_id = await resolveSectionId(q.section)
+
     const { data: question, error } = await db
       .from("questions")
       .insert({
@@ -40,6 +65,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         score: q.score,
         order_index: orderIndex++,
         ai_scoring_guide: q.ai_guide ?? null,
+        image_url: q.image_url ?? null,
+        section_id,
       })
       .select("id")
       .single()

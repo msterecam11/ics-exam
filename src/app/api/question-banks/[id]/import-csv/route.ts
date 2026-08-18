@@ -30,6 +30,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let orderIndex = start_index
   let created = 0
 
+  // `section` is deliberately ignored here — a bank question is reused
+  // across many exams and can't belong to any one exam's section list
+  // (see exam_sections.sql). image_url still applies; a bank question can
+  // carry a figure the same as an exam-owned one.
   for (const q of questions) {
     const { data: question, error } = await db
       .from("questions")
@@ -40,6 +44,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         score: q.score,
         order_index: orderIndex++,
         ai_scoring_guide: q.ai_guide ?? null,
+        image_url: q.image_url ?? null,
       })
       .select("id")
       .single()

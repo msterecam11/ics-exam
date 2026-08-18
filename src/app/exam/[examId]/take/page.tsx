@@ -31,6 +31,21 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a
 }
 
+// Shuffles question ORDER within each section but never across sections —
+// otherwise "Section 1 before Section 2" would stop meaning anything the
+// moment shuffle is on. Questions with no section_id form their own group
+// in the order they first appear, same as before sections existed.
+function shuffleWithinSections<T extends { section_id?: string | null }>(arr: T[]): T[] {
+  const groupOrder: (string | null)[] = []
+  const groups = new Map<string | null, T[]>()
+  for (const q of arr) {
+    const key = q.section_id ?? null
+    if (!groups.has(key)) { groups.set(key, []); groupOrder.push(key) }
+    groups.get(key)!.push(q)
+  }
+  return groupOrder.flatMap((key) => shuffleArray(groups.get(key)!))
+}
+
 export default function TakePage({ params }: { params: Promise<{ examId: string }> }) {
   const router = useRouter()
   const [examId, setExamId] = useState("")
@@ -148,7 +163,7 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
             const missing = qs.filter((q: any) => !order.includes(q.id))
             orderedQs = [...orderedQs, ...missing]
           } else {
-            orderedQs = shuffleArray(qs)
+            orderedQs = shuffleWithinSections(qs)
             sessionStorage.setItem(`q_order_${id}`, JSON.stringify(orderedQs.map((q: any) => q.id)))
           }
         }
@@ -325,6 +340,14 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   const answeredCount = Object.keys(answers).length
   const timerWarning = timeLeft < 300
 
+  // Section banner shows only when crossing INTO a new section — purely
+  // visual, no navigation restrictions (dot navigator can still jump
+  // anywhere, including back into a previous section).
+  const prevSectionId = currentIdx > 0 ? questions[currentIdx - 1]?.section_id ?? null : null
+  const showSectionBanner = !!question?.section_id && question.section_id !== prevSectionId
+  const sectionOrder = Array.from(new Set(questions.map((q) => q.section_id).filter(Boolean)))
+  const sectionNumber = question?.section_id ? sectionOrder.indexOf(question.section_id) + 1 : 0
+
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col">
       {/* Tab switch warning banner */}
@@ -376,6 +399,17 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 select-none" style={{ WebkitUserSelect: "none", userSelect: "none" }}>
         {question && (
           <div className="space-y-4">
+            {showSectionBanner && question.section && (
+              <div className="bg-[#1B4F8A]/5 border border-[#1B4F8A]/15 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide">
+                  Section {sectionNumber} of {sectionOrder.length} — {question.section.title}
+                </p>
+                {question.section.description && (
+                  <p className="text-sm text-muted-foreground mt-1">{question.section.description}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground font-medium">
                 Question {currentIdx + 1} of {questions.length}

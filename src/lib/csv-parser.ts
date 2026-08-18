@@ -1,15 +1,26 @@
 // CSV Question Importer
-// Columns: type, text, score, ai_guide, opt1…opt6
+// Header-driven — columns are matched by NAME, not position, so an older
+// template missing newer columns (section, image_url) still imports
+// correctly instead of misaligning. Recognized headers:
+//   type, text, score, ai_guide, section, image_url, opt1…opt6
 // - mcq_single / mcq_multi : opt = "Text:Score"  e.g. "Paris:10"  or "London:0"
 // - ordering               : opt = item text in correct order (left = position 0)
 // - matching               : opt = "LeftItem:RightItem"  e.g. "France:Paris"
 // - open_ended             : only text, score, ai_guide used
+// - section                : matched by title, auto-created if it doesn't exist
+//                            yet (exam import only — ignored for bank import,
+//                            since a bank question can't belong to one exam's
+//                            sections). Blank = ungrouped, same as omitting it.
+// - image_url               : must be a link to an already-hosted image — CSV
+//                            can't carry a file, only a reference to one.
 
 export interface CSVParsedQuestion {
   type: "mcq_single" | "mcq_multi" | "open_ended" | "ordering" | "matching"
   text: string
   score: number
   ai_guide?: string
+  section?: string
+  image_url?: string
   choices?: { text: string; is_correct: boolean; score: number }[]
   ordering_items?: { text: string; correct_position: number }[]
   matching_pairs?: { left_item: string; right_item: string }[]
@@ -21,11 +32,7 @@ export interface CSVParseResult {
 }
 
 const VALID_TYPES = ["mcq_single", "mcq_multi", "open_ended", "ordering", "matching"]
-
-function parseRow(raw: string[]): string[] {
-  // Trim all cells
-  return raw.map((c) => c.trim())
-}
+const KNOWN_HEADERS = ["type", "text", "score", "ai_guide", "section", "image_url"]
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
@@ -45,7 +52,7 @@ function parseCSVLine(line: string): string[] {
     }
   }
   result.push(current)
-  return result
+  return result.map((c) => c.trim())
 }
 
 export function parseCSV(csvText: string): CSVParseResult {
@@ -53,15 +60,35 @@ export function parseCSV(csvText: string): CSVParseResult {
   const errors: { row: number; message: string }[] = []
 
   const lines = csvText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+  if (lines.length === 0) return { questions, errors }
 
-  // Skip header row
+  const headerCells = parseCSVLine(lines[0]).map((h) => h.toLowerCase())
+  // Any header not in KNOWN_HEADERS is treated as an option column (opt1,
+  // opt2, ... or any other name) — this is what makes the "…opt6" columns
+  // variadic while keeping the named columns fixed regardless of position.
+  const colIndex = (name: string) => headerCells.indexOf(name)
+  const optionIndices = headerCells
+    .map((h, i) => ({ h, i }))
+    .filter(({ h }) => !KNOWN_HEADERS.includes(h))
+    .map(({ i }) => i)
+
   const dataRows = lines.slice(1).filter((l) => l.trim() && !l.trim().startsWith("//"))
 
   dataRows.forEach((line, idx) => {
     const rowNum = idx + 2 // +2 because 1-indexed and skipped header
-    const cells = parseRow(parseCSVLine(line))
+    const cells = parseCSVLine(line)
+    const cell = (name: string) => {
+      const i = colIndex(name)
+      return i === -1 ? undefined : cells[i]
+    }
 
-    const [typeRaw, text, scoreRaw, ai_guide, ...opts] = cells
+    const typeRaw = cell("type")
+    const text = cell("text")
+    const scoreRaw = cell("score")
+    const ai_guide = cell("ai_guide")
+    const section = cell("section")
+    const image_url = cell("image_url")
+    const opts = optionIndices.map((i) => cells[i] ?? "")
 
     const type = typeRaw?.toLowerCase().trim()
 
@@ -75,21 +102,22 @@ export function parseCSV(csvText: string): CSVParseResult {
       return
     }
 
-    const score = parseFloat(scoreRaw)
+    const score = parseFloat(scoreRaw ?? "")
     if (isNaN(score) || score < 0) {
       errors.push({ row: rowNum, message: `Invalid score "${scoreRaw}"` })
       return
     }
 
+    const base = {
+      ai_guide: ai_guide?.trim() || undefined,
+      section: section?.trim() || undefined,
+      image_url: image_url?.trim() || undefined,
+    }
+
     const filledOpts = opts.filter((o) => o.trim())
 
     if (type === "open_ended") {
-      questions.push({
-        type: "open_ended",
-        text: text.trim(),
-        score,
-        ai_guide: ai_guide?.trim() || undefined,
-      })
+      questions.push({ type: "open_ended", text: text.trim(), score, ...base })
       return
     }
 
@@ -117,7 +145,7 @@ export function parseCSV(csvText: string): CSVParseResult {
         const max = Math.max(...choices.map((c) => c.score))
         choices.forEach((c) => { if (c.score === max) c.is_correct = true })
       }
-      questions.push({ type: type as "mcq_single" | "mcq_multi", text: text.trim(), score, choices })
+      questions.push({ type: type as "mcq_single" | "mcq_multi", text: text.trim(), score, choices, ...base })
       return
     }
 
@@ -127,6 +155,7 @@ export function parseCSV(csvText: string): CSVParseResult {
         text: text.trim(),
         score,
         ordering_items: filledOpts.map((o, i) => ({ text: o.trim(), correct_position: i })),
+        ...base,
       })
       return
     }
@@ -141,7 +170,7 @@ export function parseCSV(csvText: string): CSVParseResult {
         }
         pairs.push({ left_item: opt.slice(0, colonIdx).trim(), right_item: opt.slice(colonIdx + 1).trim() })
       }
-      questions.push({ type: "matching", text: text.trim(), score, matching_pairs: pairs })
+      questions.push({ type: "matching", text: text.trim(), score, matching_pairs: pairs, ...base })
       return
     }
   })

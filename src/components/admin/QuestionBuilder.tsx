@@ -13,11 +13,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Trash2, GripVertical, Pencil, Loader2, CheckCircle2, AlertCircle, Upload, FileSpreadsheet, Download, XCircle, Image as ImageIcon, X } from "lucide-react"
 import { toast } from "sonner"
-import type { Question } from "@/types"
+import type { Question, ExamSection } from "@/types"
 import MCQEditor from "./question-editors/MCQEditor"
 import MatchingEditor from "./question-editors/MatchingEditor"
 import OrderingEditor from "./question-editors/OrderingEditor"
 import OpenEndedEditor from "./question-editors/OpenEndedEditor"
+import ExamSectionsPanel from "./ExamSectionsPanel"
 
 const TYPE_LABELS: Record<string, string> = {
   mcq_single: "MCQ — Single Answer",
@@ -38,6 +39,7 @@ interface Props {
   examId?: string
   questionBankId?: string
   initialQuestions: Question[]
+  initialSections?: ExamSection[]
   // Exams require questions to sum to exactly 100 points; a question bank
   // (a large reusable pool) has no such constraint — defaults to the existing
   // exam behavior so nothing changes for current callers.
@@ -51,6 +53,7 @@ function blankQuestion(type: string) {
     score: 10,
     ai_scoring_guide: "",
     image_url: null,
+    section_id: null,
     choices: type === "mcq_single" || type === "mcq_multi"
       ? [{ text: "", is_correct: false, score: 0 }, { text: "", is_correct: false, score: 0 }]
       : undefined,
@@ -63,9 +66,13 @@ function blankQuestion(type: string) {
   }
 }
 
-export default function QuestionBuilder({ examId, questionBankId, initialQuestions, requireTotal100 = true }: Props) {
+export default function QuestionBuilder({ examId, questionBankId, initialQuestions, initialSections, requireTotal100 = true }: Props) {
   const baseUrl = examId ? `/api/exams/${examId}` : `/api/question-banks/${questionBankId}`
   const [questions, setQuestions] = useState<Question[]>(initialQuestions)
+  // Sections are exam-only — a bank question is reused across many exams and
+  // can't belong to one exam's section structure, so this stays empty and
+  // hidden whenever questionBankId is the mode instead of examId.
+  const [sections, setSections] = useState<ExamSection[]>(initialSections ?? [])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingQ, setEditingQ] = useState<Question | null>(null)
   const [draft, setDraft] = useState<any>(null)
@@ -223,6 +230,49 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
     return null
   }
 
+  // displayIndex is the question's position across the WHOLE exam (not just
+  // within its section) so "Q7" always matches its real order_index, same
+  // numbering whether sections are used or not.
+  function renderQuestionCard(q: Question, displayIndex: number) {
+    return (
+      <Card key={q.id} className="border-l-4 border-l-[#1B4F8A]">
+        <CardHeader className="py-3 px-4">
+          <div className="flex items-start gap-3">
+            <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="text-xs font-semibold text-muted-foreground">Q{displayIndex + 1}</span>
+                <Badge className={`text-xs border-0 ${TYPE_COLORS[q.type]}`} variant="secondary">
+                  {TYPE_LABELS[q.type]}
+                </Badge>
+                <Badge variant="outline" className="text-xs">{q.score} pts</Badge>
+                {q.image_url && <Badge variant="outline" className="text-xs gap-1"><ImageIcon className="h-3 w-3" /> figure</Badge>}
+              </div>
+              <p className="text-sm line-clamp-2">{q.text}</p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(q)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-500 hover:text-red-600"
+                onClick={() => handleDelete(q.id)}
+                disabled={deleting === q.id}
+              >
+                {deleting === q.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Trash2 className="h-3.5 w-3.5" />
+                }
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Score indicator */}
@@ -239,6 +289,11 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
         </div>
       )}
 
+      {/* Sections — exam-only, hidden entirely in question-bank mode */}
+      {examId && (
+        <ExamSectionsPanel examId={examId} sections={sections} onChange={setSections} />
+      )}
+
       {/* Question list */}
       {questions.length === 0 ? (
         <Card>
@@ -246,44 +301,32 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
             No questions yet. Add your first question below.
           </CardContent>
         </Card>
+      ) : examId && sections.length > 0 ? (
+        <div className="space-y-4">
+          {sections.map((s) => {
+            const items = questions.filter((q) => q.section_id === s.id)
+            if (items.length === 0) return null
+            return (
+              <div key={s.id} className="space-y-2">
+                <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide px-1">{s.title}</p>
+                {items.map((q) => renderQuestionCard(q, questions.indexOf(q)))}
+              </div>
+            )
+          })}
+          {(() => {
+            const ungrouped = questions.filter((q) => !q.section_id)
+            if (ungrouped.length === 0) return null
+            return (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Ungrouped</p>
+                {ungrouped.map((q) => renderQuestionCard(q, questions.indexOf(q)))}
+              </div>
+            )
+          })()}
+        </div>
       ) : (
         <div className="space-y-2">
-          {questions.map((q, i) => (
-            <Card key={q.id} className="border-l-4 border-l-[#1B4F8A]">
-              <CardHeader className="py-3 px-4">
-                <div className="flex items-start gap-3">
-                  <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-xs font-semibold text-muted-foreground">Q{i + 1}</span>
-                      <Badge className={`text-xs border-0 ${TYPE_COLORS[q.type]}`} variant="secondary">
-                        {TYPE_LABELS[q.type]}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">{q.score} pts</Badge>
-                    </div>
-                    <p className="text-sm line-clamp-2">{q.text}</p>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(q)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600"
-                      onClick={() => handleDelete(q.id)}
-                      disabled={deleting === q.id}
-                    >
-                      {deleting === q.id
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <Trash2 className="h-3.5 w-3.5" />
-                      }
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
+          {questions.map((q, i) => renderQuestionCard(q, i))}
         </div>
       )}
 
@@ -388,6 +431,8 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
               <p>ordering   — opt: <span className="text-foreground">Item text</span> in correct order</p>
               <p>matching   — opt: <span className="text-foreground">Left:Right</span> pairs</p>
               <p>open_ended — use ai_guide column for scoring hints</p>
+              <p className="pt-1 border-t mt-1">section    — optional, matched by title, created automatically{questionBankId ? " (exam import only — ignored here)" : ""}</p>
+              <p>image_url  — optional, a link to an already-hosted image (not a file upload)</p>
             </div>
 
             <div>
@@ -453,16 +498,36 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
                   rows={3}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Score (points)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={draft.score}
-                  onChange={(e) => setDraft((d: any) => ({ ...d, score: Number(e.target.value) }))}
-                  className="w-28"
-                />
+              <div className="flex gap-4">
+                <div className="space-y-2">
+                  <Label>Score (points)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={draft.score}
+                    onChange={(e) => setDraft((d: any) => ({ ...d, score: Number(e.target.value) }))}
+                    className="w-28"
+                  />
+                </div>
+
+                {examId && sections.length > 0 && (
+                  <div className="space-y-2 flex-1">
+                    <Label>Section (optional)</Label>
+                    <Select
+                      value={draft.section_id ?? "none"}
+                      onValueChange={(v) => setDraft((d: any) => ({ ...d, section_id: v === "none" ? null : v }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No section</SelectItem>
+                        {sections.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
