@@ -86,6 +86,12 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
   const [csvImporting, setCsvImporting] = useState(false)
   const [csvErrors, setCsvErrors] = useState<{ row: number; message: string }[]>([])
   const [uploadingFigure, setUploadingFigure] = useState(false)
+  // Which section's inline type-picker is expanded ("" = the Ungrouped bucket).
+  const [addingToSection, setAddingToSection] = useState<string | null>(null)
+  // True when the question was opened via a section's own "Add Question" —
+  // the Section field is then a fixed label instead of a dropdown, since the
+  // whole point of adding it that way is not having to go pick one.
+  const [sectionLocked, setSectionLocked] = useState(false)
 
   const totalScore = questions.reduce((s, q) => s + q.score, 0)
   const scoreOk = requireTotal100 ? Math.abs(totalScore - 100) < 0.01 : true
@@ -110,14 +116,16 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function openNew(type: string) {
+  function openNew(type: string, sectionId?: string | null) {
     setEditingQ(null)
-    setDraft(blankQuestion(type))
+    setDraft({ ...blankQuestion(type), section_id: sectionId ?? null })
+    setSectionLocked(!!sectionId)
     setDialogOpen(true)
   }
 
   function openEdit(q: Question) {
     setEditingQ(q)
+    setSectionLocked(false)
     setDraft({
       ...q,
       choices: q.choices ?? [],
@@ -297,6 +305,25 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
     )
   }
 
+  // The expanded type-picker row for one section (or "" for Ungrouped).
+  function renderTypePicker(sectionId: string | null) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {Object.entries(TYPE_LABELS).map(([type, label]) => (
+          <Button
+            key={type} variant="outline" size="sm" className="gap-1.5 text-xs h-7"
+            onClick={() => { openNew(type, sectionId); setAddingToSection(null) }}
+          >
+            <Plus className="h-3 w-3" /> {label}
+          </Button>
+        ))}
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setAddingToSection(null)}>
+          Cancel
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Score indicator */}
@@ -319,7 +346,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
       )}
 
       {/* Question list */}
-      {questions.length === 0 ? (
+      {questions.length === 0 && !(examId && sections.length > 0) ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             No questions yet. Add your first question below.
@@ -329,20 +356,39 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
         <div className="space-y-4">
           {sections.map((s) => {
             const items = questions.filter((q) => q.section_id === s.id)
-            if (items.length === 0) return null
+            const isAdding = addingToSection === s.id
             return (
               <div key={s.id} className="space-y-2">
-                <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide px-1">{s.title}</p>
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide">{s.title}</p>
+                  {!isAdding && (
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7" onClick={() => setAddingToSection(s.id)}>
+                      <Plus className="h-3 w-3" /> Add Question
+                    </Button>
+                  )}
+                </div>
+                {isAdding && <div className="px-1">{renderTypePicker(s.id)}</div>}
+                {items.length === 0 && !isAdding && (
+                  <p className="text-xs text-muted-foreground px-1">No questions in this section yet.</p>
+                )}
                 {items.map((q) => renderQuestionCard(q, questions.indexOf(q)))}
               </div>
             )
           })}
           {(() => {
             const ungrouped = questions.filter((q) => !q.section_id)
-            if (ungrouped.length === 0) return null
+            const isAdding = addingToSection === ""
             return (
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Ungrouped</p>
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ungrouped</p>
+                  {!isAdding && (
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7" onClick={() => setAddingToSection("")}>
+                      <Plus className="h-3 w-3" /> Add Question
+                    </Button>
+                  )}
+                </div>
+                {isAdding && <div className="px-1">{renderTypePicker(null)}</div>}
                 {ungrouped.map((q) => renderQuestionCard(q, questions.indexOf(q)))}
               </div>
             )
@@ -538,25 +584,42 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
                 {examId && sections.length > 0 && (
                   <div className="space-y-2 flex-1">
                     <Label>Section (optional)</Label>
-                    <Select
-                      value={draft.section_id ?? "none"}
-                      onValueChange={(v) => setDraft((d: any) => ({ ...d, section_id: v === "none" ? null : v }))}
-                    >
-                      <SelectTrigger>
-                        {/* Base UI's SelectValue doesn't resolve a label from the
-                           matching SelectItem the way Radix does — it shows the
-                           raw value unless given a render function. */}
-                        <SelectValue placeholder="No section">
-                          {(v: string) => v === "none" ? "No section" : sections.find((s) => s.id === v)?.title ?? "No section"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No section</SelectItem>
-                        {sections.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {sectionLocked && draft.section_id ? (
+                      // Added via a section's own "Add Question" — the whole
+                      // point was not having to go pick one, so it's a fixed
+                      // label here. "Change" drops back to the normal picker
+                      // in case this was the wrong section after all.
+                      <div className="flex items-center justify-between gap-2 h-9 px-3 rounded-lg border bg-muted/40 text-sm">
+                        <span className="truncate">{sections.find((s) => s.id === draft.section_id)?.title}</span>
+                        <button
+                          type="button"
+                          className="text-xs text-[#1B4F8A] hover:underline shrink-0"
+                          onClick={() => setSectionLocked(false)}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <Select
+                        value={draft.section_id ?? "none"}
+                        onValueChange={(v) => setDraft((d: any) => ({ ...d, section_id: v === "none" ? null : v }))}
+                      >
+                        <SelectTrigger>
+                          {/* Base UI's SelectValue doesn't resolve a label from the
+                             matching SelectItem the way Radix does — it shows the
+                             raw value unless given a render function. */}
+                          <SelectValue placeholder="No section">
+                            {(v: string) => v === "none" ? "No section" : sections.find((s) => s.id === v)?.title ?? "No section"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No section</SelectItem>
+                          {sections.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 )}
               </div>
