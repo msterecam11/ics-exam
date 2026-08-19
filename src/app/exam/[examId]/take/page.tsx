@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ChevronLeft, ChevronRight, Send, AlertTriangle } from "lucide-react"
+import { Loader2, Clock, ChevronLeft, ChevronRight, Send, AlertTriangle, ArrowRight } from "lucide-react"
 import { toast } from "sonner"
 import MCQSingleQuestion from "@/components/exam/questions/MCQSingleQuestion"
 import MCQMultiQuestion from "@/components/exam/questions/MCQMultiQuestion"
@@ -61,6 +61,11 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   const [unansweredList, setUnansweredList] = useState<number[]>([])
   const [fullscreenWarning, setFullscreenWarning] = useState(false)
   const [tabWarning, setTabWarning] = useState(false)
+  // Sections whose intro screen has already been shown this sitting — a
+  // section's intro appears once, the first time the candidate LANDS on one
+  // of its questions, whether by clicking Next or jumping via the dot/section
+  // navigator. Persisted so a reload doesn't re-show intros already seen.
+  const [introSeenSections, setIntroSeenSections] = useState<Set<string>>(new Set())
   const submitted = useRef(false)
   const tabLeftAt = useRef<number | null>(null)
   const candidateIdRef = useRef<string>("")
@@ -190,6 +195,9 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
         setQuestions(orderedQs)
       }
 
+      const storedIntroSeen = sessionStorage.getItem(`intro_seen_${id}`)
+      if (storedIntroSeen) setIntroSeenSections(new Set(JSON.parse(storedIntroSeen)))
+
       // Timer
       const startedAt = new Date(candidateData.started_at).getTime()
       const durationMs = examData.duration_minutes * 60 * 1000
@@ -313,6 +321,15 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
     setAnswers((a) => ({ ...a, [questionId]: value }))
   }
 
+  function markIntroSeen(sectionId: string) {
+    setIntroSeenSections((prev) => {
+      const next = new Set(prev)
+      next.add(sectionId)
+      sessionStorage.setItem(`intro_seen_${examIdRef.current}`, JSON.stringify([...next]))
+      return next
+    })
+  }
+
   function trySubmit() {
     const unanswered = questions
       .map((q, i) => ({ q, i }))
@@ -340,13 +357,18 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   const answeredCount = Object.keys(answers).length
   const timerWarning = timeLeft < 300
 
-  // Section banner shows only when crossing INTO a new section — purely
-  // visual, no navigation restrictions (dot navigator can still jump
-  // anywhere, including back into a previous section).
-  const prevSectionId = currentIdx > 0 ? questions[currentIdx - 1]?.section_id ?? null : null
-  const showSectionBanner = !!question?.section_id && question.section_id !== prevSectionId
-  const sectionOrder = Array.from(new Set(questions.map((q) => q.section_id).filter(Boolean)))
+  // Sections are purely additive/visual — no navigation restrictions, the
+  // dot/section navigators can still jump anywhere at any time.
+  const sectionOrder = Array.from(new Set(questions.map((q) => q.section_id).filter(Boolean))) as string[]
   const sectionNumber = question?.section_id ? sectionOrder.indexOf(question.section_id) + 1 : 0
+  // An intro screen appears once per section, the first time the candidate
+  // LANDS on one of its questions — whether via Next or a jump.
+  const needsIntro = !!question?.section_id && !introSeenSections.has(question.section_id)
+
+  function jumpToSection(sectionId: string) {
+    const idx = questions.findIndex((q) => q.section_id === sectionId)
+    if (idx !== -1) setCurrentIdx(idx)
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col">
@@ -397,17 +419,52 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       </header>
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 select-none" style={{ WebkitUserSelect: "none", userSelect: "none" }}>
-        {question && (
-          <div className="space-y-4">
-            {showSectionBanner && question.section && (
-              <div className="bg-[#1B4F8A]/5 border border-[#1B4F8A]/15 rounded-xl px-4 py-3">
-                <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide">
-                  Section {sectionNumber} of {sectionOrder.length} — {question.section.title}
+        {question && needsIntro && question.section ? (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border shadow-sm px-6 py-10 sm:py-14 text-center space-y-4">
+              <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide">
+                Section {sectionNumber} of {sectionOrder.length}
+              </p>
+              <h2 className="text-2xl font-bold text-[#1B4F8A]">{question.section.title}</h2>
+              {question.section.description && (
+                <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                  {question.section.description}
                 </p>
-                {question.section.description && (
-                  <p className="text-sm text-muted-foreground mt-1">{question.section.description}</p>
-                )}
+              )}
+              <div className="pt-2">
+                <Button
+                  onClick={() => markIntroSeen(question.section_id)}
+                  className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-1.5"
+                >
+                  Continue <ArrowRight className="h-4 w-4" />
+                </Button>
               </div>
+            </div>
+
+            {sectionOrder.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {sectionOrder.map((sid, i) => (
+                  <button
+                    key={sid}
+                    onClick={() => jumpToSection(sid)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      sid === question.section_id
+                        ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
+                        : "bg-white text-muted-foreground hover:border-[#1B4F8A]/40"
+                    }`}
+                  >
+                    {i + 1}. {questions.find((q) => q.section_id === sid)?.section?.title ?? `Section ${i + 1}`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : question && (
+          <div className="space-y-4">
+            {question.section_id && question.section && (
+              <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wide">
+                Section {sectionNumber} of {sectionOrder.length} — {question.section.title}
+              </p>
             )}
 
             <div className="flex items-center justify-between">
@@ -482,6 +539,25 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
                 </Button>
               )}
             </div>
+
+            {/* Section navigator — only rendered when the exam actually has sections */}
+            {sectionOrder.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {sectionOrder.map((sid, i) => (
+                  <button
+                    key={sid}
+                    onClick={() => jumpToSection(sid)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      sid === question.section_id
+                        ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
+                        : "bg-white text-muted-foreground hover:border-[#1B4F8A]/40"
+                    }`}
+                  >
+                    {i + 1}. {questions.find((q) => q.section_id === sid)?.section?.title ?? `Section ${i + 1}`}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Question dot navigator */}
             <div className="flex flex-wrap gap-1.5 justify-center pt-2">
