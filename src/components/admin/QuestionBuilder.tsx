@@ -515,6 +515,25 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
               <p>image_url  — optional, either a hosted image link, OR a bare filename (e.g. "photo1.jpg") if uploading a .zip below</p>
             </div>
 
+            <div className="bg-blue-50 border border-blue-100 rounded-md p-3 space-y-2">
+              <p className="text-sm font-medium text-foreground">Want to include figures? Upload a .zip instead of a .csv:</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Put your CSV and your image files together in one folder on your computer.</li>
+                <li>In each row's <span className="font-mono text-foreground">image_url</span> column, type the image's exact filename — not a URL — e.g. <span className="font-mono text-foreground">ramp-safety.jpg</span>.</li>
+                <li>Select everything in that folder and compress it into a single <span className="font-mono text-foreground">.zip</span> (right-click → "Compress" / "Send to → Zip file").</li>
+                <li>Upload that <span className="font-mono text-foreground">.zip</span> below instead of a .csv — same button, it's detected automatically.</li>
+              </ol>
+              <div className="bg-white rounded border p-2 text-xs font-mono text-muted-foreground">
+                my-import.zip<br />
+                ├── questions.csv<br />
+                ├── ramp-safety.jpg<br />
+                └── pushback-diagram.png
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Filenames just need to be unique inside the zip — subfolders are fine, and rows with no image or an already-hosted link work exactly as before.
+              </p>
+            </div>
+
             <div>
               <label className="block text-sm font-medium mb-2">Upload your filled CSV — or a .zip with the CSV + images together</label>
               <input
@@ -523,9 +542,6 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
                 className="block w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-xs file:font-medium file:bg-background hover:file:bg-muted cursor-pointer"
                 onChange={(e) => { setCsvFile(e.target.files?.[0] ?? null); setCsvErrors([]) }}
               />
-              <p className="text-xs text-muted-foreground mt-1.5">
-                To include figures: zip your CSV together with the image files (any folder layout), and put each image's <span className="font-mono">filename</span> in the image_url column instead of a URL.
-              </p>
             </div>
 
             {csvFile && (
