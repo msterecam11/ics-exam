@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Clock, ChevronLeft, ChevronRight, Send, AlertTriangle, ArrowRight } from "lucide-react"
+import { Loader2, Clock, ChevronLeft, ChevronRight, Send, AlertTriangle, ArrowRight, Flag } from "lucide-react"
 import { toast } from "sonner"
 import MCQSingleQuestion from "@/components/exam/questions/MCQSingleQuestion"
 import MCQMultiQuestion from "@/components/exam/questions/MCQMultiQuestion"
@@ -66,6 +66,11 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   // of its questions, whether by clicking Next or jumping via the dot/section
   // navigator. Persisted so a reload doesn't re-show intros already seen.
   const [introSeenSections, setIntroSeenSections] = useState<Set<string>>(new Set())
+  // Candidate's own "review this later" markers — purely personal, never
+  // sent to the backend, doesn't affect scoring or submission. Persisted so
+  // it survives a reload mid-sitting, same as the other progress state here.
+  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  const [showFlaggedModal, setShowFlaggedModal] = useState(false)
   const submitted = useRef(false)
   const tabLeftAt = useRef<number | null>(null)
   const candidateIdRef = useRef<string>("")
@@ -197,6 +202,9 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
 
       const storedIntroSeen = sessionStorage.getItem(`intro_seen_${id}`)
       if (storedIntroSeen) setIntroSeenSections(new Set(JSON.parse(storedIntroSeen)))
+
+      const storedFlagged = sessionStorage.getItem(`flagged_${id}`)
+      if (storedFlagged) setFlagged(new Set(JSON.parse(storedFlagged)))
 
       // Timer
       const startedAt = new Date(candidateData.started_at).getTime()
@@ -330,6 +338,16 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
     })
   }
 
+  function toggleFlag(questionId: string) {
+    setFlagged((prev) => {
+      const next = new Set(prev)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      sessionStorage.setItem(`flagged_${examIdRef.current}`, JSON.stringify([...next]))
+      return next
+    })
+  }
+
   function trySubmit() {
     const unanswered = questions
       .map((q, i) => ({ q, i }))
@@ -339,6 +357,10 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
     if (unanswered.length > 0) {
       setUnansweredList(unanswered)
       setShowUnansweredModal(true)
+    } else if (flagged.size > 0) {
+      // Nothing unanswered, but the candidate marked some for their own
+      // review — one last chance to look before finalizing. Doesn't block.
+      setShowFlaggedModal(true)
     } else {
       handleSubmit(false)
     }
@@ -471,7 +493,23 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
               <span className="text-sm text-muted-foreground font-medium">
                 Question {currentIdx + 1} of {questions.length}
               </span>
-              <Badge variant="outline" className="text-xs">{formatScore(question.display_score ?? question.score)} pts</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">{formatScore(question.display_score ?? question.score)} pts</Badge>
+                <button
+                  type="button"
+                  onClick={() => toggleFlag(question.id)}
+                  aria-pressed={flagged.has(question.id)}
+                  title={flagged.has(question.id) ? "Unflag this question" : "Flag this question for review"}
+                  className={`flex items-center gap-1 h-6 px-2 rounded-full text-xs font-medium border transition-colors ${
+                    flagged.has(question.id)
+                      ? "bg-amber-100 text-amber-700 border-amber-300"
+                      : "bg-white text-muted-foreground border-border hover:border-amber-300 hover:text-amber-600"
+                  }`}
+                >
+                  <Flag className={`h-3 w-3 ${flagged.has(question.id) ? "fill-amber-500" : ""}`} />
+                  {flagged.has(question.id) ? "Flagged" : "Flag"}
+                </button>
+              </div>
             </div>
 
             <Card className="shadow-sm">
@@ -565,7 +603,8 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
                 <button
                   key={i}
                   onClick={() => setCurrentIdx(i)}
-                  className={`w-7 h-7 rounded-full text-xs font-medium transition-colors ${
+                  aria-label={`Question ${i + 1}${answers[q.id] !== undefined ? ", answered" : ", unanswered"}${flagged.has(q.id) ? ", flagged for review" : ""}`}
+                  className={`relative w-7 h-7 rounded-full text-xs font-medium transition-colors ${
                     i === currentIdx
                       ? "bg-[#1B4F8A] text-white"
                       : answers[q.id] !== undefined
@@ -574,6 +613,9 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
                   }`}
                 >
                   {i + 1}
+                  {flagged.has(q.id) && (
+                    <Flag className="absolute -top-1 -right-1 h-3 w-3 fill-amber-500 text-amber-500" />
+                  )}
                 </button>
               ))}
             </div>
@@ -613,6 +655,50 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={() => { setShowUnansweredModal(false); handleSubmit(false) }}
+              >
+                Submit Anyway
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flagged questions reminder — only reachable when nothing is
+          unanswered, so it never stacks behind the unanswered modal */}
+      {showFlaggedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-100 rounded-full p-2">
+                <Flag className="h-5 w-5 text-amber-600" />
+              </div>
+              <h3 className="font-bold text-lg">Flagged for Review</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              You marked <span className="font-semibold text-foreground">{flagged.size} question{flagged.size > 1 ? "s" : ""}</span> for review:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {questions
+                .map((q, i) => ({ q, n: i + 1 }))
+                .filter(({ q }) => flagged.has(q.id))
+                .map(({ n }) => (
+                  <button
+                    key={n}
+                    onClick={() => { setCurrentIdx(n - 1); setShowFlaggedModal(false) }}
+                    className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition-colors"
+                  >
+                    {n}
+                  </button>
+                ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Click a number to review it, or submit anyway.</p>
+            <div className="flex gap-3 pt-1">
+              <Button variant="outline" className="flex-1" onClick={() => setShowFlaggedModal(false)}>
+                Go Back
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => { setShowFlaggedModal(false); handleSubmit(false) }}
               >
                 Submit Anyway
               </Button>
