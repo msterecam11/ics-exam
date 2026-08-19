@@ -57,7 +57,10 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   const [timeLeft, setTimeLeft] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [showUnansweredModal, setShowUnansweredModal] = useState(false)
+  // One combined pre-submit review modal — shows both groups together
+  // (whichever apply) so a candidate never has one warning hidden behind
+  // the other.
+  const [showReviewModal, setShowReviewModal] = useState(false)
   const [unansweredList, setUnansweredList] = useState<number[]>([])
   const [fullscreenWarning, setFullscreenWarning] = useState(false)
   const [tabWarning, setTabWarning] = useState(false)
@@ -70,7 +73,6 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   // sent to the backend, doesn't affect scoring or submission. Persisted so
   // it survives a reload mid-sitting, same as the other progress state here.
   const [flagged, setFlagged] = useState<Set<string>>(new Set())
-  const [showFlaggedModal, setShowFlaggedModal] = useState(false)
   const submitted = useRef(false)
   const tabLeftAt = useRef<number | null>(null)
   const candidateIdRef = useRef<string>("")
@@ -354,13 +356,12 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       .filter(({ q }) => answers[q.id] === undefined)
       .map(({ i }) => i + 1)
 
-    if (unanswered.length > 0) {
+    // One combined review screen for whichever applies — an unanswered
+    // question that's ALSO flagged shows up in both lists, since both facts
+    // are true and worth seeing. Neither list blocks submission either way.
+    if (unanswered.length > 0 || flagged.size > 0) {
       setUnansweredList(unanswered)
-      setShowUnansweredModal(true)
-    } else if (flagged.size > 0) {
-      // Nothing unanswered, but the candidate marked some for their own
-      // review — one last chance to look before finalizing. Doesn't block.
-      setShowFlaggedModal(true)
+      setShowReviewModal(true)
     } else {
       handleSubmit(false)
     }
@@ -623,82 +624,69 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
         )}
       </main>
 
-      {/* Unanswered questions modal */}
-      {showUnansweredModal && (
+      {/* Combined pre-submit review — unanswered AND flagged shown together
+          (whichever apply) so neither hides behind the other. A question
+          that's both unanswered and flagged appears in both lists. */}
+      {showReviewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center gap-3">
               <div className="bg-amber-100 rounded-full p-2">
                 <AlertTriangle className="h-5 w-5 text-amber-600" />
               </div>
-              <h3 className="font-bold text-lg">Unanswered Questions</h3>
+              <h3 className="font-bold text-lg">Before You Submit</h3>
             </div>
-            <p className="text-sm text-muted-foreground">
-              You have <span className="font-semibold text-foreground">{unansweredList.length} unanswered</span> question{unansweredList.length > 1 ? "s" : ""}:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {unansweredList.map((n) => (
-                <button
-                  key={n}
-                  onClick={() => { setCurrentIdx(n - 1); setShowUnansweredModal(false) }}
-                  className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition-colors"
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+
+            {unansweredList.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">{unansweredList.length} unanswered</span> question{unansweredList.length > 1 ? "s" : ""}:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unansweredList.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => { setCurrentIdx(n - 1); setShowReviewModal(false) }}
+                      className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition-colors"
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {flagged.size > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                  <Flag className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
+                  <span className="font-semibold text-foreground">{flagged.size} flagged</span> for review:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {questions
+                    .map((q, i) => ({ q, n: i + 1 }))
+                    .filter(({ q }) => flagged.has(q.id))
+                    .map(({ n }) => (
+                      <button
+                        key={n}
+                        onClick={() => { setCurrentIdx(n - 1); setShowReviewModal(false) }}
+                        className="w-8 h-8 rounded-full bg-amber-50 text-amber-700 border border-amber-300 text-sm font-medium hover:bg-amber-100 transition-colors"
+                      >
+                        {n}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground">Click a number to go to that question, or submit anyway.</p>
             <div className="flex gap-3 pt-1">
-              <Button variant="outline" className="flex-1" onClick={() => setShowUnansweredModal(false)}>
+              <Button variant="outline" className="flex-1" onClick={() => setShowReviewModal(false)}>
                 Go Back
               </Button>
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => { setShowUnansweredModal(false); handleSubmit(false) }}
-              >
-                Submit Anyway
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Flagged questions reminder — only reachable when nothing is
-          unanswered, so it never stacks behind the unanswered modal */}
-      {showFlaggedModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-amber-100 rounded-full p-2">
-                <Flag className="h-5 w-5 text-amber-600" />
-              </div>
-              <h3 className="font-bold text-lg">Flagged for Review</h3>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              You marked <span className="font-semibold text-foreground">{flagged.size} question{flagged.size > 1 ? "s" : ""}</span> for review:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {questions
-                .map((q, i) => ({ q, n: i + 1 }))
-                .filter(({ q }) => flagged.has(q.id))
-                .map(({ n }) => (
-                  <button
-                    key={n}
-                    onClick={() => { setCurrentIdx(n - 1); setShowFlaggedModal(false) }}
-                    className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition-colors"
-                  >
-                    {n}
-                  </button>
-                ))}
-            </div>
-            <p className="text-xs text-muted-foreground">Click a number to review it, or submit anyway.</p>
-            <div className="flex gap-3 pt-1">
-              <Button variant="outline" className="flex-1" onClick={() => setShowFlaggedModal(false)}>
-                Go Back
-              </Button>
-              <Button
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => { setShowFlaggedModal(false); handleSubmit(false) }}
+                onClick={() => { setShowReviewModal(false); handleSubmit(false) }}
               >
                 Submit Anyway
               </Button>
