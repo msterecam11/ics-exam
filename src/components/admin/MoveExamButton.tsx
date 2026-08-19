@@ -60,7 +60,7 @@ export default function MoveExamButton({ examId, currentCourseId }: Props) {
       <DialogTrigger render={<Button variant="outline" className="gap-2" />}>
         <FolderInput className="h-4 w-4" /> Move to Course
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Move Exam to a Different Course</DialogTitle>
         </DialogHeader>

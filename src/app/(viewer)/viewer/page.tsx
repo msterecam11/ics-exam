@@ -222,7 +222,7 @@ function ExamSection({ items }: { items: ExamItem[] }) {
 
       {/* Detail modal */}
       <Dialog open={!!detail} onOpenChange={v => { if (!v) setDetail(null) }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{detail?.full_name}</DialogTitle>
           </DialogHeader>
@@ -578,7 +578,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
 
       {/* Detail modal */}
       <Dialog open={!!detail} onOpenChange={v => { if (!v) setDetail(null) }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{detail?.s.name}</DialogTitle>
           </DialogHeader>

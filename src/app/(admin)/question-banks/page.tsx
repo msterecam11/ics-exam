@@ -94,7 +94,7 @@ export default function QuestionBanksPage() {
           <DialogTrigger render={<Button onClick={openCreate} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2" />}>
             <Plus className="h-4 w-4" /> New Bank
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit Question Bank" : "Create Question Bank"}</DialogTitle>
             </DialogHeader>

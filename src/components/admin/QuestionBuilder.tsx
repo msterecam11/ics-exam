@@ -444,7 +444,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
 
       {/* GIFT import dialog */}
       <Dialog open={giftOpen} onOpenChange={setGiftOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Import Questions — GIFT Format</DialogTitle>
           </DialogHeader>
@@ -486,7 +486,7 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
 
       {/* CSV import dialog */}
       <Dialog open={csvOpen} onOpenChange={setCsvOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Import Questions — CSV</DialogTitle>
           </DialogHeader>

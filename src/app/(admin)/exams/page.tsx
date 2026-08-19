@@ -88,7 +88,7 @@ function ExamsContent() {
           >
             <Plus className="h-4 w-4" /> New Exam
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Create New Exam</DialogTitle>
             </DialogHeader>

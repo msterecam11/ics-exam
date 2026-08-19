@@ -62,7 +62,7 @@ export default function BankHeaderActions({
         <DialogTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
           <Pencil className="h-3.5 w-3.5" />
         </DialogTrigger>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Question Bank</DialogTitle>
           </DialogHeader>
