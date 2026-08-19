@@ -24,6 +24,10 @@ export interface CSVParsedQuestion {
   choices?: { text: string; is_correct: boolean; score: number }[]
   ordering_items?: { text: string; correct_position: number }[]
   matching_pairs?: { left_item: string; right_item: string }[]
+  // Original row number — not used by the plain-CSV insert path, only read
+  // by the zip-bundle importer to point a "filename not found" warning at
+  // the right row.
+  _row?: number
 }
 
 export interface CSVParseResult {
@@ -112,6 +116,7 @@ export function parseCSV(csvText: string): CSVParseResult {
       ai_guide: ai_guide?.trim() || undefined,
       section: section?.trim() || undefined,
       image_url: image_url?.trim() || undefined,
+      _row: rowNum,
     }
 
     const filledOpts = opts.filter((o) => o.trim())

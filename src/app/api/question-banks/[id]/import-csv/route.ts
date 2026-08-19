@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { parseCSV } from "@/lib/csv-parser"
+import { insertParsedQuestions } from "@/lib/importQuestions"
 import { parseBody, res400, res413, BodyTooLargeError, IMPORT_BODY_BYTES } from "@/lib/apiUtils"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -27,66 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     )
   }
 
-  let orderIndex = start_index
-  let created = 0
-
-  // `section` is deliberately ignored here — a bank question is reused
-  // across many exams and can't belong to any one exam's section list
-  // (see exam_sections.sql). image_url still applies; a bank question can
-  // carry a figure the same as an exam-owned one.
-  for (const q of questions) {
-    const { data: question, error } = await db
-      .from("questions")
-      .insert({
-        question_bank_id: bankId,
-        type: q.type,
-        text: q.text,
-        score: q.score,
-        order_index: orderIndex++,
-        ai_scoring_guide: q.ai_guide ?? null,
-        image_url: q.image_url ?? null,
-      })
-      .select("id")
-      .single()
-
-    if (error || !question) continue
-
-    if ((q.type === "mcq_single" || q.type === "mcq_multi") && q.choices?.length) {
-      await db.from("choices").insert(
-        q.choices.map((c, i) => ({
-          question_id: question.id,
-          text: c.text,
-          is_correct: c.is_correct,
-          score: c.score,
-          order_index: i,
-        }))
-      )
-    }
-
-    if (q.type === "ordering" && q.ordering_items?.length) {
-      await db.from("ordering_items").insert(
-        q.ordering_items.map((item, i) => ({
-          question_id: question.id,
-          text: item.text,
-          correct_position: item.correct_position,
-          order_index: i,
-        }))
-      )
-    }
-
-    if (q.type === "matching" && q.matching_pairs?.length) {
-      await db.from("matching_pairs").insert(
-        q.matching_pairs.map((p, i) => ({
-          question_id: question.id,
-          left_item: p.left_item,
-          right_item: p.right_item,
-          order_index: i,
-        }))
-      )
-    }
-
-    created++
-  }
+  // `section` is ignored here — a bank question is reused across many exams
+  // and can't belong to any one exam's section list (see exam_sections.sql).
+  const created = await insertParsedQuestions({ question_bank_id: bankId }, questions, start_index)
 
   return NextResponse.json({ created, total: questions.length, errors })
 }

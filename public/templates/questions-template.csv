@@ -1,7 +1,9 @@
 type,text,score,ai_guide,section,image_url,opt1,opt2,opt3,opt4,opt5,opt6
 // section and image_url are both optional — leave them blank and a row imports exactly as before.
 // section: matched by title, auto-created if it doesn't exist yet in this exam.
-// image_url: must be a link to an already-hosted image (CSV can't carry a file).
+// image_url: a link to an already-hosted image, OR a bare filename (e.g.
+// "photo1.jpg") if you zip this CSV together with your image files and
+// upload the .zip instead of the .csv — same folder or subfolders, doesn't matter.
 mcq_single,What is the capital of France?,10,,Geography,,Paris:10,London:0,Berlin:5,Rome:0,,
 mcq_single,Which gas do plants absorb during photosynthesis?,10,,Geography,,Carbon Dioxide:10,Oxygen:0,Nitrogen:0,Hydrogen:0,,
 mcq_multi,Select all mammals:,4,,Biology,,Whale:1,Dolphin:1,Eagle:0,Salmon:0,Bat:1,

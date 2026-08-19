@@ -195,12 +195,22 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
     if (!csvFile) return
     setCsvImporting(true)
     setCsvErrors([])
-    const text = await csvFile.text()
-    const res = await fetch(`${baseUrl}/import-csv`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ csv_text: text, start_index: questions.length }),
-    })
+
+    const isZip = csvFile.name.toLowerCase().endsWith(".zip")
+    let res: Response
+    if (isZip) {
+      const formData = new FormData()
+      formData.append("file", csvFile)
+      formData.append("start_index", String(questions.length))
+      res = await fetch(`${baseUrl}/import-csv-zip`, { method: "POST", body: formData })
+    } else {
+      const text = await csvFile.text()
+      res = await fetch(`${baseUrl}/import-csv`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv_text: text, start_index: questions.length }),
+      })
+    }
     setCsvImporting(false)
     const data = await res.json()
     if (!res.ok) {
@@ -502,17 +512,20 @@ export default function QuestionBuilder({ examId, questionBankId, initialQuestio
               <p>matching   — opt: <span className="text-foreground">Left:Right</span> pairs</p>
               <p>open_ended — use ai_guide column for scoring hints</p>
               <p className="pt-1 border-t mt-1">section    — optional, matched by title, created automatically{questionBankId ? " (exam import only — ignored here)" : ""}</p>
-              <p>image_url  — optional, a link to an already-hosted image (not a file upload)</p>
+              <p>image_url  — optional, either a hosted image link, OR a bare filename (e.g. "photo1.jpg") if uploading a .zip below</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Upload your filled CSV</label>
+              <label className="block text-sm font-medium mb-2">Upload your filled CSV — or a .zip with the CSV + images together</label>
               <input
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.zip,application/zip"
                 className="block w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-xs file:font-medium file:bg-background hover:file:bg-muted cursor-pointer"
                 onChange={(e) => { setCsvFile(e.target.files?.[0] ?? null); setCsvErrors([]) }}
               />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                To include figures: zip your CSV together with the image files (any folder layout), and put each image's <span className="font-mono">filename</span> in the image_url column instead of a URL.
+              </p>
             </div>
 
             {csvFile && (
