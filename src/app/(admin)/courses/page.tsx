@@ -112,7 +112,9 @@ function CoursesContent() {
                 <Label>Group *</Label>
                 <Select value={groupId} onValueChange={(v) => setGroupId(v ?? "")}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a group" />
+                    <SelectValue placeholder="Select a group">
+                      {(v: string) => groups.find((g) => g.id === v)?.name ?? "Select a group"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {groups.map((g) => (

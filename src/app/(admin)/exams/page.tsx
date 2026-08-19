@@ -96,7 +96,14 @@ function ExamsContent() {
               <div className="space-y-2">
                 <Label>Course *</Label>
                 <Select value={form.course_id} onValueChange={(v) => set("course_id", v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Select course" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select course">
+                      {(v: string) => {
+                        const c: any = courses.find((c: any) => c.id === v)
+                        return c ? `${c.groups?.name} → ${c.name}` : "Select course"
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     {courses.map((c: any) => (
                       <SelectItem key={c.id} value={c.id}>

@@ -204,7 +204,14 @@ export default function ExamQuestionSource({
                         value={link.question_bank_id}
                         onValueChange={(v) => updateLink(index, { question_bank_id: v ?? "", draw_config: { total: 10 } })}
                       >
-                        <SelectTrigger><SelectValue placeholder="Select a bank" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a bank">
+                            {(v: string) => {
+                              const b = banks.find((b) => b.id === v)
+                              return b ? `${b.name} (${b.question_count} questions)` : "Select a bank"
+                            }}
+                          </SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           {banks.filter(b => b.id === link.question_bank_id || !usedBankIds.has(b.id)).map(b => (
                             <SelectItem key={b.id} value={b.id}>{b.name} ({b.question_count} questions)</SelectItem>

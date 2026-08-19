@@ -76,7 +76,13 @@ export default function MoveExamButton({ examId, currentCourseId }: Props) {
           <div className="space-y-4 mt-1">
             <Select value={selectedCourseId} onValueChange={v => { if (v) setSelectedCourseId(v) }}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a course" />
+                <SelectValue placeholder="Select a course">
+                  {(v: string) => {
+                    const c = courses.find((c: any) => c.id === v)
+                    if (!c) return "Select a course"
+                    return `${c.groups?.name} → ${c.name}${c.id === currentCourseId ? " (current)" : ""}`
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {courses.map((c: any) => (
