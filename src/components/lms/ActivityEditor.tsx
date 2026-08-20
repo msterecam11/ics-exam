@@ -1264,6 +1264,7 @@ export default function ActivityEditor({
   const [pickerOpen,  setPickerOpen]  = useState(false)
   const [csvOpen,     setCsvOpen]     = useState(false)
   const [bankOpen,    setBankOpen]    = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
 
   const meta        = MODULE_TYPE_META[moduleType] ?? { label: moduleType, icon: "📝" }
   const totalPoints = questions.reduce((sum, q) => sum + q.points, 0)
@@ -1287,6 +1288,43 @@ export default function ActivityEditor({
       if (!res.ok) toast.error("Auto-save failed")
     }, 1500)
   }, [moduleId])
+
+  // ── Recalculate existing attempts (Final Exam only) ─────────────
+  // A wrongly-keyed MCQ answer used to stay wrong forever for anyone who
+  // already took the exam — their score was frozen at submission time with
+  // no way to fix it after the key was corrected. This re-grades every
+  // stored attempt against the CURRENT key.
+  async function handleRecalculate() {
+    if (!confirm(
+      "Re-grade every student's existing attempt on this exam against the current answer key?\n\n" +
+      "This updates their stored score and pass/fail if it changes. Open-ended question scores are kept as-is."
+    )) return
+
+    setRecalculating(true)
+    try {
+      const res = await fetch(`/api/lms/modules/${moduleId}/recalculate-attempts`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Recalculation failed")
+
+      if (data.recalculated === 0) {
+        toast.info("No attempts to recalculate yet")
+      } else if (data.changed === 0) {
+        toast.success(`Checked ${data.recalculated} attempt${data.recalculated !== 1 ? "s" : ""} — no scores changed`)
+      } else {
+        const newlyPassed = data.flips.filter((f: any) => !f.before.passed && f.after.passed).length
+        const newlyFailed = data.flips.filter((f: any) => f.before.passed && !f.after.passed).length
+        toast.success(
+          `${data.changed} of ${data.recalculated} attempt${data.recalculated !== 1 ? "s" : ""} updated` +
+          (newlyPassed ? ` — ${newlyPassed} now passing` : "") +
+          (newlyFailed ? ` — ${newlyFailed} now failing` : "")
+        )
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Recalculation failed")
+    } finally {
+      setRecalculating(false)
+    }
+  }
 
   // ── Handlers ──────────────────────────────────────────────────
   function applyQuestions(next: Question[]) {
@@ -1351,11 +1389,24 @@ export default function ActivityEditor({
               </span>
             )}
           </div>
-          {/* Save status */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 shrink-0">
-            {saveStatus === "saving"  && <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>}
-            {saveStatus === "saved"   && <><CheckCircle2 className="h-3 w-3 text-emerald-500" /> Auto-saved</>}
-            {saveStatus === "unsaved" && <span className="text-amber-500">Unsaved</span>}
+          <div className="flex items-center gap-3 shrink-0">
+            {moduleType === "final_exam" && (
+              <button
+                onClick={handleRecalculate}
+                disabled={recalculating}
+                title="Re-grade every student's existing attempt against the current answer key"
+                className="flex items-center gap-1.5 text-xs font-medium text-[#1B4F8A] hover:text-[#163f6e] disabled:opacity-50"
+              >
+                {recalculating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Recalculate Attempts
+              </button>
+            )}
+            {/* Save status */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              {saveStatus === "saving"  && <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>}
+              {saveStatus === "saved"   && <><CheckCircle2 className="h-3 w-3 text-emerald-500" /> Auto-saved</>}
+              {saveStatus === "unsaved" && <span className="text-amber-500">Unsaved</span>}
+            </div>
           </div>
         </div>
       </div>
