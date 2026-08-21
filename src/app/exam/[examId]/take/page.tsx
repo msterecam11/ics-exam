@@ -208,6 +208,19 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       const storedFlagged = sessionStorage.getItem(`flagged_${id}`)
       if (storedFlagged) setFlagged(new Set(JSON.parse(storedFlagged)))
 
+      // Restore any autosaved in-progress answers — covers a refresh in this
+      // same tab AND a candidate resuming on a completely different device,
+      // since this comes from the server, not sessionStorage.
+      try {
+        const draftRes = await fetch(`/api/candidates/${candidateData.id}/autosave`)
+        if (draftRes.ok) {
+          const { draft_answers } = await draftRes.json()
+          if (draft_answers && Object.keys(draft_answers).length > 0) {
+            setAnswers(draft_answers)
+          }
+        }
+      } catch { /* non-critical — worst case they just start with a blank form */ }
+
       // Timer
       const startedAt = new Date(candidateData.started_at).getTime()
       const durationMs = examData.duration_minutes * 60 * 1000
@@ -217,6 +230,24 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       setLoading(false)
     })
   }, [params, router])
+
+  // Autosave answers as they go — debounced so we're not firing a request on
+  // every keystroke. This is the actual fix for "the tab froze/closed and
+  // everything was lost": whatever's saved here survives a refresh, a
+  // crashed tab, or resuming on a completely different device, since it
+  // lives server-side, not in this browser's memory or sessionStorage.
+  useEffect(() => {
+    if (loading || submitted.current) return
+    if (Object.keys(answers).length === 0) return // nothing to save yet
+    const timer = setTimeout(() => {
+      fetch(`/api/candidates/${candidateIdRef.current}/autosave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers }),
+      }).catch(() => { /* best-effort — next change will retry */ })
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [answers, loading])
 
   // Countdown timer
   useEffect(() => {

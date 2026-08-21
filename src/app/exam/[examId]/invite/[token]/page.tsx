@@ -36,6 +36,17 @@ export default function InvitePage({ params }: { params: Promise<{ examId: strin
         setLoading(false)
         return
       }
+
+      // Already registered and still mid-sitting (tab froze, closed, or
+      // they're picking this up on a different device) — skip straight
+      // back into the exam instead of showing the registration form again.
+      if (data.resume) {
+        sessionStorage.setItem(`exam_${id}`, JSON.stringify(data.exam))
+        sessionStorage.setItem(`candidate_${id}`, JSON.stringify(data.resume))
+        router.push(`/exam/${id}/take`)
+        return
+      }
+
       setExam(data.exam)
       setForm({
         full_name: data.invite.full_name ?? "",
