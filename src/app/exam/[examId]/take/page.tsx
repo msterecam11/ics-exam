@@ -206,17 +206,23 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       if (storedIntroSeen) setIntroSeenSections(new Set(JSON.parse(storedIntroSeen)))
 
       const storedFlagged = sessionStorage.getItem(`flagged_${id}`)
-      if (storedFlagged) setFlagged(new Set(JSON.parse(storedFlagged)))
+      const localFlagged: string[] = storedFlagged ? JSON.parse(storedFlagged) : []
+      if (localFlagged.length > 0) setFlagged(new Set(localFlagged))
 
-      // Restore any autosaved in-progress answers — covers a refresh in this
-      // same tab AND a candidate resuming on a completely different device,
-      // since this comes from the server, not sessionStorage.
+      // Restore any autosaved in-progress answers/flags — covers a refresh
+      // in this same tab AND a candidate resuming on a completely different
+      // device, since this comes from the server, not sessionStorage. Flags
+      // are merged (not replaced) with whatever this browser already had,
+      // so neither source can lose the other's data.
       try {
         const draftRes = await fetch(`/api/candidates/${candidateData.id}/autosave`)
         if (draftRes.ok) {
-          const { draft_answers } = await draftRes.json()
+          const { draft_answers, flagged_questions } = await draftRes.json()
           if (draft_answers && Object.keys(draft_answers).length > 0) {
             setAnswers(draft_answers)
+          }
+          if (Array.isArray(flagged_questions) && flagged_questions.length > 0) {
+            setFlagged(new Set([...localFlagged, ...flagged_questions]))
           }
         }
       } catch { /* non-critical — worst case they just start with a blank form */ }
@@ -238,16 +244,16 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
   // lives server-side, not in this browser's memory or sessionStorage.
   useEffect(() => {
     if (loading || submitted.current) return
-    if (Object.keys(answers).length === 0) return // nothing to save yet
+    if (Object.keys(answers).length === 0 && flagged.size === 0) return // nothing to save yet
     const timer = setTimeout(() => {
       fetch(`/api/candidates/${candidateIdRef.current}/autosave`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers, flagged: [...flagged] }),
       }).catch(() => { /* best-effort — next change will retry */ })
     }, 2000)
     return () => clearTimeout(timer)
-  }, [answers, loading])
+  }, [answers, flagged, loading])
 
   // Countdown timer
   useEffect(() => {

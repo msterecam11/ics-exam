@@ -19,10 +19,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params
   const body = await req.json().catch(() => ({}))
-  const { answers } = body
+  const { answers, flagged } = body
 
   if (typeof answers !== "object" || answers === null || Array.isArray(answers)) {
     return NextResponse.json({ error: "answers must be an object" }, { status: 400 })
+  }
+  if (flagged !== undefined && !Array.isArray(flagged)) {
+    return NextResponse.json({ error: "flagged must be an array" }, { status: 400 })
   }
 
   // Never overwrite a real submission's answers with a stray late autosave —
@@ -32,7 +35,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (candidate.submitted_at) return NextResponse.json({ ok: true, skipped: "already submitted" })
 
-  const { error } = await db.from("candidates").update({ draft_answers: answers }).eq("id", id)
+  const update: Record<string, unknown> = { draft_answers: answers }
+  if (flagged !== undefined) update.flagged_questions = flagged
+
+  const { error } = await db.from("candidates").update(update).eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ ok: true })
@@ -45,10 +51,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id } = await params
   const { data: candidate } = await db
     .from("candidates")
-    .select("draft_answers, submitted_at")
+    .select("draft_answers, flagged_questions, submitted_at")
     .eq("id", id)
     .single()
 
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json({ draft_answers: candidate.draft_answers ?? {}, submitted: !!candidate.submitted_at })
+  return NextResponse.json({
+    draft_answers: candidate.draft_answers ?? {},
+    flagged_questions: candidate.flagged_questions ?? [],
+    submitted: !!candidate.submitted_at,
+  })
 }
