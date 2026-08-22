@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText, ShieldAlert, Trash2 } from "lucide-react"
+import { Eye, Send, CheckCircle2, XCircle, Clock, Users, BarChart2, Loader2, FileText, ShieldAlert, Trash2, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -24,6 +24,7 @@ export default function AdminResultsView({ exam, candidates }: Props) {
   const [deleting,  setDeleting]  = useState<string | null>(null)
   const [localCandidates, setLocalCandidates] = useState(candidates)
   const [manualScores, setManualScores] = useState<Record<string, ManualScoreRow | null>>({})
+  const [checkingOverdue, setCheckingOverdue] = useState(false)
 
   useEffect(() => {
     fetch(`/api/exams/${exam.id}/manual-scores`)
@@ -63,6 +64,33 @@ export default function AdminResultsView({ exam, candidates }: Props) {
     toast.success(`${name} deleted`)
   }
 
+  // Auto-submit is purely client-side (a timer in the candidate's browser) —
+  // if their tab freezes or is closed, nothing server-side ever notices
+  // their time expired and they'd sit as "In progress" forever otherwise.
+  // This finalizes anyone actually overdue using their autosaved answers.
+  async function checkOverdue() {
+    setCheckingOverdue(true)
+    try {
+      const res = await fetch(`/api/exams/${exam.id}/check-overdue`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Check failed")
+
+      if (data.finalized.length === 0) {
+        toast.info("No overdue exams found — everyone's either submitted or still within their time window.")
+      } else {
+        const names = data.finalized.map((f: any) => `${f.full_name}: ${f.total_score.toFixed(1)}%, ${f.passed ? "Passed" : "Failed"}`)
+        toast.success(
+          `${data.finalized.length} candidate${data.finalized.length > 1 ? "s" : ""} auto-submitted — ${names.join(" · ")}`
+        )
+        router.refresh()
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Check failed")
+    } finally {
+      setCheckingOverdue(false)
+    }
+  }
+
   async function releaseAll() {
     setReleasing("all")
     const res = await fetch(`/api/exams/${exam.id}/release`, {
@@ -94,16 +122,28 @@ export default function AdminResultsView({ exam, candidates }: Props) {
           <h2 className="text-xl font-bold">{exam.title}</h2>
           <p className="text-muted-foreground text-sm">{exam.courses?.groups?.name} → {exam.courses?.name}</p>
         </div>
-        {exam.show_results === "admin_release" && (
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={releaseAll}
-            disabled={releasing === "all" || submitted.length === 0}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            variant="outline"
+            onClick={checkOverdue}
+            disabled={checkingOverdue}
+            className="gap-2"
+            title="Finalize any candidate whose time has run out but never submitted"
           >
-            {releasing === "all" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Release All Results
+            {checkingOverdue ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Check for Overdue Exams
           </Button>
-        )}
+          {exam.show_results === "admin_release" && (
+            <Button
+              onClick={releaseAll}
+              disabled={releasing === "all" || submitted.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              {releasing === "all" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Release All Results
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Overview stats */}
