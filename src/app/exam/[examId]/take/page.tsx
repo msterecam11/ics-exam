@@ -217,7 +217,18 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
       try {
         const draftRes = await fetch(`/api/candidates/${candidateData.id}/autosave`)
         if (draftRes.ok) {
-          const { draft_answers, flagged_questions } = await draftRes.json()
+          const { draft_answers, flagged_questions, submitted: alreadySubmitted } = await draftRes.json()
+
+          // Already finalized — e.g. the admin's "Check for Overdue Exams"
+          // caught this candidate while their tab was gone, and they're only
+          // now reopening it. Send them straight to their results instead of
+          // letting them start "answering" an exam that's already scored.
+          if (alreadySubmitted) {
+            submitted.current = true
+            router.replace(`/exam/${id}/results?candidate=${candidateData.id}`)
+            return
+          }
+
           if (draft_answers && Object.keys(draft_answers).length > 0) {
             setAnswers(draft_answers)
           }
@@ -250,7 +261,18 @@ export default function TakePage({ params }: { params: Promise<{ examId: string 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers, flagged: [...flagged] }),
-      }).catch(() => { /* best-effort — next change will retry */ })
+      })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          // Caught mid-sitting, not just on load — e.g. the candidate was
+          // idle/frozen when the admin's sweep finalized them, and this is
+          // the first interaction since they came back.
+          if (data?.submitted && !submitted.current) {
+            submitted.current = true
+            router.replace(`/exam/${examIdRef.current}/results?candidate=${candidateIdRef.current}`)
+          }
+        })
+        .catch(() => { /* best-effort — next change will retry */ })
     }, 2000)
     return () => clearTimeout(timer)
   }, [answers, flagged, loading])

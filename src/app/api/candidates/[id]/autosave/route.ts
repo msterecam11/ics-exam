@@ -33,7 +33,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // have moved to the results page by then anyway).
   const { data: candidate } = await db.from("candidates").select("submitted_at").eq("id", id).single()
   if (!candidate) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  if (candidate.submitted_at) return NextResponse.json({ ok: true, skipped: "already submitted" })
+  // Already finalized — e.g. an admin's "Check for Overdue Exams" caught
+  // this candidate while their tab was frozen/gone, and it's since come
+  // back. Tell the caller so the take page can redirect to results instead
+  // of quietly continuing to accept answers that will never be saved.
+  if (candidate.submitted_at) return NextResponse.json({ ok: true, submitted: true })
 
   const update: Record<string, unknown> = { draft_answers: answers }
   if (flagged !== undefined) update.flagged_questions = flagged
@@ -41,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { error } = await db.from("candidates").update(update).eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, submitted: false })
 }
 
 // Public — fetch back whatever's saved so far, keyed only by candidate id

@@ -118,8 +118,14 @@ export async function finalizeCandidateSubmission(
   const percentage = totalPossible > 0 ? (totalScore / totalPossible) * 100 : 0
   const passed = percentage >= (examRow?.passing_score ?? 60)
 
-  await db.from("candidate_answers").insert(answerRows)
-  await db
+  // Guard against a real submission and the overdue sweep racing each other
+  // for the same candidate — `.is("submitted_at", null)` makes this an
+  // atomic claim: only whichever caller gets here first actually flips the
+  // row, so a genuine race produces one winner and one harmless no-op
+  // instead of two callers both inserting answer rows (which candidate_
+  // answers' UNIQUE(candidate_id, question_id) constraint would then
+  // reject) or the score getting silently overwritten a second time.
+  const { data: claimed, error: updateError } = await db
     .from("candidates")
     .update({
       submitted_at: new Date().toISOString(),
@@ -127,6 +133,25 @@ export async function finalizeCandidateSubmission(
       passed,
     })
     .eq("id", candidateId)
+    .is("submitted_at", null)
+    .select("id")
+
+  if (updateError) throw new Error(updateError.message)
+
+  if (!claimed || claimed.length === 0) {
+    // Someone else finalized this candidate in the moment between our
+    // caller's own "already submitted?" check and now — return their real,
+    // already-stored result instead of erroring or silently double-writing.
+    const { data: existing } = await db
+      .from("candidates")
+      .select("total_score, passed")
+      .eq("id", candidateId)
+      .single()
+    return { total_score: existing?.total_score ?? percentage, passed: existing?.passed ?? passed }
+  }
+
+  const { error: insertError } = await db.from("candidate_answers").insert(answerRows)
+  if (insertError) console.error(`[finalizeCandidateSubmission] answer insert failed for ${candidateId}:`, insertError.message)
 
   return { total_score: percentage, passed }
 }
