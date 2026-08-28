@@ -250,9 +250,9 @@ function scoreQuestions(questions: PackageQuestion[], answers: Record<string, an
 type QuizPhase = "taking" | "review"
 
 function QuizPlayer({
-  item, passMark, onComplete, previewMode,
+  item, packageId, passMark, onComplete, previewMode,
 }: {
-  item: PackageItem; passMark: number; onComplete: (score: { score: number; max: number; pct: number; passed: boolean }) => void; previewMode: boolean
+  item: PackageItem; packageId: string; passMark: number; onComplete: (score: { score: number; max: number; pct: number; passed: boolean }) => void; previewMode: boolean
 }) {
   const cfg       = item.config as any
   const questions: PackageQuestion[] = cfg.questions ?? []
@@ -337,10 +337,15 @@ function QuizPlayer({
         const ans = answers[q.id] as string | undefined
         if (!ans?.trim()) { newAiJust[q.id] = { score: 0, justification: "No answer provided." }; return }
         try {
+          // Only the package/item/question IDs and the student's own answer
+          // are sent — the server looks up the real question text/rubric/max
+          // score itself rather than trusting whatever a client claims they
+          // are (a forged, trivially-satisfiable rubric was previously a
+          // guaranteed-perfect-score exploit for any open_ended item).
           const res = await fetch("/api/lms/packages/score-open-ended", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question_text: q.text, model_answer: q.model_answer ?? "", student_answer: ans, max_score: q.points }),
+            body: JSON.stringify({ package_id: packageId, item_id: item.id, question_id: q.id, student_answer: ans }),
           })
           newAiJust[q.id] = res.ok ? await res.json() : { score: q.points, justification: "AI scoring unavailable." }
         } catch { newAiJust[q.id] = { score: q.points, justification: "AI scoring unavailable." } }
@@ -1106,6 +1111,7 @@ export default function PackagePlayer({
               return (
                 <QuizPlayer
                   item={currentItem}
+                  packageId={packageId}
                   passMark={passMark}
                   previewMode={previewMode}
                   onComplete={s => handleItemComplete(currentItem.id, s)}

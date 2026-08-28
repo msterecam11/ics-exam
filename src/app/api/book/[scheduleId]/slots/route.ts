@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { rateLimit } from "@/lib/rateLimit"
+import { getIp, res429 } from "@/lib/apiUtils"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
 // GET /api/book/[scheduleId]/slots
 // Public endpoint — returns available slots for the booking page
 // Only returns future slots that are not full or blocked
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, { params }: Ctx) {
+  // Unlike its sibling public booking endpoints, this one previously had no
+  // rate limit at all — unthrottled DB-hitting scraping/DoS surface.
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-slots:${getIp(req)}`, 60, 60)
+  if (!allowed) return res429(retryAfterSeconds)
+
   const { scheduleId } = await params
 
   const now = new Date().toISOString()

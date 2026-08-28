@@ -4,6 +4,14 @@ import { parseCSV, type CSVParsedQuestion } from "@/lib/csv-parser"
 
 const BUCKET = "lms-library"
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg"])
+// Only the 40MB *compressed* upload size was ever capped — a small,
+// highly-compressible zip could still expand to gigabytes in server memory
+// during JSZip.loadAsync/entry.async(), an OOM/DoS risk on the same process
+// serving the exam API. Checked twice: declared sizes from the zip's own
+// central directory (before decompressing anything), then actual bytes read
+// as a second guard in case a declared size can't be trusted.
+const MAX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
+const MAX_ENTRIES = 500
 
 function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? ""
@@ -24,6 +32,20 @@ interface ZipImportResult {
 // through untouched — the zip is optional per-row, not required.
 export async function importQuestionsFromZip(zipBuffer: ArrayBuffer): Promise<ZipImportResult> {
   const zip = await JSZip.loadAsync(zipBuffer)
+
+  const allEntries = Object.values(zip.files).filter((f) => !f.dir)
+  if (allEntries.length > MAX_ENTRIES) {
+    return { questions: [], errors: [{ row: 0, message: `Too many files in the zip (max ${MAX_ENTRIES})` }] }
+  }
+  const declaredUncompressed = allEntries.reduce(
+    (sum, f) => sum + ((f as any)._data?.uncompressedSize ?? 0), 0
+  )
+  if (declaredUncompressed > MAX_UNCOMPRESSED_BYTES) {
+    return {
+      questions: [],
+      errors: [{ row: 0, message: `Zip contents too large when decompressed (max ${MAX_UNCOMPRESSED_BYTES / (1024 * 1024)}MB uncompressed)` }],
+    }
+  }
 
   const csvEntries = Object.values(zip.files).filter(
     (f) => !f.dir && extOf(f.name) === "csv"
@@ -58,9 +80,19 @@ export async function importQuestionsFromZip(zipBuffer: ArrayBuffer): Promise<Zi
 
   // Upload every image up front, keyed by lowercased basename.
   const urlByFilename = new Map<string, string>()
+  let totalReadBytes = 0
   for (const entry of imageEntries) {
     const key = baseName(entry.name).toLowerCase()
     const bytes = await entry.async("arraybuffer")
+    totalReadBytes += bytes.byteLength
+    // Second guard, in case a declared central-directory size wasn't
+    // trustworthy — bail before uploading anything further.
+    if (totalReadBytes > MAX_UNCOMPRESSED_BYTES) {
+      return {
+        questions: [],
+        errors: [{ row: 0, message: `Zip contents too large when decompressed (max ${MAX_UNCOMPRESSED_BYTES / (1024 * 1024)}MB uncompressed)` }],
+      }
+    }
     const ext = extOf(entry.name) || "png"
     const storagePath = `exams/questions/${crypto.randomUUID()}.${ext}`
     const contentType = ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`

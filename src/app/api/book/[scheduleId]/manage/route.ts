@@ -7,15 +7,16 @@ import {
   sendConfirmationEmail,
 } from "@/lib/ms-graph"
 import { blockPoolSlots, unblockPoolSlots } from "@/lib/slot-pool"
-import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/rateLimit"
+import { getIp, res429 } from "@/lib/apiUtils"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
 // ─── GET — fetch booking by confirmation code ─────────────────────────────────
 export async function GET(req: NextRequest, { params }: Ctx) {
   // 30 lookups per IP per minute (anti-enumeration)
-  const rl = rateLimit(req, "manage-get", 30, 60 * 1000)
-  if (!rl.ok) return rateLimitResponse(rl)
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-manage-get:${getIp(req)}`, 30, 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { scheduleId } = await params
   const code = req.nextUrl.searchParams.get("code")?.toUpperCase()
@@ -65,8 +66,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 // ─── PATCH — reschedule to a new slot ────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   // 10 reschedule attempts per IP per 15 minutes
-  const rl = rateLimit(req, "manage-patch", 10, 15 * 60 * 1000)
-  if (!rl.ok) return rateLimitResponse(rl)
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-manage-patch:${getIp(req)}`, 10, 15 * 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { scheduleId } = await params
   const { confirmation_code, new_slot_id } = await req.json()
@@ -206,8 +207,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // ─── DELETE — cancel booking ──────────────────────────────────────────────────
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   // 10 cancel attempts per IP per 15 minutes
-  const rl = rateLimit(req, "manage-delete", 10, 15 * 60 * 1000)
-  if (!rl.ok) return rateLimitResponse(rl)
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-manage-delete:${getIp(req)}`, 10, 15 * 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { scheduleId } = await params
   const { confirmation_code } = await req.json()

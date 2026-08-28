@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/rateLimit"
+import { getIp, res429 } from "@/lib/apiUtils"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -9,8 +10,8 @@ type Ctx = { params: Promise<{ scheduleId: string }> }
 // Only exposes: id, full_name, track name (no sensitive data)
 export async function GET(req: NextRequest, { params }: Ctx) {
   // 60 roster fetches per IP per minute
-  const rl = rateLimit(req, "candidates", 60, 60 * 1000)
-  if (!rl.ok) return rateLimitResponse(rl)
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-candidates:${getIp(req)}`, 60, 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { scheduleId } = await params
 

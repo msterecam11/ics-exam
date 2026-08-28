@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { rateLimit, rateLimitResponse } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/rateLimit"
+import { getIp, res429 } from "@/lib/apiUtils"
 
 type Ctx = { params: Promise<{ scheduleId: string }> }
 
@@ -9,8 +10,8 @@ type Ctx = { params: Promise<{ scheduleId: string }> }
 // Body: { confirmation_code: string, rsvp_status: "accepted" | "declined" }
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   // 20 RSVP updates per IP per hour
-  const rl = rateLimit(req, "rsvp", 20, 60 * 60 * 1000)
-  if (!rl.ok) return rateLimitResponse(rl)
+  const { allowed, retryAfterSeconds } = await rateLimit(`book-rsvp:${getIp(req)}`, 20, 60 * 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { scheduleId } = await params
   const body = await req.json()

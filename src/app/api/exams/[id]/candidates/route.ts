@@ -54,6 +54,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Exam is not available" }, { status: 400 })
   }
 
+  // Open (no-invite) registration — without this check, re-registering with
+  // the same or a throwaway email redraws a fresh random question-bank
+  // selection every time, letting someone harvest the bank across a handful
+  // of registrations (rate-limited to 10/15min, but that's still enough to
+  // see most of a modest bank in under an hour). A candidate who already has
+  // an in-progress registration resumes it instead of getting a fresh draw;
+  // one who already submitted can't register again for the same exam.
+  if (!invite) {
+    const { data: existing } = await db
+      .from("candidates")
+      .select("id, submitted_at")
+      .eq("exam_id", exam_id)
+      .eq("email", email.trim().toLowerCase())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existing?.submitted_at) {
+      return NextResponse.json({ error: "You have already completed this exam." }, { status: 409 })
+    }
+    if (existing) {
+      const { data: full } = await db.from("candidates").select("*").eq("id", existing.id).single()
+      return NextResponse.json(full, { status: 200 })
+    }
+  }
+
   const { data, error } = await db
     .from("candidates")
     .insert({
