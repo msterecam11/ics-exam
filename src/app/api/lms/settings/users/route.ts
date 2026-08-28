@@ -3,6 +3,14 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
+import { auditLog } from "@/lib/audit"
+
+// Escapes PostgREST `.or()` filter metacharacters so a search string can't
+// break out of the intended ilike clause (comma/paren are clause/grouping
+// delimiters in PostgREST's filter DSL; % and _ are ordinary SQL wildcards).
+function escapeFilterValue(v: string) {
+  return v.replace(/[%_,()]/g, (c) => "\\" + c)
+}
 
 function isAdmin(role?: string) { return role === "admin" }
 function isMgr(role?: string)   { return role === "admin" || role === "instructor" }
@@ -43,7 +51,8 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: false })
 
   if (search) {
-    query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
+    const s = escapeFilterValue(search)
+    query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%`)
   }
   if (role !== "all") {
     query = query.eq("role", role)
@@ -84,6 +93,7 @@ export async function POST(req: Request) {
   }).select("id, name, email, role, is_active, department, phone, created_at").single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "user.create", "admin_user", data.id, data.name, { role: data.role })
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -126,6 +136,13 @@ export async function PATCH(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Log which fields actually changed (esp. role/is_active/password) — this
+  // is the highest-privilege mutation surface in the app and previously had
+  // zero audit trail.
+  await auditLog(session, "user.update", "admin_user", data.id, data.name, {
+    changed: Object.keys(rest),
+    ...(password ? { password_reset: true } : {}),
+  })
   return NextResponse.json(data)
 }
 
@@ -142,7 +159,10 @@ export async function DELETE(req: Request) {
   if (id === session.user.id)
     return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
 
+  const { data: target } = await db.from("admin_users").select("name, email").eq("id", id).single()
+
   const { error } = await db.from("admin_users").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "user.delete", "admin_user", id, target?.name ?? target?.email ?? null)
   return NextResponse.json({ ok: true })
 }

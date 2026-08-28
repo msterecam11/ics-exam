@@ -17,6 +17,7 @@ export const maxDuration = 120
 import { NextResponse } from "next/server"
 import { writeFile, mkdir, readFile } from "node:fs/promises"
 import path from "node:path"
+import { auth } from "@/lib/auth"
 import { compileBlueprint } from "@/lib/course-gen/compiler"
 import { screenshotSlide, handleQaJob } from "@/lib/course-gen/jobs/qa"
 import { handleSlideContentJob } from "@/lib/course-gen/jobs/slideContent"
@@ -31,16 +32,26 @@ const BASELINE_DIR = path.join(process.cwd(), ".harness", "baseline")
 // Frozen real slides — see the `corpus` branch below for why these are not fixtures.
 const CORPUS_FILE = path.join(process.cwd(), ".harness", "corpus.json")
 
-/** Refuses to exist in production — this endpoint renders arbitrary input. */
-function devOnly(): NextResponse | null {
+/**
+ * Refuses to exist in production, AND requires an admin/instructor session
+ * even outside production — this endpoint renders arbitrary client-supplied
+ * blueprints through the real Puppeteer pipeline and makes real model calls,
+ * so `NODE_ENV` alone isn't a permission check (a staging/preview deploy
+ * with NODE_ENV unset would otherwise leave this open to anyone with the URL).
+ */
+async function devOnly(): Promise<NextResponse | null> {
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+  const session = await auth()
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? "")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return null
 }
 
 export async function GET() {
-  const blocked = devOnly()
+  const blocked = await devOnly()
   if (blocked) return blocked
   return NextResponse.json({
     fixtures: FIXTURE_NAMES.map(name => ({
@@ -55,7 +66,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const blocked = devOnly()
+  const blocked = await devOnly()
   if (blocked) return blocked
 
   const body = await req.json().catch(() => ({}))

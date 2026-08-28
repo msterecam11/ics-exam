@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
+import { auditLog } from "@/lib/audit"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
 
@@ -105,6 +106,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             updates.locked_until = new Date(Date.now() + 15 * 60 * 1000).toISOString()
           }
           await db.from("admin_users").update(updates).eq("id", user.id)
+          await auditLog(
+            { user: { id: user.id, name: user.name, role: user.role } },
+            "login.failure", "admin_user", user.id, user.name,
+            { ip, locked: newAttempts >= 5 }
+          )
           return null
         }
 
@@ -113,6 +119,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           .from("admin_users")
           .update({ failed_attempts: 0, locked_until: null })
           .eq("id", user.id)
+        await auditLog(
+          { user: { id: user.id, name: user.name, role: user.role } },
+          "login.success", "admin_user", user.id, user.name,
+          { ip }
+        )
 
         return { id: user.id, email: user.email, name: user.name, role: user.role }
       },

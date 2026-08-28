@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
+import { auditLog } from "@/lib/audit"
 
 function isAdmin(role?: string) { return role === "admin" }
 function isViewer(role?: string) { return role === "viewer" }
@@ -9,6 +10,13 @@ function isViewer(role?: string) { return role === "viewer" }
 const EXAM_PERMISSIONS      = ["scores", "results", "reports", "manual_reports"] as const
 const INTERVIEW_PERMISSIONS = ["progress", "scores", "verdicts", "reports"] as const
 const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates", "reports", "last_login"] as const
+
+function allowedKeysFor(system: string) {
+  return system === "exam" ? EXAM_PERMISSIONS : system === "lms" ? LMS_PERMISSIONS : INTERVIEW_PERMISSIONS
+}
+function cleanPermissions(system: string, permissions: Record<string, boolean>) {
+  return Object.fromEntries(allowedKeysFor(system).map((k) => [k, permissions[k] === true]))
+}
 
 const AssignSchema = z.object({
   user_id:       z.string().uuid(),
@@ -76,10 +84,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Target user must be a viewer" }, { status: 400 })
 
   // Validate permissions keys make sense for the system
-  const allowedKeys = system === "exam" ? EXAM_PERMISSIONS : system === "lms" ? LMS_PERMISSIONS : INTERVIEW_PERMISSIONS
-  const cleanPerms = Object.fromEntries(
-    allowedKeys.map(k => [k, permissions[k] === true])
-  )
+  const cleanPerms = cleanPermissions(system, permissions)
 
   const { data, error } = await db
     .from("viewer_access")
@@ -93,6 +98,9 @@ export async function POST(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "viewer_access.grant", "viewer_access", data.id, label ?? resource_id, {
+    user_id, system, resource_type, resource_id, permissions: cleanPerms,
+  })
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -111,14 +119,24 @@ export async function PATCH(req: Request) {
 
   const { id, permissions } = parsed.data
 
+  // Look up the row's own system so permissions are whitelisted the same
+  // way POST does — previously this wrote whatever keys the client sent,
+  // with no reference to which system the row actually belongs to.
+  const { data: row } = await db.from("viewer_access").select("system").eq("id", id).single()
+  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  const cleanPerms = cleanPermissions(row.system, permissions)
+
   const { data, error } = await db
     .from("viewer_access")
-    .update({ permissions })
+    .update({ permissions: cleanPerms })
     .eq("id", id)
     .select("id, system, resource_type, resource_id, label, permissions, created_at")
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "viewer_access.update", "viewer_access", data.id, data.label ?? data.resource_id, {
+    permissions: cleanPerms,
+  })
   return NextResponse.json(data)
 }
 
@@ -132,7 +150,12 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
+  const { data: row } = await db.from("viewer_access").select("system, label, resource_id, user_id").eq("id", id).single()
+
   const { error } = await db.from("viewer_access").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "viewer_access.revoke", "viewer_access", id, row?.label ?? row?.resource_id ?? null, {
+    user_id: row?.user_id, system: row?.system,
+  })
   return NextResponse.json({ ok: true })
 }

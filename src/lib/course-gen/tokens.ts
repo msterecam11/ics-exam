@@ -11,13 +11,22 @@ export interface ThemeTokens {
   icon_style?: string
 }
 
+// A literal (non-"token:") value is only ever a color — hex (#fff, #ffffff,
+// #ffffffff) or a small set of CSS keywords. Anything else is rejected
+// rather than passed through: this value gets spliced unescaped into a
+// `style="..."` attribute in slideHtml.ts, so an unvalidated literal here
+// (e.g. from a blueprint/element write path with no schema check) would be
+// a straight HTML-attribute-injection vector. Reject-by-default is cheap
+// insurance regardless of what validation exists upstream.
+const SAFE_LITERAL_COLOR = /^(#[0-9a-fA-F]{3,8}|transparent|currentColor|none|inherit)$/
+
 export function resolveToken(ref: string | undefined, tokens: ThemeTokens, fallback: string): string {
   if (!ref) return fallback
   if (ref.startsWith("token:")) {
     const key = ref.slice(6)
     return tokens.colors[key] ?? fallback
   }
-  return ref // literal value (editor-set)
+  return SAFE_LITERAL_COLOR.test(ref) ? ref : fallback
 }
 
 // Slide reference size is 1280×720. The guideline's pt scale is authored for

@@ -2,12 +2,31 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
+import { z } from "zod"
 import { sendAssessorCredentialsEmail } from "@/lib/ms-graph"
+import { auditLog } from "@/lib/audit"
 
 // Only admin + instructor can manage assessors
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
 }
+
+// Brought up to the same validation bar as /api/lms/settings/users — this
+// route is a second, independent write path into admin_users and previously
+// had no email-format check and no password max-length cap.
+const CreateSchema = z.object({
+  name:     z.string().trim().min(1).max(100),
+  email:    z.string().trim().email().max(255),
+  password: z.string().min(8).max(128),
+  sendEmail: z.boolean().optional(),
+})
+const UpdateSchema = z.object({
+  id:        z.string().uuid(),
+  name:      z.string().trim().min(1).max(100).optional(),
+  email:     z.string().trim().email().max(255).optional(),
+  password:  z.string().min(8).max(128).optional(),
+  sendEmail: z.boolean().optional(),
+})
 
 // GET — list all assessors with group count
 export async function GET() {
@@ -52,13 +71,13 @@ export async function POST(req: Request) {
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const body = await req.json().catch(() => ({}))
-  const { name, email, password, sendEmail } = body
+  let body: unknown
+  try { body = await req.json() } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }) }
 
-  if (!name?.trim())     return NextResponse.json({ error: "Name is required" },     { status: 400 })
-  if (!email?.trim())    return NextResponse.json({ error: "Email is required" },    { status: 400 })
-  if (!password || password.length < 8)
-    return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
+  const parsed = CreateSchema.safeParse(body)
+  if (!parsed.success)
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 })
+  const { name, email, password, sendEmail } = parsed.data
 
   const password_hash = await bcrypt.hash(password, 12)
 
@@ -78,6 +97,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  await auditLog(session, "assessor.create", "admin_user", data.id, data.name)
 
   // Send credential email — await it so we can report success/failure to the UI
   let emailSent = false
@@ -107,17 +128,18 @@ export async function PATCH(req: Request) {
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const body = await req.json().catch(() => ({}))
-  const { id, name, email, password, sendEmail } = body
+  let body: unknown
+  try { body = await req.json() } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }) }
 
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+  const parsed = UpdateSchema.safeParse(body)
+  if (!parsed.success)
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 })
+  const { id, name, email, password, sendEmail } = parsed.data
 
   const updates: Record<string, unknown> = {}
-  if (name?.trim())  updates.name  = name.trim()
-  if (email?.trim()) updates.email = email.trim().toLowerCase()
+  if (name)  updates.name  = name
+  if (email) updates.email = email
   if (password) {
-    if (password.length < 8)
-      return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
     updates.password_hash   = await bcrypt.hash(password, 12)
     updates.failed_attempts = 0
     updates.locked_until    = null
@@ -139,6 +161,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Email already in use" }, { status: 409 })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  await auditLog(session, "assessor.update", "admin_user", data.id, data.name, {
+    changed: Object.keys(updates).filter((k) => k !== "password_hash"),
+    ...(password ? { password_reset: true } : {}),
+  })
 
   // Send credential email for password resets
   let emailSent = false
@@ -184,6 +211,8 @@ export async function DELETE(req: Request) {
       error: "Cannot delete — this assessor has submitted scores. Remove them from groups instead.",
     }, { status: 409 })
 
+  const { data: target } = await db.from("admin_users").select("name, email").eq("id", id).single()
+
   const { error } = await db
     .from("admin_users")
     .delete()
@@ -191,5 +220,6 @@ export async function DELETE(req: Request) {
     .eq("role", "assessor")
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await auditLog(session, "assessor.delete", "admin_user", id, target?.name ?? target?.email ?? null)
   return NextResponse.json({ ok: true })
 }
