@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 // POST /api/lms/quiz-attempt
 // Body: { quiz_id, content_item_id, course_id, answers }
@@ -25,6 +27,9 @@ export async function POST(req: Request) {
   // Students only can submit (admin has no student_id context for scoring)
   if (!studentId)
     return NextResponse.json({ error: "Students only" }, { status: 403 })
+
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-quiz-attempt:${studentId}`, 20, 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   // Get the quiz
   const { data: quiz, error: qErr } = await db

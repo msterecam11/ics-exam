@@ -34,7 +34,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ themeId
   const templates = (theme.layout_templates ?? {}) as Record<string, any>
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 })
   if (!templates[master]) return NextResponse.json({ error: `Unknown master "${master}"` }, { status: 400 })
-  if (!file.type.startsWith("image/")) return NextResponse.json({ error: "Background must be an image" }, { status: 400 })
+  // SVG explicitly excluded — it's an XML format that can carry a <script>
+  // tag, and this file is served back from a public storage URL.
+  if (!file.type.startsWith("image/") || file.type === "image/svg+xml")
+    return NextResponse.json({ error: "Background must be a raster image (SVG not allowed)" }, { status: 400 })
   if (file.size / (1024 * 1024) > MAX_MB)
     return NextResponse.json({ error: `File too large (max ${MAX_MB} MB)` }, { status: 413 })
 

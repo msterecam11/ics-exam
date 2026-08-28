@@ -8,6 +8,12 @@ function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
 }
 
+// Escapes PostgREST `.or()` filter metacharacters so a search string can't
+// break out of the intended ilike clause.
+function escapeFilterValue(v: string) {
+  return v.replace(/[%_,()]/g, (c) => "\\" + c)
+}
+
 // GET — list all students (with optional search + pagination)
 export async function GET(req: Request) {
   const session = await auth()
@@ -27,7 +33,8 @@ export async function GET(req: Request) {
     .range(offset, offset + limit - 1)
 
   if (search) {
-    query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,company.ilike.%${search}%`)
+    const s = escapeFilterValue(search)
+    query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%,company.ilike.%${s}%`)
   }
 
   const { data, count, error } = await query

@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -48,6 +50,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-assignment-submit:${student.id}`, 20, 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const body = await req.json().catch(() => ({}))
   const { module_id, course_id, file_url, file_name, file_size, text_response } = body

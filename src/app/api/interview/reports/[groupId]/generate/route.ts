@@ -11,6 +11,8 @@ import {
   genAssessorBiasReport, genTalentMapCommentary, genCohortPrediction,
   genAlternativePaths,
 } from "@/lib/interview-ai"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 type Params = { params: Promise<{ groupId: string }> }
 
@@ -29,6 +31,12 @@ export async function POST(_: Request, { params }: Params) {
   const session = await auth()
   if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  // This fans out to many AI calls per invocation (one per candidate/track/
+  // pillar) — a per-user hourly cap is a cheap backstop against a scripted
+  // or accidental retry loop running up real Groq spend.
+  const { allowed, retryAfterSeconds } = await rateLimit(`interview-ai-gen-group:${session.user.id}`, 10, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { groupId } = await params
 

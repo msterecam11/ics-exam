@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 // GET /api/lms/packages/[id]/progress
 export async function GET(
@@ -44,6 +46,11 @@ export async function POST(
 ) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  // Generous — this endpoint also receives frequent time-tracking beacons
+  // during normal use, this is just a script-abuse backstop.
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-pkg-progress:${student.id}`, 60, 60)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { id } = await params
   const body = await req.json()

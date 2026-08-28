@@ -6,6 +6,8 @@ import { db } from "@/lib/db"
 import { buildCandidateReport } from "@/lib/interview-scoring"
 import type { RawScore, RawQualitative, ConfigSnapshot } from "@/lib/interview-scoring"
 import { genCandidateInsights, genPillarEvidenceRephrase, genQualitativeRephrase, QuotaExceededError } from "@/lib/interview-ai"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 type Params = { params: Promise<{ groupId: string; candidateId: string }> }
 
@@ -25,6 +27,10 @@ export async function POST(_: Request, { params }: Params) {
   const session = await auth()
   if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  // No limit previously existed on this AI-cost-incurring route.
+  const { allowed, retryAfterSeconds } = await rateLimit(`interview-ai-gen:${session.user.id}`, 20, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { groupId, candidateId } = await params
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { isOcrConfigured } from "@/lib/course-gen/ocr"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -35,6 +37,11 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  // Each upload triggers a doc_scan job (one Groq call per ~12-section
+  // batch) — previously unlimited uploads/rescans.
+  const { allowed, retryAfterSeconds } = await rateLimit(`cg-doc-upload:${session.user.id}`, 10, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   let formData: FormData
   try { formData = await req.formData() }

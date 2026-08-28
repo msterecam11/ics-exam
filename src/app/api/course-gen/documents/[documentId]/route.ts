@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { parseBody } from "@/lib/apiUtils"
+import { parseBody, res429 } from "@/lib/apiUtils"
+import { rateLimit } from "@/lib/rateLimit"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 const BUCKET = "lms-library"
@@ -36,6 +37,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ docume
   const body = await parseBody(req).catch(() => ({})) as any
 
   if (body.rescan) {
+    const { allowed, retryAfterSeconds } = await rateLimit(`cg-doc-rescan:${session.user.id}`, 10, 3600)
+    if (!allowed) return res429(retryAfterSeconds)
+
     // Start clean: drop the old index so a re-scan can't leave stale sections.
     await db.from("cg_document_sections").delete().eq("document_id", documentId)
     await db.from("cg_documents").update({

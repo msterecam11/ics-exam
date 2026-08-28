@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { parseBody } from "@/lib/apiUtils"
+import { parseBody, res429 } from "@/lib/apiUtils"
+import { rateLimit } from "@/lib/rateLimit"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -31,6 +32,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const session = await auth()
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+  // Outline regeneration had no cooldown — a looped POST here could run up
+  // real Anthropic spend indefinitely (a course sitting in outline_review
+  // can be regenerated any number of times).
+  const { allowed, retryAfterSeconds } = await rateLimit(`cg-outline:${session.user.id}`, 10, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   if (!process.env.ANTHROPIC_API_KEY)
     return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured on the server yet" }, { status: 503 })
