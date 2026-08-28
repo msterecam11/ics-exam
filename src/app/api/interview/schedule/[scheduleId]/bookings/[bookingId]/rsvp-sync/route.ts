@@ -11,7 +11,8 @@ type Ctx = { params: Promise<{ scheduleId: string; bookingId: string }> }
 // and updates our rsvp_status field to match.
 export async function POST(_req: NextRequest, { params }: Ctx) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { scheduleId, bookingId } = await params
 

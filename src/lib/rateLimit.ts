@@ -34,11 +34,19 @@ export async function rateLimit(
     .lt("window_start", windowStart)
 
   // 2. Count requests in current window
-  const { count } = await db
+  const { count, error: countError } = await db
     .from("rate_limits")
     .select("*", { count: "exact", head: true })
     .eq("key", key)
     .gte("window_start", windowStart)
+
+  // Fail CLOSED, not open — a DB error here must never silently disable
+  // rate limiting (this gate protects the login endpoint among others).
+  // A real caller just retries; an attacker doesn't get a free window.
+  if (countError) {
+    console.error(`[rateLimit] DB error counting "${key}" — failing closed:`, countError.message)
+    return { allowed: false, remaining: 0, retryAfterSeconds: 30 }
+  }
 
   const current = count ?? 0
 

@@ -8,7 +8,8 @@ type Ctx = { params: Promise<{ scheduleId: string; slotId: string }> }
 // Toggle block / update capacity
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { slotId } = await params
   const body = await req.json()
@@ -31,7 +32,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // DELETE /api/interview/schedule/[scheduleId]/slots/[slotId]
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { slotId } = await params
 

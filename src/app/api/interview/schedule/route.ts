@@ -5,7 +5,8 @@ import { db } from "@/lib/db"
 // GET /api/interview/schedule — list all schedules
 export async function GET() {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { data, error } = await db
     .from("schedules")
@@ -53,7 +54,8 @@ export async function GET() {
 // POST /api/interview/schedule — create schedule
 export async function POST(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json()
   const {

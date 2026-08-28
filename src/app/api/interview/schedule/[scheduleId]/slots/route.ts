@@ -7,7 +7,8 @@ type Ctx = { params: Promise<{ scheduleId: string }> }
 // GET /api/interview/schedule/[scheduleId]/slots
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { scheduleId } = await params
 
@@ -26,7 +27,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 // Body: { date: "2026-06-15", start_time: "09:00", end_time: "16:00", track_id?: string }
 export async function POST(req: NextRequest, { params }: Ctx) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { scheduleId } = await params
   const body = await req.json()

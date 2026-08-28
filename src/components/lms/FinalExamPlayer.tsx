@@ -19,6 +19,7 @@ export interface ExamQuestion {
   type: "mcq_single" | "mcq_multiple" | "ordering" | "match_pair" | "open_ended"
   text: string; points: number; explanation?: string
   options?: MCQOption[]; items?: OrderItem[]; pairs?: MatchPair[]
+  rightPool?: string[] // client-safe, unlinked right-side pool (see sanitizeQuestionsForClient)
   rubric?: string; max_words?: number
 }
 
@@ -122,8 +123,9 @@ function MatchPairQ({ q, value, onChange }: { q: ExamQuestion; value?: Record<st
   const pairs = q.pairs ?? []
   const sel   = value ?? {}
   const [activePairId, setActivePairId] = useState<string | null>(null)
-  // Shuffle right column independently so it doesn't align with left
-  const [rightOrder] = useState<string[]>(() => shuffleArray(pairs.map(p => p.right)))
+  // Right-side pool comes pre-shuffled and unlinked from the server (see
+  // sanitizeQuestionsForClient) — pairs[].right is intentionally blank here.
+  const [rightOrder] = useState<string[]>(() => shuffleArray(q.rightPool ?? []))
 
   const usedRights = new Set(Object.values(sel))
 

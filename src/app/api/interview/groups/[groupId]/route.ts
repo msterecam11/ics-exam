@@ -11,6 +11,20 @@ export async function GET(_: Request, { params }: Params) {
 
   const { groupId } = await params
 
+  // Non-managers must actually be assigned to this group — otherwise this
+  // route hands out full candidate PII and the assessor weight matrix to
+  // any authenticated assessor for any group, not just their own.
+  const isManager = ["admin", "instructor"].includes(session.user.role ?? "")
+  if (!isManager) {
+    const { data: assignment } = await db
+      .from("group_assessors")
+      .select("group_id")
+      .eq("group_id", groupId)
+      .eq("assessor_id", session.user.id)
+      .single()
+    if (!assignment) return NextResponse.json({ error: "Not assigned to this group" }, { status: 403 })
+  }
+
   // ── 1. Core group ──────────────────────────────────────────────────────────
   const { data: group, error: groupErr } = await db
     .from("assessment_groups")

@@ -22,6 +22,7 @@ export interface ExamQuestion {
   options?: MCQOption[]
   items?: OrderItem[]
   pairs?: MatchPair[]
+  rightPool?: string[] // client-safe, unlinked right-side pool (see sanitizeQuestionsForClient)
 }
 
 type AnswerMap = Record<string, string | string[] | Record<string, string>>
@@ -49,6 +50,44 @@ export function scoreObjectiveQuestion(q: ExamQuestion, ans: unknown): number {
     return Math.round((ok / q.pairs.length) * q.points)
   }
   return 0 // open_ended, or a question type/shape mismatch — handled by the caller
+}
+
+// Fisher-Yates — used to make the client's initial payload order-independent
+// of the answer key (see sanitizeQuestionsForClient below).
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+// Strips every field that would let a student read the answer key straight
+// out of the page's initial data (View Source / devtools / RSC payload),
+// before it's ever sent to FinalExamPlayer. Grading always happens against
+// the REAL `module.questions` server-side (see exam-attempt/route.ts) — the
+// client only ever sees this sanitized shape.
+export function sanitizeQuestionsForClient(questions: ExamQuestion[]): ExamQuestion[] {
+  return questions.map((q) => {
+    if ((q.type === "mcq_single" || q.type === "mcq_multiple") && q.options) {
+      return { ...q, options: q.options.map(({ id, text }) => ({ id, text, correct: false })) }
+    }
+    if (q.type === "ordering" && q.items) {
+      // Shuffle display order — ids/text are unchanged so grading (which
+      // compares submitted id order to the ORIGINAL array order) still
+      // works, but the initial payload no longer IS the answer key.
+      return { ...q, items: shuffle(q.items) }
+    }
+    if (q.type === "match_pair" && q.pairs) {
+      // Never send a left/right pair pre-matched — that pairing IS the
+      // answer key. Send left items with their `right` blanked out, plus
+      // an unlinked, shuffled pool of right-side text for the picker.
+      const rightPool = shuffle(q.pairs.map((p) => p.right))
+      return { ...q, pairs: q.pairs.map((p) => ({ ...p, right: "" })), rightPool }
+    }
+    return q
+  })
 }
 
 // Re-grades one attempt's stored raw `answers` against the CURRENT

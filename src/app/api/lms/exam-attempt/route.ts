@@ -5,9 +5,15 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
+import { recalculateAttemptScore, type ExamQuestion } from "@/lib/lms-exam-scoring"
 
 // POST /api/lms/exam-attempt
-// Body: { module_id, course_id, score, max_score, pct, passed, answers, time_spent_s, security_events }
+// Body: { module_id, course_id, answers, time_spent_s, security_events }
+// `score`/`max_score`/`pct`/`passed` are NEVER accepted from the client —
+// every question type is graded here, server-side, against the module's
+// current answer key (recalculateAttemptScore mirrors the same objective
+// grading rules FinalExamPlayer.tsx uses for immediate on-screen feedback,
+// but this server pass is the one that actually gets persisted/trusted).
 export async function POST(req: Request) {
   const studentSession = await getStudentSession()
   if (!studentSession)
@@ -16,7 +22,7 @@ export async function POST(req: Request) {
   const studentId = studentSession.id
 
   const body = await req.json().catch(() => ({}))
-  const { module_id, course_id, score, max_score, pct, passed, answers, time_spent_s, security_events } = body
+  const { module_id, course_id, answers, time_spent_s, security_events } = body
 
   if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
@@ -81,18 +87,16 @@ export async function POST(req: Request) {
   // Authoritative pass mark (course setting → module setting → 70).
   const passMark = (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70
 
-  // Recalculate score with AI results (client sent 0 for open_ended)
-  let correctedScore = score ?? 0
-  let correctedPct   = pct ?? 0
+  // Grade every objective question (mcq/ordering/matching) server-side against
+  // the module's current answer key, then add the AI-graded open_ended sum —
+  // this function is never given a client-supplied score to start from.
+  const openEndedEarned = openEndedQs.reduce((sum: number, q: any) => sum + (aiScores[q.id]?.score ?? 0), 0)
+  const { score: correctedScore, maxScore: correctedMaxScore, pct: correctedPct } = recalculateAttemptScore(
+    questions as ExamQuestion[],
+    (answers as Record<string, any>) ?? {},
+    openEndedEarned
+  )
 
-  if (openEndedQs.length > 0 && (max_score ?? 0) > 0) {
-    const aiEarned = openEndedQs.reduce((sum: number, q: any) => sum + (aiScores[q.id]?.score ?? 0), 0)
-    correctedScore = (score ?? 0) + aiEarned
-    correctedPct   = Math.round((correctedScore / max_score) * 100)
-  }
-
-  // Always decide pass/fail server-side against the authoritative mark — never
-  // trust the client's `passed` flag, and apply the same mark to every exam.
   const correctedPassed = correctedPct >= passMark
 
   const attemptNo = (count ?? 0) + 1
@@ -107,7 +111,7 @@ export async function POST(req: Request) {
       attempt_no:   attemptNo,
       status:       "graded",
       score:        correctedScore,
-      max_score:    max_score ?? 0,
+      max_score:    correctedMaxScore,
       passed:       correctedPassed,
       answers:      answers ?? [],
       ai_feedback:  {
@@ -142,7 +146,7 @@ export async function POST(req: Request) {
     attempt_id:  attempt.id,
     attempt_no:  attempt.attempt_no,
     score:       correctedScore,
-    max_score,
+    max_score:   correctedMaxScore,
     pct:         correctedPct,
     passed:      correctedPassed,
     ai_scores:   openEndedQs.length > 0 ? aiScores : undefined,

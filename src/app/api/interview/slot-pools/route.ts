@@ -5,7 +5,8 @@ import { db } from "@/lib/db"
 // GET /api/interview/slot-pools — list all pools with schedule count
 export async function GET() {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { data: pools, error } = await db
     .from("slot_pools")
@@ -41,7 +42,8 @@ export async function GET() {
 // POST /api/interview/slot-pools — create a new pool
 export async function POST(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { name } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -59,7 +61,8 @@ export async function POST(req: NextRequest) {
 // PATCH /api/interview/slot-pools — rename a pool
 export async function PATCH(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { id, name } = await req.json()
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
@@ -80,7 +83,8 @@ export async function PATCH(req: NextRequest) {
 // Schedules linked to this pool will have slot_pool_id set to null (unlinked, not deleted)
 export async function DELETE(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || session.user.role !== "admin")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const id = req.nextUrl.searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })

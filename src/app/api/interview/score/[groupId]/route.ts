@@ -108,6 +108,20 @@ export async function POST(req: Request, { params }: Params) {
   if (group.locked)          return NextResponse.json({ error: "Group is locked" }, { status: 409 })
   if (group.status !== "active") return NextResponse.json({ error: "Group is not active" }, { status: 409 })
 
+  const assessorId = session.user.id
+
+  // Verify the caller is actually assigned to this group (admins/instructors skip)
+  const isManager = ["admin", "instructor"].includes(session.user.role ?? "")
+  if (!isManager) {
+    const { data: assignment } = await db
+      .from("group_assessors")
+      .select("group_id")
+      .eq("group_id", groupId)
+      .eq("assessor_id", assessorId)
+      .single()
+    if (!assignment) return NextResponse.json({ error: "Not assigned to this group" }, { status: 403 })
+  }
+
   // Verify candidate_id actually belongs to this group (prevents cross-group score injection)
   const { data: candidateCheck } = await db
     .from("interview_candidates")
@@ -117,8 +131,6 @@ export async function POST(req: Request, { params }: Params) {
     .single()
   if (!candidateCheck)
     return NextResponse.json({ error: "Candidate not found in this group" }, { status: 403 })
-
-  const assessorId = session.user.id
 
   const { data, error } = await db
     .from("scores")
@@ -156,6 +168,29 @@ export async function PATCH(req: Request, { params }: Params) {
   if (group.locked) return NextResponse.json({ error: "Group is locked" }, { status: 409 })
 
   const assessorId = session.user.id
+
+  // Verify the caller is actually assigned to this group (admins/instructors skip)
+  const isManager = ["admin", "instructor"].includes(session.user.role ?? "")
+  if (!isManager) {
+    const { data: assignment } = await db
+      .from("group_assessors")
+      .select("group_id")
+      .eq("group_id", groupId)
+      .eq("assessor_id", assessorId)
+      .single()
+    if (!assignment) return NextResponse.json({ error: "Not assigned to this group" }, { status: 403 })
+  }
+
+  // Verify candidate_id actually belongs to this group (prevents cross-group score injection)
+  const { data: candidateCheck } = await db
+    .from("interview_candidates")
+    .select("id")
+    .eq("id", candidate_id)
+    .eq("group_id", groupId)
+    .single()
+  if (!candidateCheck)
+    return NextResponse.json({ error: "Candidate not found in this group" }, { status: 403 })
+
   const now = new Date().toISOString()
 
   const { data, error } = await db

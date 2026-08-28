@@ -7,7 +7,8 @@ import { db } from "@/lib/db"
 // Query params: source_type, group_id?, track_id?
 export async function GET(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session || !["admin", "instructor"].includes(session.user.role ?? ""))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const source_type = searchParams.get("source_type")

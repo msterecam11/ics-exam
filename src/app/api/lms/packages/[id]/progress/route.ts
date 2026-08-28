@@ -70,16 +70,45 @@ export async function POST(
     ? Array.from(new Set([...prevCompleted, completed_item_id]))
     : prevCompleted
 
-  // Merge item scores
-  const prevScores: Record<string, unknown> = existing?.item_scores ?? {}
-  const newScores = completed_item_id && item_score
-    ? { ...prevScores, [completed_item_id]: item_score }
+  // Merge item scores — clamp every score into [0, its own max] so a
+  // forged item_score can't exceed what that one item was worth.
+  const prevScores: Record<string, any> = existing?.item_scores ?? {}
+  const clampedItemScore = item_score
+    ? {
+        ...item_score,
+        score: Math.max(0, Math.min(Number(item_score.score) || 0, Number(item_score.max) || Number(item_score.score) || 0)),
+      }
+    : item_score
+  const newScores = completed_item_id && clampedItemScore
+    ? { ...prevScores, [completed_item_id]: clampedItemScore }
     : prevScores
 
   // Accumulate time
   const newTime = (existing?.time_spent ?? 0) + (time_spent ?? 0)
 
-  const isTerminal = status === "passed" || status === "failed"
+  const requestedTerminal = status === "passed" || status === "failed"
+
+  // Never trust the client's own "passed"/overall_score claim: recompute the
+  // aggregate from the (now-clamped) stored item scores and check it against
+  // the package's real pass_mark before honoring a terminal status — this is
+  // what stops a POST of {status:"passed", overall_score:100} from
+  // self-certifying a package (and, via checkCourseCompletion below, an
+  // entire course) with no items actually completed correctly.
+  let finalStatus = status
+  let finalScore: number | undefined = overall_score
+  if (requestedTerminal) {
+    const scores = Object.values(newScores) as { score?: number; max?: number }[]
+    const totalScore = scores.reduce((s, v) => s + (Number(v.score) || 0), 0)
+    const totalMax   = scores.reduce((s, v) => s + (Number(v.max)   || 0), 0)
+    const recomputedPct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0
+
+    const { data: pkg } = await db.from("lms_packages").select("pass_mark").eq("id", id).single()
+    const passMark = (pkg as any)?.pass_mark ?? 70
+
+    finalScore  = recomputedPct
+    finalStatus = recomputedPct >= passMark ? "passed" : "failed"
+  }
+  const isTerminal = finalStatus === "passed" || finalStatus === "failed"
 
   const upsertRow = {
     student_id:      student.id,
@@ -90,8 +119,8 @@ export async function POST(
     completed_items: newCompleted,
     item_scores:     newScores,
     time_spent:      newTime,
-    ...(status && { status }),
-    ...(overall_score !== undefined && { score: overall_score }),
+    ...(finalStatus && { status: finalStatus }),
+    ...(finalScore !== undefined && { score: finalScore }),
     ...(isTerminal    && { completed_at: new Date().toISOString() }),
     updated_at:      new Date().toISOString(),
   }
@@ -120,7 +149,7 @@ export async function POST(
                 + (attT.data ?? []).reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0)
     await db.from("lms_enrollments").update({ time_spent_s: total }).eq("student_id", student.id).eq("course_id", course_id)
   }
-  if (isTerminal && course_id && status === "passed") {
+  if (isTerminal && course_id && finalStatus === "passed") {
     await checkCourseCompletion(student.id, course_id)
   }
 

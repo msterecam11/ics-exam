@@ -8,6 +8,7 @@ import Image from "next/image"
 import { ArrowLeft } from "lucide-react"
 import ExamClient from "./ExamClient"
 import type { ExamQuestion, ExamSettings } from "@/components/lms/FinalExamPlayer"
+import { sanitizeQuestionsForClient } from "@/lib/lms-exam-scoring"
 
 export default async function StudentExamPage({
   params,
@@ -115,7 +116,9 @@ export default async function StudentExamPage({
     .eq("module_id", moduleId)
     .eq("student_id", student.id)
 
-  const questions = (module.questions as ExamQuestion[] | null) ?? []
+  // Sanitized before it ever reaches the client — the real answer key stays
+  // server-side and is only consulted at grading time (exam-attempt/route.ts).
+  const questions = sanitizeQuestionsForClient((module.questions as ExamQuestion[] | null) ?? []) as ExamQuestion[]
   const settings  = (module.activity_settings as ExamSettings | null)
   const maxAttempts = settings?.max_attempts ?? 3
   const usedAttempts = attemptCount ?? 0

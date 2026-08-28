@@ -31,19 +31,25 @@ export async function POST(req: Request) {
   if (file.size / (1024 * 1024) > MAX_MB)
     return NextResponse.json({ error: `File too large (max ${MAX_MB} MB)` }, { status: 413 })
 
-  // Validate mime type — use passed allowed_types if provided, else default set
-  const allowedMimes: Set<string> = allowedRaw
-    ? new Set(allowedRaw.split(",").flatMap(t => {
-        if (t === "pdf")  return ["application/pdf"]
-        if (t === "docx") return [
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ]
-        return []
-      }))
+  // Validate mime type — `allowed_types` may only NARROW the fixed server-side
+  // ALLOWED set, never widen or disable it. An unrecognized/empty token list
+  // falls back to the full ALLOWED set rather than skipping the check (a
+  // previous version treated "no recognized tokens" as "no restriction").
+  const requested = new Set(
+    allowedRaw.split(",").flatMap(t => {
+      if (t === "pdf")  return ["application/pdf"]
+      if (t === "docx") return [
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ]
+      return []
+    })
+  )
+  const allowedMimes = requested.size > 0
+    ? new Set([...requested].filter(m => ALLOWED.has(m)))
     : ALLOWED
 
-  if (allowedMimes.size > 0 && !allowedMimes.has(file.type))
+  if (!allowedMimes.has(file.type))
     return NextResponse.json({ error: `File type not allowed (${file.type})` }, { status: 415 })
 
   const safeName    = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")

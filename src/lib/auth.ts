@@ -70,7 +70,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // ── 4. Fetch user ─────────────────────────────────────────────────────
         const { data: user } = await db
           .from("admin_users")
-          .select("id, email, name, role, password_hash, failed_attempts, locked_until")
+          .select("id, email, name, role, password_hash, failed_attempts, locked_until, is_active")
           .eq("email", email)
           .single()
 
@@ -88,8 +88,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // No user found (after constant-time compare)
         if (!user) return null
 
-        // ── 6. Account lockout check ──────────────────────────────────────────
+        // ── 6. Account lockout / deactivation check ───────────────────────────
         if (user.locked_until && new Date(user.locked_until) > new Date()) {
+          return null
+        }
+        if (user.is_active === false) {
           return null
         }
 
