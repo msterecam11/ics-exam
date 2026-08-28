@@ -666,7 +666,7 @@ function TestAsStudentModal({ open, onClose, courseId }: { open: boolean; onClos
     const res = await fetch("/api/lms/admin/preview-as", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ student_id: studentId, course_id: courseId }) })
     const data = await res.json(); setLaunching(null)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success(`Opening as ${data.student_name}…`); window.open(data.redirect_url, "_blank"); onClose()
+    toast.success(`Opening as ${data.student_name}…`); window.open(data.redirect_to, "_blank"); onClose()
   }
 
   const filtered = students.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.email?.toLowerCase().includes(search.toLowerCase()))
