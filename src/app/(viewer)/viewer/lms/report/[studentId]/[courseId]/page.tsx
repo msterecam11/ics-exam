@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import { buildCourseReport } from "@/lib/lms-course-report"
 import { canViewLmsReport } from "@/lib/viewer-access"
-import CourseReportPages from "@/components/lms/CourseReportPages"
+import StudentCourseReportPages from "@/components/lms/StudentCourseReportPages"
 import ViewerReportToolbar from "@/components/lms/ViewerReportToolbar"
 
 interface Props { params: Promise<{ studentId: string; courseId: string }> }
@@ -40,7 +40,7 @@ export default async function ViewerLmsReportPage({ params }: Props) {
         }
       `}</style>
       <ViewerReportToolbar studentName={report.student.name} courseTitle={report.course.title} />
-      <CourseReportPages report={report} />
+      <StudentCourseReportPages report={report} />
     </>
   )
 }

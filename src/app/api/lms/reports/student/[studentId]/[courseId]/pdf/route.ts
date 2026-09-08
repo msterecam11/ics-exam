@@ -29,9 +29,12 @@ export async function GET(
   const studentName = (studentRes.data as any).name ?? "Student"
   const courseTitle = (courseRes.data as any).title ?? "Course"
 
+  const { searchParams } = new URL(req.url)
+  const includeSecurity = searchParams.get("includeSecurity") ?? "true"
+
   const port    = process.env.PORT ?? "3000"
   const secret  = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/lms/student/${studentId}/${courseId}?pdf_secret=${secret}`
+  const printUrl = `http://localhost:${port}/print/lms/student/${studentId}/${courseId}?pdf_secret=${secret}&includeSecurity=${encodeURIComponent(includeSecurity)}`
 
   const browser = await getBrowser()
 
