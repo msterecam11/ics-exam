@@ -108,15 +108,13 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
   const { student, course, enrollment, overall, modules, exam, examSections, topicScores, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
 
-  // Defined here (not at module scope) so it can see `forPrint`. On screen,
-  // pages size naturally to their content, same as any normal page — forcing
-  // a full-page minimum height only makes sense for the PDF, where a short
-  // section should still occupy one full physical page rather than a
-  // custom-sized one. The cover always gets a full page either way, since
-  // that's a deliberate design choice independent of print vs. screen.
+  // Defined here (not at module scope) so it can see `forPrint`. Pages size
+  // naturally to their own content, on screen and in the PDF alike — only
+  // the cover is forced to a full page. This matches the live "card" sizing
+  // exactly, so the downloaded PDF looks like what you see, not padded.
   function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
     return (
-      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`} style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
+      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`} style={first ? { minHeight: 1122 } : undefined}>
         {children}
       </div>
     )

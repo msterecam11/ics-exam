@@ -68,14 +68,14 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
 
-  // Defined here (not at module scope) so it can see `forPrint`. On screen,
-  // pages size naturally to their content — forcing a full-page minimum
-  // height only makes sense for the PDF. The cover always gets a full page
-  // either way, since that's a deliberate design choice either way.
+  // Defined here (not at module scope) so it can see `forPrint`. Pages size
+  // naturally to their own content, on screen and in the PDF alike — only
+  // the cover is forced to a full page. This matches the live "card" sizing
+  // exactly, so the downloaded PDF looks like what you see, not padded.
   function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
     return (
       <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`}
-        style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
+        style={first ? { minHeight: 1122 } : undefined}>
         {children}
       </div>
     )
