@@ -61,6 +61,9 @@ function CoverRing({ score, passed }: { score: number; passed: boolean }) {
   )
 }
 
+// Every page — not just the first — gets a minimum height of one full
+// standard page. Without this, a short page shrinks to an oddly small
+// custom PDF page size instead of a normal, uniform one.
 function Page({ children, dark = false, first = false }: {
   children: React.ReactNode; dark?: boolean; first?: boolean
 }) {
@@ -68,7 +71,7 @@ function Page({ children, dark = false, first = false }: {
     <div
       data-report-page=""
       className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`}
-      style={first ? { minHeight: "100vh" } : undefined}
+      style={first ? { height: "100vh" } : { minHeight: "100vh" }}
     >
       {children}
     </div>

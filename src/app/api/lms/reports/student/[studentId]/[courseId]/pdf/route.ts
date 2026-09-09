@@ -41,18 +41,14 @@ export async function GET(
   try {
     const page = await browser.newPage()
     await page.setViewport({ width: 794, height: 1122, deviceScaleFactor: 1 })
+    // "load" not "networkidle0" — dev-mode HMR WebSockets stay open
+    // indefinitely and would make networkidle0 hang/timeout.
     await page.goto(printUrl, { waitUntil: "load", timeout: 60000 })
-    await page.waitForSelector("#report-root", { timeout: 20000 })
-    await new Promise(r => setTimeout(r, 800))
+    await page.waitForSelector("[data-report-page]", { timeout: 20000 })
+    await new Promise(r => setTimeout(r, 1500))
 
     await page.addStyleTag({
       content: "html, body { margin: 0 !important; padding: 0 !important; }\n#report-root { margin: 0 !important; }",
-    })
-
-    await page.evaluate(() => {
-      const el = document.createElement("style")
-      el.id = "puppeteer-page-size"
-      document.head.appendChild(el)
     })
 
     const pageCount: number = await page.evaluate(
@@ -62,6 +58,13 @@ export async function GET(
 
     const merged = await PDFDocument.create()
 
+    // Pass each page's measured size directly to page.pdf()'s width/height —
+    // NOT via a dynamically-injected `@page` rule + preferCSSPageSize, which
+    // is timing-dependent (the style mutation isn't guaranteed to be picked
+    // up before the very next .pdf() call) and was producing oversized pages
+    // with dead space below the footer on every page but the first. This is
+    // the same direct-width/height pattern the interview candidate PDF route
+    // already uses correctly.
     for (let i = 0; i < pageCount; i++) {
       await page.evaluate((idx: number) => {
         document.querySelectorAll<HTMLElement>("[data-report-page]").forEach((el, j) => {
@@ -76,14 +79,10 @@ export async function GET(
         return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
       }, i)
 
-      await page.evaluate((width: number, height: number) => {
-        const el = document.getElementById("puppeteer-page-size") as HTMLStyleElement
-        el.textContent = `@page { size: ${width}px ${height}px; margin: 0; }`
-      }, w, h)
-
       const pagePdfBytes = await page.pdf({
         printBackground: true,
-        preferCSSPageSize: true,
+        width:  `${w}px`,
+        height: `${h}px`,
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
       })
 

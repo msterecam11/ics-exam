@@ -48,12 +48,6 @@ export async function GET(
       ].join("\n"),
     })
 
-    await page.evaluate(() => {
-      const el = document.createElement("style")
-      el.id = "puppeteer-page-size"
-      document.head.appendChild(el)
-    })
-
     const pageCount: number = await page.evaluate(
       () => document.querySelectorAll("[data-report-page]").length
     )
@@ -61,6 +55,9 @@ export async function GET(
 
     const merged = await PDFDocument.create()
 
+    // Pass each page's measured size directly to page.pdf()'s width/height —
+    // NOT via a dynamically-injected `@page` rule + preferCSSPageSize, which
+    // is timing-dependent and was producing oversized pages with dead space.
     for (let i = 0; i < pageCount; i++) {
       await page.evaluate((idx: number) => {
         document.querySelectorAll<HTMLElement>("[data-report-page]").forEach((el, j) => {
@@ -75,14 +72,10 @@ export async function GET(
         return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
       }, i)
 
-      await page.evaluate((width: number, height: number) => {
-        const el = document.getElementById("puppeteer-page-size") as HTMLStyleElement
-        el.textContent = `@page { size: ${width}px ${height}px; margin: 0; }`
-      }, w, h)
-
       const pagePdfBytes = await page.pdf({
         printBackground: true,
-        preferCSSPageSize: true,
+        width:  `${w}px`,
+        height: `${h}px`,
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
       })
 

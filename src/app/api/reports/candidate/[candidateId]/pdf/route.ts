@@ -78,13 +78,6 @@ export async function GET(
     // exactly. Merge all pages with pdf-lib.
     // Result: every PDF page = pixel-perfect match of the browser view.
 
-    // Create a <style> element we can update per-page to drive @page size.
-    await page.evaluate(() => {
-      const el = document.createElement("style")
-      el.id = "puppeteer-page-size"
-      document.head.appendChild(el)
-    })
-
     const pageCount: number = await page.evaluate(
       () => document.querySelectorAll("[data-report-page]").length
     )
@@ -115,16 +108,15 @@ export async function GET(
         return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
       }, i)
 
-      // ── Step 3: set @page to the exact measured size (CSS px → no rounding) ─
-      await page.evaluate((width: number, height: number) => {
-        const el = document.getElementById("puppeteer-page-size") as HTMLStyleElement
-        el.textContent = `@page { size: ${width}px ${height}px; margin: 0; }`
-      }, w, h)
-
-      // ── Step 4: generate & merge ─────────────────────────────────────────────
+      // ── Step 3: generate & merge — width/height passed DIRECTLY to page.pdf(),
+      // not via a dynamically-injected `@page` rule + preferCSSPageSize (that
+      // combination is timing-dependent and was producing oversized pages with
+      // dead space below the footer whenever the style mutation wasn't picked
+      // up before this very next call). ─────────────────────────────────────
       const pagePdfBytes = await page.pdf({
         printBackground: true,
-        preferCSSPageSize: true,
+        width:  `${w}px`,
+        height: `${h}px`,
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
       })
 

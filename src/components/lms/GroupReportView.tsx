@@ -9,10 +9,13 @@ import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
 
 // ── Chrome ──────────────────────────────────────────────────────────
+// Every page — not just the first — gets a minimum height of one full
+// standard page (1122). Without this, a short page shrinks to an oddly
+// small custom PDF page size instead of a normal, uniform one.
 function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
   return (
     <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
-      style={{ minHeight: first ? 1122 : undefined }}>
+      style={first ? { height: 1122 } : { minHeight: 1122 }}>
       {children}
     </div>
   )

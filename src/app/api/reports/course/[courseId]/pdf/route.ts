@@ -58,13 +58,6 @@ export async function GET(
       ].join("\n"),
     })
 
-    // Inject style element for per-page @page size updates
-    await page.evaluate(() => {
-      const el = document.createElement("style")
-      el.id = "puppeteer-page-size"
-      document.head.appendChild(el)
-    })
-
     const pageCount: number = await page.evaluate(
       () => document.querySelectorAll("[data-report-page]").length
     )
@@ -90,16 +83,13 @@ export async function GET(
         return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
       }, i)
 
-      // Step 3: set @page to exact measured size
-      await page.evaluate((width: number, height: number) => {
-        const el = document.getElementById("puppeteer-page-size") as HTMLStyleElement
-        el.textContent = `@page { size: ${width}px ${height}px; margin: 0; }`
-      }, w, h)
-
-      // Step 4: generate mini-PDF for this section and merge
+      // Step 3: generate mini-PDF for this section and merge — width/height
+      // passed directly to page.pdf(), not via @page + preferCSSPageSize
+      // (timing-dependent, was producing oversized pages with dead space).
       const pagePdfBytes = await page.pdf({
         printBackground: true,
-        preferCSSPageSize: true,
+        width:  `${w}px`,
+        height: `${h}px`,
         margin: { top: "0", right: "0", bottom: "0", left: "0" },
       })
 

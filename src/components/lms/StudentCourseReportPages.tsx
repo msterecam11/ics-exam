@@ -28,9 +28,16 @@ function sc(p: number | null) {
 function statusLabel(s: string) { return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s }
 function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
 
+// Every page — not just the cover — gets a minimum height of one full
+// standard page (1122, matching the design width of 794 at the same scale
+// used everywhere else in the app, e.g. CandidateReportCanvas). Without
+// this, a page whose content happens to be short (e.g. a table with only a
+// few rows) renders as an oddly small custom-sized PDF page instead of a
+// normal, uniformly-sized one — this is what "same size of page" means: a
+// short page is padded up to a full page, not shrunk to fit its content.
 function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
   return (
-    <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={{ minHeight: first ? 1122 : undefined }}>
+    <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={first ? { height: 1122 } : { minHeight: 1122 }}>
       {children}
     </div>
   )
