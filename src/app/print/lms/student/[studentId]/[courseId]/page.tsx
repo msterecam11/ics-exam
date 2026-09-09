@@ -20,5 +20,5 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity !== "false"} />
+  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity !== "false"} forPrint />
 }

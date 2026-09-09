@@ -9,17 +9,6 @@ import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
 
 // ── Chrome ──────────────────────────────────────────────────────────
-// Every page — not just the first — gets a minimum height of one full
-// standard page (1122). Without this, a short page shrinks to an oddly
-// small custom PDF page size instead of a normal, uniform one.
-function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
-  return (
-    <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
-      style={first ? { height: 1122 } : { minHeight: 1122 }}>
-      {children}
-    </div>
-  )
-}
 function PageHeader({ title, subtitle, today }: { title: string; subtitle?: string; today: string }) {
   return (
     <div className="flex items-center justify-between px-12 pt-8 pb-5 border-b-2 border-[#1B4F8A] shrink-0">
@@ -75,9 +64,22 @@ function heat(pct: number) {
 }
 
 // ── Main ────────────────────────────────────────────────────────────
-export default function GroupReportView({ data, assessment, generatedAt }: { data: GroupReport; assessment: any | null; generatedAt: string | null }) {
+export default function GroupReportView({ data, assessment, generatedAt, forPrint = false }: { data: GroupReport; assessment: any | null; generatedAt: string | null; forPrint?: boolean }) {
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const [ai, setAi] = useState<any | null>(assessment)
+
+  // Defined here (not at module scope) so it can see `forPrint`. On screen,
+  // pages size naturally to their content — forcing a full-page minimum
+  // height only makes sense for the PDF. The cover always gets a full page
+  // either way, since that's a deliberate design choice either way.
+  function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
+    return (
+      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
+        style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
+        {children}
+      </div>
+    )
+  }
   const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })

@@ -28,20 +28,6 @@ function sc(p: number | null) {
 function statusLabel(s: string) { return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s }
 function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
 
-// Every page — not just the cover — gets a minimum height of one full
-// standard page (1122, matching the design width of 794 at the same scale
-// used everywhere else in the app, e.g. CandidateReportCanvas). Without
-// this, a page whose content happens to be short (e.g. a table with only a
-// few rows) renders as an oddly small custom-sized PDF page instead of a
-// normal, uniformly-sized one — this is what "same size of page" means: a
-// short page is padded up to a full page, not shrunk to fit its content.
-function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
-  return (
-    <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={first ? { height: 1122 } : { minHeight: 1122 }}>
-      {children}
-    </div>
-  )
-}
 function PageHeader({ title, subtitle, today }: { title: string; subtitle?: string; today: string }) {
   return (
     <div className="flex items-center justify-between px-12 pt-8 pb-5 border-b-2 border-[#1B4F8A] shrink-0">
@@ -118,9 +104,23 @@ function TopicRadar({ topics }: { topics: { topic: string; pct: number }[] }) {
   )
 }
 
-export default function StudentCourseReportPages({ report, includeSecurity = true }: { report: CourseReport; includeSecurity?: boolean }) {
+export default function StudentCourseReportPages({ report, includeSecurity = true, forPrint = false }: { report: CourseReport; includeSecurity?: boolean; forPrint?: boolean }) {
   const { student, course, enrollment, overall, modules, exam, examSections, topicScores, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
+
+  // Defined here (not at module scope) so it can see `forPrint`. On screen,
+  // pages size naturally to their content, same as any normal page — forcing
+  // a full-page minimum height only makes sense for the PDF, where a short
+  // section should still occupy one full physical page rather than a
+  // custom-sized one. The cover always gets a full page either way, since
+  // that's a deliberate design choice independent of print vs. screen.
+  function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
+    return (
+      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
+        {children}
+      </div>
+    )
+  }
   const completed = enrollment.status === "completed"
   const overallScore = overall.score ?? 0
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })

@@ -31,5 +31,5 @@ export default async function PrintGroupReport({ params, searchParams }: Props) 
     .eq("course_id", courseId)
     .maybeSingle()
 
-  return <GroupReportView data={data} assessment={(stored?.assessment as any) ?? null} generatedAt={(stored?.generated_at as any) ?? null} />
+  return <GroupReportView data={data} assessment={(stored?.assessment as any) ?? null} generatedAt={(stored?.generated_at as any) ?? null} forPrint />
 }
