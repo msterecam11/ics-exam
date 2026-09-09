@@ -74,7 +74,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   // either way, since that's a deliberate design choice either way.
   function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
     return (
-      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`}
+      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`}
         style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
         {children}
       </div>
@@ -131,46 +131,63 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   }
   return (
     <>
-      <style>{`
-        .page-break { break-before: page; }
-        .avoid-break { break-inside: avoid; }
-        @page { size: 794px 1122px; margin: 0; }
-        @media print {
-          .no-print { display: none !important; }
-          aside, header { display: none !important; }
-          body { margin: 0; background: white; }
-          body > div { display: block !important; height: auto !important; overflow: visible !important; }
-          main { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
-        }
-      `}</style>
+      {/* Native browser Print support for the live admin view only — has no
+          purpose (and previously interfered) when Puppeteer renders this same
+          component for the PDF route, so it's gated behind !forPrint. */}
+      {!forPrint && (
+        <style>{`
+          .page-break { break-before: page; }
+          .avoid-break { break-inside: avoid; }
+          @page { size: 794px 1122px; margin: 0; }
+          @media print {
+            .no-print { display: none !important; }
+            aside, header { display: none !important; }
+            body { margin: 0; background: white; }
+            body > div { display: block !important; height: auto !important; overflow: visible !important; }
+            main { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+          }
+        `}</style>
+      )}
+      {forPrint && (
+        <style>{`
+          .page-break  { break-before: page; }
+          .avoid-break { break-inside: avoid; }
+          @media print {
+            .no-print { display: none !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          }
+        `}</style>
+      )}
 
-      {/* Toolbar */}
-      <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Link href={`/lms-admin/reports/${course.id}`} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
-          <Users className="h-4 w-4 text-slate-400" />
-          <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
-          <span className="text-slate-300">· cohort</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {ai ? (
-            <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
-              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate
+      {/* Toolbar — PDF-only rendering never shows this (see note above) */}
+      {!forPrint && (
+        <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Link href={`/lms-admin/reports/${course.id}`} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
+            <Users className="h-4 w-4 text-slate-400" />
+            <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
+            <span className="text-slate-300">· cohort</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {ai ? (
+              <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
+                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate
+              </Button>
+            ) : (
+              <Button size="sm" onClick={generate} disabled={generating} className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+                {generating ? "Generating…" : "Generate Expert Report"}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Print</Button>
+            <Button size="sm" variant="outline" onClick={downloadPDF} disabled={downloading} className="gap-1.5 text-xs">
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
             </Button>
-          ) : (
-            <Button size="sm" onClick={generate} disabled={generating} className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
-              {generating ? "Generating…" : "Generate Expert Report"}
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs"><Printer className="h-3.5 w-3.5" /> Print</Button>
-          <Button size="sm" variant="outline" onClick={downloadPDF} disabled={downloading} className="gap-1.5 text-xs">
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
-          </Button>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div id="report-root" style={{ width: 794, margin: "0 auto", boxShadow: "0 0 0 1px #e2e8f0", background: "white" }}>
+      <div id="report-root" className="flex flex-col" style={forPrint ? { width: 794 } : { width: 794, margin: "0 auto", boxShadow: "0 0 0 1px #e2e8f0", background: "white" }}>
 
         {/* PAGE 1 — COVER */}
         <Page dark first>

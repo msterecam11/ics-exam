@@ -69,6 +69,28 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
 
   return (
     <>
+      {/* Native browser Print support for THIS page only (admin layout chrome +
+          @page sizing) — belongs here, not in the shared report component,
+          since that component is also rendered by Puppeteer for the PDF route
+          where this CSS has no purpose and previously interfered with it. */}
+      <style>{`
+        .page-break  { break-before: page; }
+        .avoid-break { break-inside: avoid; }
+        @page { size: 794px 1122px; margin: 0; }
+        @media print {
+          .no-print { display: none !important; }
+          aside  { display: none !important; }
+          header { display: none !important; }
+          body { margin: 0; background: white; }
+          body > div { display: block !important; height: auto !important; overflow: visible !important; }
+          body > div > div:last-child { display: block !important; height: auto !important; overflow: visible !important; }
+          main { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+          main > div { display: flex !important; justify-content: flex-start !important; background: white !important; padding: 0 !important; min-height: auto !important; }
+          #report-root { gap: 0 !important; background: white !important; padding: 0 !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+
       {/* ── Report options popup ── */}
       {showOptIn && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

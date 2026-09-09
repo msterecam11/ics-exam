@@ -116,7 +116,7 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
   // that's a deliberate design choice independent of print vs. screen.
   function Page({ children, dark = false, first = false }: { children: React.ReactNode; dark?: boolean; first?: boolean }) {
     return (
-      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "" : "page-break"}`} style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
+      <div data-report-page="" className={`relative w-full flex flex-col ${dark ? "bg-[#1B4F8A]" : "bg-white"} ${first ? "overflow-hidden" : "page-break"}`} style={(first || forPrint) ? { minHeight: 1122 } : undefined}>
         {children}
       </div>
     )
@@ -160,19 +160,15 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
   return (
     <>
       <style>{`
-        .page-break { break-before: page; }
+        .page-break  { break-before: page; }
         .avoid-break { break-inside: avoid; }
-        @page { size: 794px 1122px; margin: 0; }
         @media print {
           .no-print { display: none !important; }
-          aside, header { display: none !important; }
-          body { margin: 0; background: white; }
-          body > div { display: block !important; height: auto !important; overflow: visible !important; }
-          main { display: block !important; height: auto !important; overflow: visible !important; padding: 0 !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
-      <div id="report-root" style={{ width: 794, margin: "0 auto", background: "white" }}>
+      <div id="report-root" className="flex flex-col" style={{ width: 794 }}>
 
         {/* PAGE 1 — COVER */}
         <Page dark first>
