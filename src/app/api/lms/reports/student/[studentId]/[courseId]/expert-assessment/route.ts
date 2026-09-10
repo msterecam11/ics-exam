@@ -102,6 +102,7 @@ CRITICAL — reason from the ACTUAL per-question results listed under each modul
 - A module can be part strength, part weakness — reflect that nuance rather than labelling the whole module good or bad.
 - When "Topic scores" are given for a module, name strengths using the HIGH-scoring topics and weaknesses using the LOW-scoring topics, using those exact topic names — your analysis must agree with those topic scores.
 - NEVER leave a module's strengths, weaknesses, or development empty. Every one must contain at least one substantive sentence. For a module scored 100%, the weaknesses entry is a positive analytical statement (no gaps found) and development explains how to extend the mastery — not a blank.
+- For a module marked "no exam questions mapped to this module" (e.g. an intro/orientation module), there is NO score to analyze — do NOT invent exam performance, correct/incorrect answers, or a mastery judgment for it. Instead write the summary around actual engagement signals given for that module (completion status, time spent, practice activity results if any); strengths/weaknesses/development should reflect participation and readiness for the graded modules, not a fabricated exam outcome.
 
 LEARNER: ${report.student.name}${report.student.job_title ? ` (${report.student.job_title})` : ""}
 COURSE: ${report.course.title}
