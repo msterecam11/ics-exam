@@ -220,19 +220,22 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
           <PageHeader title="Cohort Overview" subtitle={course.title} today={today} />
           <div className="px-12 py-7 space-y-6">
             {/* Metric cards */}
-            <div className="grid grid-cols-4 gap-3 avoid-break">
-              {[
-                { label: "Enrolled", value: `${stats.enrolled}`, sub: `${stats.completed} completed` },
-                { label: "Avg Mastery", value: stats.avgMastery !== null ? `${stats.avgMastery}%` : "—", sub: "exam-weighted", color: sc(stats.avgMastery).t },
-                { label: "Exam Pass Rate", value: stats.examExists ? `${stats.examPassRate}%` : "—", sub: stats.examExists ? `${stats.examPassed}/${stats.enrolled} passed` : "no exam", color: stats.examExists ? sc(stats.examPassRate).t : "#94a3b8" },
-                { label: "Avg Time", value: fmtTime(stats.avgTimeS), sub: "per student" },
-              ].map(m => (
-                <div key={m.label} className="border border-slate-200 rounded-xl p-4 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{m.label}</p>
-                  <p className="text-2xl font-bold" style={{ color: m.color ?? "#1e293b" }}>{m.value}</p>
-                  <p className="text-[10px] text-slate-400 mt-1">{m.sub}</p>
-                </div>
-              ))}
+            <div className="avoid-break">
+              <p className={`${SECTION} mb-3`}>Score Summary</p>
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { label: "Enrolled", value: `${stats.enrolled}`, sub: `${stats.completed} completed` },
+                  { label: "Avg Mastery", value: stats.avgMastery !== null ? `${stats.avgMastery}%` : "—", sub: "exam-weighted", color: sc(stats.avgMastery).t },
+                  { label: "Exam Pass Rate", value: stats.examExists ? `${stats.examPassRate}%` : "—", sub: stats.examExists ? `${stats.examPassed}/${stats.enrolled} passed` : "no exam", color: stats.examExists ? sc(stats.examPassRate).t : "#94a3b8" },
+                  { label: "Avg Time", value: fmtTime(stats.avgTimeS), sub: "per student" },
+                ].map(m => (
+                  <div key={m.label} className="border border-slate-200 rounded-xl p-4 text-center">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{m.label}</p>
+                    <p className="text-2xl font-bold" style={{ color: m.color ?? "#1e293b" }}>{m.value}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{m.sub}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Mastery distribution + pass/fail */}
@@ -517,6 +520,18 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
           <Page>
             <PageHeader title="Expert Report" subtitle={course.title} today={today} />
             <div className="px-12 py-7 space-y-5">
+              <div className="avoid-break flex items-start justify-between gap-4 pb-4 border-b-2 border-slate-100">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] bg-blue-50 px-2 py-0.5 rounded-full">AI Expert Assessment</span>
+                  <h2 className="text-xl font-bold text-slate-800 mt-2">{course.title}</h2>
+                  <p className="text-xs text-slate-400 mt-1">Cohort-wide analysis · {stats.enrolled} students</p>
+                </div>
+                <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: sc(stats.avgMastery).b }}>
+                  <span className="text-xl font-extrabold" style={{ color: sc(stats.avgMastery).t }}>{stats.avgMastery !== null ? `${stats.avgMastery}%` : "—"}</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: sc(stats.avgMastery).t }}>Avg Mastery</span>
+                </div>
+              </div>
+
               <div className="avoid-break bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-xl p-5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-2">Executive Summary</p>
                 <p className="text-sm text-slate-700 leading-relaxed">{ai.executive_summary}</p>
@@ -560,7 +575,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
         <Page>
           <PageHeader title="Student Roster" subtitle={course.title} today={today} />
           <div className="px-12 py-7 flex-1">
-            <p className="text-[10px] text-slate-400 mb-3 print:hidden">Click a student to open their individual report.</p>
+            <p className={`${SECTION} mb-3`}>Full Cohort Roster <span className="text-slate-300 font-normal normal-case print:hidden">· click a student to open their individual report</span></p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
