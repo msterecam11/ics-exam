@@ -42,7 +42,7 @@ export interface CourseReport {
   enrollment: { status: string; enrolled_at: string; completed_at: string | null; progress_pct: number }
   overall: { score: number | null; completionPct: number; timeSpent: number; attendancePct: number | null; presentCount: number; sessionTotal: number }
   modules: ReportModule[]
-  exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number; passMark: number } | null
+  exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number; passMark: number; timeSpent: number } | null
   // Every final-exam section (from the course-builder analysis) scored for THIS student.
   examSections: { title: string; moduleId: string | null; pct: number; correct: number; partial: number; zero: number; earned: number; possible: number; questionCount: number; questions: ExamSectionQuestion[] }[]
   // Per-TOPIC mastery (question→topic tags from Expert Analyze), grouped by module — the heatmap.
@@ -196,6 +196,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
         passed: !!examAttempts.some((a: any) => a.passed),
         attempts: examAttempts.length, maxAttempts,
         passMark: Number((courseRes.data as any).final_exam_pass_mark ?? (examMod as any).activity_settings?.pass_mark ?? 70),
+        timeSpent: examAttempts.reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0),
       }
     }
   }
@@ -323,8 +324,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
   // ── Overall (exam-weighted mastery across modules) ──
   const masteryScores = reportModules.map(m => m.masteryScore).filter((s): s is number => s !== null)
   const overallScore = masteryScores.length ? Math.round(masteryScores.reduce((a, b) => a + b, 0) / masteryScores.length) : null
-  const examTime = examMod ? attempts.filter((a: any) => a.module_id === examMod.id).reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0) : 0
-  const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0) + examTime
+  const timeSpent = reportModules.reduce((s, m) => s + m.timeSpent, 0) + (exam?.timeSpent ?? 0)
 
   // ── Expert assessment (AI-driven, exam-style structure) ──
   const aRaw: any = assessmentRes.data?.assessment

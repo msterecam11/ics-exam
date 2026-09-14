@@ -337,6 +337,12 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                       <span className="text-[11px] font-semibold text-slate-700">{m.timeSpent > 0 ? fmtTime(m.timeSpent) : "—"}</span>
                     </div>
                   ))}
+                  {exam && exam.timeSpent > 0 && (
+                    <div className={`flex items-center justify-between px-4 py-2 border-b border-slate-50 last:border-0 ${modules.length % 2 ? "bg-slate-50/60" : ""}`}>
+                      <span className="text-[11px] text-slate-600">Final Exam · {exam.title}</span>
+                      <span className="text-[11px] font-semibold text-slate-700">{fmtTime(exam.timeSpent)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
