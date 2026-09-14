@@ -44,7 +44,7 @@ export interface CourseReport {
   modules: ReportModule[]
   exam: { title: string; score: number | null; maxScore: number | null; pct: number | null; passed: boolean; attempts: number; maxAttempts: number; passMark: number } | null
   // Every final-exam section (from the course-builder analysis) scored for THIS student.
-  examSections: { title: string; pct: number; correct: number; partial: number; zero: number; earned: number; possible: number; questionCount: number; questions: ExamSectionQuestion[] }[]
+  examSections: { title: string; moduleId: string | null; pct: number; correct: number; partial: number; zero: number; earned: number; possible: number; questionCount: number; questions: ExamSectionQuestion[] }[]
   // Per-TOPIC mastery (question→topic tags from Expert Analyze), grouped by module — the heatmap.
   topicScores: { moduleId: string; module: string; topic: string; pct: number; earned: number; possible: number; questionCount: number; correct: number; zero: number }[]
   assignments: { title: string; status: string; score: number | null; maxScore: number | null; note: string | null }[]
@@ -234,7 +234,7 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
       // Map to its module (for the per-module page) when the section has one.
       if (s.module_id) sectionByMod.set(s.module_id, { pct, correct, partial, zero, earned, possible, questions: qs })
       // Always record it in the flat exam-sections list (for the Final Exam page).
-      ;(examSections as any[]).push({ title: s.title ?? "Section", pct, correct, partial, zero, earned, possible, questionCount: qs.length, questions: qs, _ord: s.module_id ? (modOrder.get(s.module_id) ?? 998) : 999 })
+      ;(examSections as any[]).push({ title: s.title ?? "Section", moduleId: s.module_id ?? null, pct, correct, partial, zero, earned, possible, questionCount: qs.length, questions: qs, _ord: s.module_id ? (modOrder.get(s.module_id) ?? 998) : 999 })
     }
     // Present sections in course-module order (module 1 → 2 → 3 …), unmapped last.
     examSections.sort((a, b) => ((a as any)._ord ?? 999) - ((b as any)._ord ?? 999))

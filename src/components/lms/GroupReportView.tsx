@@ -361,25 +361,24 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                   ))}
                 </div>
               </div>
-              <div className="avoid-break">
-                <p className={`${SECTION} mb-3`}>Hardest Questions <span className="text-slate-300 font-normal normal-case">· lowest cohort score</span></p>
-                <div className="rounded-xl border border-slate-100 overflow-hidden">
-                  {itemAnalysis.hardest.map((q, i) => {
-                    const c = sc(q.avgPct)
-                    return (
-                      <div key={i} className={`flex items-start gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 ${i % 2 ? "bg-slate-50/60" : ""}`}>
-                        <span className="text-[10px] text-slate-400 w-4 mt-0.5">{i + 1}</span>
-                        <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
-                        <div className="w-24 shrink-0">
-                          <div className="flex justify-between text-[9px] mb-0.5"><span className="text-slate-400">{q.correctPct}% full</span><span style={{ color: c.t }} className="font-bold">{q.avgPct}%</span></div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-1.5 rounded-full" style={{ width: `${q.avgPct}%`, background: c.t }} /></div>
+              {topicHeatmap.length > 0 && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-3`}>Weakest Topics <span className="text-slate-300 font-normal normal-case">· lowest cohort mastery</span></p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {topicHeatmap.slice().sort((a, b) => a.avgPct - b.avgPct).slice(0, 8).map((t, i) => {
+                      const c = heat(t.avgPct)
+                      return (
+                        <div key={i} style={{ background: c.bg, borderColor: c.border }} className="border rounded-xl p-2.5 flex flex-col">
+                          <p className="text-[8px] font-bold uppercase tracking-wide truncate" style={{ color: c.tag }}>{t.module.replace(/^Module\s*\d+\s*[-–:]\s*/i, "")}</p>
+                          <p className="text-[10px] leading-tight mt-0.5 mb-1.5 text-slate-700 flex-1">{t.topic}</p>
+                          <p className="text-base font-bold" style={{ color: c.text }}>{t.avgPct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.students} std</span></p>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">A topic the whole cohort missed may signal a teaching gap — or a flawed/ambiguous question worth reviewing in the item bank.</p>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-2">A question the whole cohort missed may signal a teaching gap — or a flawed/ambiguous question worth reviewing.</p>
-              </div>
+              )}
 
               {itemAnalysis.flagged.length > 0 && (
                 <div className="avoid-break">
@@ -388,7 +387,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                     {itemAnalysis.flagged.map((q, i) => (
                       <div key={i} className="flex items-start gap-3 px-4 py-2.5 border-b border-amber-50 last:border-0 bg-amber-50/40">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                        <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
+                        <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">Question {i + 1} <span className="text-slate-400">— see item bank for full text</span></p>
                         <span className="text-[10px] text-amber-700 shrink-0 font-medium" title="discrimination index · cohort avg">D {q.discrimination.toFixed(2)} · {q.avgPct}%</span>
                       </div>
                     ))}

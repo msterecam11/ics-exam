@@ -447,18 +447,22 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                       ].map(s => <div key={s.label} className={`px-3 py-1.5 rounded-lg text-center ${s.color}`}><p className="text-xs font-bold">{s.val}</p><p className="text-[9px] uppercase tracking-wide opacity-70">{s.label}</p></div>)}
                     </div>
                     <ScoreBar label="Exam section score" score={es.pct} detail={`${es.correct}/${es.questions.length} correct`} />
-                    <div className="rounded-xl border border-slate-100 overflow-hidden">
-                      {es.questions.map((q, qi) => {
-                        const full = q.scoreAchieved >= q.points && q.points > 0
-                        return (
-                          <div key={qi} className={`flex items-start gap-3 px-4 py-2 border-b border-slate-50 last:border-0 ${qi % 2 ? "bg-slate-50/60" : ""}`}>
-                            <div className="mt-0.5 shrink-0">{full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <XCircle className="h-3.5 w-3.5 text-red-400" />}</div>
-                            <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
-                            <span className="text-[11px] font-bold text-slate-700 shrink-0">{q.scoreAchieved}<span className="text-slate-300 font-normal">/{q.points}</span></span>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    {(() => {
+                      const modTopics = topicScores.filter(t => t.moduleId === m.id)
+                      return modTopics.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {modTopics.map((t, i) => {
+                            const c = heat(t.pct)
+                            return (
+                              <div key={i} style={{ background: c.bg, borderColor: c.border }} className="border rounded-xl p-2.5">
+                                <p className="text-[10px] leading-tight mb-1.5 text-slate-700">{t.topic}</p>
+                                <p className="text-base font-bold" style={{ color: c.text }}>{t.pct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.correct}/{t.questionCount}</span></p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
@@ -502,19 +506,22 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                         </div>
                         <div className="px-4 py-2">
                           <ScoreBar label={`${s.correct}/${s.questionCount} correct`} score={s.pct} detail={`${s.earned}/${s.possible} pts`} />
-                          <div className="mt-2 rounded-lg border border-slate-100 overflow-hidden">
-                            {s.questions.map((q, qi) => {
-                              const full = q.scoreAchieved >= q.points && q.points > 0
-                              const part = q.scoreAchieved > 0 && !full
-                              return (
-                                <div key={qi} className={`flex items-start gap-2 px-3 py-1.5 border-b border-slate-50 last:border-0 ${qi % 2 ? "bg-slate-50/60" : ""}`}>
-                                  {full ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" /> : part ? <MinusCircle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" /> : <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />}
-                                  <p className="flex-1 text-[11px] text-slate-600 leading-relaxed">{q.text}</p>
-                                  <span className="text-[11px] font-bold text-slate-700 shrink-0">{q.scoreAchieved}<span className="text-slate-300 font-normal">/{q.points}</span></span>
-                                </div>
-                              )
-                            })}
-                          </div>
+                          {(() => {
+                            const secTopics = topicScores.filter(t => t.moduleId === s.moduleId)
+                            return secTopics.length > 0 && (
+                              <div className="mt-2 grid grid-cols-3 gap-2">
+                                {secTopics.map((t, i) => {
+                                  const c = heat(t.pct)
+                                  return (
+                                    <div key={i} style={{ background: c.bg, borderColor: c.border }} className="border rounded-xl p-2.5">
+                                      <p className="text-[10px] leading-tight mb-1.5 text-slate-700">{t.topic}</p>
+                                      <p className="text-base font-bold" style={{ color: c.text }}>{t.pct}%<span className="text-[9px] font-normal text-slate-400 ml-1">{t.correct}/{t.questionCount}</span></p>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
                     )
