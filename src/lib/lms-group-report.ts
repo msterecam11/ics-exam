@@ -55,7 +55,11 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
   const modOrder = new Map<string, number>(modules.map((m: any) => [m.id, m.order_index ?? 999]))
 
   // Per-student reports — the SAME accurate scoring the individual reports use.
-  const reports = await Promise.all(enr.map(e => buildCourseReport(e.student_id, courseId)))
+  // computeCohort:false — this function already computes its own cohort-wide
+  // stats independently, and each per-student report's own cohort ranking
+  // would otherwise rebuild every OTHER member's report too, turning this
+  // O(N) call into O(N²).
+  const reports = await Promise.all(enr.map(e => buildCourseReport(e.student_id, courseId, { computeCohort: false })))
   const rows = enr
     .map((e, i) => ({ e, r: reports[i] }))
     .filter((x): x is { e: any; r: NonNullable<typeof x.r> } => x.r !== null)

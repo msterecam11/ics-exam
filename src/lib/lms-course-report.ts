@@ -104,7 +104,8 @@ export function gradeQuestion(q: any, ans: any): number {
 }
 
 // ── Builder ────────────────────────────────────────────────────────
-export async function buildCourseReport(studentId: string, courseId: string): Promise<CourseReport | null> {
+export async function buildCourseReport(studentId: string, courseId: string, opts?: { computeCohort?: boolean }): Promise<CourseReport | null> {
+  const computeCohort = opts?.computeCohort !== false
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
     db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
@@ -381,36 +382,28 @@ export async function buildCourseReport(studentId: string, courseId: string): Pr
     : []
 
   // ── Cohort benchmark (rank within the course) ──
-  // Comparable proxy = exam-weighted where an exam exists, else completion %.
+  // Uses this SAME per-module mastery-weighted overall score for every cohort
+  // member (via a recursive call with computeCohort:false to avoid infinite
+  // recursion) — not an approximation blended from completion % — so "your
+  // score" here always equals "Overall Score" above, and the class average
+  // always matches the group/cohort report's own Avg Mastery for this course.
   let cohort: CourseReport["cohort"] = null
-  {
+  if (computeCohort) {
     const { data: cohortEnrolls } = await db
       .from("lms_enrollments")
-      .select("student_id, progress_pct")
+      .select("student_id")
       .eq("course_id", courseId)
       .neq("status", "dropped")
-    const rows = cohortEnrolls ?? []
-    if (rows.length >= 2) {
-      let examBest: Record<string, number> = {}
-      if (examMod) {
-        const { data: allAttempts } = await db
-          .from("lms_module_attempts")
-          .select("student_id, score, max_score")
-          .eq("module_id", examMod.id)
-        for (const a of allAttempts ?? []) {
-          const pct = a.max_score ? Math.round((a.score / a.max_score) * 100) : 0
-          if (pct > (examBest[a.student_id] ?? -1)) examBest[a.student_id] = pct
-        }
-      }
-      const scoreOf = (sid: string, prog: number) =>
-        examMod ? Math.round((examBest[sid] ?? 0) * 0.6 + prog * 0.4) : Math.round(prog)
-      const ranked = rows
-        .map((r: any) => ({ sid: r.student_id, val: scoreOf(r.student_id, num(r.progress_pct) ?? 0) }))
-        .sort((a, b) => b.val - a.val)
+    const otherIds = (cohortEnrolls ?? []).map((r: any) => r.student_id as string).filter(sid => sid !== studentId)
+    if (otherIds.length > 0) {
+      const otherReports = await Promise.all(otherIds.map(sid => buildCourseReport(sid, courseId, { computeCohort: false })))
+      const ranked = [
+        { sid: studentId, val: overallScore ?? 0 },
+        ...otherIds.map((sid, i) => ({ sid, val: otherReports[i]?.overall.score ?? 0 })),
+      ].sort((a, b) => b.val - a.val)
       const rank = ranked.findIndex(r => r.sid === studentId) + 1
       const classAvg = Math.round(ranked.reduce((s, r) => s + r.val, 0) / ranked.length)
-      const self = ranked.find(r => r.sid === studentId)?.val ?? 0
-      if (rank > 0) cohort = { rank, total: ranked.length, classAvg, selfScore: self }
+      if (rank > 0) cohort = { rank, total: ranked.length, classAvg, selfScore: overallScore ?? 0 }
     }
   }
 
