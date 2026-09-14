@@ -442,6 +442,7 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                       {[
                         { label: "Questions", val: es.questions.length, color: "bg-slate-100 text-slate-700" },
                         { label: "Correct", val: es.correct, color: "bg-emerald-50 text-emerald-700" },
+                        ...(es.partial > 0 ? [{ label: "Partial", val: es.partial, color: "bg-amber-50 text-amber-700" }] : []),
                         { label: "Zero", val: es.zero, color: "bg-red-50 text-red-600" },
                         { label: "Points", val: `${es.earned}/${es.possible}`, color: "bg-blue-50 text-blue-700" },
                       ].map(s => <div key={s.label} className={`px-3 py-1.5 rounded-lg text-center ${s.color}`}><p className="text-xs font-bold">{s.val}</p><p className="text-[9px] uppercase tracking-wide opacity-70">{s.label}</p></div>)}
