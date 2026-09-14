@@ -5,6 +5,11 @@ import { rateLimit } from "@/lib/rateLimit"
 import { buildCourseReport } from "@/lib/lms-course-report"
 import Groq from "groq-sdk"
 
+export const maxDuration = 60 // Vercel: extend timeout — every other AI-generation route
+// in the app sets this (including this route's own group-level sibling); this one was
+// the one exception, silently hitting the platform's default (much shorter) serverless
+// timeout on any slower generation, with no JSON error surfaced to the client at all.
+
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }

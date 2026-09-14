@@ -417,11 +417,16 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                       <div className="bg-[#1B4F8A] px-4 py-2 flex items-center gap-2"><BrainCircuit className="h-3.5 w-3.5 text-white/70" /><p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Expert Analysis</p></div>
                       {m.ai.summary && <div className="bg-blue-50/60 px-4 py-3"><p className="text-xs text-blue-900 leading-relaxed">{m.ai.summary}</p></div>}
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Strengths</p>{m.ai.strengths.length ? m.ai.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-emerald-800/50 italic">{m.masteryScore === null ? "—" : (m.masteryScore < 40 ? "None at this level" : "—")}</p>}</div>
-                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">Weaknesses</p>{m.ai.weaknesses.length ? m.ai.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-amber-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-amber-800/50 italic">{m.masteryScore !== null && m.masteryScore >= 80 ? "None — strong across this module" : "—"}</p>}</div>
-                      <div className="bg-purple-50 border border-purple-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1.5">Development</p>{m.ai.development.length ? m.ai.development.map((s, i) => <p key={i} className="text-[10px] text-purple-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-purple-800/50 italic">{m.masteryScore !== null && m.masteryScore >= 80 ? "Maintain current level" : "—"}</p>}</div>
-                    </div>
+                    {/* Strengths/Weaknesses/Development only make sense for a module that
+                        was actually assessed — an ungraded intro module has no performance
+                        to break down that way, just the summary above. */}
+                    {m.masteryScore !== null && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Strengths</p>{m.ai.strengths.length ? m.ai.strengths.map((s, i) => <p key={i} className="text-[10px] text-emerald-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-emerald-800/50 italic">{m.masteryScore < 40 ? "None at this level" : "—"}</p>}</div>
+                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">Weaknesses</p>{m.ai.weaknesses.length ? m.ai.weaknesses.map((s, i) => <p key={i} className="text-[10px] text-amber-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-amber-800/50 italic">{m.masteryScore >= 80 ? "None — strong across this module" : "—"}</p>}</div>
+                        <div className="bg-purple-50 border border-purple-100 rounded-xl p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1.5">Development</p>{m.ai.development.length ? m.ai.development.map((s, i) => <p key={i} className="text-[10px] text-purple-800 leading-relaxed mb-1">· {s}</p>) : <p className="text-[10px] text-purple-800/50 italic">{m.masteryScore >= 80 ? "Maintain current level" : "—"}</p>}</div>
+                      </div>
+                    )}
                   </div>
                 )}
 
