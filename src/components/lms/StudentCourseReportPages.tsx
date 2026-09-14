@@ -26,7 +26,7 @@ function sc(p: number | null) {
   return { text: "#DC2626", bg: "#fee2e2", border: "#fca5a5" }
 }
 function statusLabel(s: string) { return ({ passed: "Completed", completed: "Completed", failed: "Completed", in_progress: "In progress", not_started: "Not started" } as Record<string, string>)[s] ?? s }
-function fmtTime(s: number) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+function fmtTime(s: number) { const totalMin = Math.round(s / 60), h = Math.floor(totalMin / 60), m = totalMin % 60; return h > 0 ? `${h}h ${m}m` : `${m}m` }
 
 function PageHeader({ title, subtitle, today }: { title: string; subtitle?: string; today: string }) {
   return (
@@ -128,6 +128,13 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
   const hasAssignments = assignments.length > 0
   const hasAttendance = overall.sessionTotal > 0
   const hasFeedback = !!feedback && (feedback.ratings.length > 0 || !!feedback.comment)
+
+  // Sum of the SAME rounded-to-minute values shown in the Time on Task rows below,
+  // not the raw precise total — so the header always reconciles with what's visibly
+  // listed underneath it (adding independently-rounded rows can otherwise land a
+  // minute or two short of a total rounded from the unrounded sum).
+  const timeOnTaskShownMinutes =
+    modules.reduce((s, m) => s + Math.round(m.timeSpent / 60), 0) + (exam ? Math.round(exam.timeSpent / 60) : 0)
 
   // Mastery is measured per MODULE (topics just inherit their module's score, so a
   // topic list is redundant and hides the spread). Show one bar per module + a radar.
@@ -329,7 +336,7 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                 <div className="rounded-xl border border-slate-100 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 bg-[#1B4F8A]/5 border-b border-slate-100">
                     <span className="text-xs font-bold text-[#1B4F8A] flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Total time on task</span>
-                    <span className="text-sm font-bold text-[#1B4F8A]">{overall.timeSpent > 0 ? fmtTime(overall.timeSpent) : "—"}</span>
+                    <span className="text-sm font-bold text-[#1B4F8A]">{timeOnTaskShownMinutes > 0 ? fmtTime(timeOnTaskShownMinutes * 60) : "—"}</span>
                   </div>
                   {modules.map((m, mi) => (
                     <div key={m.id} className={`flex items-center justify-between px-4 py-2 border-b border-slate-50 last:border-0 ${mi % 2 ? "bg-slate-50/60" : ""}`}>

@@ -55,7 +55,7 @@ function sc(p: number | null) {
   if (p >= 60) return { t: "#D97706", b: "#fef3c7" }
   return { t: "#DC2626", b: "#fee2e2" }
 }
-function fmtTime(s: number) { if (!s || s < 60) return s >= 1 ? `${s}s` : "—"; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
+function fmtTime(s: number) { if (!s || s < 60) return s >= 1 ? `${s}s` : "—"; const totalMin = Math.round(s / 60), h = Math.floor(totalMin / 60), m = totalMin % 60; return h > 0 ? `${h}h ${m}m` : `${m}m` }
 function heat(pct: number) {
   if (pct >= 80) return { bg: "#EAF3DE", border: "#C0DD97", text: "#27500A", tag: "#3B6D11" }
   if (pct >= 60) return { bg: "#E6F1FB", border: "#B5D4F4", text: "#0C447C", tag: "#185FA5" }
