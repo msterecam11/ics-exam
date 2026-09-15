@@ -89,24 +89,41 @@ function shuffle<T>(arr: T[]): T[] {
 // the REAL `module.questions` server-side (see exam-attempt/route.ts) — the
 // client only ever sees this sanitized shape.
 export function sanitizeQuestionsForClient(questions: ExamQuestion[]): ExamQuestion[] {
-  return questions.map((q) => {
+  return questions.map((raw) => {
+    // ALLOWLIST, not a denylist. This used to spread the stored question and
+    // strip the obvious key, which silently shipped every other field with it —
+    // including `rubric`, i.e. the marking scheme for an AI-graded scenario
+    // question, readable from the page source BEFORE the learner answers. Any
+    // field not named here never reaches the browser, so adding a new
+    // grading-hint field to a question can't leak by default.
+    const q: any = raw
+    const base: any = { id: q.id, type: q.type, points: q.points, text: q.text }
+
+    if (q.type === "open_ended") {
+      // max_words drives the client word counter; rubric deliberately omitted.
+      if (q.max_words !== undefined) base.max_words = q.max_words
+      return base as ExamQuestion
+    }
     if ((q.type === "mcq_single" || q.type === "mcq_multiple") && q.options) {
-      return { ...q, options: q.options.map(({ id, text }) => ({ id, text, correct: false })) }
+      if (q.partialCredit !== undefined) base.partialCredit = q.partialCredit
+      return { ...base, options: q.options.map(({ id, text }: MCQOption) => ({ id, text, correct: false })) }
     }
     if (q.type === "ordering" && q.items) {
       // Shuffle display order — ids/text are unchanged so grading (which
       // compares submitted id order to the ORIGINAL array order) still
       // works, but the initial payload no longer IS the answer key.
-      return { ...q, items: shuffle(q.items) }
+      return { ...base, items: shuffle<OrderItem>(q.items).map(({ id, text }) => ({ id, text })) }
     }
     if (q.type === "match_pair" && q.pairs) {
       // Never send a left/right pair pre-matched — that pairing IS the
       // answer key. Send left items with their `right` blanked out, plus
       // an unlinked, shuffled pool of right-side text for the picker.
-      const rightPool = shuffle(q.pairs.map((p) => p.right))
-      return { ...q, pairs: q.pairs.map((p) => ({ ...p, right: "" })), rightPool }
+      const rightPool = shuffle(q.pairs.map((p: MatchPair) => p.right))
+      return { ...base, pairs: q.pairs.map((p: MatchPair) => ({ id: p.id, left: p.left, right: "" })), rightPool }
     }
-    return q
+    // Unknown/unsupported type: emit only the common fields rather than the
+    // stored question, so a future type can't leak its key by falling through.
+    return base as ExamQuestion
   })
 }
 
