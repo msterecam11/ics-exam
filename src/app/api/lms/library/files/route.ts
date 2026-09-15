@@ -63,6 +63,17 @@ export async function POST(req: Request) {
     if (!name?.trim())       return NextResponse.json({ error: "name required" },       { status: 400 })
     if (!public_url?.trim()) return NextResponse.json({ error: "public_url required" }, { status: 400 })
 
+    // The stored URL is rendered straight into an <a href> in the library UI.
+    // Without a scheme check, "javascript:..." or "data:text/html,..." is
+    // storable and runs in the app's own origin the moment someone clicks the
+    // link — so an instructor could plant one for an admin to trigger. Only
+    // http/https are meaningful for an external library link anyway.
+    let parsedUrl: URL
+    try { parsedUrl = new URL(public_url.trim()) }
+    catch { return NextResponse.json({ error: "public_url must be a valid URL" }, { status: 400 }) }
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:")
+      return NextResponse.json({ error: "public_url must start with http:// or https://" }, { status: 400 })
+
     const { data, error } = await db.from("lms_library_files").insert({
       name:          name.trim(),
       original_name: name.trim(),
