@@ -68,10 +68,15 @@ const ROWS_PER_PAGE = 35
 
 export default async function PrintAttendanceReport({ params, searchParams }: Props) {
   const { pdf_secret } = await searchParams
-  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
+  // Staff only — a bare session was previously enough to pull any session's
+  // attendance sheet by URL. Viewers have no attendance surface, so there is
+  // no viewer-grant path to honour here.
+  const validSecret = !!process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    const role = session.user?.role ?? ""
+    if (role !== "admin" && role !== "instructor") notFound()
   }
 
   const { sessionId } = await params
