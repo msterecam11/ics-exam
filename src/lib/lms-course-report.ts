@@ -205,7 +205,14 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
   // ── Final-exam performance by section (graded from the learner's answers) ──
   let examSections: CourseReport["examSections"] = []
   let topicScores: CourseReport["topicScores"] = []
-  if (examMod) {
+  // Only grade the exam when the learner ACTUALLY SAT IT. Without this guard a
+  // learner with no attempt was graded against an empty answer sheet — every
+  // question scored 0 — so every section, topic and module came back 0% as if
+  // they had taken the exam and missed everything, instead of "not assessed".
+  // That 0 then propagated into their overall score, the cohort average, the
+  // mastery distribution, the topic heatmap and the at-risk flags.
+  const hasExamAttempt = !!examMod && attempts.some((a: any) => a.module_id === examMod.id)
+  if (examMod && hasExamAttempt) {
     const examQuestions: any[] = Array.isArray((examMod as any).questions) ? (examMod as any).questions : []
     const qById = new Map(examQuestions.map((q: any) => [q.id, q]))
     const sections: any[] = Array.isArray(analysisBy.get(examMod.id)?.sections) ? analysisBy.get(examMod.id)!.sections : []
