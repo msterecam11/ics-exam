@@ -114,10 +114,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
-        // ── 8. Success — reset lockout state ──────────────────────────────────
+        // ── 8. Success — reset lockout state, record the login ────────────────
+        // last_login_at was READ in two places (LMS Settings and /hub/users,
+        // both showing "Last login") but written nowhere, so every staff account
+        // has displayed "Never" since the column was added — including accounts
+        // signing in daily. It rides along on the lockout reset that already
+        // runs here, so recording it costs no extra query.
         await db
           .from("admin_users")
-          .update({ failed_attempts: 0, locked_until: null })
+          .update({ failed_attempts: 0, locked_until: null, last_login_at: new Date().toISOString() })
           .eq("id", user.id)
         await auditLog(
           { user: { id: user.id, name: user.name, role: user.role } },

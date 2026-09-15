@@ -358,7 +358,7 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">User Management</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Manage admins, instructors and assessors</p>
+          <p className="text-sm text-slate-500 mt-0.5">Manage admins, instructors, assessors and viewers</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setAddOpen(true)} className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6f] text-white">
