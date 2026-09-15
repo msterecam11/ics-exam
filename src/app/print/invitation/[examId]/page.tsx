@@ -16,6 +16,10 @@ export default async function PrintInvitationPage({ params, searchParams }: Prop
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    // Staff only. Candidates never open this URL: they download the finished
+    // PDF from the API, which renders this page with the internal secret.
+    const role = session.user?.role ?? ""
+    if (role !== "admin" && role !== "instructor") notFound()
   }
 
   const { examId } = await params

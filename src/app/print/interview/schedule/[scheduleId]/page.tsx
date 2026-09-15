@@ -31,6 +31,10 @@ export default async function ScheduleQRCardPage({ params, searchParams }: Props
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    // Same roles as the interview area that links here (assessors included),
+    // so the existing staff link keeps working.
+    const role = session.user?.role ?? ""
+    if (!["admin", "instructor", "assessor"].includes(role)) notFound()
   }
 
   const { scheduleId } = await params
