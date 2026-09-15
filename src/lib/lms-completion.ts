@@ -1,12 +1,45 @@
 import { db } from "@/lib/db"
 import { sendEmail, buildCompletionEmail } from "@/lib/email"
+import crypto from "crypto"
 
 // ── Certificate number generator ──────────────────────────────
+// Format: ICS-XXXX-XXXX-XXXX  (e.g. ICS-7HQ3-G2YN-LBJH)
+//
+// Two deliberate choices:
+//
+// 1. crypto, not Math.random. This number identifies a credential a third
+//    party is meant to verify. Math.random is a predictable PRNG — observing
+//    a handful of outputs lets you derive the sequence and therefore other
+//    people's numbers. That is a poor property for a certificate ID no matter
+//    how unlikely the attack.
+//
+// 2. An alphabet with no 0/O and no 1/I/L, single case, grouped in fours.
+//    These numbers get printed and then read back by someone who did not
+//    generate them — typed into a verification box or read over the phone.
+//    The previous mixed-case alphabet produced codes like "ICS-8fPCeZI1kS",
+//    where capital I sits next to digit 1 and is indistinguishable in most
+//    fonts.
+//
+// 32^12 = 60 bits, the same strength as the 10-char/62-symbol code it
+// replaces — this trades nothing away for the readability.
+const CERT_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+const CERT_LENGTH   = 12
+
 function generateCertificateNumber(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  // Rejection sampling: bytes at or above the largest whole multiple of the
+  // alphabet length are discarded rather than folded with %, which would make
+  // the first few symbols very slightly likelier than the rest.
+  const max = 256 - (256 % CERT_ALPHABET.length)
   let code = ""
-  for (let i = 0; i < 10; i++) code += chars[Math.floor(Math.random() * chars.length)]
-  return `ICS-${code}`
+  while (code.length < CERT_LENGTH) {
+    for (const b of crypto.randomBytes(CERT_LENGTH * 2)) {
+      if (b < max) {
+        code += CERT_ALPHABET[b % CERT_ALPHABET.length]
+        if (code.length === CERT_LENGTH) break
+      }
+    }
+  }
+  return `ICS-${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
 }
 
 // ── Issue certificate (deduped) ────────────────────────────────
