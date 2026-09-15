@@ -390,10 +390,15 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                     <h2 className="text-xl font-bold text-slate-800 mt-2">{m.title}</h2>
                     <p className="text-[10px] font-bold uppercase mt-1" style={{ color: col.text }}>{statusLabel(m.status)}{m.timeSpent > 0 ? ` · ${fmtTime(m.timeSpent)}` : ""}</p>
                   </div>
-                  <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
-                    <span className="text-xl font-extrabold" style={{ color: col.text }}>{m.masteryScore !== null ? `${m.masteryScore}%` : "—"}</span>
-                    <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Mastery</span>
-                  </div>
+                  {/* An empty "—" mastery box reads as a broken score, not an
+                      intentional non-assessment — just omit it here; the module's
+                      own status/summary/Expert Analysis already cover why. */}
+                  {m.masteryScore !== null && (
+                    <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: col.bg, border: `1.5px solid ${col.border}` }}>
+                      <span className="text-xl font-extrabold" style={{ color: col.text }}>{m.masteryScore}%</span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: col.text }}>Mastery</span>
+                    </div>
+                  )}
                 </div>
 
                 {(m.summary || m.topics.length > 0) && (
@@ -404,7 +409,10 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
                   </div>
                 )}
 
-                {m.masteryScore === null && (
+                {/* Once the Expert Analysis below exists, it already explains why there's
+                    no score — this disclaimer is only needed as a fallback before that AI
+                    analysis has ever been generated for this module. */}
+                {m.masteryScore === null && !m.ai && (
                   <div className="avoid-break flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-xl p-3 border border-slate-100">
                     <Sparkles className="h-3.5 w-3.5 shrink-0 text-purple-400" />
                     Not assessed by the final exam — no exam questions map to this module.
