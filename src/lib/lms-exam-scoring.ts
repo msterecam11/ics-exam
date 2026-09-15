@@ -23,6 +23,12 @@ export interface ExamQuestion {
   items?: OrderItem[]
   pairs?: MatchPair[]
   rightPool?: string[] // client-safe, unlinked right-side pool (see sanitizeQuestionsForClient)
+  /**
+   * mcq_multiple only. Off by default so existing questions keep their
+   * original all-or-nothing grading and no past result shifts. When on, the
+   * question is graded proportionally — see scoreObjectiveQuestion.
+   */
+  partialCredit?: boolean
 }
 
 type AnswerMap = Record<string, string | string[] | Record<string, string>>
@@ -36,7 +42,21 @@ export function scoreObjectiveQuestion(q: ExamQuestion, ans: unknown): number {
   if (q.type === "mcq_multiple" && q.options) {
     const corrIds = q.options.filter((o) => o.correct).map((o) => o.id)
     const sel = (Array.isArray(ans) ? ans : []) as string[]
-    return corrIds.length > 0 && sel.length === corrIds.length && corrIds.every((id) => sel.includes(id)) ? q.points : 0
+    if (corrIds.length === 0) return 0
+    const exact = sel.length === corrIds.length && corrIds.every((id) => sel.includes(id))
+    if (!q.partialCredit) return exact ? q.points : 0
+    // Guessing-corrected proportional credit, floored at zero:
+    //   (correct ticked / total correct) − (wrong ticked / total wrong)
+    // Each side is scaled by how many options of that kind exist, so ticking
+    // EVERY option nets exactly 0 (1 − 1) instead of scoring most of the marks.
+    // Penalising wrong ticks against the CORRECT count instead would leave that
+    // hole open whenever a question has fewer wrong options than right ones.
+    const wrongIds = q.options.filter((o) => !o.correct).map((o) => o.id)
+    const hits = sel.filter((id) => corrIds.includes(id)).length
+    const misses = sel.filter((id) => wrongIds.includes(id)).length
+    const penalty = wrongIds.length > 0 ? misses / wrongIds.length : 0
+    const frac = Math.max(0, hits / corrIds.length - penalty)
+    return Math.round(frac * q.points)
   }
   if (q.type === "ordering" && q.items) {
     const correct = q.items.map((i) => i.id)

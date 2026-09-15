@@ -37,6 +37,8 @@ export interface Question {
   explanation?: string
   // MCQ
   options?:     MCQOption[]
+  /** mcq_multiple only — proportional grading. Off/absent = all-or-nothing. */
+  partialCredit?: boolean
   // Ordering
   items?:       OrderItem[]
   // Match pair
@@ -499,6 +501,27 @@ function QuestionBody({ q, onChange }: { q: Question; onChange: (q: Question) =>
       {q.type === "ordering"  && <OrderingEditor  q={q} onChange={onChange} />}
       {q.type === "match_pair" && <MatchPairEditor q={q} onChange={onChange} />}
       {q.type === "open_ended" && <OpenEndedEditor q={q} onChange={onChange} />}
+
+      {/* Partial credit — multi-select only. Off by default so existing
+          questions keep all-or-nothing grading and no past result shifts. */}
+      {q.type === "mcq_multiple" && (
+        <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-50">
+          <input
+            type="checkbox"
+            checked={!!q.partialCredit}
+            onChange={e => setField("partialCredit", e.target.checked)}
+            className="mt-0.5 accent-[#1B4F8A]"
+          />
+          <div>
+            <p className="text-xs font-semibold text-slate-700">Award partial credit</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Off: only the exact set of correct options scores. On: marks are proportional to
+              how many correct options are picked, minus a penalty for wrong ones — so picking
+              every option scores zero, not full marks.
+            </p>
+          </div>
+        </label>
+      )}
 
       {/* Points + Explanation row */}
       <div className="flex items-start gap-4 pt-3 border-t border-slate-100">

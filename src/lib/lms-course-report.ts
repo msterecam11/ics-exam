@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { scoreObjectiveQuestion, type ExamQuestion } from "@/lib/lms-exam-scoring"
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -75,32 +76,15 @@ const num = (v: any): number | null => (v === null || v === undefined || isNaN(N
 // Points earned for one question — mirrors FinalExamPlayer.score() for every
 // auto-gradable type (incl. partial credit). open_ended is graded by the AI and
 // its score is applied by the caller (aiScores), NOT here.
+// Delegates to the SAME function that grades an attempt at submission time.
+// These were previously two hand-maintained copies of the objective grading
+// rules — identical today, but free to drift apart, which would make a report's
+// recomputed mastery disagree with the learner's stored exam score. One source
+// of truth means a grading change (e.g. per-question partial credit) can never
+// apply to only one of the two.
 export function gradeQuestion(q: any, ans: any): number {
-  const pts = Number(q?.points ?? 0)
   if (!q || ans === undefined || ans === null) return 0
-  if (q.type === "mcq_single") {
-    const correctId = (q.options ?? []).find((o: any) => o.correct)?.id
-    const given = Array.isArray(ans) ? ans[0] : ans
-    return correctId && given === correctId ? pts : 0
-  }
-  if (q.type === "mcq_multiple") {
-    const correctIds = (q.options ?? []).filter((o: any) => o.correct).map((o: any) => o.id)
-    const chosen: string[] = Array.isArray(ans) ? ans : (ans != null ? [ans] : [])
-    return correctIds.length > 0 && chosen.length === correctIds.length && correctIds.every((id: string) => chosen.includes(id)) ? pts : 0
-  }
-  if (q.type === "ordering") {
-    const correct = (q.items ?? []).map((i: any) => i.id)
-    const given: string[] = Array.isArray(ans) ? ans : []
-    const ok = correct.filter((id: string, i: number) => id === given[i]).length
-    return given.length > 0 && correct.length > 0 ? Math.round((ok / correct.length) * pts) : 0
-  }
-  if (q.type === "match_pair") {
-    const given = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {}
-    const pairs = q.pairs ?? []
-    const ok = pairs.filter((p: any) => given[p.id] === p.right).length
-    return pairs.length > 0 ? Math.round((ok / pairs.length) * pts) : 0
-  }
-  return 0  // open_ended — scored by the caller from AI feedback
+  return scoreObjectiveQuestion(q as ExamQuestion, ans)
 }
 
 // ── Builder ────────────────────────────────────────────────────────
