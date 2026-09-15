@@ -13,12 +13,22 @@ export default async function CertificatesPage() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Earned certificates — only those released to the student (held certificates stay hidden)
+  // Earned certificates — released AND held.
+  //
+  // Held certificates used to be filtered out entirely. That left a student who
+  // had finished a course falling through every list on this page: not in
+  // "earned" (not released yet) and not in "In Progress" (their enrolment is
+  // `completed`, and that list only shows `active`). They were shown "No
+  // certificates yet — complete a course to earn your first certificate" — after
+  // receiving a "Course Complete" email. The certificate exists and they earned
+  // it; only the hand-over is pending, so say that instead of denying it.
+  //
+  // Revoked certificates ARE still excluded — that is a withdrawal, not a delay.
   const { data: certs } = await db
     .from("lms_certificates")
-    .select("id, course_id, verification_code, type, source_title, issued_at, lms_courses(title)")
+    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title)")
     .eq("student_id", student.id)
-    .not("released_at", "is", null)
+    .is("revoked_at", null)
     .order("issued_at", { ascending: false })
 
   // In-progress enrollments (active, not yet completed)
@@ -38,7 +48,10 @@ export default async function CertificatesPage() {
                          ? (c.lms_courses?.title ?? "Course")
                          : (c.source_title ?? "Certificate"),
     issued_at:         c.issued_at,
+    released:          !!c.released_at,
   }))
+
+  const pendingCount = certificates.filter(c => !c.released).length
 
   const inProgress = (activeEnrollments ?? []) as any[]
 
@@ -50,8 +63,11 @@ export default async function CertificatesPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">My Certificates</h1>
+            {/* Was "Issued automatically once you complete a course", which is
+                only true when the course auto-releases. */}
             <p className="text-slate-500 text-sm mt-1">
-              Issued automatically once you complete a course.
+              Issued when you complete a course.
+              {pendingCount > 0 && " Some are still being prepared."}
             </p>
           </div>
           <span className="text-sm text-slate-400">
@@ -76,14 +92,19 @@ export default async function CertificatesPage() {
                 key={cert.id}
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col"
               >
-                {/* Top accent bar */}
-                <div className="h-2 bg-gradient-to-r from-[#1B4F8A] to-[#2563eb]" />
+                {/* Top accent bar — muted while the certificate is still held,
+                    so a pending one reads as distinct at a glance. */}
+                <div className={cert.released
+                  ? "h-2 bg-gradient-to-r from-[#1B4F8A] to-[#2563eb]"
+                  : "h-2 bg-slate-200"} />
 
                 <div className="p-5 flex flex-col gap-4 flex-1">
                   {/* Icon + course title */}
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#1B4F8A]/10 flex items-center justify-center shrink-0">
-                      <Award className="h-5 w-5 text-[#1B4F8A]" />
+                    <div className={cert.released
+                      ? "w-10 h-10 rounded-xl bg-[#1B4F8A]/10 flex items-center justify-center shrink-0"
+                      : "w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0"}>
+                      <Award className={cert.released ? "h-5 w-5 text-[#1B4F8A]" : "h-5 w-5 text-slate-400"} />
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">
@@ -92,6 +113,21 @@ export default async function CertificatesPage() {
                       <p className="text-xs text-slate-400 mt-0.5">ICS Aviation Institute</p>
                     </div>
                   </div>
+
+                  {/* Pending-release notice. States plainly that the certificate
+                      is already earned and recorded — the delay is on our side. */}
+                  {!cert.released && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                      <Lock className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-amber-800">Awaiting release</p>
+                        <p className="text-[11px] text-amber-700 leading-relaxed mt-0.5">
+                          You&apos;ve earned this certificate and it has been recorded. We&apos;ll let
+                          you know as soon as it&apos;s ready to download.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Certificate details */}
                   <div className="space-y-2 bg-slate-50 rounded-xl px-4 py-3">
@@ -112,13 +148,15 @@ export default async function CertificatesPage() {
                   <div className="mt-auto">
                     <button
                       disabled
-                      title="Certificate template is being prepared by our team"
+                      title={cert.released
+                        ? "Certificate template is being prepared by our team"
+                        : "This certificate has not been released yet"}
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-400 cursor-not-allowed select-none"
                     >
                       <Download className="h-4 w-4" />
                       Download PDF
                       <span className="ml-1 text-[10px] font-normal bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">
-                        Coming soon
+                        {cert.released ? "Coming soon" : "Not yet available"}
                       </span>
                     </button>
                   </div>
