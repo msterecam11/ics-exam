@@ -1,4 +1,5 @@
-export const maxDuration = 60  // Vercel serverless timeout — same as exam system
+export const maxDuration = 60  // Long-running (AI generation). No-op on Render; kept
+// for serverless hosts that honour it — same as the exam system.
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"

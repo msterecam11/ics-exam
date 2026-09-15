@@ -1,4 +1,5 @@
-export const maxDuration = 60 // Vercel: extend timeout to 60s for Puppeteer
+export const maxDuration = 60 // Long-running (Puppeteer). No-op on Render — there the
+// ceiling is the service request timeout; kept for serverless hosts that honour it.
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"

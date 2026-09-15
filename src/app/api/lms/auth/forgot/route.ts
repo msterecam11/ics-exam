@@ -4,7 +4,7 @@ import { sendEmail, buildPasswordResetEmail } from "@/lib/email"
 import crypto from "crypto"
 
 const EXPIRES_MIN = 30
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics-exam.vercel.app"
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 
 function hashToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex")

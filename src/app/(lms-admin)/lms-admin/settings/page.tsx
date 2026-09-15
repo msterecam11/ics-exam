@@ -542,7 +542,7 @@ function NotificationsTab() {
               Session Reminders
             </h3>
             <p className="text-sm text-slate-500 mt-1">
-              Automatically runs daily at 6:00 AM (Vercel cron). Sends reminder emails to all enrolled students for sessions happening tomorrow.
+              Automatically runs daily at 6:00 AM (Render cron). Sends reminder emails to all enrolled students for sessions happening tomorrow.
             </p>
           </div>
           <Button onClick={triggerReminders} disabled={sending} variant="outline" className="shrink-0 gap-2">

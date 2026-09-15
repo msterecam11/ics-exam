@@ -15,7 +15,7 @@
 import { sendGraphMailAs } from "@/lib/ms-graph"
 import { db } from "@/lib/db"
 
-const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "https://ics-exam.vercel.app"
+const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 // The "from" mailbox. Always defaults to the lms@ shared box — deliberately
 // does NOT fall back to MICROSOFT_USER_EMAIL (alep@), which caused LMS mail to
 // send from the wrong account whenever LMS_EMAIL wasn't set in the environment.
