@@ -52,7 +52,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     return NextResponse.json({ recalculated: 0, changed: 0, flips: [] })
 
   const changedStudentIds = new Set<string>()
-  const flips: { student_id: string; before: { score: number; passed: boolean }; after: { score: number; passed: boolean } }[] = []
+  type Snapshot = { score: number; maxScore: number; passed: boolean }
+  const flips: { student_id: string; before: Snapshot; after: Snapshot }[] = []
 
   for (const attempt of attempts) {
     const openEndedScores = (attempt.ai_feedback as any)?.open_ended_scores as Record<string, { score: number }> | undefined
@@ -67,10 +68,16 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     )
     const passed = pct >= passMark
 
-    const before = { score: Number(attempt.score), passed: attempt.passed }
-    const after = { score, passed }
+    // max_score has to be part of the comparison, not just written alongside it.
+    // Editing the paper can change the total while leaving THIS learner's earned
+    // score and pass/fail untouched — e.g. adding a question they never answered.
+    // Comparing only score/passed skipped the write, so max_score stayed at the
+    // old total and every percentage derived from it (report, roster, cohort
+    // stats) was computed against the wrong denominator.
+    const before = { score: Number(attempt.score), maxScore: Number(attempt.max_score), passed: attempt.passed }
+    const after = { score, maxScore, passed }
 
-    if (before.score !== after.score || before.passed !== after.passed) {
+    if (before.score !== after.score || before.maxScore !== after.maxScore || before.passed !== after.passed) {
       changedStudentIds.add(attempt.student_id)
       flips.push({ student_id: attempt.student_id, before, after })
 
