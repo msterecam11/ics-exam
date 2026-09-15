@@ -62,6 +62,50 @@ async function cohortCoversCourse(cohortIds: string[], courseId: string): Promis
 }
 
 /**
+ * Exam-system candidate access. A viewer's grant may sit at exam, course or
+ * group level, and access flows down that hierarchy:
+ *   grant on the exam → the exam's course → that course's group.
+ *
+ * NOTE: the same rule is currently also inlined in the viewer API routes
+ * (exam-report, exam-result, manual-*). Those still work and are left alone
+ * here so a security fix isn't mixed with a refactor of working code — but
+ * they should be collapsed onto this helper, since duplicated authorization
+ * logic is exactly the kind of thing that drifts apart.
+ */
+export async function canViewExamCandidate(userId: string, candidateId: string): Promise<boolean> {
+  const { data: rows } = await db
+    .from("viewer_access")
+    .select("resource_type, resource_id, permissions")
+    .eq("user_id", userId)
+    .eq("system", "exam")
+
+  const grants = (rows ?? []).filter((r: any) => (r.permissions ?? {}).reports === true)
+  if (grants.length === 0) return false
+
+  const { data: candidate } = await db
+    .from("candidates")
+    .select("exam_id")
+    .eq("id", candidateId)
+    .single()
+  const examId = (candidate as any)?.exam_id
+  if (!examId) return false
+
+  if (grants.some((g: any) => g.resource_type === "exam" && g.resource_id === examId)) return true
+
+  const { data: exam } = await db.from("exams").select("course_id").eq("id", examId).single()
+  const courseId = (exam as any)?.course_id
+  if (!courseId) return false
+
+  if (grants.some((g: any) => g.resource_type === "course" && g.resource_id === courseId)) return true
+
+  const { data: course } = await db.from("courses").select("group_id").eq("id", courseId).single()
+  const groupId = (course as any)?.group_id
+  if (!groupId) return false
+
+  return grants.some((g: any) => g.resource_type === "group" && g.resource_id === groupId)
+}
+
+/**
  * Cohort-level (whole-course) report access. A course-scope grant covers it
  * directly; a cohort-scope grant covers it when that cohort includes the course.
  */

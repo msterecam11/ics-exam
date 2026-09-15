@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
+import { canViewExamCandidate } from "@/lib/viewer-access"
 import Image from "next/image"
 import ScoreBar from "@/components/reports/ScoreBar"
 import {
@@ -128,13 +129,19 @@ interface Props {
 
 export default async function PrintCandidatePage({ params, searchParams }: Props) {
   const { pdf_secret } = await searchParams
-  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
+  const { candidateId } = await params
+
+  // A bare session was previously enough to read ANY candidate's report by URL.
+  // Mirror the viewer API's rule instead: staff, or a viewer whose grant
+  // actually covers this candidate (exam / course / group scope).
+  const validSecret = !!process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    const role = session.user?.role ?? ""
+    const isStaff = role === "admin" || role === "instructor"
+    if (!isStaff && !(await canViewExamCandidate(session.user.id, candidateId))) notFound()
   }
-
-  const { candidateId } = await params
   const { entity = "Group", content = "Course", security, mode } = await searchParams
   const isManual = mode === "manual"
   const showSecurity = security === "1"

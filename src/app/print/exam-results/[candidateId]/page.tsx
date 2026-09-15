@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
+import { canViewExamCandidate } from "@/lib/viewer-access"
 import Image from "next/image"
 import { CheckCircle2, XCircle, MinusCircle } from "lucide-react"
 import { scaleToTarget } from "@/lib/scoreDisplay"
@@ -113,13 +114,18 @@ function PageFooter({ page, total }: { page: number; total: number }) {
 
 export default async function PrintExamResultsPage({ params, searchParams }: Props) {
   const { pdf_secret, mode } = await searchParams
-  const validSecret = process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
+  const { candidateId } = await params
+
+  // A bare session previously exposed ANY candidate's results by URL. Match the
+  // viewer API: staff, or a viewer grant covering this candidate.
+  const validSecret = !!process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    const role = session.user?.role ?? ""
+    const isStaff = role === "admin" || role === "instructor"
+    if (!isStaff && !(await canViewExamCandidate(session.user.id, candidateId))) notFound()
   }
-
-  const { candidateId } = await params
   const isManual = mode === "manual"
 
   const { data: candidate } = await db

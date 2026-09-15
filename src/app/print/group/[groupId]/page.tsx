@@ -213,6 +213,10 @@ export default async function PrintGroupPage({
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
+    // Staff only: this is a whole-cohort report and there is no viewer-facing
+    // surface for it, so a bare signed-in session must not be able to pull it.
+    const role = session.user?.role ?? ""
+    if (role !== "admin" && role !== "instructor") notFound()
   }
 
   const { groupId } = await params
