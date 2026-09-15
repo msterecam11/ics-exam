@@ -72,7 +72,11 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
 
   let examPassed = 0, examAttempted = 0
   for (const x of rows) if (x.r.exam) { examAttempted++; if (x.r.exam.passed) examPassed++ }
-  const examPassRate = examMod ? round((examPassed / Math.max(1, enrolled)) * 100) : null
+  // Rate is over learners who actually SAT the exam, not everyone enrolled —
+  // counting a no-show as a failure understates the rate and penalises them for
+  // something they didn't do. Non-attempters are reported separately, in the
+  // pass/fail breakdown ("Not attempted") and the roster. Null when nobody sat it.
+  const examPassRate = examMod && examAttempted > 0 ? round((examPassed / examAttempted) * 100) : null
 
   // Mastery distribution
   const band = (p: number) => (p < 40 ? 0 : p < 60 ? 1 : p < 80 ? 2 : 3)

@@ -20,5 +20,6 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
   const report = await buildCourseReport(studentId, courseId)
   if (!report) notFound()
 
-  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity !== "false"} forPrint />
+  // Opt-in, not opt-out: only include the integrity section when explicitly asked.
+  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity === "true"} forPrint />
 }

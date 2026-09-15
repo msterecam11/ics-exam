@@ -40,7 +40,9 @@ export default async function ViewerLmsReportPage({ params }: Props) {
         }
       `}</style>
       <ViewerReportToolbar studentName={report.student.name} courseTitle={report.course.title} />
-      <StudentCourseReportPages report={report} />
+      {/* Explicitly no integrity section: this portal is the learner/client-facing
+          view, which should not disclose more than the admin's own default. */}
+      <StudentCourseReportPages report={report} includeSecurity={false} />
     </>
   )
 }

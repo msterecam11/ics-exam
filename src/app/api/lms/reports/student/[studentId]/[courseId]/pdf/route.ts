@@ -30,7 +30,8 @@ export async function GET(
   const courseTitle = (courseRes.data as any).title ?? "Course"
 
   const { searchParams } = new URL(req.url)
-  const includeSecurity = searchParams.get("includeSecurity") ?? "true"
+  // Opt-in: an unqualified PDF request must not emit the integrity section.
+  const includeSecurity = searchParams.get("includeSecurity") ?? "false"
 
   const port    = process.env.PORT ?? "3000"
   const secret  = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")

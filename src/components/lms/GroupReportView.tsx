@@ -205,7 +205,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
             <CoverRing score={stats.avgMastery ?? 0} />
             <div className="flex items-center gap-8">
               <div className="text-center"><p className="text-2xl font-bold text-white">{stats.completionRate}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completed</p></div>
-              {stats.examExists && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{stats.examPassRate}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exam Pass Rate</p></div></>}
+              {stats.examExists && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{stats.examPassRate !== null ? `${stats.examPassRate}%` : "—"}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exam Pass Rate</p></div></>}
               {stats.avgTimeS > 0 && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{fmtTime(stats.avgTimeS)}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Avg Time</p></div></>}
             </div>
           </div>
@@ -226,7 +226,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                 {[
                   { label: "Enrolled", value: `${stats.enrolled}`, sub: `${stats.completed} completed` },
                   { label: "Avg Mastery", value: stats.avgMastery !== null ? `${stats.avgMastery}%` : "—", sub: "exam-weighted", color: sc(stats.avgMastery).t },
-                  { label: "Exam Pass Rate", value: stats.examExists ? `${stats.examPassRate}%` : "—", sub: stats.examExists ? `${stats.examPassed}/${stats.enrolled} passed` : "no exam", color: stats.examExists ? sc(stats.examPassRate).t : "#94a3b8" },
+                  { label: "Exam Pass Rate", value: stats.examExists && stats.examPassRate !== null ? `${stats.examPassRate}%` : "—", sub: !stats.examExists ? "no exam" : stats.examAttempted === 0 ? "nobody sat it yet" : `${stats.examPassed}/${stats.examAttempted} of those who sat it`, color: stats.examExists ? sc(stats.examPassRate).t : "#94a3b8" },
                   { label: "Avg Time", value: fmtTime(stats.avgTimeS), sub: "per student" },
                 ].map(m => (
                   <div key={m.label} className="border border-slate-200 rounded-xl p-4 text-center">

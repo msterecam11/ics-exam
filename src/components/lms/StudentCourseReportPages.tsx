@@ -108,7 +108,11 @@ function TopicRadar({ topics }: { topics: { topic: string; pct: number }[] }) {
   )
 }
 
-export default function StudentCourseReportPages({ report, includeSecurity = true, forPrint = false }: { report: CourseReport; includeSecurity?: boolean; forPrint?: boolean }) {
+// includeSecurity defaults to FALSE deliberately. The security/integrity section
+// carries behavioural surveillance (tab switches, copy attempts) plus an AI
+// integrity risk rating about a named person, so it must be opted into
+// explicitly rather than leaking into any consumer that forgets the prop.
+export default function StudentCourseReportPages({ report, includeSecurity = false, forPrint = false }: { report: CourseReport; includeSecurity?: boolean; forPrint?: boolean }) {
   const { student, course, enrollment, overall, modules, exam, examSections, topicScores, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
 
