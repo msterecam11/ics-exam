@@ -542,7 +542,15 @@ function NotificationsTab() {
               Session Reminders
             </h3>
             <p className="text-sm text-slate-500 mt-1">
-              Automatically runs daily at 6:00 AM (Render cron). Sends reminder emails to all enrolled students for sessions happening tomorrow.
+              Sends reminder emails to all enrolled students for sessions happening tomorrow.
+            </p>
+            {/* This card used to claim the job "automatically runs daily at 6:00 AM".
+                Nothing schedules it — no Render cron is configured — so admins were
+                told reminders were going out when none ever had. Until the scheduled
+                job exists, say plainly that it is manual. */}
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+              <strong className="font-semibold">Manual only.</strong> No daily schedule is set up yet —
+              reminders are sent only when someone presses <em>Run Now</em>.
             </p>
           </div>
           <Button onClick={triggerReminders} disabled={sending} variant="outline" className="shrink-0 gap-2">

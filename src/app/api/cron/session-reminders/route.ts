@@ -4,6 +4,10 @@
  * Sends email reminders for sessions happening tomorrow.
  * Secured by CRON_SECRET env var sent as x-cron-secret header.
  *
+ * NOT SCHEDULED YET. No cron job exists, so this only ever runs when an admin
+ * presses "Run Now" in LMS Settings — meaning no session reminder has ever been
+ * sent automatically. To wire it up:
+ *
  * Render cron job setup (Render dashboard → Cron Jobs → New Cron Job):
  *   Command : curl -H "x-cron-secret: $CRON_SECRET" https://your-app.onrender.com/api/cron/session-reminders
  *   Schedule: 0 6 * * *   (runs daily at 06:00 UTC)

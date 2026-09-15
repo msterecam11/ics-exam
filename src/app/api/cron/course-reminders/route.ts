@@ -11,6 +11,10 @@
  *
  * Secured by CRON_SECRET env var sent as x-cron-secret header.
  *
+ * NOT SCHEDULED YET. No cron job exists, so this has never actually run — which
+ * is why long-inactive learners have gone un-nudged. There is no manual trigger
+ * for this one in the admin UI either. To wire it up:
+ *
  * Render cron job setup (Render dashboard → Cron Jobs → New Cron Job):
  *   Command : curl -H "x-cron-secret: $CRON_SECRET" https://your-app.onrender.com/api/cron/course-reminders
  *   Schedule: 0 7 * * *   (runs daily at 07:00 UTC; the 2-day cap is enforced in code)
