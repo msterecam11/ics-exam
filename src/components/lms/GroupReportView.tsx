@@ -415,7 +415,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                       <span className="w-6 flex items-center justify-center text-xs font-bold text-slate-400">{medal ? <Medal className="h-3.5 w-3.5" style={{ color: medal }} /> : i + 1}</span>
                       <Link href={`/lms-admin/reports/${course.id}/${r.id}`} className="flex-1 text-xs font-medium text-slate-700 hover:text-[#1B4F8A] hover:underline">{r.name}</Link>
                       {stats.examExists && r.examPct != null && <span className="text-[10px] text-slate-400">exam {r.examPct}%</span>}
-                      <span className="text-xs font-bold w-12 text-right" style={{ color: c.t }}>{r.mastery}%</span>
+                      <span className="text-xs font-bold w-12 text-right" style={{ color: c.t }}>{r.mastery !== null ? `${r.mastery}%` : "—"}</span>
                     </div>
                   )
                 })}

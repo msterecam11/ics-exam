@@ -394,8 +394,11 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
   // recursion) — not an approximation blended from completion % — so "your
   // score" here always equals "Overall Score" above, and the class average
   // always matches the group/cohort report's own Avg Mastery for this course.
+  // Only learners who actually have a mastery score take part: someone who never
+  // sat the exam has nothing to rank, and counting them as a 0 would drag the
+  // class average down with a score they never earned.
   let cohort: CourseReport["cohort"] = null
-  if (computeCohort) {
+  if (computeCohort && overallScore !== null) {
     const { data: cohortEnrolls } = await db
       .from("lms_enrollments")
       .select("student_id")
@@ -405,12 +408,14 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
     if (otherIds.length > 0) {
       const otherReports = await Promise.all(otherIds.map(sid => buildCourseReport(sid, courseId, { computeCohort: false })))
       const ranked = [
-        { sid: studentId, val: overallScore ?? 0 },
-        ...otherIds.map((sid, i) => ({ sid, val: otherReports[i]?.overall.score ?? 0 })),
+        { sid: studentId, val: overallScore },
+        ...otherIds
+          .map((sid, i) => ({ sid, val: otherReports[i]?.overall.score ?? null }))
+          .filter((r): r is { sid: string; val: number } => r.val !== null),
       ].sort((a, b) => b.val - a.val)
       const rank = ranked.findIndex(r => r.sid === studentId) + 1
       const classAvg = Math.round(ranked.reduce((s, r) => s + r.val, 0) / ranked.length)
-      if (rank > 0) cohort = { rank, total: ranked.length, classAvg, selfScore: overallScore ?? 0 }
+      if (rank > 0 && ranked.length >= 2) cohort = { rank, total: ranked.length, classAvg, selfScore: overallScore }
     }
   }
 

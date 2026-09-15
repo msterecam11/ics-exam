@@ -22,7 +22,7 @@ export interface GroupReport {
     // discrimination) — likely ambiguous or miskeyed, worth reviewing.
     flagged: { text: string; discrimination: number; avgPct: number; n: number }[]
   }
-  ranking: { id: string; name: string; mastery: number; examPct: number | null; passed: boolean | null; completion: number }[]
+  ranking: { id: string; name: string; mastery: number | null; examPct: number | null; passed: boolean | null; completion: number }[]
   atRisk: { id: string; name: string; mastery: number | null; reasons: string[] }[]
   attendance: { overallPct: number } | null
   feedback: {
@@ -174,9 +174,12 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
   }
 
   // Ranking + at-risk
+  // Keep an unassessed learner's mastery null rather than coercing to 0 — the
+  // roster already shows "—" for them, and ranking them as a 0 implies they sat
+  // the exam and scored nothing. Nulls sort last without claiming a score.
   const ranking = rows
-    .map(x => ({ id: x.r.student.id, name: x.r.student.name, mastery: x.r.overall.score ?? 0, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null, completion: x.r.overall.completionPct }))
-    .sort((a, b) => b.mastery - a.mastery)
+    .map(x => ({ id: x.r.student.id, name: x.r.student.name, mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null, completion: x.r.overall.completionPct }))
+    .sort((a, b) => (b.mastery ?? -1) - (a.mastery ?? -1))
   const atRisk = rows.map(x => {
     const reasons: string[] = []
     const m = x.r.overall.score

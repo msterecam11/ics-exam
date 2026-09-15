@@ -48,10 +48,14 @@ function PageFooter({ page, total }: { page: number; total: number }) {
     </div>
   )
 }
-function CoverRing({ score }: { score: number }) {
+// score null = never assessed. Showing 0% / "Weak" there would claim the learner
+// sat the exam and scored nothing, contradicting the Score Summary page which
+// correctly reads "—" for the same figure.
+function CoverRing({ score }: { score: number | null }) {
   const size = 160, sw = 12, r = (size - sw) / 2, circ = 2 * Math.PI * r
-  const offset = circ * (1 - Math.min(score, 100) / 100)
-  const band = score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 60 ? { label: "Developing", col: "#fbbf24" } : { label: "Weak", col: "#f87171" }
+  const offset = circ * (1 - Math.min(score ?? 0, 100) / 100)
+  const band = score === null ? { label: "Not assessed", col: "#94a3b8" }
+    : score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 60 ? { label: "Developing", col: "#fbbf24" } : { label: "Weak", col: "#f87171" }
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -59,7 +63,7 @@ function CoverRing({ score }: { score: number }) {
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={band.col} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-extrabold text-white leading-none">{score}%</span>
+        <span className="text-3xl font-extrabold text-white leading-none">{score === null ? "—" : `${score}%`}</span>
         <span className="text-[9px] font-bold tracking-widest uppercase text-white/50 mt-1.5">Overall Mastery</span>
         <span className="text-xs font-bold tracking-widest uppercase" style={{ color: band.col }}>{band.label}</span>
       </div>
@@ -120,7 +124,7 @@ export default function StudentCourseReportPages({ report, includeSecurity = tru
     )
   }
   const completed = enrollment.status === "completed"
-  const overallScore = overall.score ?? 0
+  const overallScore = overall.score
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const hasAI = !!assessment
   const showSecurity = includeSecurity && !!security
