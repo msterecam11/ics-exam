@@ -21,6 +21,7 @@ import {
   DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { randomString } from "@/lib/utils"
 import { toast } from "sonner"
 
 interface Student {
@@ -40,9 +41,11 @@ interface Pagination {
   limit: number
 }
 
+// Was Math.random — see randomString. This runs in the browser, where Web Crypto
+// is equally available, so the secure path costs nothing. Alphabet and length
+// unchanged.
 function generatePassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#"
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+  return randomString(12, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#")
 }
 
 // ─── Create / Edit Student Modal ─────────────────────────────

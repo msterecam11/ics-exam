@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
+import { randomString } from "@/lib/utils"
 import { sendEmail, buildEnrollmentEmail, sendStudentCredentialsEmail } from "@/lib/email"
 
 function isMgr(role?: string) {
@@ -27,14 +28,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "File must be a .csv" }, { status: 400 })
 
   const text = await file.text()
-  const lines = text.split(/\r?\n/).filter(l => l.trim())
-  if (lines.length < 2)
+  const rows = parseCsv(text)
+  if (rows.length < 2)
     return NextResponse.json({ error: "CSV must have a header row and at least one data row" }, { status: 400 })
 
   // Parse header — support flexible column order
   // Required columns: name, email
   // Optional: password, job_title, company, department, language
-  const header = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/^"|"$/g, ""))
+  const header = rows[0].map(h => h.trim().toLowerCase())
   const nameIdx    = header.indexOf("name")
   const emailIdx   = header.indexOf("email")
   const passIdx    = header.indexOf("password")
@@ -52,8 +53,8 @@ export async function POST(req: Request) {
   // them their login. Never persisted — used only for the credentials email.
   const created: { id: string; name: string; email: string; rawPass: string }[] = []
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i])
+  for (let i = 1; i < rows.length; i++) {
+    const cols = rows[i]
     const name    = cols[nameIdx]?.trim()
     const email   = cols[emailIdx]?.trim().toLowerCase()
 
@@ -144,26 +145,58 @@ export async function POST(req: Request) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-function parseCsvLine(line: string): string[] {
-  const result: string[] = []
-  let current = ""
+/**
+ * Parse a whole CSV into rows of fields.
+ *
+ * This replaces a split(/\r?\n/) followed by per-line parsing. Splitting on
+ * newlines FIRST is wrong: a quoted field may legally contain a line break
+ * (spreadsheet exports produce these routinely for addresses, job titles and
+ * notes), and splitting first tears such a record in half, silently importing
+ * two corrupt rows instead of one good one. Newlines can only be decided while
+ * tracking whether we are inside quotes, so it has to be a single pass over the
+ * whole text.
+ *
+ * Also handles "" as an escaped quote. The previous parser toggled its quote
+ * flag on every " and appended none of them, so "O""Brien" came out as OBrien —
+ * a silent character loss with no error.
+ */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ""
   let inQuotes = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') {
-      inQuotes = !inQuotes
-    } else if (ch === "," && !inQuotes) {
-      result.push(current.trim().replace(/^"|"$/g, ""))
-      current = ""
-    } else {
-      current += ch
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ }  // escaped quote
+        else inQuotes = false
+      } else {
+        field += ch
+      }
+      continue
     }
+
+    if (ch === '"')       { inQuotes = true }
+    else if (ch === ",")  { row.push(field.trim()); field = "" }
+    else if (ch === "\n") { row.push(field.trim()); rows.push(row); row = []; field = "" }
+    else if (ch !== "\r") { field += ch }
   }
-  result.push(current.trim().replace(/^"|"$/g, ""))
-  return result
+
+  // Trailing field/row (file not ending in a newline)
+  row.push(field.trim())
+  rows.push(row)
+
+  // Drop blank rows — a trailing newline, or blank lines between records
+  return rows.filter(r => r.some(f => f !== ""))
 }
 
+// Was Math.random. A bulk import generates every password in one unbroken
+// sequence from the same PRNG stream, so anyone holding one issued password
+// holds a window into the stream that produced all the others. Same alphabet
+// and length as before — only the source of randomness changed.
 function generatePassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+  return randomString(10, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789")
 }

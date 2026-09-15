@@ -54,11 +54,40 @@ export function generateExamUrl(examId: string): string {
   return `${base}/exam/${examId}`
 }
 
+/**
+ * Cryptographically secure random string.
+ *
+ * Uses Web Crypto (globalThis.crypto), which exists in both Node 18+ and every
+ * browser — so the one helper serves API routes and client components alike,
+ * with no node:crypto import leaking into a client bundle.
+ *
+ * Rejection sampling: bytes at or above the largest whole multiple of the
+ * alphabet length are discarded instead of folded with %, which would make the
+ * first few symbols of the alphabet slightly likelier than the rest.
+ */
+export function randomString(length: number, alphabet: string): string {
+  const max = 256 - (256 % alphabet.length)
+  let out = ""
+  while (out.length < length) {
+    const bytes = new Uint8Array(length * 2)
+    globalThis.crypto.getRandomValues(bytes)
+    for (const b of bytes) {
+      if (b < max) {
+        out += alphabet[b % alphabet.length]
+        if (out.length === length) break
+      }
+    }
+  }
+  return out
+}
+
+// Was Math.random, which is a predictable PRNG: enough observed output from one
+// stream reveals its internal state and therefore every other value it produced.
+// This generates the exam access password, so that property is not acceptable.
+// Alphabet and default length are unchanged — existing passwords keep working
+// and newly generated ones look exactly the same.
 export function generatePassword(length = 6): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  return Array.from({ length }, () =>
-    chars[Math.floor(Math.random() * chars.length)]
-  ).join("")
+  return randomString(length, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 }
 
 export function getScoreColor(score: number, passing: number): string {
