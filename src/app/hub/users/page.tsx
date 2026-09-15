@@ -426,7 +426,15 @@ function UserRow({ user, currentUserId, isAdmin, onEdit, onDelete, onToggleActiv
   onToggleActive: (u: AdminUser) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const cfg   = ROLE_CONFIG[user.role]
+  // Fallback is deliberate, not defensive clutter: the LMS settings page had
+  // this same unguarded lookup and a `viewer` account (a role this map has but
+  // that one didn't) took the entire page down with "Cannot read properties of
+  // undefined (reading 'icon')". This map is currently complete — the guard is
+  // so that adding a role to the DB can never white-screen this page either.
+  const cfg   = ROLE_CONFIG[user.role] ?? {
+    label: user.role ? String(user.role).charAt(0).toUpperCase() + String(user.role).slice(1) : "Unknown",
+    bg: "bg-slate-100", text: "text-slate-600", icon: Shield,
+  }
   const Icon  = cfg.icon
   const isSelf = user.id === currentUserId
 

@@ -17,7 +17,7 @@ import { toast }   from "sonner"
 import { cn }      from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Role = "admin" | "instructor" | "assessor"
+type Role = "admin" | "instructor" | "assessor" | "viewer"
 
 interface AdminUser {
   id:              string
@@ -34,10 +34,31 @@ interface AdminUser {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const ROLE_CONFIG: Record<Role, { label: string; bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
+type RoleStyle = { label: string; bg: string; text: string; icon: React.ComponentType<{ className?: string }> }
+
+const ROLE_CONFIG: Record<Role, RoleStyle> = {
   admin:      { label: "Admin",      bg: "bg-[#1B4F8A]/10", text: "text-[#1B4F8A]",   icon: Shield       },
   instructor: { label: "Instructor", bg: "bg-emerald-50",   text: "text-emerald-700",  icon: GraduationCap },
   assessor:   { label: "Assessor",   bg: "bg-purple-50",    text: "text-purple-700",   icon: User          },
+  // `viewer` accounts exist in admin_users (report-only access, granted via
+  // viewer_access) but were missing here. Every render of the user list did
+  // ROLE_CONFIG[user.role].icon, so a single viewer account made that lookup
+  // undefined and threw — taking the WHOLE settings page down, not just the
+  // row. The page had been dead since the first viewer was created.
+  viewer:     { label: "Viewer",     bg: "bg-amber-50",     text: "text-amber-700",    icon: Eye           },
+}
+
+// Never index ROLE_CONFIG directly. A role that exists in the database but not
+// in the map above must degrade to a readable badge, not crash the page for
+// every admin. This is the guard the bug above needed: adding `viewer` fixes
+// today's break, but only this stops the next new role from doing it again.
+function roleStyle(role: string | undefined | null): RoleStyle {
+  return ROLE_CONFIG[role as Role] ?? {
+    label: role ? role.charAt(0).toUpperCase() + role.slice(1) : "Unknown",
+    bg:    "bg-slate-100",
+    text:  "text-slate-600",
+    icon:  Shield,
+  }
 }
 
 const TAB_NAV = [
@@ -170,9 +191,12 @@ function UserModal({
           {/* Role */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Role *</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(["admin", "instructor", "assessor"] as Role[]).map(r => {
-                const cfg = ROLE_CONFIG[r]
+            {/* Viewer included so EDITING an existing viewer shows their current
+                role selected. Without it the dialog opened with nothing
+                highlighted, which reads as "no role" for a real account. */}
+            <div className="grid grid-cols-4 gap-2">
+              {(["admin", "instructor", "assessor", "viewer"] as Role[]).map(r => {
+                const cfg = roleStyle(r)
                 const Icon = cfg.icon
                 return (
                   <button
@@ -351,13 +375,13 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
             onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-          {(["all", "admin", "instructor", "assessor"] as const).map(r => (
+          {(["all", "admin", "instructor", "assessor", "viewer"] as const).map(r => (
             <button key={r} onClick={() => setRoleFilter(r)}
               className={cn(
                 "px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors",
                 roleFilter === r ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               )}>
-              {r === "all" ? "All" : ROLE_CONFIG[r].label}
+              {r === "all" ? "All" : roleStyle(r).label}
             </button>
           ))}
         </div>
@@ -386,7 +410,7 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
             </thead>
             <tbody className="divide-y divide-slate-100">
               {users.map(user => {
-                const cfg  = ROLE_CONFIG[user.role]
+                const cfg  = roleStyle(user.role)
                 const Icon = cfg.icon
                 const isLocked = user.locked_until && new Date(user.locked_until) > new Date()
                 const isMe = user.id === currentUserId
@@ -695,7 +719,9 @@ function ProfileTab({ currentUser }: { currentUser: { id: string; name?: string 
     }
   }
 
-  const roleInfo = ROLE_CONFIG[currentUser.role as Role] ?? ROLE_CONFIG.instructor
+  // Was `?? ROLE_CONFIG.instructor`, which didn't crash but lied: a viewer
+  // looking at their own profile was told they were an Instructor.
+  const roleInfo = roleStyle(currentUser.role)
 
   return (
     <div className="max-w-lg space-y-6">
