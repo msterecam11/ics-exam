@@ -137,7 +137,11 @@ export async function checkCourseCompletion(studentId: string, courseId: string)
         sendEmail({ type: "completion", to: student.email, subject, html, studentId, courseId }).catch(() => {})
       }
     }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    // Non-fatal: must never break exam submission. Logged so a certificate
+    // that fails to issue is visible instead of vanishing silently.
+    console.error("[completion] checkCourseCompletion failed", { studentId, courseId, err })
+  }
 }
 
 // ── LEARNING PATH completion ───────────────────────────────────
@@ -186,13 +190,19 @@ export async function checkLearningPathCompletion(studentId: string, courseId: s
       // Every course in the path must have a final exam
       if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
 
-      // Check how many the student has passed
-      const { count: passedCount } = await db
+      // Count DISTINCT exams passed, not passing attempt rows. Counting rows
+      // meant one exam passed on N separate retakes satisfied an N-course
+      // requirement — so a learner could earn the whole path/cohort certificate
+      // having actually completed a single course. Retaking after a pass is
+      // allowed (the limit only blocks at max_attempts), so this was reachable.
+      const { data: passedRows } = await db
         .from("lms_module_attempts")
-        .select("*", { count: "exact", head: true })
+        .select("module_id")
         .eq("student_id", studentId)
         .eq("passed", true)
         .in("module_id", finalExams.map((e: any) => e.id))
+
+      const passedCount = new Set((passedRows ?? []).map((r: any) => r.module_id)).size
 
       if ((passedCount ?? 0) < finalExams.length) continue
 
@@ -227,7 +237,9 @@ export async function checkLearningPathCompletion(studentId: string, courseId: s
         }
       }
     }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    console.error("[completion] checkLearningPathCompletion failed", { studentId, courseId, err })
+  }
 }
 
 // ── COHORT completion ──────────────────────────────────────────
@@ -296,13 +308,19 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
 
       if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
 
-      // Check how many the student has passed
-      const { count: passedCount } = await db
+      // Count DISTINCT exams passed, not passing attempt rows. Counting rows
+      // meant one exam passed on N separate retakes satisfied an N-course
+      // requirement — so a learner could earn the whole path/cohort certificate
+      // having actually completed a single course. Retaking after a pass is
+      // allowed (the limit only blocks at max_attempts), so this was reachable.
+      const { data: passedRows } = await db
         .from("lms_module_attempts")
-        .select("*", { count: "exact", head: true })
+        .select("module_id")
         .eq("student_id", studentId)
         .eq("passed", true)
         .in("module_id", finalExams.map((e: any) => e.id))
+
+      const passedCount = new Set((passedRows ?? []).map((r: any) => r.module_id)).size
 
       if ((passedCount ?? 0) < finalExams.length) continue
 
@@ -331,7 +349,9 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
         }
       }
     }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    console.error("[completion] checkCohortCompletion failed", { studentId, courseId, err })
+  }
 }
 
 // ── Sync enrollment progress % ─────────────────────────────────
@@ -465,5 +485,7 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         .eq("course_id", courseId)
         .eq("status", "completed")
     }
-  } catch { /* silent */ }
+  } catch (err) {
+    console.error("[completion] syncEnrollmentProgress failed", { studentId, courseId, err })
+  }
 }

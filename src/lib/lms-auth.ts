@@ -74,11 +74,26 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 
   const { data: student } = await db
     .from("lms_students")
-    .select("id, name, email, language, avatar_url")
+    .select("id, name, email, language, avatar_url, last_login")
     .eq("id", session.student_id)
     .single()
 
   if (!student) return null
+
+  // last_login used to be written ONLY when a new session was created. Sessions
+  // last 30 days, so someone using the platform daily kept the same session and
+  // their "last login" stayed frozen at the first sign-in — understating real
+  // usage by up to a month. Refresh it here instead, throttled to once per day:
+  // the student row is already loaded above, so this costs no extra read and at
+  // most one write per student per day.
+  const lastLogin = (student as any).last_login as string | null
+  const todayUtc = new Date().toISOString().slice(0, 10)
+  if (!lastLogin || lastLogin.slice(0, 10) !== todayUtc) {
+    await db
+      .from("lms_students")
+      .update({ last_login: new Date().toISOString() })
+      .eq("id", student.id)
+  }
 
   return {
     id:         student.id,
