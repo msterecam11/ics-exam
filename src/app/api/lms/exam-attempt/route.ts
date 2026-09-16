@@ -6,9 +6,11 @@ import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { recalculateAttemptScore, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
 
 // POST /api/lms/exam-attempt
-// Body: { module_id, course_id, answers, time_spent_s, security_events }
+// Body: { module_id, course_id, answers, security_events }
+// Requires a session opened by POST /api/lms/exam-attempt/start.
 // `score`/`max_score`/`pct`/`passed` are NEVER accepted from the client —
 // every question type is graded here, server-side, against the module's
 // current answer key (recalculateAttemptScore mirrors the same objective
@@ -22,7 +24,8 @@ export async function POST(req: Request) {
   const studentId = studentSession.id
 
   const body = await req.json().catch(() => ({}))
-  const { module_id, course_id, answers, time_spent_s, security_events } = body
+  // time_spent_s may still be sent by older clients; it is ignored — duration is measured server-side.
+  const { module_id, course_id, answers, security_events } = body
 
   if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
@@ -78,6 +81,46 @@ export async function POST(req: Request) {
   if ((count ?? 0) >= maxAttempts)
     return NextResponse.json({ error: `Maximum ${maxAttempts} attempt(s) reached` }, { status: 409 })
 
+  // ── Server-side timing ──────────────────────────────────────────────────
+  // A submission must belong to a session opened by /exam-attempt/start. The
+  // session is CLAIMED here, before the slow AI grading, with a conditional
+  // update — so a double submit can't both proceed, and elapsed time comes from
+  // the server's own start timestamp instead of the browser's time_spent_s.
+  // (Previously started_at was stamped at submission, and the time limit
+  // existed only as a countdown the student's own browser controlled.)
+  const { data: openSession } = await db
+    .from("lms_exam_sessions")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("module_id", module_id)
+    .is("submitted_at", null)
+    .maybeSingle()
+
+  if (!openSession)
+    return NextResponse.json(
+      { error: "No active exam session was found. Please return to the exam and press Begin Exam again." },
+      { status: 409 }
+    )
+
+  const submittedAt = new Date()
+  const { data: claimed } = await db
+    .from("lms_exam_sessions")
+    .update({ submitted_at: submittedAt.toISOString() })
+    .eq("id", openSession.id)
+    .is("submitted_at", null)
+    .select("id, started_at")
+    .maybeSingle()
+
+  if (!claimed)
+    return NextResponse.json({ error: "This exam has already been submitted." }, { status: 409 })
+
+  const limitS    = examTimeLimitS(settings)
+  const elapsedS  = elapsedSince(claimed.started_at, submittedAt)
+  // Over the limit plus a grace window for network delay on the auto-submit.
+  // The attempt is still graded and stored — the answers are evidence and the
+  // student should see them — but it cannot count as a pass.
+  const overTime  = limitS !== null && elapsedS > limitS + EXAM_GRACE_S
+
   // AI-score any open_ended questions
   const questions: any[] = (module.questions as any[] | null) ?? []
   const openEndedQs = questions.filter((q: any) => q.type === "open_ended")
@@ -115,22 +158,15 @@ export async function POST(req: Request) {
     openEndedEarned
   )
 
-  const correctedPassed = correctedPct >= passMark
+  const correctedPassed = !overTime && correctedPct >= passMark
 
   const attemptNo = (count ?? 0) + 1
-  const now = new Date().toISOString()
 
-  // time_spent_s is reported by the browser and rolls up into the student's
-  // learning time and the report's exam duration. Bound it to [0, time limit]:
-  // the player auto-submits at the limit, so no genuine attempt exceeds it.
-  // Exams without a limit get a generous 24h ceiling instead of none.
-  const limitS = Number(settings?.time_limit_minutes) > 0
-    ? Number(settings.time_limit_minutes) * 60
-    : 86400
-  const rawTime = Number(time_spent_s)
-  const boundedTimeSpent = Number.isFinite(rawTime)
-    ? Math.min(Math.max(Math.round(rawTime), 0), limitS)
-    : null
+  // Recorded duration is the SERVER-measured elapsed time. The browser's own
+  // time_spent_s is no longer trusted for anything. Capped at the limit (or 24h
+  // for untimed exams) because it rolls into the student's learning time; the
+  // true elapsed figure is kept in ai_feedback when the limit was exceeded.
+  const recordedTimeS = Math.min(elapsedS, limitS ?? UNLIMITED_EXAM_CAP_S)
 
   const { data: attempt, error } = await db
     .from("lms_module_attempts")
@@ -147,15 +183,23 @@ export async function POST(req: Request) {
       ai_feedback:  {
         ...(openEndedQs.length > 0 ? { open_ended_scores: aiScores } : {}),
         ...(security_events       ? { security_events }              : {}),
+        ...(overTime ? { time_limit_exceeded: true, elapsed_s: elapsedS, time_limit_s: limitS } : {}),
       },
-      time_spent_s: boundedTimeSpent,
-      started_at:   now,
-      submitted_at: now,
+      time_spent_s: recordedTimeS,
+      started_at:   claimed.started_at,
+      submitted_at: submittedAt.toISOString(),
     })
     .select("id, attempt_no, passed, score, max_score")
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    // The session was already claimed. Release it so the student can resubmit
+    // from the same session rather than losing the attempt to a transient error.
+    await db.from("lms_exam_sessions").update({ submitted_at: null }).eq("id", claimed.id)
+    return NextResponse.json({ error: "Could not save your attempt. Please try submitting again." }, { status: 500 })
+  }
+
+  await db.from("lms_exam_sessions").update({ attempt_id: attempt.id }).eq("id", claimed.id)
 
   // Sync progress + check completion
   if (course_id) {
@@ -175,6 +219,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     attempt_id:  attempt.id,
     attempt_no:  attempt.attempt_no,
+    time_limit_exceeded: overTime,
     score:       correctedScore,
     max_score:   correctedMaxScore,
     pct:         correctedPct,

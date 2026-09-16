@@ -13,6 +13,27 @@ interface Props {
 }
 
 export default function ExamClient({ moduleId, courseId, examTitle, questions, settings, attemptNo }: Props) {
+  // Opens (or resumes) the server-side exam session. The server's remaining
+  // time drives the countdown, so the limit is measured and enforced server-side.
+  async function handleStart(): Promise<{ remainingS: number | null } | null> {
+    try {
+      const res  = await fetch("/api/lms/exam-attempt/start", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ module_id: moduleId, course_id: courseId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "Could not start the exam")
+        return null
+      }
+      return { remainingS: data.remaining_s ?? null }
+    } catch {
+      toast.error("Connection error — the exam could not be started.")
+      return null
+    }
+  }
+
   async function handleSubmit(result: {
     score: number; maxScore: number; pct: number; passed: boolean
     answers: Record<string, any>; timeSpentS: number
@@ -39,7 +60,7 @@ export default function ExamClient({ moduleId, courseId, examTitle, questions, s
         toast.error(data.error ?? "Failed to save attempt")
         return null
       }
-      return data as { score: number; max_score: number; pct: number; passed: boolean; ai_scores?: Record<string, { score: number; justification: string }> }
+      return data as { score: number; max_score: number; pct: number; passed: boolean; time_limit_exceeded?: boolean; ai_scores?: Record<string, { score: number; justification: string }> }
     } catch {
       toast.error("Connection error — your result was not saved. Please contact support.")
       return null
@@ -53,6 +74,7 @@ export default function ExamClient({ moduleId, courseId, examTitle, questions, s
       examTitle={examTitle}
       attemptNo={attemptNo}
       onSubmit={handleSubmit}
+      onStart={handleStart}
       courseUrl={`/lms/courses/${courseId}`}
     />
   )

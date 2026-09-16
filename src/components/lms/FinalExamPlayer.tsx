@@ -295,14 +295,17 @@ type SubmitPayload = {
 // ── Main component ─────────────────────────────────────────────
 export default function FinalExamPlayer({
   questions, settings, examTitle,
-  previewMode = false, onPass, onSubmit, attemptNo = 1, courseUrl,
+  previewMode = false, onPass, onSubmit, onStart, attemptNo = 1, courseUrl,
 }: {
   questions:    ExamQuestion[]
   settings:     ExamSettings | null
   examTitle:    string
   previewMode?: boolean
   onPass?:      () => void
-  onSubmit?:    (data: SubmitPayload) => Promise<{ score: number; max_score: number; pct: number; passed: boolean; ai_scores?: Record<string, { score: number; justification: string }> } | null | void>
+  onSubmit?:    (data: SubmitPayload) => Promise<{ score: number; max_score: number; pct: number; passed: boolean; time_limit_exceeded?: boolean; ai_scores?: Record<string, { score: number; justification: string }> } | null | void>
+  /** Opens/resumes the server-side exam session. Returns the server's remaining
+   *  time (null = untimed), or null if the exam could not be started. */
+  onStart?:     () => Promise<{ remainingS: number | null } | null>
   attemptNo?:   number
   courseUrl?:   string
 }) {
@@ -343,6 +346,10 @@ export default function FinalExamPlayer({
   const [aiScoring, setAiScoring] = useState(false)
   const [aiScores, setAiScores] = useState<Record<string, { score: number; justification: string }>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [starting,     setStarting]     = useState(false)
+  const [startError,   setStartError]   = useState("")
+  const [saveFailed,   setSaveFailed]   = useState(false)
+  const [timeExceeded, setTimeExceeded] = useState(false)
   const tabLeft   = useRef<number | null>(null)
   const done      = useRef(false)
   const secRef    = useRef({ tabs: 0, fs: 0, rightClicks: 0, copyAttempts: 0 })
@@ -410,7 +417,12 @@ export default function FinalExamPlayer({
     if (phase !== "running" || timeLeft === null || timeLeft <= 0) return
     const t = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev === null || prev <= 1) { clearInterval(t); submit(); return 0 }
+        // submitRef, not submit: this interval is created once when the exam
+        // starts, so a directly captured `submit` is the one from that render --
+        // when no answers existed yet. Auto-submitting at the time limit
+        // therefore sent an EMPTY answer sheet: the one real attempt that ever
+        // ran to 90:00 was stored with 0 of 39 answers and scored 0%.
+        if (prev === null || prev <= 1) { clearInterval(t); submitRef.current(); return 0 }
         return prev - 1
       })
     }, 1000)
@@ -418,9 +430,31 @@ export default function FinalExamPlayer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, timeLeft !== null])
 
-  function start() {
+  async function start() {
+    if (starting) return
+    setStartError("")
+    // Fullscreen first, while still inside the click gesture -- after an await
+    // the browser may no longer treat it as user-initiated.
     document.documentElement.requestFullscreen?.().catch(() => {})
-    if (timeLimitMin) setTimeLeft(timeLimitMin * 60)
+
+    let remainingS: number | null = timeLimitMin ? timeLimitMin * 60 : null
+    if (!previewMode && onStart) {
+      // The server opens (or resumes) the exam session and says how much time is
+      // really left. Reloading mid-exam therefore continues the same clock rather
+      // than handing the student a fresh full time limit.
+      setStarting(true)
+      const session = await onStart().catch(() => null)
+      setStarting(false)
+      if (!session) {
+        document.exitFullscreen?.().catch(() => {})
+        setStartError("The exam could not be started. Please try again.")
+        return
+      }
+      remainingS = session.remainingS
+    }
+
+    // A resumed session already at 0 still needs one tick to auto-submit.
+    if (remainingS !== null) setTimeLeft(Math.max(remainingS, 1))
     startTime.current = Date.now()
     secRef.current = { tabs: 0, fs: 0, rightClicks: 0, copyAttempts: 0 }
     done.current = false
@@ -448,22 +482,31 @@ export default function FinalExamPlayer({
           timeSpentS,
           securityEvents: { tabs: secRef.current.tabs, fs: secRef.current.fs, rightClicks: secRef.current.rightClicks, copyAttempts: secRef.current.copyAttempts },
         })
-        if (serverResult && serverResult.ai_scores) {
-          setAiScores(serverResult.ai_scores)
-          // Overwrite displayed result with server-corrected values
+        // The browser never has the answer key (questions are sanitised before
+        // they reach it), so its own score() is not a real result. The server's
+        // grading is the only one to show -- and it used to be applied only when
+        // the exam had open-ended questions, so an all-objective exam would have
+        // displayed the browser's key-less guess.
+        if (serverResult) {
+          if (serverResult.ai_scores) setAiScores(serverResult.ai_scores)
           setResult({ ...r, score: serverResult.score, total: serverResult.max_score, pct: serverResult.pct, passed: serverResult.passed })
+          if (serverResult.time_limit_exceeded) setTimeExceeded(true)
           if (serverResult.passed) onPass?.()
         } else {
-          if (passed) onPass?.()
+          setSaveFailed(true)
         }
-      } catch { if (passed) onPass?.() } finally { setAiScoring(false) }
+      } catch { setSaveFailed(true) } finally { setAiScoring(false) }
     } else {
       if (passed) onPass?.()
     }
   }, [answers, activeQuestions, passMark, onPass, onSubmit, previewMode])
 
+  const submitRef = useRef(submit)
+  useEffect(() => { submitRef.current = submit }, [submit])
+
   function retry() {
     setAnswers({}); setCurrent(0); setTimeLeft(null); setResult(null); setAiScores({})
+    setSaveFailed(false); setTimeExceeded(false)
     setPhase("intro"); done.current = false; setAttempt(a => a + 1)
   }
 
@@ -529,9 +572,12 @@ export default function FinalExamPlayer({
           </p>
         )}
 
-        <button onClick={start}
-          className="w-full py-3.5 bg-[#1B4F8A] text-white font-bold rounded-xl text-sm hover:bg-[#163f6f] transition-colors flex items-center justify-center gap-2">
-          <Maximize2 className="h-4 w-4" /> Begin Exam
+        {startError && (
+          <p className="text-center text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{startError}</p>
+        )}
+        <button onClick={start} disabled={starting}
+          className="w-full py-3.5 bg-[#1B4F8A] text-white font-bold rounded-xl text-sm hover:bg-[#163f6f] transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+          <Maximize2 className="h-4 w-4" /> {starting ? "Starting..." : "Begin Exam"}
         </button>
       </div>
     )
@@ -544,7 +590,7 @@ export default function FinalExamPlayer({
       <div className="max-w-2xl mx-auto space-y-5">
 
         {/* Celebration widget */}
-        {result.passed && showResults && (
+        {result.passed && showResults && !saveFailed && (
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1B4F8A] to-[#2563EB] p-6 text-white text-center shadow-lg">
             <div className="absolute inset-0 opacity-10 pointer-events-none select-none text-[120px] leading-none flex items-center justify-center">🏆</div>
             <p className="text-4xl mb-2">🎉</p>
@@ -558,12 +604,22 @@ export default function FinalExamPlayer({
 
         <div className={cn(
           "rounded-2xl border p-8 text-center",
-          aiScoring                                              ? "bg-slate-50 border-slate-200"
+          saveFailed                                             ? "bg-red-50 border-red-200"
+            : aiScoring                                          ? "bg-slate-50 border-slate-200"
             : !showResults                                       ? "bg-slate-50 border-slate-200"
             : result.passed                                      ? "bg-emerald-50 border-emerald-200"
             :                                                      "bg-red-50 border-red-200"
         )}>
-          {aiScoring ? (
+          {saveFailed ? (
+            <div className="flex flex-col items-center gap-2 py-2">
+              <XCircle className="h-14 w-14 text-red-400" />
+              <p className="text-lg font-bold text-red-700">Your attempt was not saved</p>
+              <p className="text-sm text-slate-600 max-w-sm">
+                We could not record this submission. Please contact your instructor before
+                trying again so they can check what happened.
+              </p>
+            </div>
+          ) : aiScoring ? (
             <div className="flex flex-col items-center gap-3 py-4">
               <div className="h-12 w-12 rounded-full border-4 border-[#1B4F8A]/30 border-t-[#1B4F8A] animate-spin" />
               <p className="text-slate-600 font-medium text-sm">AI is grading open-ended questions…</p>
@@ -583,6 +639,11 @@ export default function FinalExamPlayer({
               <p className="text-sm text-slate-600">
                 Score: {result.score} / {result.total} pts · Pass mark: {passMark}%
               </p>
+              {timeExceeded && (
+                <p className="mt-2 text-xs text-red-700">
+                  Submitted after the time limit, so this attempt cannot count as a pass.
+                </p>
+              )}
             </>
           ) : (
             <>
