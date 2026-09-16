@@ -30,6 +30,25 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (ncErr || !newCourse) return NextResponse.json({ error: ncErr?.message ?? "Failed to create copy" }, { status: 500 })
   const newCourseId = newCourse.id
 
+  // Every step below can fail independently. Returning a 500 used to leave a
+  // half-built "Copy of …" draft in the course list — some modules, missing
+  // packages or items. Any failure now removes the partial copy (children first)
+  // so the admin either gets a complete copy or nothing.
+  async function abort(message: string) {
+    const { data: mods } = await db.from("lms_modules").select("id").eq("course_id", newCourseId)
+    const modIds = (mods ?? []).map((m: any) => m.id)
+    const { data: pkgs } = await db.from("lms_packages").select("id").eq("course_id", newCourseId)
+    const pkgIds = (pkgs ?? []).map((p: any) => p.id)
+    if (pkgIds.length) await db.from("lms_package_items").delete().in("package_id", pkgIds)
+    await db.from("lms_packages").delete().eq("course_id", newCourseId)
+    if (modIds.length) await db.from("lms_content_items").delete().in("module_id", modIds)
+    await db.from("lms_module_activities").delete().eq("course_id", newCourseId)
+    await db.from("lms_modules").delete().eq("course_id", newCourseId)
+    await db.from("lms_courses").delete().eq("id", newCourseId)
+    console.error("[courses/duplicate] rolled back partial copy", { srcId, newCourseId, message })
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+
   // 3. Modules (carry questions / activity_settings / assignment fields with them)
   const { data: srcModules } = await db.from("lms_modules").select("*").eq("course_id", srcId).order("order_index")
   const moduleIdMap = new Map<string, string>()
@@ -39,7 +58,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     copy.course_id = newCourseId
     copy.prerequisite_module_id = null // remapped in a second pass
     const { data: nm, error } = await db.from("lms_modules").insert(copy).select("id").single()
-    if (error || !nm) return NextResponse.json({ error: `Module copy failed: ${error?.message}` }, { status: 500 })
+    if (error || !nm) return abort("Module copy failed")
     moduleIdMap.set(m.id, nm.id)
   }
   // Remap intra-course prerequisites now that every module has a new id
@@ -62,7 +81,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       copy.module_id = moduleIdMap.get(p.module_id)
       copy.course_id = newCourseId
       const { data: np, error } = await db.from("lms_packages").insert(copy).select("id").single()
-      if (error || !np) return NextResponse.json({ error: `Package copy failed: ${error?.message}` }, { status: 500 })
+      if (error || !np) return abort("Package copy failed")
       pkgIdMap.set(p.id, np.id)
     }
 
@@ -77,7 +96,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       })
       if (itemsCopy.length) {
         const { error } = await db.from("lms_package_items").insert(itemsCopy)
-        if (error) return NextResponse.json({ error: `Item copy failed: ${error.message}` }, { status: 500 })
+        if (error) return abort("Item copy failed")
       }
     }
 
@@ -88,7 +107,24 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       c.module_id = moduleIdMap.get(ci.module_id)
       return c
     })
-    if (contentCopy.length) await db.from("lms_content_items").insert(contentCopy)
+    if (contentCopy.length) {
+      const { error } = await db.from("lms_content_items").insert(contentCopy)
+      if (error) return abort("Content copy failed")
+    }
+
+    // 7. Module activities — not copied before, so a duplicated course would
+    //    have silently lost them. (None exist yet.)
+    const { data: srcActs } = await db.from("lms_module_activities").select("*").in("module_id", srcModuleIds)
+    const actsCopy = ((srcActs ?? []) as any[]).map(a => {
+      const c: any = { ...a }; delete c.id; delete c.created_at; delete c.updated_at
+      c.module_id = moduleIdMap.get(a.module_id)
+      c.course_id = newCourseId
+      return c
+    })
+    if (actsCopy.length) {
+      const { error } = await db.from("lms_module_activities").insert(actsCopy)
+      if (error) return abort("Activity copy failed")
+    }
   }
 
   return NextResponse.json({ id: newCourseId, modules: moduleIdMap.size }, { status: 201 })
