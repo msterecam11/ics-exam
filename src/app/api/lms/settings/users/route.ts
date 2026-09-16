@@ -8,8 +8,21 @@ import { auditLog } from "@/lib/audit"
 // Escapes PostgREST `.or()` filter metacharacters so a search string can't
 // break out of the intended ilike clause (comma/paren are clause/grouping
 // delimiters in PostgREST's filter DSL; % and _ are ordinary SQL wildcards).
+// Makes a free-text search term safe to place inside a PostgREST .or() filter.
+//
+// This used to backslash-escape % _ , ( ) — but PostgREST does not treat a
+// backslash as escaping a comma in an unquoted value. Verified: searching
+// "x,email.ilike.*@*" still split into a second condition and returned EVERY
+// user. Injected conditions could only reach column names without an
+// underscore (the escaped "_" broke e.g. password_hash, by accident), and those
+// columns are already shown to the managers who can search, so nothing hidden
+// leaked — but the protection was not working. PostgREST's reserved characters
+// in a logic tree are , . : ( ) " \ and * is its wildcard; a person's name or
+// email never needs them for a substring search, so they are replaced with
+// spaces instead of escaped. "." stays so email fragments like "gmail.com" still
+// match — without a "," or "(" it cannot start a new condition.
 function escapeFilterValue(v: string) {
-  return v.replace(/[%_,()]/g, (c) => "\\" + c)
+  return v.replace(/[,:()"\\*%]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100)
 }
 
 function isAdmin(role?: string) { return role === "admin" }
@@ -59,7 +72,11 @@ export async function GET(req: Request) {
   }
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Generic message: the raw PostgREST error echoes the internal filter string.
+  if (error) {
+    console.error("[settings/users] list query failed", error)
+    return NextResponse.json({ error: "Could not load users" }, { status: 500 })
+  }
   return NextResponse.json(data ?? [])
 }
 
