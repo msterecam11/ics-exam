@@ -80,6 +80,14 @@ export async function POST(req: Request) {
   if (!title?.trim()) return NextResponse.json({ error: "title required" },     { status: 400 })
   if (!session_date) return NextResponse.json({ error: "session_date required" }, { status: 400 })
   if (!start_time)   return NextResponse.json({ error: "start_time required" }, { status: 400 })
+  if (duration_minutes !== undefined && (!Number.isFinite(Number(duration_minutes)) || Number(duration_minutes) <= 0))
+    return NextResponse.json({ error: "duration_minutes must be a positive number" }, { status: 400 })
+
+  // The module must belong to the course. Nothing checked this, so a session
+  // could be filed under one course while attached to another course's module —
+  // and attendance rosters are built from the session's course.
+  const { data: mod } = await db.from("lms_modules").select("id").eq("id", module_id).eq("course_id", course_id).maybeSingle()
+  if (!mod) return NextResponse.json({ error: "Module not found in this course" }, { status: 404 })
 
   const { data, error } = await db
     .from("lms_sessions")
@@ -172,11 +180,13 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
+  // Any attendance record blocks deletion. This counted only present/late, so a
+  // session whose records were all entered manually as "excused" (with a note)
+  // or "absent" could be deleted, cascading those records away.
   const { count } = await db
     .from("lms_attendance")
     .select("*", { count: "exact", head: true })
     .eq("session_id", id)
-    .in("status", ["present", "late"])
 
   if ((count ?? 0) > 0)
     return NextResponse.json(
