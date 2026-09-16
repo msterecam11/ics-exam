@@ -105,7 +105,7 @@ export async function POST(req: Request) {
   // Verify module + check max attempts
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, title, assignment_max_attempts, assignment_due_date, assignment_rubric")
+    .select("id, title, assignment_max_attempts, assignment_due_date, assignment_rubric, activity_settings")
     .eq("id", module_id)
     .eq("course_id", course_id)
     .single()
@@ -153,7 +153,11 @@ export async function POST(req: Request) {
     }))
     aiScore       = criteriaScores.reduce((s, c) => s + c.score, 0)
     overallComment = criteriaScores.map(c => `**${c.criterion}** (${c.score}/${c.max}): ${c.comment}`).join("\n\n")
-    passed        = maxScore > 0 && (aiScore / maxScore) >= 0.6
+    // Same threshold as the admin re-grade (grade-assignment-ai): the module's
+    // pass_mark if set, else 60%. This was a hardcoded 60% while re-grading used
+    // the module setting (default 70), so the two could disagree on a pass.
+    const passMark = Number((module as any).activity_settings?.pass_mark ?? 60)
+    passed        = maxScore > 0 && (aiScore / maxScore) * 100 >= passMark
     status        = "graded"
   }
 

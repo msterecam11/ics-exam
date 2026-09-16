@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 import { runModuleAnalysis } from "../_module"
 import { runExamAnalysis } from "../_exam"
 
@@ -25,6 +27,11 @@ export async function POST(req: Request) {
   const { course_id } = body
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
 
+  // One run is an LLM call per module of the course. There was no limit at all,
+  // so repeated clicks multiplied that against the shared quota.
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-ai-analyze-course:${session.user.id}`, 5, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
+
   const { data: modules, error: modErr } = await db
     .from("lms_modules")
     .select("id, title, module_type")
@@ -32,7 +39,7 @@ export async function POST(req: Request) {
     .order("order_index", { ascending: true })
 
   if (modErr)
-    return NextResponse.json({ error: modErr.message }, { status: 500 })
+    return NextResponse.json({ error: "Could not load modules" }, { status: 500 })
 
   if (!modules?.length)
     return NextResponse.json({ error: "No modules found for this course" }, { status: 404 })
@@ -42,10 +49,16 @@ export async function POST(req: Request) {
 
   const failed: string[] = []
 
-  // ── Phase 3: analyze all non-exam modules in parallel ────────
-  const phase3Results = await Promise.all(
-    nonExamModules.map(m => runModuleAnalysis(m.id))
-  )
+  // ── Phase 3: analyze non-exam modules, a few at a time ───────
+  // This fired every module's analysis simultaneously. A course has up to ~10
+  // modules, and a simultaneous burst against the shared LLM quota is exactly
+  // what produces 429s — failing some modules at random. Run in small batches.
+  const CONCURRENCY = 3
+  const phase3Results: Awaited<ReturnType<typeof runModuleAnalysis>>[] = []
+  for (let i = 0; i < nonExamModules.length; i += CONCURRENCY) {
+    const batch = nonExamModules.slice(i, i + CONCURRENCY)
+    phase3Results.push(...(await Promise.all(batch.map(m => runModuleAnalysis(m.id)))))
+  }
 
   nonExamModules.forEach((m, i) => {
     if (!phase3Results[i].ok) {

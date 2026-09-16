@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 import Groq from "groq-sdk"
 import { extractPdfPageTexts } from "@/lib/pdf-extract"
 
@@ -36,7 +38,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { module_id, count = 4, types = [], difficulty = "medium", placement = "ai_topic", language = "English" } = body
+  const { module_id, types = [], difficulty = "medium", placement = "ai_topic", language = "English" } = body
+  // count was unbounded and interpolated into the prompt. Bound it to the most
+  // either editor lets you request (the package editor's stepper goes to 20).
+  const count = Math.min(Math.max(Math.round(Number(body.count ?? 4)) || 4, 1), 20)
+  if (!Array.isArray(types)) return NextResponse.json({ error: "types must be an array" }, { status: 400 })
+
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-ai-generate-activities:${session.user.id}`, 20, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
 

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 import Groq from "groq-sdk"
 import { extractPdfPages } from "@/lib/pdf-extract"
 
@@ -197,6 +199,10 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const { module_id } = body
+
+  // One run makes an LLM call per batch of items (plus PDF extraction).
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-ai-analyze-titles:${session.user.id}`, 10, 3600)
+  if (!allowed) return res429(retryAfterSeconds)
   if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
 
   // Fetch the package + items

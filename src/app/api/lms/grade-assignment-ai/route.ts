@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
+import { extractPdfPageTexts } from "@/lib/pdf-extract"
 import Groq from "groq-sdk"
 
 const groq = new Groq({
@@ -23,11 +26,19 @@ export async function POST(req: Request) {
   if (!attempt_id || !module_id)
     return NextResponse.json({ error: "attempt_id and module_id required" }, { status: 400 })
 
+  // Paid LLM call (plus PDF extraction) on the shared quota.
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-ai-grade:${session.user.id}`, 30, 600)
+  if (!allowed) return res429(retryAfterSeconds)
+
   // Fetch the attempt
   const { data: attempt, error: attErr } = await db
     .from("lms_module_attempts")
     .select("id, status, answers, student_id")
     .eq("id", attempt_id)
+    // The attempt must belong to the module whose rubric is used. They were
+    // loaded independently, so an attempt could be graded against another
+    // module's rubric and have that score written onto it.
+    .eq("module_id", module_id)
     .single()
 
   if (attErr || !attempt)
@@ -46,37 +57,60 @@ export async function POST(req: Request) {
   if (modErr || !mod)
     return NextResponse.json({ error: "Module not found" }, { status: 404 })
 
-  const rubric = (mod.assignment_rubric ?? []) as {
-    id: string; title: string; description: string | null; maxScore: number
-  }[]
-  const passMark = ((mod.activity_settings as any)?.pass_mark ?? 70) as number
+  // The rubric editor (AssignmentEditor) saves criteria as
+  // { id, criterion, description, points } — the shape the submission route
+  // also uses. This route read { title, maxScore }, which never exist, so every
+  // criterion reached the model as "undefined (max undefined pts)" and the
+  // totals could not be computed. Accept both shapes.
+  const rubric = ((mod.assignment_rubric ?? []) as any[]).map(r => ({
+    id:          String(r.id),
+    title:       String(r.title ?? r.criterion ?? "Criterion"),
+    description: (r.description ?? null) as string | null,
+    maxScore:    Number(r.maxScore ?? r.points) || 0,
+  }))
+  // Same pass threshold the submission-time grading uses (60% unless the
+  // module sets one) — the two used to disagree (60 vs 70).
+  const passMark = ((mod.activity_settings as any)?.pass_mark ?? 60) as number
   const answers  = (attempt.answers ?? {}) as {
-    text_content?: string; file_url?: string; file_name?: string
+    text_response?: string; text_content?: string
+    file_path?: string; file_url?: string; file_name?: string
   }
 
-  // Build submission content string
-  let submissionText = ""
+  // Build submission content.
+  //
+  // The written answer is stored as answers.text_response (module-assignment
+  // POST); this read answers.text_content, so the student's writing was never
+  // seen. Files are stored as a path in the PRIVATE lms-submissions bucket, so
+  // there is no public file_url to fetch — and when there was one, a PDF/DOCX
+  // was "graded on the assignment context only", i.e. a score for work the model
+  // never read. Now: written text, plus the text of a submitted PDF (read via a
+  // short-lived signed URL). A file that can't be read is not graded blind.
+  const parts: string[] = []
+  const written = answers.text_response ?? answers.text_content
+  if (written?.trim()) parts.push(written.trim())
 
-  if (answers.text_content) {
-    submissionText = answers.text_content
-  } else if (answers.file_url) {
-    // Attempt to fetch file as text (works for plain text; PDFs/DOCX will be unreadable binary)
-    try {
-      const fileRes = await fetch(answers.file_url)
-      const contentType = fileRes.headers.get("content-type") ?? ""
-      if (contentType.includes("text")) {
-        submissionText = await fileRes.text()
-      } else {
-        // Binary file — note the filename for context but can't read content
-        submissionText = `[File submitted: ${answers.file_name ?? "file"}. Content could not be extracted automatically — AI will grade based on the assignment context only.]`
-      }
-    } catch {
-      submissionText = `[File submitted: ${answers.file_name ?? "file"}. Could not retrieve file content.]`
+  let unreadableFile = false
+  if (answers.file_path) {
+    const isPdf = (answers.file_name ?? answers.file_path).toLowerCase().endsWith(".pdf")
+    if (isPdf) {
+      const { data: signed } = await db.storage.from("lms-submissions").createSignedUrl(answers.file_path, 300)
+      const pages = signed?.signedUrl ? await extractPdfPageTexts(signed.signedUrl) : []
+      const fileText = pages.join("\n").trim()
+      if (fileText) parts.push(`[Submitted file: ${answers.file_name ?? "document.pdf"}]\n${fileText}`)
+      else unreadableFile = true
+    } else {
+      unreadableFile = true
     }
   }
 
+  const submissionText = parts.join("\n\n")
   if (!submissionText.trim())
-    return NextResponse.json({ error: "No submission content to grade" }, { status: 422 })
+    return NextResponse.json(
+      { error: unreadableFile
+          ? "The submitted file can't be read automatically (only PDFs with selectable text can). Please grade this submission manually."
+          : "No submission content to grade" },
+      { status: 422 }
+    )
 
   // Strip HTML from brief for cleaner prompt
   const briefText = (mod.assignment_brief_html ?? "")
@@ -199,7 +233,7 @@ Grade each rubric criterion fairly and objectively. Respond ONLY with valid JSON
     .single()
 
   if (updateErr)
-    return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    return NextResponse.json({ error: "Could not save the grade" }, { status: 500 })
 
   return NextResponse.json(updated)
 }
