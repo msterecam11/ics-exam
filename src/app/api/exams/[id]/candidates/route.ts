@@ -37,10 +37,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "job_title is required (max 200 chars)" }, { status: 400 })
   if (!company || typeof company !== "string" || company.length > 200)
     return NextResponse.json({ error: "company is required (max 200 chars)" }, { status: 400 })
-  if (years_of_experience !== undefined) {
+  // Required: candidates.years_of_experience is NOT NULL. This used to be
+  // treated as optional and inserted as null, so a request without it reached
+  // the insert and failed with a raw database error (500). Both registration
+  // forms always send it; this makes a direct API call fail cleanly instead.
+  {
     const y = Number(years_of_experience)
-    if (isNaN(y) || y < 0 || y > 80)
-      return NextResponse.json({ error: "years_of_experience must be between 0 and 80" }, { status: 400 })
+    if (years_of_experience === undefined || years_of_experience === null || years_of_experience === "" || isNaN(y) || y < 0 || y > 80)
+      return NextResponse.json({ error: "years_of_experience is required (0-80)" }, { status: 400 })
   }
 
   // Verify exam exists and is active
@@ -62,18 +66,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // an in-progress registration resumes it instead of getting a fresh draw;
   // one who already submitted can't register again for the same exam.
   if (!invite) {
-    const { data: existing } = await db
+    // This ordered by candidates.created_at, a column that does not exist, so
+    // the query errored and `existing` was always null. Neither check below
+    // ever ran: a candidate who had already SUBMITTED could register again with
+    // the same email and sit the exam a second time, and one mid-exam who
+    // re-registered got a brand-new candidate row with a fresh random question
+    // draw — letting them see their questions and "reroll" them. (The data has
+    // no duplicate registrations, so it was never used.) Read every prior
+    // registration for this email instead of relying on ordering: any submitted
+    // one blocks; otherwise resume the one in progress.
+    const { data: priorRows, error: priorErr } = await db
       .from("candidates")
-      .select("id, submitted_at")
+      .select("id, submitted_at, started_at")
       .eq("exam_id", exam_id)
       .eq("email", email.trim().toLowerCase())
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
 
-    if (existing?.submitted_at) {
+    if (priorErr)
+      return NextResponse.json({ error: "Could not check existing registration. Please try again." }, { status: 500 })
+
+    const prior = priorRows ?? []
+    if (prior.some(r => r.submitted_at)) {
       return NextResponse.json({ error: "You have already completed this exam." }, { status: 409 })
     }
+    const existing = prior[0] ?? null
     if (existing) {
       const { data: full } = await db.from("candidates").select("*").eq("id", existing.id).single()
       return NextResponse.json(full, { status: 200 })

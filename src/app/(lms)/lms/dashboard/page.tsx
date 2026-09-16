@@ -129,15 +129,18 @@ export default async function StudentDashboard() {
       .select("id, title, description")
       .in("id", lpIds)
 
+    // The column is path_id. This used learning_path_id, which does not exist on
+    // lms_learning_path_courses, so the query failed and every learning path
+    // rendered with no courses and 0% progress.
     const { data: lpCourseRows } = await db
       .from("lms_learning_path_courses")
-      .select("learning_path_id, order_index, lms_courses(id, title)")
-      .in("learning_path_id", lpIds)
+      .select("path_id, order_index, lms_courses(id, title)")
+      .in("path_id", lpIds)
       .order("order_index", { ascending: true })
 
     learningPaths = (lpRows ?? []).map((lp: any) => {
       const courses = (lpCourseRows ?? [])
-        .filter((r: any) => r.learning_path_id === lp.id)
+        .filter((r: any) => r.path_id === lp.id)
         .map((r: any) => ({
           id:       r.lms_courses?.id,
           title:    r.lms_courses?.title ?? "Untitled",

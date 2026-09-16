@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       id, pass_score, max_attempts, show_answers_after,
       lms_quiz_questions(
         question_id,
-        lms_questions(id, type, score, text, ai_scoring_guide, lms_question_choices(id, is_correct))
+        lms_questions(id, type, score, text_en, ai_grading_prompt, lms_question_choices(id, is_correct))
       )
     `)
     .eq("id", quiz_id)
@@ -87,9 +87,13 @@ export async function POST(req: Request) {
       let aiEarned = 0
       let aiJustification: string | undefined
       if (studentAnswer.trim()) {
-        const guide = q.ai_scoring_guide?.trim()
+        // lms_questions stores text_en and ai_grading_prompt. The query selected
+        // `text` and `ai_scoring_guide` (the exam system's column names), which
+        // do not exist here — so the whole quiz fetch failed and every quiz
+        // submission was answered "Quiz not found".
+        const guide = q.ai_grading_prompt?.trim()
           || "Evaluate the answer for accuracy, completeness, and relevance to the question."
-        const aiResult = await scoreOpenEndedAnswer(q.text ?? "", guide, studentAnswer, qScore)
+        const aiResult = await scoreOpenEndedAnswer(q.text_en ?? "", guide, studentAnswer, qScore)
         aiEarned       = aiResult.score
         aiJustification = aiResult.justification
       }

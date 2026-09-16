@@ -36,20 +36,24 @@ export async function GET(
     ...pc.lms_courses,
   }))
 
-  // Members — graceful fallback if table doesn't exist yet
-  let members: any[] = []
+  // Members. This embedded lms_students(..., is_active); lms_students has no
+  // is_active column, so the query failed and — because the error branch was
+  // silently skipped — the member list was always empty. Same defect as the
+  // cohort page. Students have no active/inactive state, so is_active is
+  // returned as true for the page's Active badge.
   const { data: memberRows, error: memberErr } = await db
     .from("lms_learning_path_members")
-    .select("added_at, lms_students(id, name, email, company, is_active)")
+    .select("added_at, lms_students(id, name, email, company)")
     .eq("path_id", id)
     .order("added_at", { ascending: false })
 
-  if (!memberErr) {
-    members = (memberRows ?? []).map((m: any) => ({
-      added_at: m.added_at,
-      ...m.lms_students,
-    }))
-  }
+  if (memberErr) console.error("[learning-paths] member query failed", { pathId: id, memberErr })
+
+  const members: any[] = (memberRows ?? []).map((m: any) => ({
+    added_at: m.added_at,
+    ...m.lms_students,
+    is_active: true,
+  }))
 
   return NextResponse.json({ ...path, courses, members })
 }

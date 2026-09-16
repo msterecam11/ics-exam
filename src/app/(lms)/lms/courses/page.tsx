@@ -220,13 +220,14 @@ export default async function MyCoursesPage() {
   if (lpIds.length) {
     const [lpRows, lpCourseRows] = await Promise.all([
       db.from("lms_learning_paths").select("id, title, description").in("id", lpIds),
+      // path_id, not learning_path_id (which does not exist here) — see dashboard.
       db.from("lms_learning_path_courses")
-        .select("learning_path_id, order_index, lms_courses(id, title, delivery_mode, start_date, end_date)")
-        .in("learning_path_id", lpIds).order("order_index", { ascending: true }),
+        .select("path_id, order_index, lms_courses(id, title, delivery_mode, start_date, end_date)")
+        .in("path_id", lpIds).order("order_index", { ascending: true }),
     ])
     learningPaths = (lpRows.data ?? []).map((lp: any) => {
       const courses = (lpCourseRows.data ?? [])
-        .filter((r: any) => r.learning_path_id === lp.id)
+        .filter((r: any) => r.path_id === lp.id)
         .map((r: any, idx: number) => shapeCourse(r, idx))
       const lpCohort = memberRows.find((m: any) => (m.lms_cohorts as any)?.learning_path_id === lp.id)
       const lpCohortData = lpCohort ? (lpCohort.lms_cohorts as any) : null

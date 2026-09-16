@@ -26,24 +26,31 @@ export async function GET(req: Request) {
 
   if (!sess) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
+  // Roster = students enrolled in the course (active OR completed) plus anyone
+  // holding an attendance record for this session. Filtering to status "active"
+  // alone meant a student who later completed the course vanished from the
+  // attendance of sessions they had actually attended.
   const { data: enrollments } = await db
     .from("lms_enrollments")
     .select("student_id, lms_students(id, name, email, company)")
     .eq("course_id", sess.course_id)
-    .eq("status", "active")
+    .in("status", ["active", "completed"])
 
   // Get attendance records
   const { data: attendance } = await db
     .from("lms_attendance")
-    .select("student_id, status, scanned_at, manual_override")
+    .select("student_id, status, scanned_at, manual_override, lms_students(id, name, email, company)")
     .eq("session_id", sessionId)
 
   const attMap = new Map(
     (attendance ?? []).map((a: any) => [a.student_id, a])
   )
 
-  const students = (enrollments ?? []).map((e: any) => {
-    const s   = e.lms_students
+  const roster = new Map<string, any>()
+  for (const e of (enrollments ?? []) as any[]) if (e.lms_students) roster.set(e.lms_students.id, e.lms_students)
+  for (const a of (attendance ?? []) as any[])  if (a.lms_students && !roster.has(a.student_id)) roster.set(a.student_id, a.lms_students)
+
+  const students = [...roster.values()].map((s: any) => {
     const att = attMap.get(s.id)
     return {
       id:             s.id,

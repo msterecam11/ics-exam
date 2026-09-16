@@ -82,10 +82,14 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   const { sessionId } = await params
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
+  // This selected end_time, is_open and late_threshold_minutes from
+  // lms_sessions and checked_in_at / scan_method from lms_attendance — none of
+  // which exist. The session query failed, so this page returned 404 for every
+  // session: the attendance report and its PDF export could never render.
   const sessionRes = await db.from("lms_sessions")
     .select(`
-      id, title, session_date, start_time, end_time, location, is_open,
-      late_threshold_minutes, duration_minutes,
+      id, title, session_date, start_time, location, closed_at,
+      late_threshold, duration_minutes, course_id,
       lms_courses(title)
     `)
     .eq("id", sessionId)
@@ -93,13 +97,49 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
 
   if (!sessionRes.data) notFound()
   const sess = sessionRes.data as any
+  // No end_time column: derive it from start_time + duration for the header.
+  if (sess.start_time && sess.duration_minutes) {
+    const [h, m] = String(sess.start_time).split(":").map(Number)
+    if (Number.isFinite(h) && Number.isFinite(m)) {
+      const total = h * 60 + m + Number(sess.duration_minutes)
+      sess.end_time = `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`
+    }
+  }
 
-  const attendanceRes = await db.from("lms_attendance")
-    .select("id, status, checked_in_at, scan_method, lms_students(name, email, company)")
-    .eq("session_id", sessionId)
-    .order("checked_in_at", { ascending: true })
+  // Build the roster the same way the admin attendance view does (see
+  // /api/lms/attendance): enrolled students plus anyone with a record, and a
+  // student with no record is ABSENT. This page used to list only students who
+  // had a record — and absence is never written as a record (closing a session
+  // doesn't create any) — so no-shows were missing entirely and the attendance
+  // rate was computed over attendees only, which would read 100%.
+  const [enrollRes, attendanceRes] = await Promise.all([
+    db.from("lms_enrollments")
+      .select("student_id, lms_students(id, name, email, company)")
+      .eq("course_id", sess.course_id)
+      .in("status", ["active", "completed"]),
+    db.from("lms_attendance")
+      .select("id, student_id, status, scanned_at, manual_override, lms_students(id, name, email, company)")
+      .eq("session_id", sessionId),
+  ])
 
-  const attendance = (attendanceRes.data ?? []) as any[]
+  const attByStudent = new Map(((attendanceRes.data ?? []) as any[]).map(a => [a.student_id, a]))
+  const roster = new Map<string, any>()
+  for (const e of (enrollRes.data ?? []) as any[])     if (e.lms_students) roster.set(e.lms_students.id, e.lms_students)
+  for (const a of (attendanceRes.data ?? []) as any[]) if (a.lms_students && !roster.has(a.student_id)) roster.set(a.student_id, a.lms_students)
+
+  const attendance = [...roster.values()]
+    .map((s: any) => {
+      const a = attByStudent.get(s.id)
+      return {
+        id:            a?.id ?? `absent-${s.id}`,
+        status:        a?.status ?? "absent",
+        checked_in_at: a?.scanned_at ?? null,
+        scan_method:   a ? (a.manual_override ? "manual" : "QR scan") : null,
+        lms_students:  s,
+      }
+    })
+    .sort((x, y) => (x.checked_in_at ?? "\uffff").localeCompare(y.checked_in_at ?? "\uffff")
+                    || String(x.lms_students?.name ?? "").localeCompare(String(y.lms_students?.name ?? "")))
 
   // Count by status
   const counts = { present: 0, late: 0, absent: 0, excused: 0 }
