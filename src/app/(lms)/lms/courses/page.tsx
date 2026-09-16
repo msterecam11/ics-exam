@@ -65,9 +65,14 @@ export default async function MyCoursesPage() {
 
     // Cohort memberships
     db.from("lms_cohort_members")
-      .select("id, track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
-      .eq("student_id", student.id)
-      .eq("is_active", true),
+      // lms_cohort_members has no `id` and no `is_active` column (it is
+      // cohort_id, student_id, added_at, added_by, track_id). Selecting and
+      // filtering on them made this query fail on every page load — it shows up
+      // in the Postgres logs as "column lms_cohort_members.id does not exist" —
+      // and since the error was never checked, cohorts (and the learning paths
+      // found through them) always rendered as "none assigned".
+      .select("track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
+      .eq("student_id", student.id),
   ])
 
   // ── 3. Last accessed + module count ─────────────────────────
@@ -188,7 +193,7 @@ export default async function MyCoursesPage() {
     const isUnified = cohort?.mode === "unified"
     const trackId   = m.track_id ?? null
     return {
-      memberId: m.id,
+      memberId: m.cohort_id,   // one membership per cohort — the natural key
       cohort: {
         id: cohort?.id ?? m.cohort_id, name: cohort?.name ?? "Cohort",
         mode: cohort?.mode ?? "unified",

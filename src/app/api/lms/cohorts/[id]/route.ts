@@ -75,28 +75,31 @@ export async function GET(
     }))
   }
 
-  // Members — try with track_id, fall back without
-  let members: any[] = []
-  const { data: membersWithTrack, error: membersErr } = await db
+  // Members.
+  //
+  // This selected lms_students(..., nationality, is_active). lms_students has
+  // neither column, so the query failed — and so did its "fall back without
+  // track_id" retry, which embedded the same two columns. The member list was
+  // therefore ALWAYS empty, however many students were in the cohort.
+  //
+  // is_active is still returned because the cohort page shows an Active count
+  // and an Active/Inactive badge. Students have no active/inactive state
+  // anywhere in the schema, so every member is active; say so explicitly
+  // rather than let an undefined field render everyone as "Inactive".
+  const { data: memberRows, error: membersErr } = await db
     .from("lms_cohort_members")
-    .select("student_id, added_at, track_id, lms_students(id, name, email, company, nationality, is_active)")
+    .select("student_id, added_at, track_id, lms_students(id, name, email, company)")
     .eq("cohort_id", id)
     .order("added_at", { ascending: false })
 
-  if (membersErr) {
-    const { data: basic } = await db
-      .from("lms_cohort_members")
-      .select("student_id, added_at, lms_students(id, name, email, company, nationality, is_active)")
-      .eq("cohort_id", id)
-      .order("added_at", { ascending: false })
-    members = (basic ?? []).map((m: any) => ({ track_id: null, added_at: m.added_at, ...m.lms_students }))
-  } else {
-    members = (membersWithTrack ?? []).map((m: any) => ({
-      track_id: m.track_id,
-      added_at: m.added_at,
-      ...m.lms_students,
-    }))
-  }
+  if (membersErr) console.error("[cohorts] member query failed", { cohortId: id, membersErr })
+
+  const members: any[] = (memberRows ?? []).map((m: any) => ({
+    track_id:  m.track_id ?? null,
+    added_at:  m.added_at,
+    ...m.lms_students,
+    is_active: true,
+  }))
 
   return NextResponse.json({ ...cohort, mode, courses: cohortCourses, tracks, members })
 }

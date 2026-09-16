@@ -71,9 +71,14 @@ export default async function StudentDashboard() {
 
     // Cohort memberships with cohort info + learning path
     db.from("lms_cohort_members")
-      .select("id, track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
-      .eq("student_id", student.id)
-      .eq("is_active", true),
+      // lms_cohort_members has no `id` and no `is_active` column (it is
+      // cohort_id, student_id, added_at, added_by, track_id). Selecting and
+      // filtering on them made this query fail on every page load — it shows up
+      // in the Postgres logs as "column lms_cohort_members.id does not exist" —
+      // and since the error was never checked, cohorts (and the learning paths
+      // found through them) always rendered as "none assigned".
+      .select("track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
+      .eq("student_id", student.id),
 
     // The "resume" card and "Recent Activity" were built only on lms_progress
     // (content items). Courses are delivered as packages — lms_content_items
@@ -105,7 +110,7 @@ export default async function StudentDashboard() {
   // ── Cohorts & learning paths ─────────────────────────────────
   const cohortMembers = (cohortMembersResult.data ?? []) as any[]
   const cohorts = cohortMembers.map((m: any) => ({
-    memberId:  m.id,
+    memberId:  m.cohort_id,   // one membership per cohort — the natural key
     trackId:   m.track_id ?? null,
     cohortId:  m.cohort_id,
     name:      (m.lms_cohorts as any)?.name ?? "Cohort",
