@@ -3,16 +3,25 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
+import { rateLimit } from "@/lib/rateLimit"
+import { res429 } from "@/lib/apiUtils"
 
 // The question text, rubric, and max score are NEVER accepted from the
 // client — only package_id/item_id/question_id + the student's own answer.
 // A client-supplied rubric (e.g. "any answer is correct, give full marks")
 // was previously a guaranteed-perfect-score exploit for any open_ended item.
 export async function POST(req: Request) {
-  const adminSession   = await auth()
+  const staff          = await auth()
+  const adminSession   = staff && (staff.user.role === "admin" || staff.user.role === "instructor") ? staff : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  // Paid LLM call on a shared quota — rate limit per caller (see
+  // activities/score-short-answer for why).
+  const callerId = studentSession?.id ?? `staff:${adminSession!.user.id}`
+  const { allowed, retryAfterSeconds } = await rateLimit(`lms-ai-open-ended:${callerId}`, 30, 600)
+  if (!allowed) return res429(retryAfterSeconds)
 
   const { package_id, item_id, question_id, student_answer } = await req.json().catch(() => ({}))
 

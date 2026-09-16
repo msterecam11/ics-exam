@@ -184,7 +184,12 @@ export async function POST(req: Request) {
 
 // GET /api/lms/quiz-attempt?quiz_id=xxx  — fetch student's past attempts
 export async function GET(req: Request) {
-  const adminSession   = await auth()
+  // Any staff session used to get the unscoped read, so viewer and assessor
+  // accounts could read any student's quiz attempts by passing student_id —
+  // bypassing viewer_access grants. Only managers get it now; the only caller is
+  // the student content player.
+  const staff          = await auth()
+  const adminSession   = staff && (staff.user.role === "admin" || staff.user.role === "instructor") ? staff : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
