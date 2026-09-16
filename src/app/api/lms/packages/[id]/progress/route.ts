@@ -55,7 +55,6 @@ export async function POST(
   const { id } = await params
   const body = await req.json()
   const {
-    module_id, course_id,
     current_item_index,
     completed_item_id,
     item_score,
@@ -63,6 +62,37 @@ export async function POST(
     status,
     overall_score,
   } = body
+
+  // module_id and course_id used to be taken from the request body and written
+  // through. The package itself records both, so derive them instead of trusting
+  // the caller: a client-supplied course_id meant a student could file package
+  // progress under a course they were never enrolled in — and course reports
+  // aggregate lms_package_progress BY course_id, so that silently corrupts the
+  // reporting for whichever course was named. Deriving also removes any chance
+  // of module/course drifting apart.
+  const { data: pkg } = await db
+    .from("lms_packages")
+    .select("id, module_id, course_id, pass_mark")
+    .eq("id", id)
+    .single()
+
+  if (!pkg) return NextResponse.json({ error: "Package not found" }, { status: 404 })
+
+  const module_id = (pkg as any).module_id
+  const course_id = (pkg as any).course_id
+
+  // And the student has to actually be enrolled in the course that owns it.
+  if (course_id) {
+    const { data: enrollment } = await db
+      .from("lms_enrollments")
+      .select("id")
+      .eq("student_id", student.id)
+      .eq("course_id", course_id)
+      .maybeSingle()
+
+    if (!enrollment)
+      return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  }
 
   const { data: existing } = await db
     .from("lms_package_progress")
@@ -90,8 +120,17 @@ export async function POST(
     ? { ...prevScores, [completed_item_id]: clampedItemScore }
     : prevScores
 
-  // Accumulate time
-  const newTime = (existing?.time_spent ?? 0) + (time_spent ?? 0)
+  // Accumulate time. The increment is client-reported seconds and this endpoint
+  // accepts up to 60 beacons a minute, so an unbounded value (or a negative one)
+  // accumulates straight into the "Learning time" shown on the student
+  // dashboard, the admin roster and the course reports. Bound each increment to
+  // an hour — far more than any single beacon legitimately carries, since these
+  // fire continuously during playback.
+  const rawIncrement = Number(time_spent)
+  const increment = Number.isFinite(rawIncrement)
+    ? Math.min(Math.max(Math.round(rawIncrement), 0), 3600)
+    : 0
+  const newTime = (existing?.time_spent ?? 0) + increment
 
   const requestedTerminal = status === "passed" || status === "failed"
 
@@ -109,7 +148,6 @@ export async function POST(
     const totalMax   = scores.reduce((s, v) => s + (Number(v.max)   || 0), 0)
     const recomputedPct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0
 
-    const { data: pkg } = await db.from("lms_packages").select("pass_mark").eq("id", id).single()
     const passMark = (pkg as any)?.pass_mark ?? 70
 
     finalScore  = recomputedPct
@@ -145,7 +183,7 @@ export async function POST(
   // works), and on package terminal.
   if (course_id && (isTerminal || completed_item_id)) {
     await syncEnrollmentProgress(student.id, course_id)
-  } else if (course_id && (time_spent ?? 0) > 0) {
+  } else if (course_id && increment > 0) {
     // Time-only beacon — refresh just the enrollment time (recomputed from
     // source) so the dashboard/roster stay live without the full progress calc.
     const [pkgT, attT] = await Promise.all([

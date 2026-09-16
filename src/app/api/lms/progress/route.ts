@@ -34,6 +34,37 @@ export async function POST(req: Request) {
   if (!content_item_id || !module_id || !course_id)
     return NextResponse.json({ error: "content_item_id, module_id, course_id required" }, { status: 400 })
 
+  // The three ids arrive from the client and used to be written straight through:
+  // nothing checked that the student was enrolled, that the content item existed,
+  // or that it actually belonged to the module and course it was filed under. So
+  // a single fetch() could mark mandatory content complete without opening it —
+  // which matters because module gating (lock_until_previous) reads exactly these
+  // rows, meaning required training could be skipped on the way to the exam — and
+  // progress could be written against courses the student was never enrolled in,
+  // or filed under the wrong course, corrupting every percentage derived from it.
+  //
+  // Certificates were never forgeable this way: checkCourseCompletion gates on
+  // passedFinalExam. This closes the completion record, not the credential.
+  const { data: item } = await db
+    .from("lms_content_items")
+    .select("id, module_id, lms_modules!inner(id, course_id)")
+    .eq("id", content_item_id)
+    .single()
+
+  const itemCourseId = (item as any)?.lms_modules?.course_id
+  if (!item || item.module_id !== module_id || itemCourseId !== course_id)
+    return NextResponse.json({ error: "Content item does not belong to that module/course" }, { status: 400 })
+
+  const { data: enrollment } = await db
+    .from("lms_enrollments")
+    .select("id")
+    .eq("student_id", student.id)
+    .eq("course_id", course_id)
+    .maybeSingle()
+
+  if (!enrollment)
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+
   const now = new Date().toISOString()
   const upsertData: Record<string, unknown> = {
     student_id:      student.id,
@@ -45,7 +76,15 @@ export async function POST(req: Request) {
 
   if (status)      upsertData.status = status
   if (position)    upsertData.position = position
-  if (time_spent !== undefined) upsertData.time_spent = time_spent
+  // time_spent is reported by the browser in seconds and rolls up into the
+  // "Learning time" figure on the dashboard, the course page and the reports.
+  // Client-supplied, so bound it: a negative or absurd value would otherwise be
+  // summed into those totals verbatim. 24h per single content item is far beyond
+  // any legitimate session while still never truncating a real one.
+  if (time_spent !== undefined) {
+    const t = Number(time_spent)
+    upsertData.time_spent = Number.isFinite(t) ? Math.min(Math.max(Math.round(t), 0), 86400) : 0
+  }
 
   // Set started_at on first interaction
   const { data: existing } = await db
