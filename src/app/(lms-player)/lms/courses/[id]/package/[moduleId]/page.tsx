@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation"
 import PackagePlayer, { type PackagePlayerProps } from "@/components/lms/PackagePlayer"
 import { type PackageItem } from "@/components/lms/PackageEditor"
 import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { isScoredItemType, stripAnswerKey } from "@/lib/lms-package-scoring"
 
 export default async function PackagePlayerPage({
   params,
@@ -68,7 +69,9 @@ export default async function PackagePlayerPage({
       title:       item.title ?? item.type,
       required:    item.required ?? true,
       order_index: item.order_index,
-      config:      item.config ?? {},
+      // Quiz / Knowledge Test items are graded on the server; the student's page
+      // (including ?review=true) never receives their answer key.
+      config:      isScoredItemType(item.type) ? stripAnswerKey(item.config ?? {}) : (item.config ?? {}),
     }))
 
   // Fetch student progress

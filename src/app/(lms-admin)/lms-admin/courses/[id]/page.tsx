@@ -1132,11 +1132,22 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     progress_enforcement: !!course.progress_enforcement,
     certificate_enabled:  !!course.certificate_enabled,
     certificate_auto_release: !!(course as any).certificate_auto_release,
+    final_exam_pass_mark: course.final_exam_pass_mark ?? 70,
   })
   const [saving, setSaving] = useState(false)
   const set = (k: keyof typeof form, v: any) => setForm(prev => ({ ...prev, [k]: v }))
 
   async function save() {
+    const mark = form.final_exam_pass_mark
+    if (mark == null || !Number.isInteger(mark) || mark < 0 || mark > 100) {
+      toast.error("Final exam pass mark must be a whole number from 0 to 100"); return
+    }
+    if (mark !== (course.final_exam_pass_mark ?? 70) && !confirm(
+      `Change the final exam pass mark to ${mark}%?\n\n` +
+      "Every student's existing exam result will be re-checked against the new mark. " +
+      "Students who now pass will complete the course and receive their certificate as usual. " +
+      "Students who now fail keep any certificate already issued."
+    )) return
     setSaving(true)
     const res = await fetch("/api/lms/courses", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -1144,7 +1155,18 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     })
     const data = await res.json(); setSaving(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success("Settings saved"); onSaved({ ...course, ...form })
+    if (data.regrade_error) toast.warning(data.regrade_error)
+    else if (data.regrade && (data.regrade.newlyPassed || data.regrade.newlyFailed)) {
+      const r = data.regrade
+      toast.success(
+        "Settings saved — exam results updated:" +
+        (r.newlyPassed ? ` ${r.newlyPassed} student${r.newlyPassed !== 1 ? "s" : ""} now pass.` : "") +
+        (r.newlyFailed ? ` ${r.newlyFailed} student${r.newlyFailed !== 1 ? "s" : ""} now fail.` : "") +
+        (r.newlyFailedWithCertificate ? ` ${r.newlyFailedWithCertificate} of them already had a certificate, which was kept.` : ""),
+        { duration: 10000 }
+      )
+    } else toast.success("Settings saved")
+    onSaved({ ...course, ...form })
   }
 
   return (
@@ -1175,7 +1197,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         {form.certificate_enabled && (
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>
         )}
-        <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={form.final_exam_pass_mark ?? 70} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /></div>
+        <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Changing it re-checks every existing exam result against the new mark.</p></div>
       </div>
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1B4F8A]" /> Course Feedback</h3>

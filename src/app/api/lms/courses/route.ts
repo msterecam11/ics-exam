@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -150,6 +151,14 @@ export async function PATCH(req: Request) {
     if (key in fields) updates[key] = fields[key]
   }
 
+  const passMarkSent = "final_exam_pass_mark" in fields
+  if (passMarkSent) {
+    const mark = Number(fields.final_exam_pass_mark)
+    if (fields.final_exam_pass_mark == null || !Number.isInteger(mark) || mark < 0 || mark > 100)
+      return NextResponse.json({ error: "Final exam pass mark must be a whole number from 0 to 100" }, { status: 400 })
+    updates.final_exam_pass_mark = mark
+  }
+
   const { data, error } = await db
     .from("lms_courses")
     .update(updates)
@@ -172,7 +181,7 @@ export async function PATCH(req: Request) {
 
   // Keep the exam module's own pass_mark in sync with the course setting so the
   // exam player displays the same number grading uses (single source of truth).
-  if ("final_exam_pass_mark" in fields && fields.final_exam_pass_mark != null) {
+  if (passMarkSent) {
     const { data: examModules } = await db
       .from("lms_modules")
       .select("id, activity_settings")
@@ -181,8 +190,25 @@ export async function PATCH(req: Request) {
 
     for (const m of examModules ?? []) {
       await db.from("lms_modules")
-        .update({ activity_settings: { ...((m as any).activity_settings ?? {}), pass_mark: fields.final_exam_pass_mark } })
+        .update({ activity_settings: { ...((m as any).activity_settings ?? {}), pass_mark: updates.final_exam_pass_mark } })
         .eq("id", (m as any).id)
+    }
+  }
+
+  // Existing exam results follow the pass mark (see lms-exam-regrade.ts). The
+  // settings form sends the mark on every save; re-applying is idempotent — it
+  // only writes attempts whose verdict differs — so an unchanged mark is a
+  // read-only no-op, and a run that failed part-way is completed by the next save.
+  let regrade: PassMarkRegradeResult | null = null
+  if (passMarkSent) {
+    try {
+      regrade = await reapplyExamPassMark(id)
+    } catch (err) {
+      console.error("[courses] pass mark re-check failed", { courseId: id, err })
+      return NextResponse.json(
+        { ...data, regrade_error: "Settings were saved, but existing exam results could not all be re-checked. Save again to retry." },
+        { status: 200 }
+      )
     }
   }
 
@@ -196,7 +222,7 @@ export async function PATCH(req: Request) {
     }
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json(regrade ? { ...data, regrade } : data)
 }
 
 // DELETE — archive/delete course

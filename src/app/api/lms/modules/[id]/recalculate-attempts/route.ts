@@ -66,7 +66,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       (attempt.answers as any) ?? {},
       openEndedEarned
     )
-    const passed = pct >= passMark
+    // An attempt submitted after the time limit can never pass; ignoring the
+    // flag here turned over-time attempts into passes on every recalculation.
+    const passed = !(attempt.ai_feedback as any)?.time_limit_exceeded && pct >= passMark
 
     // max_score has to be part of the comparison, not just written alongside it.
     // Editing the paper can change the total while leaving THIS learner's earned

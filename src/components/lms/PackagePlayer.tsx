@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import { type PackageItem, type ItemType, type PackageQuestion, type MCQOption, type OrderItem, type MatchPair } from "./PackageEditor"
 import { RichTextViewer } from "./RichTextEditor"
 import ActivityPlayer from "./ActivityPlayer"
+import { scoreQuestions as scoreWithKey, type PkgQuestion } from "@/lib/lms-package-scoring"
 
 // ─────────────────────────────────────────────────────────────────
 // Types
@@ -220,42 +221,25 @@ function initAnswers(questions: PackageQuestion[]): Record<string, any> {
   return init
 }
 
-function scoreQuestions(questions: PackageQuestion[], answers: Record<string, any>) {
-  let earned = 0, max = 0
-  for (const q of questions) {
-    max += q.points
-    if (q.type === "mcq_single") {
-      const correct = q.options?.find(o => o.is_correct)?.id
-      if (answers[q.id] && answers[q.id] === correct) earned += q.points
-    } else if (q.type === "mcq_multiple") {
-      const sel = new Set((answers[q.id] as string[] | undefined) ?? [])
-      const cor = new Set(q.options?.filter(o => o.is_correct).map(o => o.id) ?? [])
-      if (sel.size === cor.size && [...cor].every(id => sel.has(id))) earned += q.points
-    } else if (q.type === "ordering") {
-      const studentOrder = (answers[q.id] as string[] | undefined) ?? []
-      const correctOrder = (q.items ?? []).map(it => it.id)
-      if (correctOrder.length === studentOrder.length &&
-          correctOrder.every((id, i) => studentOrder[i] === id)) earned += q.points
-    } else if (q.type === "match_pair") {
-      const studentMap = (answers[q.id] as Record<string, string> | undefined) ?? {}
-      const pairs = q.pairs ?? []
-      if (pairs.length > 0 && pairs.every(p => studentMap[p.id] === p.right)) earned += q.points
-    } else if (q.type === "open_ended") {
-      // open_ended scored via AI — placeholder 0, will be replaced after AI call
-    }
-  }
-  return { score: earned, max, pct: max > 0 ? Math.round(earned / max * 100) : 0 }
-}
+type ItemScore = { score: number; max: number; pct: number; passed: boolean }
+// The package row as saved by the server after a graded submission.
+type SavedPackageState = { status?: string; score?: number | null }
 
 type QuizPhase = "taking" | "review"
 
 function QuizPlayer({
   item, packageId, passMark, onComplete, previewMode,
 }: {
-  item: PackageItem; packageId: string; passMark: number; onComplete: (score: { score: number; max: number; pct: number; passed: boolean }) => void; previewMode: boolean
+  item: PackageItem; packageId: string; passMark: number; onComplete: (score: ItemScore, saved?: SavedPackageState) => void; previewMode: boolean
 }) {
   const cfg       = item.config as any
   const questions: PackageQuestion[] = cfg.questions ?? []
+  // Student pages receive quiz/exam items without the answer key (graded on the
+  // server). Staff previews still get the full item and can check locally.
+  const keyHidden = cfg.answer_key_hidden === true
+  const questionsForTaking = questions
+  const [reviewQuestions, setReviewQuestions] = useState<PackageQuestion[] | null>(null)
+  const [ungradedPreview, setUngradedPreview] = useState(false)
   const isExam    = item.type === "exam"
   // Quizzes have no pass mark — submission always counts as passed (completion-only)
   const qPassMark = isExam ? (cfg.pass_mark ?? passMark) : 0
@@ -325,46 +309,56 @@ function QuizPlayer({
     })
   }
 
+  const submittingRef = useRef(false)
+
   async function handleSubmit() {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setAiScoring(true)
+    try {
+      if (!previewMode) {
+        // The server grades the answers and records the attempt. The browser
+        // no longer computes or reports a score.
+        const res = await fetch(`/api/lms/packages/${packageId}/progress`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ completed_item_id: item.id, item_answers: answers }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.item_result) {
+          toast.error(data.error ?? "Could not submit your answers. Please try again.")
+          return
+        }
+        const ir = data.item_result
+        const r: ItemScore = { score: ir.score, max: ir.max, pct: ir.pct, passed: ir.passed }
+        setAiJustifications(ir.ai ?? {})
+        setReviewQuestions(ir.questions ?? null)
+        setAttempt(ir.attempts ?? attempt)
+        setResult(r)
+        setPhase("review")
+        onComplete(r, { status: data.status, score: data.score })
+        return
+      }
 
-    // AI-score open_ended questions
-    const openEndedQs = questions.filter(q => q.type === "open_ended")
-    const newAiJust: Record<string, { score: number; justification: string }> = {}
-
-    if (openEndedQs.length > 0 && !previewMode) {
-      await Promise.all(openEndedQs.map(async q => {
-        const ans = answers[q.id] as string | undefined
-        if (!ans?.trim()) { newAiJust[q.id] = { score: 0, justification: "No answer provided." }; return }
-        try {
-          // Only the package/item/question IDs and the student's own answer
-          // are sent — the server looks up the real question text/rubric/max
-          // score itself rather than trusting whatever a client claims they
-          // are (a forged, trivially-satisfiable rubric was previously a
-          // guaranteed-perfect-score exploit for any open_ended item).
-          const res = await fetch("/api/lms/packages/score-open-ended", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ package_id: packageId, item_id: item.id, question_id: q.id, student_answer: ans }),
-          })
-          newAiJust[q.id] = res.ok ? await res.json() : { score: q.points, justification: "AI scoring unavailable." }
-        } catch { newAiJust[q.id] = { score: q.points, justification: "AI scoring unavailable." } }
-      }))
+      // Preview: nothing is recorded. Staff previews carry the answer key and
+      // are checked locally (open-ended questions are not AI-scored here); a
+      // student's review mode has no key, so answers are not checked.
+      if (keyHidden) {
+        setUngradedPreview(true)
+        setResult({ score: 0, max: 0, pct: 0, passed: true })
+        setPhase("review")
+        return
+      }
+      const base = scoreWithKey(questions as PkgQuestion[], answers)
+      const passed = isExam ? base.pct >= qPassMark : true
+      const r: ItemScore = { score: base.score, max: base.max, pct: base.pct, passed }
+      setResult(r)
+      setPhase("review")
+      onComplete(r)
+    } finally {
+      submittingRef.current = false
+      setAiScoring(false)
     }
-
-    // Merge AI scores into final totals
-    const base = scoreQuestions(questions, answers)
-    const aiEarned = openEndedQs.reduce((sum, q) => sum + (newAiJust[q.id]?.score ?? 0), 0)
-    const finalScore = base.score + aiEarned
-    const finalPct   = base.max > 0 ? Math.round((finalScore / base.max) * 100) : 0
-    const passed     = isExam ? finalPct >= qPassMark : true
-    const r = { score: finalScore, max: base.max, pct: finalPct, passed }
-
-    setAiJustifications(newAiJust)
-    setResult(r)
-    setAiScoring(false)
-    setPhase("review")
-    onComplete(r)
   }
 
   function retry() {
@@ -372,7 +366,9 @@ function QuizPlayer({
     setPhase("taking")
     setResult(null)
     setAiJustifications({})
-    setAttempt(a => a + 1)
+    setReviewQuestions(null)
+    setUngradedPreview(false)
+    if (previewMode) setAttempt(a => a + 1)   // live attempts come from the server's count
     if (cfg.time_limit_minutes) setTimeLeft(cfg.time_limit_minutes * 60)
   }
 
@@ -385,7 +381,18 @@ function QuizPlayer({
   )
 
   // Review phase
+  if (phase === "review" && result && ungradedPreview) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-slate-50 p-6 text-center">
+        <CheckCircle2 className="h-10 w-10 text-blue-500" />
+        <p className="font-semibold text-slate-700">Answers are not checked in review mode</p>
+        <button onClick={retry} className="text-sm text-[#1B4F8A] hover:underline">Try again</button>
+      </div>
+    )
+  }
   if (phase === "review" && result) {
+    // With the key hidden, the review uses the full questions the server returned.
+    const questions = reviewQuestions ?? questionsForTaking
     return (
       <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
         <div className="max-w-2xl mx-auto space-y-4">
@@ -652,7 +659,8 @@ function QuizPlayer({
               {q.type === "match_pair" && (() => {
                 const pairs = q.pairs ?? []
                 const studentMap = (selected as Record<string, string> | undefined) ?? {}
-                const rightOptions = pairs.map(p => p.right)
+                // Without the key, the right-hand values arrive separately (shuffled).
+                const rightOptions: string[] = (q as any).right_options ?? pairs.map(p => p.right)
                 return (
                   <div className="ml-8 space-y-2">
                     <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-400 mb-1 px-1">
@@ -874,13 +882,22 @@ export default function PackagePlayer({
   }, [currentIdx])
 
   // ── Item completion ──────────────────────────────────────────
-  function handleItemComplete(itemId: string, score?: { score: number; max: number; pct: number; passed: boolean }) {
+  function handleItemComplete(itemId: string, score?: ItemScore, saved?: SavedPackageState) {
     // Keep the quiz/exam player mounted for review — parent won't switch to simple summary
     if (score !== undefined) setReviewItemId(itemId)
     setCompletedIds(prev => {
       const next = new Set([...prev, itemId])
 
-      if (!previewMode) {
+      if (saved) {
+        // A graded quiz/exam was already recorded by the server, which also
+        // decided the package result — show that instead of recomputing it.
+        if ((saved.status === "passed" || saved.status === "failed") && !pkgDone) {
+          const passed = saved.status === "passed"
+          setPkgDone(true)
+          setPkgResult({ passed, score: Number(saved.score ?? 0) })
+          toast.success(passed ? "Package complete — well done!" : "Package finished", { duration: 4000 })
+        }
+      } else if (!previewMode) {
         const allDone = items.filter(it => it.required).every(it => next.has(it.id))
         if (allDone && !pkgDone) {
           const scoredItems = items.filter(it => it.type === "quiz" || it.type === "exam")
@@ -1114,7 +1131,7 @@ export default function PackagePlayer({
                   packageId={packageId}
                   passMark={passMark}
                   previewMode={previewMode}
-                  onComplete={s => handleItemComplete(currentItem.id, s)}
+                  onComplete={(s, saved) => handleItemComplete(currentItem.id, s, saved)}
                 />
               )
             }

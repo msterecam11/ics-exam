@@ -152,8 +152,8 @@ function Toggle({
 }
 
 function SettingsPanel({
-  settings, onChange,
-}: { settings: ActivitySettings; onChange: (s: ActivitySettings) => void }) {
+  settings, onChange, passMarkLocked = false,
+}: { settings: ActivitySettings; onChange: (s: ActivitySettings) => void; passMarkLocked?: boolean }) {
   const [open, setOpen] = useState(false)
   const set = (patch: Partial<ActivitySettings>) => onChange({ ...settings, ...patch })
 
@@ -185,15 +185,25 @@ function SettingsPanel({
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <Award className="h-3 w-3" /> Pass Mark
             </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range" min="0" max="100" step="5"
-                value={settings.pass_mark}
-                onChange={e => set({ pass_mark: Number(e.target.value) })}
-                className="flex-1 accent-[#1B4F8A]"
-              />
-              <span className="text-sm font-bold text-[#1B4F8A] w-10 text-right">{settings.pass_mark}%</span>
-            </div>
+            {passMarkLocked ? (
+              // Final exams are graded with the course's Final Exam Pass Mark, which
+              // overrides this value — a slider here changed nothing. Changing it in
+              // Course Settings also re-checks existing results.
+              <p className="text-sm text-slate-600">
+                <span className="font-bold text-[#1B4F8A]">{settings.pass_mark}%</span>
+                <span className="block text-xs text-slate-400 mt-1">Set in Course Settings → Final Exam Pass Mark</span>
+              </p>
+            ) : (
+              <div className="flex items-center gap-3">
+                <input
+                  type="range" min="0" max="100" step="5"
+                  value={settings.pass_mark}
+                  onChange={e => set({ pass_mark: Number(e.target.value) })}
+                  className="flex-1 accent-[#1B4F8A]"
+                />
+                <span className="text-sm font-bold text-[#1B4F8A] w-10 text-right">{settings.pass_mark}%</span>
+              </div>
+            )}
           </div>
 
           {/* Time limit */}
@@ -1435,7 +1445,7 @@ export default function ActivityEditor({
       </div>
 
       {/* ── Settings ──────────────────────────────────────────── */}
-      <SettingsPanel settings={settings} onChange={applySettings} />
+      <SettingsPanel settings={settings} onChange={applySettings} passMarkLocked={moduleType === "final_exam"} />
 
       {/* ── Question list ─────────────────────────────────────── */}
       {questions.length > 0 && (
