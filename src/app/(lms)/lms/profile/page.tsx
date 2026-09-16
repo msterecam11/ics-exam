@@ -36,7 +36,6 @@ export default function ProfilePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:      data.name,
           job_title: data.job_title,
           company:   data.company,
           language:  data.language,
@@ -58,8 +57,10 @@ export default function ProfilePage() {
       setPwError("New passwords do not match")
       return
     }
-    if (pwForm.next.length < 6) {
-      setPwError("Password must be at least 6 characters")
+    // Matches the server (/api/lms/profile/password requires 8). This said 6,
+    // so a 6-7 character password passed here and was then rejected there.
+    if (pwForm.next.length < 8) {
+      setPwError("Password must be at least 8 characters")
       return
     }
     startPwSave(async () => {
@@ -142,11 +143,13 @@ export default function ProfilePage() {
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Read-only: this is the name printed on certificates, so a student
+              must not be able to change it. Admins correct it if needed. */}
           <Field
             label="Full Name"
             icon={UserCircle}
             value={data.name ?? ""}
-            onChange={v => setData((d: any) => ({ ...d, name: v }))}
+            disabled
           />
           <Field
             label="Email"
@@ -173,6 +176,9 @@ export default function ProfilePage() {
             onChange={v => setData((d: any) => ({ ...d, language: v }))}
           />
         </div>
+        <p className="text-xs text-slate-400">
+          Your full name is shown on your certificates. If it needs correcting, please contact your instructor.
+        </p>
 
         <button
           onClick={save}

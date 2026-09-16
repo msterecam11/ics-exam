@@ -22,7 +22,11 @@ export async function PATCH(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { name, job_title, company, language } = await req.json().catch(() => ({}))
+  // `name` is deliberately NOT accepted. It is the name printed on the student's
+  // certificates, so students cannot change it themselves; an admin corrects it.
+  // Any name sent is ignored rather than rejected, so an older page that still
+  // posts it keeps saving the other fields.
+  const { job_title, company, language } = await req.json().catch(() => ({}))
 
   // No type or length checks existed: a non-string name threw inside .trim()
   // and returned an unhandled 500, and any length was stored. Strings only,
@@ -33,14 +37,13 @@ export async function PATCH(req: Request) {
     : typeof v === "string" ? (v.trim().slice(0, max) || null)
     : "INVALID"
 
-  const nameV = str(name, 120), titleV = str(job_title, 120), companyV = str(company, 120)
-  if ([nameV, titleV, companyV].includes("INVALID") || (language !== undefined && typeof language !== "string"))
+  const titleV = str(job_title, 120), companyV = str(company, 120)
+  if ([titleV, companyV].includes("INVALID") || (language !== undefined && typeof language !== "string"))
     return NextResponse.json({ error: "Invalid profile fields" }, { status: 400 })
 
   const { error } = await db
     .from("lms_students")
     .update({
-      name:      nameV || undefined,   // name is required — never cleared
       job_title: titleV,
       company:   companyV,
       language,
