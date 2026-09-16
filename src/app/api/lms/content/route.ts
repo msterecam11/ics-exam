@@ -119,13 +119,24 @@ export async function PATCH(req: Request) {
 
 // DELETE — remove content item
 export async function DELETE(req: Request) {
+  // Admin only, and refused while students have data on the item — matching
+  // module deletion. Deleting a content item cascades to lms_progress,
+  // lms_assignment_submissions and lms_notes, yet any instructor could do it.
   const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!session || session.user.role !== "admin")
+    return NextResponse.json({ error: "Admin only" }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+
+  const checks = await Promise.all(["lms_progress", "lms_assignment_submissions", "lms_notes"].map(t =>
+    db.from(t).select("*", { count: "exact", head: true }).eq("content_item_id", id)
+  ))
+  if (checks.some(c => c.error))
+    return NextResponse.json({ error: "Could not verify this item is safe to delete" }, { status: 500 })
+  if (checks.some(c => (c.count ?? 0) > 0))
+    return NextResponse.json({ error: "Cannot delete — students have progress, submissions or notes on this item" }, { status: 409 })
 
   const { error } = await db.from("lms_content_items").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

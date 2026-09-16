@@ -199,6 +199,18 @@ export async function PATCH(req: Request) {
   const { attempt_id, release, score, max_score, passed, feedback } = body
   if (!attempt_id) return NextResponse.json({ error: "attempt_id required" }, { status: 400 })
 
+  // Only ASSIGNMENT attempts can be graded or released here. The attempt's type
+  // was never checked, so this endpoint would overwrite the score and pass/fail
+  // of any attempt — including a Final Exam attempt — by id.
+  const { data: target } = await db
+    .from("lms_module_attempts")
+    .select("id, ai_feedback, lms_modules!inner(module_type)")
+    .eq("id", attempt_id)
+    .maybeSingle()
+  if (!target) return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
+  if ((target as any).lms_modules?.module_type !== "assignment")
+    return NextResponse.json({ error: "Only assignment submissions can be graded here" }, { status: 400 })
+
   // Release action — make result visible to student
   if (release) {
     const { data, error } = await db
@@ -218,8 +230,11 @@ export async function PATCH(req: Request) {
       score:       score     ?? null,
       max_score:   max_score ?? null,
       passed:      passed    ?? false,
-      ai_feedback: { overall_comment: feedback ?? "" },
+      // Merge rather than replace: this used to overwrite the whole object,
+      // discarding the AI grader's per-criterion scores and comments.
+      ai_feedback: { ...(((target as any).ai_feedback) ?? {}), overall_comment: feedback ?? "", graded_by: "instructor" },
       status:      "graded",
+      graded_at:   new Date().toISOString(),
     })
     .eq("id", attempt_id)
     .select("id, score, max_score, passed, status")

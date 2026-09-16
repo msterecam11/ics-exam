@@ -23,6 +23,7 @@ export async function GET(req: Request) {
     .from("lms_packages")
     .select(`
       id, module_id, title, pass_mark,
+      lms_modules(title),
       lms_package_items(id)
     `)
     .eq("course_id", courseId)
@@ -58,7 +59,8 @@ export async function GET(req: Request) {
   const result = packages.map(pkg => ({
     id:          pkg.id,
     module_id:   pkg.module_id,
-    title:       pkg.title,
+    // Every package row is titled literally "Package"; the module carries the name.
+    title:       (pkg as any).lms_modules?.title ?? pkg.title,
     pass_mark:   pkg.pass_mark,
     block_count: (pkg.lms_package_items ?? []).length,
     students:    (progressByPackage[pkg.id] ?? []).map(row => ({
@@ -68,7 +70,8 @@ export async function GET(req: Request) {
       company:          (row.lms_students as any)?.company ?? null,
       status:           row.status,
       score:            row.score,
-      blocks_completed: (row.completed_items ?? []).length,
+      // Capped: completed_items can include items later removed from the package.
+      blocks_completed: Math.min((row.completed_items ?? []).length, (pkg.lms_package_items ?? []).length),
       time_spent:       row.time_spent ?? 0,
       started_at:       row.started_at,
       completed_at:     row.completed_at,

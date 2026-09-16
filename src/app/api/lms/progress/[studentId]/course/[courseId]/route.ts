@@ -19,7 +19,7 @@ export async function GET(
   // ── Course + enrollment ──────────────────────────────────────────────────
   const [{ data: course }, { data: enrollment }] = await Promise.all([
     db.from("lms_courses")
-      .select("id, title, status, delivery_mode, thumbnail_url")
+      .select("id, title, status, delivery_mode, thumbnail_url, final_exam_pass_mark")
       .eq("id", courseId).single(),
     db.from("lms_enrollments")
       // progress_pct is stored and kept current by syncEnrollmentProgress — use it directly
@@ -51,13 +51,43 @@ export async function GET(
     .filter((m: any) => m.module_type === "assignment")
     .map((m: any) => m.id)
 
-  const { data: assignments } = assignmentModuleIds.length
-    ? await db.from("lms_assignment_submissions")
-        .select("id, status, score, max_score, instructor_note, submitted_at, graded_at, file_url, module_id, lms_modules(id, title)")
+  // Module-level assignments are stored as lms_module_attempts (see
+  // /api/lms/module-assignment). This read lms_assignment_submissions — the
+  // table for CONTENT-ITEM assignments — filtered by assignment module ids, so
+  // a student's module assignment submissions never appeared here. Files are a
+  // path in the private lms-submissions bucket, so sign them for this view.
+  const { data: assignmentAttempts } = assignmentModuleIds.length
+    ? await db.from("lms_module_attempts")
+        .select("id, status, score, max_score, passed, answers, ai_feedback, submitted_at, graded_at, module_id, lms_modules(id, title)")
         .eq("student_id", studentId)
         .in("module_id", assignmentModuleIds)
         .order("submitted_at", { ascending: false })
-    : { data: [] }
+    : { data: [] as any[] }
+
+  const filePaths = ((assignmentAttempts ?? []) as any[])
+    .map(a => a.answers?.file_path).filter((p: any): p is string => typeof p === "string" && !!p)
+  const signedByPath = new Map<string, string>()
+  if (filePaths.length) {
+    const { data: signed } = await db.storage.from("lms-submissions").createSignedUrls(filePaths, 3600)
+    for (const s of signed ?? []) if (s.path && s.signedUrl) signedByPath.set(s.path, s.signedUrl)
+  }
+
+  // Same field names the page already reads for assignments.
+  const assignments = ((assignmentAttempts ?? []) as any[]).map(a => ({
+    id:              a.id,
+    status:          a.status,
+    score:           a.score,
+    max_score:       a.max_score,
+    passed:          a.passed,
+    instructor_note: a.ai_feedback?.overall_comment ?? null,   // where manual and AI grading store feedback
+    submitted_at:    a.submitted_at,
+    graded_at:       a.graded_at,
+    file_url:        a.answers?.file_path ? (signedByPath.get(a.answers.file_path) ?? null) : (a.answers?.file_url ?? null),
+    file_name:       a.answers?.file_name ?? null,
+    text_response:   a.answers?.text_response ?? null,
+    module_id:       a.module_id,
+    lms_modules:     a.lms_modules,
+  }))
 
   // ── Exam attempts (final_exam modules) ───────────────────────────────────
   const examModIds = (modules ?? [])
@@ -83,7 +113,9 @@ export async function GET(
         module_id:    mid,
         module_title: mod?.title ?? "Exam",
         max_attempts: settings?.max_attempts ?? 3,
-        pass_mark:    settings?.pass_mark    ?? 70,
+        // Grading uses the course's final_exam_pass_mark first (exam-attempt
+        // route); showing the module setting could disagree with the result.
+        pass_mark:    (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70,
         passed:       false,
         attempts:     [],
       }
@@ -199,7 +231,11 @@ export async function GET(
   for (const pkg of packages) {
     const prog    = progByPkg?.[pkg.package_id]
     const scores: Record<string, any> = (prog as any)?.item_scores ?? {}
-    const quizItems = pkg.items.filter((i: any) => i.type === "quiz" || i.type === "progress_test")
+    // Packages hold "slide_pdf" and "activity" items; filtering only "quiz" /
+    // "progress_test" meant this section was always empty. Include activities
+    // that actually recorded a score (knowledge checks), not every slide.
+    const quizItems = pkg.items.filter((i: any) =>
+      i.type === "quiz" || i.type === "progress_test" || (i.type === "activity" && scores[i.id] != null))
     for (const item of quizItems) {
       const s = scores[item.id]
       courseQuizAttempts.push({
@@ -240,7 +276,7 @@ export async function GET(
     progress_pct,
     modules: modules ?? [],
     quizzes:     courseQuizAttempts,
-    assignments: assignments ?? [],
+    assignments,
     exams,
     packages,
     security,
