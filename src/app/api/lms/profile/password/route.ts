@@ -20,6 +20,9 @@ export async function POST(req: Request) {
   if (typeof current !== "string" || typeof next !== "string" || !current || !next)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 })
   if (next.length < 8)   return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
+  // Matters most for a required change: re-entering the same password would
+  // clear the requirement without changing anything.
+  if (next === current)  return NextResponse.json({ error: "Your new password must be different from your current one" }, { status: 400 })
 
   const { data } = await db
     .from("lms_students")
@@ -36,7 +39,9 @@ export async function POST(req: Request) {
   const hash = await bcrypt.hash(next, 10)
   const { error } = await db
     .from("lms_students")
-    .update({ password_hash: hash })
+    // Clears an admin-required change and records that the student chose this
+    // password themselves (shown in LMS Settings -> Student Passwords).
+    .update({ password_hash: hash, must_change_password: false, password_changed_at: new Date().toISOString() })
     .eq("id", student.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

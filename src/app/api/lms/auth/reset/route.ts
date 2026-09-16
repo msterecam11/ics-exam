@@ -49,7 +49,9 @@ export async function POST(req: Request) {
   // Update password + clear any lockout from failed logins
   const { error: upErr } = await db
     .from("lms_students")
-    .update({ password_hash, failed_attempts: 0, locked_until: null })
+    // A reset is the student choosing a new password, so it also satisfies an
+    // admin-required change.
+    .update({ password_hash, failed_attempts: 0, locked_until: null, must_change_password: false, password_changed_at: new Date().toISOString() })
     .eq("id", reset.student_id)
   if (upErr)
     // The token was already claimed above, so this link can't be retried.

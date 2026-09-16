@@ -15,6 +15,9 @@ export type StudentSession = {
   email:      string
   language:   string
   avatar_url: string | null
+  /** Set by an admin (LMS Settings -> Student Passwords). While true, portal
+   *  pages redirect to /lms/change-password. */
+  mustChangePassword: boolean
 }
 
 // ── Hash token for storage ────────────────────────────────────
@@ -74,7 +77,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 
   const { data: student } = await db
     .from("lms_students")
-    .select("id, name, email, language, avatar_url, last_login")
+    .select("id, name, email, language, avatar_url, last_login, must_change_password")
     .eq("id", session.student_id)
     .single()
 
@@ -101,6 +104,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
     email:      student.email,
     language:   student.language,
     avatar_url: student.avatar_url,
+    mustChangePassword: (student as any).must_change_password === true,
   }
 }
 

@@ -7,6 +7,9 @@ import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
 export default async function LmsLayout({ children }: { children: React.ReactNode }) {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
+  // An admin has required this student to set a new password (LMS Settings ->
+  // Student Passwords). Nothing in the portal is reachable until they do.
+  if (student.mustChangePassword) redirect("/lms/change-password")
 
   const today   = new Date().toISOString().slice(0, 10)
   const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)

@@ -15,6 +15,7 @@ import { Input }   from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { toast }   from "sonner"
 import { cn }      from "@/lib/utils"
+import StudentPasswordsTab from "@/components/lms/StudentPasswordsTab"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Role = "admin" | "instructor" | "assessor" | "viewer"
@@ -62,9 +63,10 @@ function roleStyle(role: string | undefined | null): RoleStyle {
 }
 
 const TAB_NAV = [
-  { id: "users",         label: "User Management",  icon: Users   },
-  { id: "notifications", label: "Notifications",    icon: Bell    },
-  { id: "profile",       label: "My Profile",       icon: User    },
+  { id: "users",             label: "User Management",   icon: Users,    adminOnly: false },
+  { id: "notifications",     label: "Notifications",     icon: Bell,     adminOnly: false },
+  { id: "student-passwords", label: "Student Passwords", icon: KeyRound, adminOnly: true  },
+  { id: "profile",           label: "My Profile",        icon: User,     adminOnly: false },
 ]
 
 function relative(date: string | null) {
@@ -791,7 +793,7 @@ function ProfileTab({ currentUser }: { currentUser: { id: string; name?: string 
 // ─── Main settings page ───────────────────────────────────────────────────────
 export default function LmsSettingsPage() {
   const { data: session } = useSession()
-  const [tab, setTab] = useState<"users" | "notifications" | "profile">("users")
+  const [tab, setTab] = useState<"users" | "notifications" | "student-passwords" | "profile">("users")
 
   const isAdmin  = session?.user.role === "admin"
   const user     = session?.user
@@ -806,7 +808,7 @@ export default function LmsSettingsPage() {
 
       {/* Tab navigation */}
       <div className="flex border-b border-slate-200 gap-1">
-        {TAB_NAV.map(t => {
+        {TAB_NAV.filter(t => !t.adminOnly || isAdmin).map(t => {
           const Icon = t.icon
           return (
             <button
@@ -829,6 +831,7 @@ export default function LmsSettingsPage() {
       {/* Tab content */}
       {tab === "users"         && <UsersTab currentUserId={user?.id ?? ""} isAdmin={isAdmin} />}
       {tab === "notifications" && <NotificationsTab />}
+      {tab === "student-passwords" && isAdmin && <StudentPasswordsTab />}
       {tab === "profile"       && <ProfileTab currentUser={{ id: user?.id ?? "", name: user?.name, email: user?.email, role: user?.role }} />}
     </div>
   )
