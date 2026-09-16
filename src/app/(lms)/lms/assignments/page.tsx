@@ -21,9 +21,15 @@ export default async function AssignmentsPage() {
   // Assignment content items across enrolled courses
   const { data: assignmentItems } = courseIds.length
     ? await db
+        // lms_content_items has NO course_id column — it reaches the course
+        // through its module. Selecting and filtering on course_id made this
+        // query fail outright ("column course_id does not exist"), and because
+        // the error was never checked the page simply rendered "no assignments".
+        // Invisible today (no assignments exist yet), but it would have silently
+        // hidden every assignment the day one was created.
         .from("lms_content_items")
-        .select("id, title, type, course_id, module_id")
-        .in("course_id", courseIds)
+        .select("id, title, type, module_id, lms_modules!inner(course_id)")
+        .in("lms_modules.course_id", courseIds)
         .eq("type", "assignment")
         .order("created_at", { ascending: true })
     : { data: [] }
@@ -44,11 +50,16 @@ export default async function AssignmentsPage() {
     courseMap.set(e.course_id, (e as any).lms_courses?.title ?? "")
   }
 
-  const items = (assignmentItems ?? []).map((item: any) => ({
-    ...item,
-    courseTitle: courseMap.get(item.course_id) ?? "",
-    submission:  submissionMap.get(item.id) ?? null,
-  }))
+  const items = (assignmentItems ?? []).map((item: any) => {
+    // course_id comes from the joined module, not the content item itself.
+    const itemCourseId = item.lms_modules?.course_id ?? null
+    return {
+      ...item,
+      course_id:   itemCourseId,
+      courseTitle: courseMap.get(itemCourseId) ?? "",
+      submission:  submissionMap.get(item.id) ?? null,
+    }
+  })
 
   const pending  = items.filter(i => !i.submission)
   const submitted = items.filter(i => i.submission?.status === "submitted")

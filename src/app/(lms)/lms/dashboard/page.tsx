@@ -51,9 +51,13 @@ export default async function StudentDashboard() {
           .limit(6)
       : Promise.resolve({ data: [] }),
 
+    // lms_content_items has no course_id column — the course comes via its
+    // module. Filtering on a non-existent column made this query error, and the
+    // error was never checked, so `pendingAssignments` was permanently empty and
+    // the dashboard always claimed "Up to date".
     courseIds.length
-      ? db.from("lms_content_items").select("id, title, course_id")
-          .in("course_id", courseIds).eq("type", "assignment")
+      ? db.from("lms_content_items").select("id, title, module_id, lms_modules!inner(course_id)")
+          .in("lms_modules.course_id", courseIds).eq("type", "assignment")
       : Promise.resolve({ data: [] }),
 
     db.from("lms_students").select("last_login").eq("id", student.id).single(),
@@ -131,7 +135,12 @@ export default async function StudentDashboard() {
       .eq("student_id", student.id)
       .in("content_item_id", assignmentItems.map((a: any) => a.id))
     const submittedIds = new Set((subs ?? []).map((s: any) => s.content_item_id))
-    pendingAssignments = assignmentItems.filter((a: any) => !submittedIds.has(a.id))
+    pendingAssignments = assignmentItems
+      .filter((a: any) => !submittedIds.has(a.id))
+      // course_id comes from the joined module — the card links to
+      // /lms/courses/<course_id>/content/<id>, so without this the link would
+      // be built from undefined.
+      .map((a: any) => ({ ...a, course_id: a.lms_modules?.course_id ?? null }))
   }
 
   // ── Derived ───────────────────────────────────────────────────
