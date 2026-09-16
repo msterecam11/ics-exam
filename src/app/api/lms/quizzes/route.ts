@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -15,8 +16,11 @@ export async function GET(req: Request) {
   let quizId        = searchParams.get("quiz_id")
   const contentItemId = searchParams.get("content_item_id")
 
-  // Allow both admin and student access
-  const adminSession   = await auth()
+  // Managers and students only. Any staff session used to be accepted, and
+  // staff always received the answer key (is_correct) — so viewer and assessor
+  // accounts could read every quiz's answers.
+  const staff          = await auth()
+  const adminSession   = staff && isMgr(staff.user.role) ? staff : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -61,7 +65,7 @@ export async function GET(req: Request) {
   const { data: quiz, error } = await db
     .from("lms_quizzes")
     .select(`
-      id, title, description, type, pass_score, time_limit_minutes,
+      id, course_id, title, description, type, pass_score, time_limit_minutes,
       max_attempts, shuffle_questions, show_answers_after, created_at,
       lms_quiz_questions(
         id, question_id, order_index,
@@ -75,6 +79,10 @@ export async function GET(req: Request) {
     .single()
 
   if (error || !quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
+
+  // A student may only load quizzes from courses they can access.
+  if (studentSession && !(await hasCourseAccess(studentSession.id, (quiz as any).course_id)))
+    return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
 
   // Sort quiz questions by order_index
   const sorted = {
@@ -91,8 +99,12 @@ export async function GET(req: Request) {
       })),
   }
 
-  // Students don't see correct answers until quiz is submitted (hide is_correct)
-  if (studentSession && !quiz.show_answers_after) {
+  // Students NEVER receive is_correct from this endpoint. It used to be stripped
+  // only when show_answers_after was false — i.e. with "show answers after" ON,
+  // students got every answer BEFORE attempting. The after-submission review
+  // uses correct_choices from the quiz-attempt response instead, which is only
+  // returned once the attempt is submitted.
+  if (studentSession) {
     sorted.lms_quiz_questions = sorted.lms_quiz_questions.map((qq: any) => ({
       ...qq,
       lms_questions: {

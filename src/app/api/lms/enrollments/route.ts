@@ -74,27 +74,6 @@ export async function POST(req: Request) {
   if (!Array.isArray(student_ids) || !student_ids.length)
     return NextResponse.json({ error: "student_ids (array) required" }, { status: 400 })
 
-  // Check course capacity
-  const { data: course } = await db
-    .from("lms_courses")
-    .select("capacity")
-    .eq("id", course_id)
-    .single()
-
-  if (course?.capacity) {
-    const { count: current } = await db
-      .from("lms_enrollments")
-      .select("*", { count: "exact", head: true })
-      .eq("course_id", course_id)
-      .eq("status", "active")
-
-    if ((current ?? 0) + student_ids.length > course.capacity)
-      return NextResponse.json(
-        { error: `Course capacity (${course.capacity}) would be exceeded` },
-        { status: 409 }
-      )
-  }
-
   // Split requested students into: already-active (skip), previously
   // dropped/removed (reactivate), and brand-new (insert). This makes
   // re-enrolling a dropped student work — an upsert with ignoreDuplicates
@@ -108,6 +87,30 @@ export async function POST(req: Request) {
   const existingByStudent = new Map((existing ?? []).map((e: any) => [e.student_id, e]))
   const toInsert     = student_ids.filter((sid: string) => !existingByStudent.has(sid))
   const toReactivate = (existing ?? []).filter((e: any) => e.status !== "active")
+
+  // Check course capacity against the seats this request ADDS. It used to add
+  // the full selection to the active count, so re-selecting students who were
+  // already enrolled could be refused as "capacity would be exceeded".
+  const { data: course } = await db
+    .from("lms_courses")
+    .select("capacity")
+    .eq("id", course_id)
+    .single()
+
+  if (course?.capacity) {
+    const { count: current } = await db
+      .from("lms_enrollments")
+      .select("*", { count: "exact", head: true })
+      .eq("course_id", course_id)
+      .eq("status", "active")
+
+    const adding = toInsert.length + toReactivate.length
+    if (adding > 0 && (current ?? 0) + adding > course.capacity)
+      return NextResponse.json(
+        { error: `Course capacity (${course.capacity}) would be exceeded` },
+        { status: 409 }
+      )
+  }
 
   // Reactivate dropped/completed enrollments back to active
   if (toReactivate.length) {
@@ -215,13 +218,19 @@ export async function DELETE(req: Request) {
     .single()
 
   if (enr) {
-    const { count } = await db
-      .from("lms_progress")
-      .select("*", { count: "exact", head: true })
-      .eq("student_id", enr.student_id)
-      .eq("course_id", enr.course_id)
+    // This only counted lms_progress (legacy content items — empty), so a
+    // student with real package progress, exam attempts or certificates could
+    // be hard-deleted from the roster, leaving that record attached to no
+    // enrollment. Check where progress actually lives.
+    const tables = ["lms_progress", "lms_package_progress", "lms_module_attempts", "lms_assignment_submissions", "lms_certificates"]
+    const results = await Promise.all(tables.map(t =>
+      db.from(t).select("*", { count: "exact", head: true })
+        .eq("student_id", enr.student_id).eq("course_id", enr.course_id)
+    ))
+    if (results.some(r => r.error))
+      return NextResponse.json({ error: "Could not verify the student has no progress" }, { status: 500 })
 
-    if ((count ?? 0) > 0)
+    if (results.some(r => (r.count ?? 0) > 0))
       return NextResponse.json(
         { error: "Cannot unenroll — student has progress. Drop them instead." },
         { status: 409 }

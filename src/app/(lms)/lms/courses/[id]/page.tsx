@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // ── Icons & labels ────────────────────────────────────────────
 const CONTENT_ICONS: Record<string, React.ElementType> = {
@@ -71,6 +72,7 @@ export default async function StudentCoursePage({
     .select("id, status, enrolled_at, completed_at, progress_pct, time_spent_s")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .single()
 
   if (!enrollment) notFound()

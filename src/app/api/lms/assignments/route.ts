@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -88,6 +89,15 @@ export async function POST(req: Request) {
   // that prefix ties the submission to the uploader.
   if (file_path && !String(file_path).startsWith(`submissions/${student.id}/`))
     return NextResponse.json({ error: "Invalid file reference" }, { status: 400 })
+
+  // No enrollment check existed, and the content item wasn't tied to the course:
+  // a student could submit to any course, and mark progress there as completed.
+  const { data: ci } = await db
+    .from("lms_content_items").select("id, lms_modules!inner(course_id)").eq("id", content_item_id).maybeSingle()
+  if (!ci || (ci as any).lms_modules?.course_id !== course_id)
+    return NextResponse.json({ error: "Content item does not belong to that course" }, { status: 400 })
+  if (!(await hasCourseAccess(student.id, course_id)))
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
 
   // Upsert — allow resubmission (replaces old)
   const { data, error } = await db

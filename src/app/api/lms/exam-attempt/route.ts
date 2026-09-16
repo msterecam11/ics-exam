@@ -7,6 +7,7 @@ import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathComplet
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { recalculateAttemptScore, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // POST /api/lms/exam-attempt
 // Body: { module_id, course_id, answers, security_events }
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
     .select("id")
     .eq("student_id", studentId)
     .eq("course_id", course_id)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .maybeSingle()
 
   if (!enrollment)

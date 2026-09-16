@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // POST /api/lms/quiz-attempt
 // Body: { quiz_id, content_item_id, course_id, answers }
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   const { data: quiz, error: qErr } = await db
     .from("lms_quizzes")
     .select(`
-      id, pass_score, max_attempts, show_answers_after,
+      id, course_id, pass_score, max_attempts, show_answers_after,
       lms_quiz_questions(
         question_id,
         lms_questions(id, type, score, text_en, ai_grading_prompt, lms_question_choices(id, is_correct))
@@ -45,6 +46,10 @@ export async function POST(req: Request) {
     .single()
 
   if (qErr || !quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
+
+  // No enrollment check existed: any student could attempt any quiz by id.
+  if (!(await hasCourseAccess(studentId, (quiz as any).course_id)))
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
 
   // Check attempt count
   if (quiz.max_attempts) {

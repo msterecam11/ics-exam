@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import PackagePlayer, { type PackagePlayerProps } from "@/components/lms/PackagePlayer"
 import { type PackageItem } from "@/components/lms/PackageEditor"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 export default async function PackagePlayerPage({
   params,
@@ -24,6 +25,7 @@ export default async function PackagePlayerPage({
     .select("id, status")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .single()
 
   if (!enrollment) redirect(`/lms/courses/${courseId}`)

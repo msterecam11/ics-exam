@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -110,6 +111,11 @@ export async function POST(req: Request) {
     .single()
 
   if (!module) return NextResponse.json({ error: "Module not found" }, { status: 404 })
+
+  // No enrollment check existed: any signed-in student could submit an
+  // assignment (and trigger AI grading) in any course by id.
+  if (!(await hasCourseAccess(student.id, course_id)))
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
 
   // Due date check
   if (module.assignment_due_date) {

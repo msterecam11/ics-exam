@@ -19,6 +19,9 @@ export async function POST(req: Request) {
   // Wipe all progress for this student in this course (keyed on student+course).
   // Certificates are deliberately NOT deleted.
   const targets = [
+    // Exam sessions first: they reference attempts, and an open session left
+    // behind would otherwise be resumed (with an old clock) after re-enrolment.
+    "lms_exam_sessions",
     "lms_package_progress",     // interactive package/activity progress
     "lms_module_attempts",      // exam + assignment attempts/grades
     "lms_progress",             // legacy content-item progress

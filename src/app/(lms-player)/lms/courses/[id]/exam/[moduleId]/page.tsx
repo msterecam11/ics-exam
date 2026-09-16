@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react"
 import ExamClient from "./ExamClient"
 import type { ExamQuestion, ExamSettings } from "@/components/lms/FinalExamPlayer"
 import { sanitizeQuestionsForClient } from "@/lib/lms-exam-scoring"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 export default async function StudentExamPage({
   params,
@@ -26,6 +27,7 @@ export default async function StudentExamPage({
     .select("id, status")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .single()
   if (!enrollment) notFound()
 

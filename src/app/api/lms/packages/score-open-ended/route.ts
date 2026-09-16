@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // The question text, rubric, and max score are NEVER accepted from the
 // client — only package_id/item_id/question_id + the student's own answer.
@@ -38,6 +39,13 @@ export async function POST(req: Request) {
     .single()
 
   if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 })
+
+  // A student may only use AI grading for packages in courses they can access.
+  if (studentSession) {
+    const { data: pkg } = await db.from("lms_packages").select("course_id").eq("id", package_id).maybeSingle()
+    if (!(await hasCourseAccess(studentSession.id, (pkg as any)?.course_id)))
+      return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  }
 
   const questions = ((item.config as any)?.questions ?? []) as any[]
   const question = questions.find((q) => q.id === question_id)

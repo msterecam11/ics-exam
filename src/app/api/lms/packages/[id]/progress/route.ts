@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // GET /api/lms/packages/[id]/progress
 export async function GET(
@@ -88,6 +89,7 @@ export async function POST(
       .select("id")
       .eq("student_id", student.id)
       .eq("course_id", course_id)
+      .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
       .maybeSingle()
 
     if (!enrollment)

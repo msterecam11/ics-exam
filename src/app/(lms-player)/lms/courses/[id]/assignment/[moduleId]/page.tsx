@@ -5,6 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowLeft } from "lucide-react"
 import AssignmentClient, { type RubricCriterion, type Submission } from "./AssignmentClient"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 export default async function AssignmentPage({
   params,
@@ -22,6 +23,7 @@ export default async function AssignmentPage({
     .select("id")
     .eq("student_id", student.id)
     .eq("course_id", courseId)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .single()
   if (!enrollment) notFound()
 

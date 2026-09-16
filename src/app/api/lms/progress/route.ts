@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // GET /api/lms/progress?course_id=xxx  — student's own progress for a course
 export async function GET(req: Request) {
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     .select("id")
     .eq("student_id", student.id)
     .eq("course_id", course_id)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .maybeSingle()
 
   if (!enrollment)

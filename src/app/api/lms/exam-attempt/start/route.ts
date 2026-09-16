@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { examTimeLimitS, elapsedSince, isSessionExpired } from "@/lib/lms-exam-session"
+import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
 // POST /api/lms/exam-attempt/start
 // Body: { module_id, course_id }
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
     .select("id")
     .eq("student_id", student.id)
     .eq("course_id", course_id)
+    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
     .maybeSingle()
   if (!enrollment)
     return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
