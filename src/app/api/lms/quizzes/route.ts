@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { canUseQuiz } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
   if (error || !quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
 
   // A student may only load quizzes from courses they can access.
-  if (studentSession && !(await hasCourseAccess(studentSession.id, (quiz as any).course_id)))
+  if (studentSession && !(await canUseQuiz(studentSession.id, { id: (quiz as any).id, course_id: (quiz as any).course_id })))
     return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
 
   // Sort quiz questions by order_index
@@ -239,6 +239,14 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+
+  // Deleting a quiz cascades to lms_quiz_attempts — every student's results on
+  // it. Refuse while any exist.
+  const { count: attempts, error: cErr } = await db
+    .from("lms_quiz_attempts").select("*", { count: "exact", head: true }).eq("quiz_id", id)
+  if (cErr) return NextResponse.json({ error: "Could not verify this quiz is safe to delete" }, { status: 500 })
+  if ((attempts ?? 0) > 0)
+    return NextResponse.json({ error: `Cannot delete — students have ${attempts} attempt${attempts === 1 ? "" : "s"} on this quiz` }, { status: 409 })
 
   const { error } = await db.from("lms_quizzes").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

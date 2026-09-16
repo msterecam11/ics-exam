@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { canUseQuiz } from "@/lib/lms-enrollment"
 
 // POST /api/lms/quiz-attempt
 // Body: { quiz_id, content_item_id, course_id, answers }
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   if (qErr || !quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 })
 
   // No enrollment check existed: any student could attempt any quiz by id.
-  if (!(await hasCourseAccess(studentId, (quiz as any).course_id)))
+  if (!(await canUseQuiz(studentId, { id: (quiz as any).id, course_id: (quiz as any).course_id })))
     return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
 
   // Check attempt count

@@ -63,6 +63,31 @@ export async function ensureEnrollment(opts: {
   return "enrolled"
 }
 
+/**
+ * True if the student may use this quiz.
+ *
+ * Quizzes are created without a course_id (the quiz API never sets it); they
+ * reach a course through a content item whose content.quiz_id points at them,
+ * and one quiz may be reused in several courses. Checking only quiz.course_id
+ * — which is null for every quiz created through the UI — would refuse every
+ * student. Access is granted if the quiz's own course, or the course of any
+ * content item using it, is one the student can access.
+ */
+export async function canUseQuiz(studentId: string, quiz: { id: string; course_id?: string | null }): Promise<boolean> {
+  if (quiz.course_id && (await hasCourseAccess(studentId, quiz.course_id))) return true
+
+  const { data: items } = await db
+    .from("lms_content_items")
+    .select("id, lms_modules!inner(course_id)")
+    .eq("content->>quiz_id", quiz.id)
+
+  const courseIds = [...new Set(((items ?? []) as any[]).map(i => i.lms_modules?.course_id).filter(Boolean))] as string[]
+  for (const courseId of courseIds) {
+    if (await hasCourseAccess(studentId, courseId)) return true
+  }
+  return false
+}
+
 /** True if the student may use this course (enrolled, and not unenrolled). */
 export async function hasCourseAccess(studentId: string, courseId: string | null | undefined): Promise<boolean> {
   if (!courseId) return false
