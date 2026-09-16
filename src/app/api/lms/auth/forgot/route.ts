@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { sendEmail, buildPasswordResetEmail } from "@/lib/email"
+import { rateLimit } from "@/lib/rateLimit"
+import { getIp, res429 } from "@/lib/apiUtils"
 import crypto from "crypto"
 
 const EXPIRES_MIN = 30
@@ -20,7 +22,25 @@ export async function POST(req: Request) {
     message: "If an account exists for that email, a reset link has been sent.",
   })
 
+  // This endpoint had no rate limit. Anyone could make the app send unlimited
+  // reset emails to any student (burning the email quota), and because every
+  // request invalidates the previous link, repeating it kept a student's real
+  // link permanently dead.
+  //
+  // Per IP: a real 429 is fine — it applies whatever email is typed, so it
+  // reveals nothing about which accounts exist.
+  const ip = getIp(req)
+  const perIp = await rateLimit(`lms-forgot-ip:${ip}`, 5, 900)
+  if (!perIp.allowed) return res429(perIp.retryAfterSeconds)
+
   if (!email || typeof email !== "string") return generic
+
+  // Per email: return the SAME generic success when limited. A 429 here would
+  // only ever appear for addresses someone has been requesting, which is a
+  // signal worth not giving.
+  const normalized = email.toLowerCase().trim()
+  const perEmail = await rateLimit(`lms-forgot-email:${normalized}`, 3, 3600)
+  if (!perEmail.allowed) return generic
 
   const { data: student } = await db
     .from("lms_students")

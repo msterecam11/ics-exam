@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, deleteOtherStudentSessions } from "@/lib/lms-auth"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import bcrypt from "bcryptjs"
@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   if (!allowed) return res429(retryAfterSeconds)
 
   const { current, next } = await req.json().catch(() => ({}))
-  if (!current || !next) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
+  if (typeof current !== "string" || typeof next !== "string" || !current || !next)
+    return NextResponse.json({ error: "Missing fields" }, { status: 400 })
   if (next.length < 8)   return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
 
   const { data } = await db
@@ -39,5 +40,13 @@ export async function POST(req: Request) {
     .eq("id", student.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Sign out every other device. The reset-link flow already ends all sessions;
+  // this path didn't, so a student changing their password because they
+  // suspected someone else was in left that other session valid for up to 30
+  // days. The session making this request is kept so the student isn't bounced
+  // to the login page.
+  await deleteOtherStudentSessions(student.id)
+
   return NextResponse.json({ ok: true })
 }

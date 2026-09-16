@@ -28,6 +28,22 @@ export async function POST(req: Request) {
   if (new Date(reset.expires_at) < new Date())
     return NextResponse.json({ error: "This reset link has expired. Please request a new one." }, { status: 400 })
 
+  // Claim the token BEFORE changing anything. This used to check used_at, set
+  // the password, and only then mark the token used — so two requests racing
+  // with the same link both passed the check and both set a password. The
+  // conditional update below succeeds for exactly one request; any other sees
+  // no row come back and stops.
+  const { data: claimed } = await db
+    .from("lms_password_resets")
+    .update({ used_at: new Date().toISOString() })
+    .eq("id", reset.id)
+    .is("used_at", null)
+    .select("id")
+    .maybeSingle()
+
+  if (!claimed)
+    return NextResponse.json({ error: "This reset link is invalid or has already been used." }, { status: 400 })
+
   const password_hash = await bcrypt.hash(password, 10)
 
   // Update password + clear any lockout from failed logins
@@ -36,12 +52,8 @@ export async function POST(req: Request) {
     .update({ password_hash, failed_attempts: 0, locked_until: null })
     .eq("id", reset.student_id)
   if (upErr)
-    return NextResponse.json({ error: "Could not update password. Please try again." }, { status: 500 })
-
-  // Consume the token
-  await db.from("lms_password_resets")
-    .update({ used_at: new Date().toISOString() })
-    .eq("id", reset.id)
+    // The token was already claimed above, so this link can't be retried.
+    return NextResponse.json({ error: "Could not update password. Please request a new reset link." }, { status: 500 })
 
   // Invalidate all existing sessions so the old password can't linger
   await db.from("lms_student_sessions").delete().eq("student_id", reset.student_id)

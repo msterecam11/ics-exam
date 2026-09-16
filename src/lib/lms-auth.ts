@@ -114,6 +114,19 @@ export async function deleteStudentSession() {
   }
 }
 
+// ── End every OTHER session for this student ──────────────────
+// Used after a password change: the student keeps the session they're using,
+// but any other device — including whoever prompted the change — is signed
+// out. Without this, a compromised session stayed valid for up to SESSION_DAYS
+// after the victim changed their password.
+export async function deleteOtherStudentSessions(studentId: string) {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(COOKIE_NAME)?.value
+  let q = db.from("lms_student_sessions").delete().eq("student_id", studentId)
+  if (token) q = q.neq("token_hash", hashToken(token))
+  await q
+}
+
 // ── Clean up expired sessions (call periodically) ─────────────
 export async function purgeExpiredSessions() {
   await db.from("lms_student_sessions").delete().lt("expires_at", new Date().toISOString())
