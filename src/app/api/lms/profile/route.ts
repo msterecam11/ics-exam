@@ -24,11 +24,33 @@ export async function PATCH(req: Request) {
 
   const { name, job_title, company, language } = await req.json().catch(() => ({}))
 
+  // No type or length checks existed: a non-string name threw inside .trim()
+  // and returned an unhandled 500, and any length was stored. Strings only,
+  // bounded, empty optional fields cleared to null.
+  const str = (v: unknown, max: number) =>
+    v === undefined ? undefined
+    : v === null    ? null
+    : typeof v === "string" ? (v.trim().slice(0, max) || null)
+    : "INVALID"
+
+  const nameV = str(name, 120), titleV = str(job_title, 120), companyV = str(company, 120)
+  if ([nameV, titleV, companyV].includes("INVALID") || (language !== undefined && typeof language !== "string"))
+    return NextResponse.json({ error: "Invalid profile fields" }, { status: 400 })
+
   const { error } = await db
     .from("lms_students")
-    .update({ name: name?.trim() || undefined, job_title, company, language })
+    .update({
+      name:      nameV || undefined,   // name is required — never cleared
+      job_title: titleV,
+      company:   companyV,
+      language,
+    })
     .eq("id", student.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // An unknown language value fails the lms_language enum (22P02). That's bad
+  // input, not a server fault, and the raw database message shouldn't reach
+  // the browser.
+  if (error?.code === "22P02") return NextResponse.json({ error: "Invalid language" }, { status: 400 })
+  if (error) return NextResponse.json({ error: "Could not update profile" }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

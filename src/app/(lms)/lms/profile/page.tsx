@@ -11,6 +11,7 @@ export default function ProfilePage() {
   const [data, setData]     = useState<any>(null)
   const [loaded, setLoaded] = useState(false)
   const [saved, setSaved]   = useState(false)
+  const [saveError, setSaveError] = useState("")
   const [saving, startSave] = useTransition()
 
   const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" })
@@ -27,8 +28,11 @@ export default function ProfilePage() {
   }
 
   function save() {
+    setSaveError("")
     startSave(async () => {
-      await fetch("/api/lms/profile", {
+      // The response used to be ignored, so "Saved!" appeared even when the
+      // update failed and the student's changes were silently lost.
+      const res = await fetch("/api/lms/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -37,7 +41,12 @@ export default function ProfilePage() {
           company:   data.company,
           language:  data.language,
         }),
-      })
+      }).catch(() => null)
+      if (!res || !res.ok) {
+        const d = res ? await res.json().catch(() => ({})) : {}
+        setSaveError(d.error ?? "Could not save your changes. Please try again.")
+        return
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     })
@@ -179,6 +188,7 @@ export default function ProfilePage() {
           {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
           {saved ? "Saved!" : saving ? "Saving…" : "Save Changes"}
         </button>
+        {saveError && <p className="text-xs text-red-600">{saveError}</p>}
       </div>
 
       {/* Change password */}
