@@ -8,8 +8,6 @@ function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
 }
 
-// Escapes PostgREST `.or()` filter metacharacters so a search string can't
-// break out of the intended ilike clause.
 // Makes a free-text search term safe to place inside a PostgREST .or() filter.
 //
 // This used to backslash-escape % _ , ( ) — but PostgREST does not treat a
@@ -71,10 +69,14 @@ export async function POST(req: Request) {
 
   if (!name?.trim())  return NextResponse.json({ error: "Name required" },  { status: 400 })
   if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 })
-  if (!password || password.length < 8)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+    return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
+  if (typeof password !== "string" || password.length < 8)
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
 
-  const password_hash = await bcrypt.hash(password, 12)
+  // Cost 10 like every other student password — see PATCH below for why a
+  // different cost reopens the login timing leak.
+  const password_hash = await bcrypt.hash(password, 10)
 
   const { data, error } = await db
     .from("lms_students")
@@ -127,15 +129,23 @@ export async function PATCH(req: Request) {
 
   const updates: Record<string, unknown> = {}
   if (name?.trim())       updates.name       = name.trim()
-  if (email?.trim())      updates.email      = email.trim().toLowerCase()
+  if (email?.trim()) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+      return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
+    updates.email = email.trim().toLowerCase()
+  }
   if (job_title !== undefined) updates.job_title  = job_title?.trim() || null
   if (company   !== undefined) updates.company    = company?.trim()   || null
   if (department !== undefined) updates.department = department?.trim() || null
   if (language)           updates.language   = language
   if (password) {
-    if (password.length < 8)
+    if (typeof password !== "string" || password.length < 8)
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
-    updates.password_hash   = await bcrypt.hash(password, 12)
+    // Cost 10, like every other student password. This used 12, and the student
+    // login compares unknown emails against a cost-10 dummy hash so response time
+    // can't reveal which emails exist — a cost-12 hash on an admin-reset account
+    // takes ~270ms against the dummy's ~76ms, reopening exactly that leak.
+    updates.password_hash   = await bcrypt.hash(password, 10)
     updates.failed_attempts = 0
     updates.locked_until    = null
   }
@@ -153,7 +163,14 @@ export async function PATCH(req: Request) {
   if (error) {
     if (error.code === "23505")
       return NextResponse.json({ error: "Email already in use" }, { status: 409 })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Could not update student" }, { status: 500 })
+  }
+
+  // A staff password reset is usually because the account may be compromised,
+  // yet it left every existing session valid — whoever was signed in stayed
+  // signed in for up to 30 days. End them all, as the student's own reset does.
+  if (password) {
+    await db.from("lms_student_sessions").delete().eq("student_id", id)
   }
 
   return NextResponse.json(data)
@@ -168,6 +185,35 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+
+  // Deleting a student cascades (ON DELETE CASCADE) to their certificates,
+  // exam attempts, package progress, attendance, enrollments, feedback, saved
+  // expert reports and more — one click erased a learner's whole record and the
+  // evidence behind any certificate they hold, with no check at all. Refuse
+  // while any of that exists; an admin who genuinely needs the record gone must
+  // first remove it deliberately (e.g. the per-course reset).
+  const checks = [
+    ["lms_certificates",     "certificate"],
+    ["lms_module_attempts",  "exam/assignment attempt"],
+    ["lms_package_progress", "course progress record"],
+    ["lms_enrollments",      "enrollment"],
+    ["lms_attendance",       "attendance record"],
+  ] as const
+  const results = await Promise.all(checks.map(([table]) =>
+    db.from(table).select("*", { count: "exact", head: true }).eq("student_id", id)
+  ))
+  if (results.some(r => r.error))
+    return NextResponse.json({ error: "Could not verify this student is safe to delete" }, { status: 500 })
+
+  const blockers = checks
+    .map(([, label], i) => ({ label, n: results[i].count ?? 0 }))
+    .filter(b => b.n > 0)
+    .map(b => `${b.n} ${b.label}${b.n === 1 ? "" : "s"}`)
+  if (blockers.length)
+    return NextResponse.json(
+      { error: `Cannot delete — this student has ${blockers.join(", ")}. Deleting would erase them permanently.` },
+      { status: 409 }
+    )
 
   const { error } = await db.from("lms_students").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
