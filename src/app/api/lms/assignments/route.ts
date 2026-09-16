@@ -5,6 +5,25 @@ import { db } from "@/lib/db"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
+const BUCKET = "lms-submissions"
+const SIGNED_URL_SECONDS = 60 * 60
+
+// Submissions store a storage PATH, not a public URL (see the file_path
+// migration). Turn it into a time-limited signed URL at read time, for callers
+// who have already passed this route's authorisation checks. Returned as
+// `file_url` so existing consumers keep working unchanged.
+async function withSignedUrls<T extends { file_path?: string | null; file_url?: string | null }>(
+  rows: T[]
+): Promise<T[]> {
+  const paths = rows.map(r => r.file_path).filter((p): p is string => !!p)
+  if (paths.length === 0) return rows
+
+  const { data: signed } = await db.storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
+  const byPath = new Map((signed ?? []).map(s => [s.path, s.signedUrl]))
+
+  return rows.map(r => (r.file_path ? { ...r, file_url: byPath.get(r.file_path) ?? null } : r))
+}
+
 // GET — admin: list submissions for a content item
 //       student: get own submission
 export async function GET(req: Request) {
@@ -20,7 +39,7 @@ export async function GET(req: Request) {
     const { data, error } = await db
       .from("lms_assignment_submissions")
       .select(`
-        id, student_id, text_response, file_url, file_name, file_size,
+        id, student_id, text_response, file_url, file_path, file_name, file_size,
         status, score, max_score, feedback, graded_at, submitted_at,
         lms_students(id, name, email)
       `)
@@ -28,7 +47,7 @@ export async function GET(req: Request) {
       .order("submitted_at", { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data ?? [])
+    return NextResponse.json(await withSignedUrls((data ?? []) as any[]))
   }
 
   // Student session
@@ -39,12 +58,13 @@ export async function GET(req: Request) {
 
   const { data } = await db
     .from("lms_assignment_submissions")
-    .select("id, text_response, file_url, file_name, status, score, max_score, feedback, graded_at, submitted_at")
+    .select("id, text_response, file_url, file_path, file_name, status, score, max_score, feedback, graded_at, submitted_at")
     .eq("content_item_id", contentItemId)
     .eq("student_id", student.id)
     .maybeSingle()
 
-  return NextResponse.json(data ?? null)
+  if (!data) return NextResponse.json(null)
+  return NextResponse.json((await withSignedUrls([data as any]))[0])
 }
 
 // POST — student submits assignment
@@ -53,12 +73,21 @@ export async function POST(req: Request) {
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { content_item_id, course_id, text_response, file_url, file_name, file_size } = body
+  const { content_item_id, course_id, text_response, file_path, file_name, file_size } = body
 
   if (!content_item_id) return NextResponse.json({ error: "content_item_id required" }, { status: 400 })
   if (!course_id)       return NextResponse.json({ error: "course_id required" }, { status: 400 })
-  if (!text_response?.trim() && !file_url)
+  if (!text_response?.trim() && !file_path)
     return NextResponse.json({ error: "Provide a text response or file" }, { status: 400 })
+
+  // The submitted file is identified by its storage path, and that path must be
+  // one THIS student uploaded. Previously the client passed a file_url which was
+  // stored verbatim — so a student could have submitted any URL as their work,
+  // including another student's submission or an arbitrary external link.
+  // /api/lms/student-upload writes to submissions/<studentId>/..., so requiring
+  // that prefix ties the submission to the uploader.
+  if (file_path && !String(file_path).startsWith(`submissions/${student.id}/`))
+    return NextResponse.json({ error: "Invalid file reference" }, { status: 400 })
 
   // Upsert — allow resubmission (replaces old)
   const { data, error } = await db
@@ -68,7 +97,8 @@ export async function POST(req: Request) {
       student_id:    student.id,
       course_id,
       text_response: text_response?.trim() || null,
-      file_url:      file_url || null,
+      file_path:     file_path || null,
+      file_url:      null,   // superseded by file_path; signed at read time
       file_name:     file_name || null,
       file_size:     file_size || null,
       status:        "submitted",

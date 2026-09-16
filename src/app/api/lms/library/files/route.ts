@@ -5,7 +5,13 @@ import { db } from "@/lib/db"
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
 const BUCKET = "lms-library"
-const MAX_MB = 500
+// Was 500. The upload is buffered whole into memory (file.arrayBuffer below
+// before handing it to storage), so the advertised limit was one the container
+// could not survive — a genuinely 500 MB file would OOM the instance rather
+// than upload. 100 MB is a limit that can actually be honoured, and a clear
+// "too large" beats a crashed request. Raising this again means streaming the
+// upload instead of buffering it.
+const MAX_MB = 100
 
 function mimeToFileType(mime: string): string {
   if (mime.startsWith("video/"))                                                    return "mp4"

@@ -8,6 +8,37 @@ import { res429 } from "@/lib/apiUtils"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
+const BUCKET = "lms-submissions"
+const SIGNED_URL_SECONDS = 60 * 60
+
+// Submitted files live in lms-submissions, a PRIVATE bucket, and are recorded
+// as a storage PATH in answers.file_path rather than as a URL.
+//
+// They used to go to lms-library (public:true) and be stored as a permanent
+// public URL — a student's submitted work readable by anyone who ever saw the
+// link. Note that signing alone would not have fixed that: in a public bucket
+// the public URL for the same path keeps working regardless. The bucket has to
+// be private, which is why submissions now have their own.
+//
+// Callers reaching this point are already authorised, so mint a short-lived
+// signed URL and expose it as answers.file_url — the shape every existing
+// reader (admin grading views, progress pages) already expects.
+async function signAnswerFiles<T extends { answers?: any }>(rows: T[]): Promise<T[]> {
+  const paths = rows
+    .map(r => r?.answers?.file_path)
+    .filter((p): p is string => typeof p === "string" && p.length > 0)
+  if (paths.length === 0) return rows
+
+  const { data: signed } = await db.storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
+  const byPath = new Map((signed ?? []).map(s => [s.path, s.signedUrl]))
+
+  return rows.map(r =>
+    r?.answers?.file_path
+      ? { ...r, answers: { ...r.answers, file_url: byPath.get(r.answers.file_path) ?? null } }
+      : r
+  )
+}
+
 // GET — student: own submissions for a module
 //       admin: all submissions for a module
 export async function GET(req: Request) {
@@ -28,7 +59,7 @@ export async function GET(req: Request) {
       .order("submitted_at", { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data ?? [])
+    return NextResponse.json(await signAnswerFiles((data ?? []) as any[]))
   }
 
   const student = await getStudentSession()
@@ -42,7 +73,7 @@ export async function GET(req: Request) {
     .order("attempt_no", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  return NextResponse.json(await signAnswerFiles((data ?? []) as any[]))
 }
 
 // POST — student submits an assignment
@@ -55,12 +86,20 @@ export async function POST(req: Request) {
   if (!allowed) return res429(retryAfterSeconds)
 
   const body = await req.json().catch(() => ({}))
-  const { module_id, course_id, file_url, file_name, file_size, text_response } = body
+  const { module_id, course_id, file_path, file_name, file_size, text_response } = body
 
   if (!module_id)  return NextResponse.json({ error: "module_id required" },  { status: 400 })
   if (!course_id)  return NextResponse.json({ error: "course_id required" },  { status: 400 })
-  if (!file_url && !text_response?.trim())
+  if (!file_path && !text_response?.trim())
     return NextResponse.json({ error: "Provide a file or a written response" }, { status: 400 })
+
+  // The file is identified by its storage path, and that path must be one THIS
+  // student uploaded. The client previously passed a file_url that was stored
+  // verbatim, so a student could submit any URL as their work — including
+  // another student's file. /api/lms/student-upload writes to
+  // submissions/<studentId>/..., so requiring that prefix ties file to uploader.
+  if (file_path && !String(file_path).startsWith(`submissions/${student.id}/`))
+    return NextResponse.json({ error: "Invalid file reference" }, { status: 400 })
 
   // Verify module + check max attempts
   const { data: module } = await db
@@ -126,7 +165,7 @@ export async function POST(req: Request) {
       score:        status === "graded" ? Math.round(aiScore * 100) / 100 : null,
       max_score:    status === "graded" && maxScore > 0 ? maxScore : null,
       passed:       status === "graded" ? passed : false,
-      answers:      { file_url: file_url ?? null, file_name: file_name ?? null, file_size: file_size ?? null, text_response: text_response ?? null },
+      answers:      { file_path: file_path ?? null, file_url: null, file_name: file_name ?? null, file_size: file_size ?? null, text_response: text_response ?? null },
       ai_feedback:  { overall_comment: overallComment, criteria_scores: criteriaScores },
       started_at:   now,
       submitted_at: now,

@@ -2,8 +2,12 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 
-const BUCKET  = "lms-library"
+const BUCKET  = "lms-submissions"   // PRIVATE bucket — see below
 const MAX_MB  = 50
+// How long the preview link handed back to the uploader stays valid. Short on
+// purpose: it only has to survive the student looking at what they just
+// attached. Anything that needs the file later re-signs it at read time.
+const SIGNED_URL_SECONDS = 60 * 60
 const ALLOWED = new Set(["application/pdf", "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"])
 
@@ -66,10 +70,19 @@ export async function POST(req: Request) {
   if (uploadError)
     return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
 
-  const { data: urlData } = db.storage.from(BUCKET).getPublicUrl(storagePath)
+  // Deliberately NOT getPublicUrl. Submissions live in a private bucket now;
+  // they used to go to the public lms-library and come back as a permanent
+  // public URL the client then stored verbatim — an unauthenticated link to a
+  // student's own work, with the client deciding what the "file" even was. The
+  // server returns the path (what the submission records) plus a short-lived
+  // signed URL purely so the uploader can see what they just attached.
+  const { data: signed } = await db.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, SIGNED_URL_SECONDS)
 
   return NextResponse.json({
-    url:  urlData.publicUrl,
+    path: storagePath,
+    url:  signed?.signedUrl ?? null,   // preview only — expires
     name: file.name,
     size: file.size,
   }, { status: 201 })

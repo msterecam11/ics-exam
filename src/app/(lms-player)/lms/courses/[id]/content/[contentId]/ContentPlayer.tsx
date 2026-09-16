@@ -875,20 +875,30 @@ function AssignmentPlayer({
       return toast.error("Add a text response or attach a file")
     setState("submitting")
 
-    let fileUrl  = null
-    let fileName = null
-    let fileSize = null
+    let filePath: string | null = null
+    let fileName: string | null = null
+    let fileSize: number | null = null
 
-    // Upload file if provided
+    // Upload file if provided.
+    //
+    // This posted to /api/lms/library/files — the ADMIN library endpoint, which
+    // requires an admin/instructor session. A student always got 403, so
+    // attaching a file to a content-item assignment could never have worked
+    // (it then read upData.public_url, a field that endpoint does return but
+    // the student upload endpoint does not). Points at the student endpoint now,
+    // which is MIME- and size-checked and files under submissions/<studentId>/.
     if (file) {
       setUploading(true)
       const fd = new FormData()
       fd.append("file", file)
-      fd.append("folder_id", "assignments")
-      const upRes = await fetch("/api/lms/library/files", { method: "POST", body: fd })
-      if (!upRes.ok) { toast.error("File upload failed"); setState("idle"); setUploading(false); return }
+      fd.append("module_id", contentItemId)
+      const upRes = await fetch("/api/lms/student-upload", { method: "POST", body: fd })
+      if (!upRes.ok) {
+        const d = await upRes.json().catch(() => ({}))
+        toast.error(d.error ?? "File upload failed"); setState("idle"); setUploading(false); return
+      }
       const upData = await upRes.json()
-      fileUrl  = upData.public_url
+      filePath = upData.path
       fileName = upData.name
       fileSize = file.size
       setUploading(false)
@@ -901,7 +911,7 @@ function AssignmentPlayer({
         content_item_id: contentItemId,
         course_id:       courseId,
         text_response:   textInput.trim() || null,
-        file_url:        fileUrl,
+        file_path:       filePath,
         file_name:       fileName,
         file_size:       fileSize,
       }),

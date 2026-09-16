@@ -91,7 +91,7 @@ export default function AssignmentClient({
 
     setUploading(true)
     try {
-      let fileUrl: string | undefined
+      let filePath: string | undefined
       let fileName: string | undefined
       let fileSize: number | undefined
 
@@ -109,7 +109,9 @@ export default function AssignmentClient({
           return
         }
         const up = await upRes.json()
-        fileUrl = up.url; fileName = up.name; fileSize = up.size
+        // Submit the storage PATH, not a URL. The server signs it on read for
+        // authorised viewers; up.url is a short-lived preview link only.
+        filePath = up.path; fileName = up.name; fileSize = up.size
       }
 
       // 2. Save submission (AI grading runs server-side)
@@ -119,7 +121,7 @@ export default function AssignmentClient({
         body:    JSON.stringify({
           module_id:     moduleId,
           course_id:     courseId,
-          file_url:      fileUrl,
+          file_path:     filePath,
           file_name:     fileName,
           file_size:     fileSize,
           text_response: textResponse.trim() || undefined,
