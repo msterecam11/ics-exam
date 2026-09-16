@@ -78,7 +78,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // ── 5. Always run bcrypt — prevents timing attack (user enumeration) ──
         //    If user not found we compare against a dummy hash so the response
         //    time is identical whether the email exists or not.
-        const hashToCompare = user?.password_hash ?? "$2b$12$abcdefghijklmnopqrstuvuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+        //    The fallback used to be an invalid 61-char string that bcrypt
+        //    rejected in ~0ms against ~270ms for a real cost-12 staff hash —
+        //    so timing DID reveal which staff emails exist. It has to be a valid
+        //    hash at the same cost as real admin_users hashes ($2b$12$). Random
+        //    plaintext, discarded; nothing can match it.
+        const hashToCompare = user?.password_hash ?? "$2b$12$PLHhP7D9lCIddQ54E6JmCOW68IQWKp2Ss7ZXPU2jZknIoVGFz188C"
         let passwordMatch = false
         try {
           passwordMatch = await bcrypt.compare(password, hashToCompare)

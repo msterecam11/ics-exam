@@ -27,15 +27,33 @@ export async function POST(req: Request) {
   if (!module_id) return NextResponse.json({ error: "module_id required" }, { status: 400 })
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
 
-  // Verify the module exists and belongs to this course
+  // Verify the module exists, belongs to this course, and is actually a final
+  // exam. Without the type check any module id in the course (e.g. a package)
+  // was accepted and recorded as an exam attempt.
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, questions, activity_settings")
+    .select("id, module_type, questions, activity_settings")
     .eq("id", module_id)
     .eq("course_id", course_id)
     .single()
 
-  if (!module) return NextResponse.json({ error: "Module not found" }, { status: 404 })
+  if (!module || (module as any).module_type !== "final_exam")
+    return NextResponse.json({ error: "Module not found" }, { status: 404 })
+
+  // The student must be enrolled in the course. The exam PAGE checks this, but
+  // the submission endpoint did not — and a passing attempt runs
+  // checkCourseCompletion, whose certificate issuance does not look at
+  // enrollment either. So a passing submission from outside the course would
+  // have produced a certificate for a course the student was never enrolled in.
+  const { data: enrollment } = await db
+    .from("lms_enrollments")
+    .select("id")
+    .eq("student_id", studentId)
+    .eq("course_id", course_id)
+    .maybeSingle()
+
+  if (!enrollment)
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
 
   // Single source of truth for the exam pass mark: the course-level
   // `final_exam_pass_mark` (edited in Course Settings) governs. We fall back to
@@ -102,6 +120,18 @@ export async function POST(req: Request) {
   const attemptNo = (count ?? 0) + 1
   const now = new Date().toISOString()
 
+  // time_spent_s is reported by the browser and rolls up into the student's
+  // learning time and the report's exam duration. Bound it to [0, time limit]:
+  // the player auto-submits at the limit, so no genuine attempt exceeds it.
+  // Exams without a limit get a generous 24h ceiling instead of none.
+  const limitS = Number(settings?.time_limit_minutes) > 0
+    ? Number(settings.time_limit_minutes) * 60
+    : 86400
+  const rawTime = Number(time_spent_s)
+  const boundedTimeSpent = Number.isFinite(rawTime)
+    ? Math.min(Math.max(Math.round(rawTime), 0), limitS)
+    : null
+
   const { data: attempt, error } = await db
     .from("lms_module_attempts")
     .insert({
@@ -118,7 +148,7 @@ export async function POST(req: Request) {
         ...(openEndedQs.length > 0 ? { open_ended_scores: aiScores } : {}),
         ...(security_events       ? { security_events }              : {}),
       },
-      time_spent_s: time_spent_s ?? null,
+      time_spent_s: boundedTimeSpent,
       started_at:   now,
       submitted_at: now,
     })
@@ -179,7 +209,14 @@ export async function DELETE(req: Request) {
 
 // GET /api/lms/exam-attempt?module_id=xxx
 export async function GET(req: Request) {
-  const adminSession   = await auth()
+  // Staff access was granted to ANY admin_users session, including `viewer`
+  // and `assessor` accounts, which then could read any student's attempt
+  // history just by passing student_id — bypassing the per-course/cohort
+  // viewer_access grants that scope what a viewer may see everywhere else.
+  // Only managers get the unscoped read; nothing in the UI calls this as any
+  // other staff role.
+  const staff          = await auth()
+  const adminSession   = staff && (staff.user.role === "admin" || staff.user.role === "instructor") ? staff : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

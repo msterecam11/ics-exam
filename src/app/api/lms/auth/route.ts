@@ -8,7 +8,17 @@ import bcrypt from "bcryptjs"
 
 const MAX_ATTEMPTS = 5
 const LOCK_MINUTES = 15
-const DUMMY_HASH = "$2b$12$abcdefghijklmnopqrstuvuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+// Compared against when the email is not registered, so an unknown email takes
+// as long to reject as a wrong password does.
+//
+// This used to be "$2b$12$abcdefghijklmnopqrstuv" padded with u's — 61 chars,
+// not a valid bcrypt hash (valid is 60). bcrypt.compare rejected it in ~0ms,
+// while a real student hash takes ~66ms, so the response time revealed whether
+// an email was registered: the exact enumeration this was meant to prevent.
+// It must be a VALID hash, at the SAME cost as real student hashes (cost 10 —
+// every lms_students hash is $2b$10$), or the timing still differs. The
+// plaintext is random and discarded; nothing can ever match it.
+const DUMMY_HASH = "$2b$10$iFAB675yNO.u2pDOtEVQweTPAAWV98wyLVf4/6Utj2gJxgTzUn0Be"
 
 // POST /api/lms/auth — login
 export async function POST(req: Request) {
