@@ -58,6 +58,21 @@ export async function POST(req: Request) {
 
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
 
+  if (module_id) {
+    // The module must belong to the course the package is being filed under.
+    const { data: mod } = await db
+      .from("lms_modules").select("id").eq("id", module_id).eq("course_id", course_id).maybeSingle()
+    if (!mod) return NextResponse.json({ error: "Module not found in this course" }, { status: 404 })
+
+    // One package per module (also enforced by a unique index for the race).
+    // Creating a second one would hide the first — and all student progress on
+    // it — because the editor and player load a single package per module.
+    const { data: already } = await db
+      .from("lms_packages").select("id").eq("module_id", module_id).maybeSingle()
+    if (already)
+      return NextResponse.json({ error: "This module already has a package. Reload the editor to continue.", id: already.id }, { status: 409 })
+  }
+
   const { data: pkg, error: pkgErr } = await db
     .from("lms_packages")
     .insert({
@@ -71,7 +86,12 @@ export async function POST(req: Request) {
     .select()
     .single()
 
-  if (pkgErr) return NextResponse.json({ error: pkgErr.message }, { status: 500 })
+  if (pkgErr) {
+    // 23505: lost a race with a concurrent create for the same module.
+    if ((pkgErr as any).code === "23505")
+      return NextResponse.json({ error: "This module already has a package. Reload the editor to continue." }, { status: 409 })
+    return NextResponse.json({ error: "Could not create package" }, { status: 500 })
+  }
 
   if (Array.isArray(items) && items.length > 0) {
     const rows = items.map((item: any, i: number) => ({
