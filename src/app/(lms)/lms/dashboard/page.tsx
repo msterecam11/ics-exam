@@ -36,6 +36,8 @@ export default async function StudentDashboard() {
     lastLoginResult,
     recentProgResult,
     cohortMembersResult,
+    lastPkgResult,
+    recentPkgResult,
   ] = await Promise.all([
     db.from("lms_progress")
       .select("content_item_id, course_id, updated_at, position, lms_content_items(id, title, type)")
@@ -72,6 +74,25 @@ export default async function StudentDashboard() {
       .select("id, track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
       .eq("student_id", student.id)
       .eq("is_active", true),
+
+    // The "resume" card and "Recent Activity" were built only on lms_progress
+    // (content items). Courses are delivered as packages — lms_content_items
+    // and lms_progress are empty — so neither ever appeared for any student,
+    // and someone midway through a course got no call to action at all (the
+    // "Ready to start?" fallback only shows at 0%). Read package progress too.
+    courseIds.length
+      ? db.from("lms_package_progress")
+          .select("module_id, course_id, current_item_index, updated_at, lms_packages(title, lms_modules(title))")
+          .eq("student_id", student.id).eq("status", "in_progress").in("course_id", courseIds)
+          .order("updated_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
+
+    courseIds.length
+      ? db.from("lms_package_progress")
+          .select("package_id, completed_at, updated_at, lms_packages(title, lms_modules(title))")
+          .eq("student_id", student.id).in("status", ["passed", "completed"]).in("course_id", courseIds)
+          .order("completed_at", { ascending: false }).limit(4)
+      : Promise.resolve({ data: [] }),
   ])
 
   // Progress is stored in lms_enrollments.progress_pct by syncEnrollmentProgress
@@ -144,11 +165,52 @@ export default async function StudentDashboard() {
   }
 
   // ── Derived ───────────────────────────────────────────────────
-  const resumeItem       = lastProgressResult.data as any
+  // One resume target from whichever source was touched most recently —
+  // a content item or a package.
+  type Resume = { href: string; title: string; detail: string; at: string }
+  const resumeCandidates: Resume[] = []
+  const contentResume = lastProgressResult.data as any
+  if (contentResume) {
+    const pos = contentResume.position ?? {}
+    resumeCandidates.push({
+      href:   `/lms/courses/${contentResume.course_id}/content/${contentResume.content_item_id}`,
+      title:  (contentResume.lms_content_items as any)?.title ?? "Continue studying",
+      detail: [
+        (contentResume.lms_content_items as any)?.type ?? "",
+        pos.second != null ? `${Math.floor(pos.second / 60)}m${pos.second % 60}s` : "",
+        pos.page   != null ? `page ${pos.page}`   : "",
+        pos.slide  != null ? `slide ${pos.slide}` : "",
+      ].filter(Boolean).join(" · "),
+      at: contentResume.updated_at,
+    })
+  }
+  const pkgResume = lastPkgResult.data as any
+  if (pkgResume?.module_id && pkgResume?.course_id) {
+    resumeCandidates.push({
+      href:   `/lms/courses/${pkgResume.course_id}/package/${pkgResume.module_id}`,
+      // Package rows are all titled just "Package"; the module carries the real name.
+      title:  (pkgResume.lms_packages as any)?.lms_modules?.title ?? (pkgResume.lms_packages as any)?.title ?? "Continue studying",
+      detail: pkgResume.current_item_index != null ? `item ${pkgResume.current_item_index + 1}` : "",
+      at:     pkgResume.updated_at,
+    })
+  }
+  const resumeItem: Resume | null =
+    resumeCandidates.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))[0] ?? null
   const sessions         = (sessionsResult.data ?? []) as any[]
   const todaySessions    = sessions.filter(s => s.session_date === today)
   const upcomingSessions = sessions.filter(s => s.session_date > today)
-  const recentProg       = (recentProgResult.data ?? []) as any[]
+  // Completed content items and completed packages, newest first.
+  const recentProg: { key: string; title: string; at: string }[] = [
+    ...((recentProgResult.data ?? []) as any[]).map((p: any) => ({
+      key: `ci-${p.content_item_id}`, title: (p.lms_content_items as any)?.title ?? "item", at: p.updated_at,
+    })),
+    ...((recentPkgResult.data ?? []) as any[]).map((p: any) => ({
+      key: `pkg-${p.package_id}`, title: (p.lms_packages as any)?.lms_modules?.title ?? (p.lms_packages as any)?.title ?? "module", at: p.completed_at ?? p.updated_at,
+    })),
+  ]
+    .filter(r => r.at)
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 4)
   const active           = (enrollments ?? []).filter((e: any) => e.status === "active")
   const completed        = (enrollments ?? []).filter((e: any) => e.status === "completed")
 
@@ -284,7 +346,7 @@ export default async function StudentDashboard() {
 
           {/* Resume CTA — if studying */}
           {resumeItem ? (
-            <Link href={`/lms/courses/${resumeItem.course_id}/content/${resumeItem.content_item_id}`}
+            <Link href={resumeItem.href}
               className="flex items-center gap-4 bg-[#1B4F8A] rounded-xl px-5 py-4 group hover:bg-[#163f6e] transition-colors">
               <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
                 <PlayCircle className="h-6 w-6 text-white" />
@@ -292,14 +354,11 @@ export default async function StudentDashboard() {
               <div className="flex-1 min-w-0">
                 <p className="text-white/60 text-xs font-medium uppercase tracking-wide">Pick up where you left off</p>
                 <p className="text-white font-semibold text-sm mt-0.5 truncate">
-                  {(resumeItem.lms_content_items as any)?.title ?? "Continue studying"}
+                  {resumeItem.title}
                 </p>
-                <p className="text-white/50 text-xs mt-0.5 capitalize">
-                  {(resumeItem.lms_content_items as any)?.type ?? ""}
-                  {resumeItem.position?.second != null && ` · ${Math.floor(resumeItem.position.second / 60)}m${resumeItem.position.second % 60}s`}
-                  {resumeItem.position?.page  != null && ` · page ${resumeItem.position.page}`}
-                  {resumeItem.position?.slide != null && ` · slide ${resumeItem.position.slide}`}
-                </p>
+                {resumeItem.detail && (
+                  <p className="text-white/50 text-xs mt-0.5 capitalize">{resumeItem.detail}</p>
+                )}
               </div>
               <div className="flex-shrink-0 bg-white/15 group-hover:bg-white/25 rounded-lg px-3 py-1.5 text-white text-xs font-semibold transition-colors flex items-center gap-1">
                 Resume <ArrowRight className="h-3 w-3" />
@@ -489,16 +548,16 @@ export default async function StudentDashboard() {
                 <h3 className="text-sm font-semibold text-slate-800">Recent Activity</h3>
               </div>
               <div className="divide-y divide-slate-50">
-                {recentProg.map((p: any) => (
-                  <div key={p.content_item_id} className="flex items-center gap-3 px-5 py-3">
+                {recentProg.map(p => (
+                  <div key={p.key} className="flex items-center gap-3 px-5 py-3">
                     <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                     </div>
                     <p className="text-sm text-slate-700 flex-1 min-w-0 truncate">
-                      Completed <span className="font-medium">{(p.lms_content_items as any)?.title ?? "item"}</span>
+                      Completed <span className="font-medium">{p.title}</span>
                     </p>
                     <span className="text-xs text-slate-400 flex-shrink-0">
-                      {new Date(p.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      {new Date(p.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                     </span>
                   </div>
                 ))}
