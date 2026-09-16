@@ -395,7 +395,7 @@ function EnrollTab({ cohortId, cohort }: { cohortId: string; cohort: Cohort }) {
   const [sendEmail, setSendEmail] = useState(true)
   const [selTrack,  setSelTrack]  = useState("")
   const [enrolling, setEnrolling] = useState(false)
-  const [result,    setResult]    = useState<{ enrolled: number; skipped: number } | null>(null)
+  const [result,    setResult]    = useState<{ enrolled: number; skipped: number; full: number } | null>(null)
 
   const isSpec = cohort.mode === "specialization"
 
@@ -414,7 +414,7 @@ function EnrollTab({ cohortId, cohort }: { cohortId: string; cohort: Cohort }) {
     const data = await res.json()
     setEnrolling(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    setResult({ enrolled: data.enrolled, skipped: data.skipped })
+    setResult({ enrolled: data.enrolled, skipped: data.skipped, full: data.full ?? 0 })
     toast.success(`${data.enrolled} enrollment${data.enrolled !== 1 ? "s" : ""} created`)
   }
 
@@ -427,6 +427,10 @@ function EnrollTab({ cohortId, cohort }: { cohortId: string; cohort: Cohort }) {
       <div className="flex gap-10">
         <div><p className="text-3xl font-bold text-[#1B4F8A]">{result.enrolled}</p><p className="text-sm text-slate-500">Enrolled</p></div>
         <div><p className="text-3xl font-bold text-slate-400">{result.skipped}</p><p className="text-sm text-slate-500">Already enrolled</p></div>
+        {/* Enrollments refused because the course had reached its capacity. */}
+        {result.full > 0 && (
+          <div><p className="text-3xl font-bold text-amber-600">{result.full}</p><p className="text-sm text-slate-500">Course full</p></div>
+        )}
       </div>
       <Button onClick={() => setResult(null)} variant="outline" className="mt-6">Enroll Again</Button>
     </div>

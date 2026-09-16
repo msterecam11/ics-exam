@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { ensureEnrollment } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -87,7 +88,8 @@ export async function POST(
       .select("id, order_index, lms_courses(id, title, status)")
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if ((error as any)?.code === "23505") return NextResponse.json({ error: "This course is already in the learning path" }, { status: 409 })
+    if (error) return NextResponse.json({ error: "Could not add course" }, { status: 500 })
     return NextResponse.json({
       path_course_id: (data as any).id,
       order_index:    (data as any).order_index,
@@ -150,7 +152,7 @@ export async function POST(
       .eq("path_id", pathId)
       .order("order_index", { ascending: true })
 
-    let enrolled = 0, skipped = 0
+    let enrolled = 0, skipped = 0, full = 0
 
     if (pathCourses?.length) {
       const { data: students } = await db
@@ -165,16 +167,11 @@ export async function POST(
         for (const pc of pathCourses) {
           const courseId = pc.course_id
 
-          const { data: existing } = await db.from("lms_enrollments").select("id")
-            .eq("student_id", sid).eq("course_id", courseId).maybeSingle()
-
-          if (existing) { skipped++; continue }
-
-          const { error: enrErr } = await db.from("lms_enrollments").insert({
-            student_id: sid, course_id: courseId, status: "active",
-            enrolled_at: new Date().toISOString(), enrolled_by: session.user.id,
-          })
-          if (enrErr) { skipped++; continue }
+          // Shared rule (lib/lms-enrollment): reactivates a dropped enrollment
+          // instead of skipping it, and respects course capacity.
+          const result = await ensureEnrollment({ studentId: sid, courseId: courseId, enrolledBy: session.user.id })
+          if (result === "full") { full++; continue }
+          if (result !== "enrolled" && result !== "reactivated") { skipped++; continue }
           enrolled++
 
           if (send_email && student?.email) {
@@ -189,7 +186,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ ok: true, added: student_ids.length, enrolled, skipped })
+    return NextResponse.json({ ok: true, added: student_ids.length, enrolled, skipped, full })
   }
 
   // ── Remove member ─────────────────────────────────────────────
@@ -224,7 +221,7 @@ export async function POST(
     if (!pathCourses?.length) return NextResponse.json({ error: "No courses in this path" }, { status: 400 })
     if (!members?.length)     return NextResponse.json({ ok: true, enrolled: 0, skipped: 0 })
 
-    let enrolled = 0, skipped = 0
+    let enrolled = 0, skipped = 0, full = 0
 
     for (const m of members) {
       const student   = (m as any).lms_students
@@ -233,16 +230,11 @@ export async function POST(
       for (const pc of pathCourses) {
         const courseId = pc.course_id
 
-        const { data: existing } = await db.from("lms_enrollments").select("id")
-          .eq("student_id", studentId).eq("course_id", courseId).single()
-
-        if (existing) { skipped++; continue }
-
-        const { error } = await db.from("lms_enrollments").insert({
-          student_id: studentId, course_id: courseId, status: "active",
-          enrolled_at: new Date().toISOString(), enrolled_by: session.user.id,
-        })
-        if (error) { skipped++; continue }
+        // Shared rule (lib/lms-enrollment): reactivates a dropped enrollment
+        // instead of skipping it, and respects course capacity.
+        const result = await ensureEnrollment({ studentId: studentId, courseId: courseId, enrolledBy: session.user.id })
+        if (result === "full") { full++; continue }
+        if (result !== "enrolled" && result !== "reactivated") { skipped++; continue }
         enrolled++
 
         if (send_email && student?.email) {
@@ -256,7 +248,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ ok: true, enrolled, skipped })
+    return NextResponse.json({ ok: true, enrolled, skipped, full })
   }
 
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })

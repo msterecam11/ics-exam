@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { ensureEnrollment } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -122,6 +123,14 @@ export async function POST(
     const { student_ids, track_id } = body as { student_ids: string[]; track_id?: string }
     if (!student_ids?.length) return NextResponse.json({ error: "student_ids required" }, { status: 400 })
 
+    // The track must belong to THIS cohort. Any track id was accepted, and a
+    // member assigned another cohort's track matches none of this cohort's
+    // tracks at enrollment time — so they were silently enrolled in nothing.
+    if (track_id) {
+      const { data: t } = await db.from("lms_cohort_tracks").select("id").eq("id", track_id).eq("cohort_id", cohortId).maybeSingle()
+      if (!t) return NextResponse.json({ error: "Track not found in this cohort" }, { status: 400 })
+    }
+
     const rows = student_ids.map((sid: string) => ({
       cohort_id:  cohortId,
       student_id: sid,
@@ -157,6 +166,14 @@ export async function POST(
     const { student_id, track_id } = body as { student_id: string; track_id: string | null }
     if (!student_id) return NextResponse.json({ error: "student_id required" }, { status: 400 })
 
+    // The track must belong to THIS cohort. Any track id was accepted, and a
+    // member assigned another cohort's track matches none of this cohort's
+    // tracks at enrollment time — so they were silently enrolled in nothing.
+    if (track_id) {
+      const { data: t } = await db.from("lms_cohort_tracks").select("id").eq("id", track_id).eq("cohort_id", cohortId).maybeSingle()
+      if (!t) return NextResponse.json({ error: "Track not found in this cohort" }, { status: 400 })
+    }
+
     const { error } = await db
       .from("lms_cohort_members")
       .update({ track_id: track_id || null })
@@ -183,7 +200,8 @@ export async function POST(
       .select("id, order_index, lms_courses(id, title, status)")
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if ((error as any)?.code === "23505") return NextResponse.json({ error: "This course is already in the cohort" }, { status: 409 })
+    if (error) return NextResponse.json({ error: "Could not add course" }, { status: 500 })
     return NextResponse.json({
       cohort_course_id: (data as any).id,
       order_index:      (data as any).order_index,
@@ -233,7 +251,7 @@ export async function POST(
       .single()
 
     const mode = (cohort as any)?.mode ?? "unified"
-    let enrolled = 0, skipped = 0
+    let enrolled = 0, skipped = 0, full = 0
 
     if (mode === "unified") {
       const [{ data: courses }, { data: members }] = await Promise.all([
@@ -250,15 +268,11 @@ export async function POST(
         const studentId = student?.id ?? m.student_id
 
         for (const c of courses) {
-          const { data: ex } = await db.from("lms_enrollments").select("id")
-            .eq("student_id", studentId).eq("course_id", c.course_id).single()
-          if (ex) { skipped++; continue }
-
-          const { error } = await db.from("lms_enrollments").insert({
-            student_id: studentId, course_id: c.course_id, status: "active",
-            enrolled_at: new Date().toISOString(), enrolled_by: session.user.id,
-          })
-          if (error) { skipped++; continue }
+          // Shared rule (lib/lms-enrollment): reactivates a dropped enrollment
+          // instead of skipping it, and respects course capacity.
+          const result = await ensureEnrollment({ studentId: studentId, courseId: c.course_id, enrolledBy: session.user.id, cohortId })
+          if (result === "full") { full++; continue }
+          if (result !== "enrolled" && result !== "reactivated") { skipped++; continue }
           enrolled++
 
           if (send_email && student?.email) {
@@ -293,15 +307,11 @@ export async function POST(
           const studentId = student?.id ?? m.student_id
 
           for (const c of courses ?? []) {
-            const { data: ex } = await db.from("lms_enrollments").select("id")
-              .eq("student_id", studentId).eq("course_id", c.course_id).single()
-            if (ex) { skipped++; continue }
-
-            const { error } = await db.from("lms_enrollments").insert({
-              student_id: studentId, course_id: c.course_id, status: "active",
-              enrolled_at: new Date().toISOString(), enrolled_by: session.user.id,
-            })
-            if (error) { skipped++; continue }
+            // Shared rule (lib/lms-enrollment): reactivates a dropped enrollment
+            // instead of skipping it, and respects course capacity.
+            const result = await ensureEnrollment({ studentId: studentId, courseId: c.course_id, enrolledBy: session.user.id, cohortId })
+            if (result === "full") { full++; continue }
+            if (result !== "enrolled" && result !== "reactivated") { skipped++; continue }
             enrolled++
 
             if (send_email && student?.email) {
@@ -317,7 +327,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ ok: true, enrolled, skipped })
+    return NextResponse.json({ ok: true, enrolled, skipped, full })
   }
 
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })

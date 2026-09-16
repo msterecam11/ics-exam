@@ -63,7 +63,8 @@ export async function POST(
       .select("id, order_index, lms_courses(id, title, status)")
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if ((error as any)?.code === "23505") return NextResponse.json({ error: "This course is already in the track" }, { status: 409 })
+    if (error) return NextResponse.json({ error: "Could not add course" }, { status: 500 })
     return NextResponse.json({
       track_course_id: (data as any).id,
       order_index:     (data as any).order_index,

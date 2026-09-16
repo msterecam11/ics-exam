@@ -233,7 +233,7 @@ export default function LearningPathDetailPage({ params }: { params: Promise<{ i
   const [addModal, setAddModal] = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [enrolling, setEnrolling] = useState(false)
-  const [enrollResult, setEnrollResult] = useState<{ enrolled: number; skipped: number } | null>(null)
+  const [enrollResult, setEnrollResult] = useState<{ enrolled: number; skipped: number; full: number } | null>(null)
   const [sendEmail, setSendEmail] = useState(true)
   const [search,   setSearch]   = useState("")
 
@@ -320,7 +320,7 @@ export default function LearningPathDetailPage({ params }: { params: Promise<{ i
     const data = await res.json()
     setEnrolling(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    setEnrollResult({ enrolled: data.enrolled, skipped: data.skipped })
+    setEnrollResult({ enrolled: data.enrolled, skipped: data.skipped, full: data.full ?? 0 })
     toast.success(`${data.enrolled} enrollment${data.enrolled !== 1 ? "s" : ""} created`)
   }
 
@@ -446,6 +446,10 @@ export default function LearningPathDetailPage({ params }: { params: Promise<{ i
                 <div className="flex gap-6 text-sm">
                   <span><span className="font-bold text-[#1B4F8A]">{enrollResult.enrolled}</span> enrolled</span>
                   <span><span className="font-bold text-slate-400">{enrollResult.skipped}</span> already enrolled</span>
+                  {/* Enrollments refused because the course had reached its capacity. */}
+                  {enrollResult.full > 0 && (
+                    <span><span className="font-bold text-amber-600">{enrollResult.full}</span> course full</span>
+                  )}
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => setEnrollResult(null)} className="text-xs">Reset</Button>
               </div>
