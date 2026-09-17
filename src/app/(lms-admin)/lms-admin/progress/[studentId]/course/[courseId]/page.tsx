@@ -410,25 +410,28 @@ function QuizDetailRow({ quiz }: { quiz: any }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function CourseProgressDetail({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ studentId: string; courseId: string }>
+  searchParams: Promise<{ enrollment_id?: string }>
 }) {
   const { studentId, courseId } = use(params)
+  // A specific program run (e.g. from Program Manager); else the current one.
+  const { enrollment_id: enrollmentId } = use(searchParams)
   const [data,    setData]    = useState<CourseDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
   const [tab,     setTab]     = useState<"quizzes" | "assignments" | "exams" | "packages" | "security">("exams")
 
   useEffect(() => {
-    fetch(`/api/lms/progress/${studentId}/course/${courseId}`)
+    fetch(`/api/lms/progress/${studentId}/course/${courseId}${enrollmentId ? `?enrollment_id=${encodeURIComponent(enrollmentId)}` : ""}`)
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); setLoading(false); return }
         setData(d); setLoading(false)
       })
       .catch(() => { setError("Failed to load"); setLoading(false) })
-  }, [studentId, courseId])
+  }, [studentId, courseId, enrollmentId])
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
   if (error || !data) return (

@@ -18,6 +18,7 @@ import {
   Route,
   TrendingUp,
   Building2,
+  Briefcase,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge"
 const navItems = [
   { href: "/lms-admin",          label: "Dashboard",  icon: LayoutDashboard, exact: true },
   { href: "/lms-admin/courses",  label: "Courses",    icon: BookOpen },
+  { href: "/lms-admin/programs", label: "Program Manager", icon: Briefcase },
   { href: "/lms-admin/students",  label: "Students",        icon: Users },
   { href: "/lms-admin/companies", label: "Companies",       icon: Building2 },
   { href: "/lms-admin/progress",  label: "Student Progress", icon: TrendingUp },

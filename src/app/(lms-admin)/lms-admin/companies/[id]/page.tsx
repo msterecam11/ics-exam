@@ -43,6 +43,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [tab,      setTab]      = useState<Tab>("overview")
   const [editOpen, setEditOpen] = useState(false)
   const [busy,     setBusy]     = useState(false)
+  const [programs, setPrograms] = useState<{ id: string; name: string; status: string; start_date: string | null; end_date: string | null; member_counts: { active: number; completed: number } }[] | null>(null)
+
+  useEffect(() => {
+    if (tab !== "programs" || programs) return
+    fetch(`/api/lms/programs?company_id=${id}`).then(r => r.ok ? r.json() : []).then(d => setPrograms(Array.isArray(d) ? d : []))
+  }, [tab, programs, id])
 
   useEffect(() => {
     fetch(`/api/lms/companies/${id}`)
@@ -198,11 +204,35 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
         )
       )}
 
-      {(tab === "programs" || tab === "reports") && (
+      {tab === "programs" && (
+        programs === null ? (
+          <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
+        ) : programs.length === 0 ? (
+          <div className="py-16 text-center bg-white rounded-xl border border-dashed border-slate-200">
+            <GraduationCap className="h-10 w-10 text-slate-200 mx-auto mb-2" />
+            <p className="text-slate-600 font-medium text-sm">No programs for {company.name} yet</p>
+            <Link href="/lms-admin/programs" className="text-xs text-[#1B4F8A] hover:underline">Open Program Manager</Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {programs.map(pr => (
+              <Link key={pr.id} href={`/lms-admin/programs/${pr.id}`} className="bg-white rounded-xl border border-slate-200 hover:border-[#1B4F8A]/30 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-sm text-slate-900 truncate">{pr.name}</p>
+                  <span className="text-[10px] font-semibold uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{pr.status}</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">{pr.member_counts.active + pr.member_counts.completed} students · {fmtDate(pr.start_date)} → {fmtDate(pr.end_date)}</p>
+              </Link>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "reports" && (
         <div className="py-16 text-center bg-white rounded-xl border border-dashed border-slate-200">
-          {tab === "programs" ? <GraduationCap className="h-10 w-10 text-slate-200 mx-auto mb-2" /> : <BarChart3 className="h-10 w-10 text-slate-200 mx-auto mb-2" />}
-          <p className="text-slate-600 font-medium text-sm">{tab === "programs" ? "Programs" : "Company reports"} arrive with Program Manager</p>
-          <p className="text-xs text-slate-400 mt-1">This company&apos;s programs and their results will be listed here.</p>
+          <BarChart3 className="h-10 w-10 text-slate-200 mx-auto mb-2" />
+          <p className="text-slate-600 font-medium text-sm">Company reports come with the Reports step</p>
+          <p className="text-xs text-slate-400 mt-1">Everything this company has done across its programs.</p>
         </div>
       )}
 
