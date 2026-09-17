@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     start_date: null, end_date: null, capacity: s.capacity,
     status: "draft", structure: s.structure, after_end_access: s.after_end_access,
     certificate_enabled: s.certificate_enabled, certificate_auto_release: s.certificate_auto_release,
-    feedback_enabled: s.feedback_enabled, feedback_mandatory: s.feedback_mandatory,
+    feedback_enabled: s.feedback_enabled, feedback_mandatory: s.feedback_mandatory, feedback_anonymous: s.feedback_anonymous,
     progress_enforcement: s.progress_enforcement,
     duplicated_from: id, created_by: session.user.id,
   }).select(PROGRAM_COLUMNS).single()

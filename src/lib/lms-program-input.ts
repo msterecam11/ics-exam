@@ -74,7 +74,7 @@ export async function parseProgramInput(body: any, partial: boolean): Promise<Re
     v.after_end_access = body.after_end_access
   }
 
-  for (const k of ["certificate_enabled", "certificate_auto_release", "feedback_enabled", "feedback_mandatory", "progress_enforcement"] as const) {
+  for (const k of ["certificate_enabled", "certificate_auto_release", "feedback_enabled", "feedback_mandatory", "feedback_anonymous", "progress_enforcement"] as const) {
     if (!has(k)) continue
     if (typeof body[k] !== "boolean") return { ok: false, error: `${k.replace(/_/g, " ")} must be true or false` }
     v[k] = body[k]

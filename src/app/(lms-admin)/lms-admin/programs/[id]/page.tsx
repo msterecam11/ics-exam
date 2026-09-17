@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import {
   ArrowLeft, Loader2, LayoutDashboard, Layers, Users, CalendarDays, TrendingUp, BarChart3, Settings,
-  Play, CheckCircle2, Archive, RotateCcw, Building2, Calendar,
+  Play, CheckCircle2, Archive, RotateCcw, Building2, Calendar, MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -227,6 +227,11 @@ export default function ProgramPage({ params, searchParams }: {
               <BarChart3 className="h-4 w-4 text-slate-400" />
             </Link>
           ))}
+          <Link href={`/lms-admin/reports/feedback/program/${id}`}
+            className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:border-[#1B4F8A]/30">
+            <span className="text-sm text-slate-800">Feedback: program survey and course feedback</span>
+            <MessageSquare className="h-4 w-4 text-slate-400" />
+          </Link>
           <p className="text-xs text-slate-400">Reports organised by client → program → track (combined program report, exports) come with the Reports step.</p>
         </div>
       )}

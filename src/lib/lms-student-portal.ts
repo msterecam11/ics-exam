@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { getFeedbackState, getProgramSurveyState } from "@/lib/lms-feedback"
 import { coursesForTrack } from "@/lib/lms-program-courses"
 import {
   computeAccess, getCourseLocks, todayISO,
@@ -185,6 +186,33 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
     rank(a) - rank(b)
     || (a.endDate ?? "9999").localeCompare(b.endDate ?? "9999")
     || a.program.name.localeCompare(b.program.name))
+}
+
+// ── Feedback waiting for the student (FB-2 / FB-5) ─────────────────────────
+
+export type FeedbackRequest =
+  | { kind: "course"; course_id: string; title: string; program: string | null; mandatory: boolean }
+  | { kind: "program"; program_id: string; name: string }
+
+export async function getFeedbackRequests(studentId: string, enrollments: any[]): Promise<FeedbackRequest[]> {
+  const out: FeedbackRequest[] = []
+  for (const e of enrollments) {
+    if (e.access === "none" || e.status === "dropped") continue
+    const st = await getFeedbackState({ id: e.id, course_id: e.course_id, status: e.status, program_id: e.program_id ?? null, member: e.lms_program_members ?? null })
+    if (st.due) out.push({
+      kind: "course", course_id: e.course_id, title: e.lms_courses?.title ?? "Course",
+      program: e.lms_programs && !e.lms_programs.is_individual ? e.lms_programs.name : null, mandatory: st.settings.mandatory,
+    })
+  }
+  const { data: members } = await db.from("lms_program_members")
+    .select("id, program_id, lms_programs!inner(name, is_individual, status)")
+    .eq("student_id", studentId).neq("status", "withdrawn")
+    .eq("lms_programs.is_individual", false).neq("lms_programs.status", "draft")
+  for (const m of (members ?? []) as any[]) {
+    const st = await getProgramSurveyState(m.id)
+    if (st?.due) out.push({ kind: "program", program_id: m.program_id, name: m.lms_programs.name })
+  }
+  return out
 }
 
 /** The course a student should open next in a program: first unlocked, unfinished one. */

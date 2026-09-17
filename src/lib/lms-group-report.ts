@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { buildCourseReport, gradeQuestion } from "@/lib/lms-course-report"
+import { readFeedbackRatings, readFeedbackComments, COURSE_RATING_LABELS, FEEDBACK_ROW_COLUMNS } from "@/lib/lms-feedback"
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface GroupReport {
@@ -29,6 +30,7 @@ export interface GroupReport {
     count: number
     ratings: { label: string; avg: number; dist: number[] }[]   // dist[0..4] = count of 1..5 stars
     comments: string[]
+    recommend?: { yes: number; maybe: number; no: number; answered: number }
   } | null
   roster: {
     id: string; name: string; company: string | null; jobTitle: string | null
@@ -227,26 +229,30 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   const attPcts = rows.map(x => x.r.overall.attendancePct).filter((p): p is number => p !== null)
   const attendance = attPcts.length ? { overallPct: round(attPcts.reduce((a, b) => a + b, 0) / attPcts.length) } : null
 
-  // Feedback (aggregate all submissions — anonymized, for charts)
-  const { data: fbRows } = await db
-    .from("lms_feedback")
-    .select("rating_overall, rating_content, rating_instructor, rating_pace, rating_materials, comments")
-    .eq("course_id", courseId)
+  // Feedback of THIS group's enrollments (a program report shows that
+  // program's answers only) — anonymized, for charts. Ratings are read by form
+  // version: the original form stored the Platform rating in rating_instructor.
+  const groupEnrollmentIds = enr.map(e => e.id)
+  const { data: fbRows } = groupEnrollmentIds.length
+    ? await db.from("lms_feedback").select(FEEDBACK_ROW_COLUMNS).in("enrollment_id", groupEnrollmentIds)
+    : { data: [] as any[] }
   const fb = (fbRows ?? []) as any[]
   let feedback: GroupReport["feedback"] = null
   if (fb.length) {
-    const cats: [string, string][] = [
-      ["Overall", "rating_overall"], ["Content", "rating_content"], ["Instructor", "rating_instructor"],
-      ["Pace", "rating_pace"], ["Materials", "rating_materials"],
-    ]
-    const ratings = cats.map(([label, key]) => {
-      const vals = fb.map(f => Number(f[key])).filter(v => v >= 1 && v <= 5)
+    const parsed = fb.map(readFeedbackRatings)
+    const ratings = COURSE_RATING_LABELS.map(([key, label]) => {
+      const vals = parsed.map(p => p[key]).filter((v): v is number => v !== null && v >= 1 && v <= 5)
       const dist = [0, 0, 0, 0, 0]
       for (const v of vals) dist[Math.round(v) - 1]++
       return { label, avg: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0, dist }
     }).filter(r => r.dist.some(d => d > 0))
-    const comments = fb.map(f => String(f.comments ?? "").trim()).filter(Boolean).slice(0, 12)
-    feedback = { count: fb.length, ratings, comments }
+    const comments = fb.flatMap(f => {
+      const c = readFeedbackComments(f)
+      return [c.general, c.wentWell && `Went well: ${c.wentWell}`, c.improve && `Improve: ${c.improve}`].filter((x): x is string => !!x)
+    }).slice(0, 12)
+    const rec = { yes: 0, maybe: 0, no: 0, answered: 0 }
+    for (const f of fb) if (f.recommend === "yes" || f.recommend === "maybe" || f.recommend === "no") { rec[f.recommend as "yes"]++; rec.answered++ }
+    feedback = { count: fb.length, ratings, comments, ...(rec.answered ? { recommend: rec } : {}) }
   }
 
   const roster = rows.map(x => ({

@@ -21,7 +21,7 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
     description: p.description ?? "", start_date: p.start_date ?? "", end_date: p.end_date ?? "",
     capacity: p.capacity ? String(p.capacity) : "", after_end_access: p.after_end_access,
     certificate_enabled: p.certificate_enabled, certificate_auto_release: p.certificate_auto_release,
-    feedback_enabled: p.feedback_enabled, feedback_mandatory: p.feedback_mandatory, progress_enforcement: p.progress_enforcement,
+    feedback_enabled: p.feedback_enabled, feedback_mandatory: p.feedback_mandatory, feedback_anonymous: p.feedback_anonymous, progress_enforcement: p.progress_enforcement,
   })
   const [instructorIds, setInstructorIds] = useState<Set<string>>(new Set(detail.instructors.map(i => i.id)))
   const [saving, setSaving] = useState(false)
@@ -40,7 +40,7 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
       start_date: form.start_date || null, end_date: form.end_date || null,
       capacity: form.capacity ? Number(form.capacity) : null, after_end_access: form.after_end_access,
       certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release,
-      feedback_enabled: form.feedback_enabled, feedback_mandatory: form.feedback_mandatory, progress_enforcement: form.progress_enforcement,
+      feedback_enabled: form.feedback_enabled, feedback_mandatory: form.feedback_mandatory, feedback_anonymous: form.feedback_anonymous, progress_enforcement: form.progress_enforcement,
       ...(form.client === "individual" ? { is_individual: true } : { company_id: form.client }),
     })
     if (ok) {
@@ -116,8 +116,18 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
         <Toggle k="progress_enforcement" label="Sequential courses" hint="Students complete each course before the next one opens (in the order set on the Structure tab)" />
         <Toggle k="certificate_enabled" label="Issue course certificates" hint="When a student passes a course's final exam in this program" />
         {form.certificate_enabled && <Toggle k="certificate_auto_release" indent label="Release certificates automatically" hint="Unchecked = held until an admin releases them" />}
-        <Toggle k="feedback_enabled" label="Course feedback survey" hint="Asked when a student completes a course" />
-        {form.feedback_enabled && <Toggle k="feedback_mandatory" indent label="Feedback is mandatory" hint="Students must answer it" />}
+      </section>
+
+      <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Feedback</p>
+        <Toggle k="feedback_enabled" label="Collect feedback"
+          hint="Course feedback when a student completes a course, or uses all final-exam attempts without passing; plus a short program survey once they complete all their courses" />
+        {form.feedback_enabled && <>
+          <Toggle k="feedback_mandatory" indent label="Course feedback is mandatory"
+            hint="Certificates are still issued and released as normal, but can only be downloaded after the student answers" />
+          <Toggle k="feedback_anonymous" indent label="Anonymous"
+            hint="Student names are never shown with answers, in any report or export. Answers already given anonymously stay anonymous." />
+        </>}
       </section>
 
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">

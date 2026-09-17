@@ -101,6 +101,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         program_id: id, track_id: trackId, course_id: courseId, path_id: pathId, order_index: scopeCount,
       })
       if (error) return NextResponse.json({ error: "Could not add it" }, { status: 500 })
+      // FB-1: a new program starts from the first course's feedback settings;
+      // after that the program's own settings are used.
+      if (courseId && all.length === 0 && p.status === "draft") {
+        const { data: fbc } = await db.from("lms_courses").select("feedback_enabled, feedback_mandatory, feedback_anonymous").eq("id", courseId).maybeSingle()
+        if (fbc) await db.from("lms_programs").update({
+          feedback_enabled: !!(fbc as any).feedback_enabled,
+          feedback_mandatory: !!(fbc as any).feedback_enabled && !!(fbc as any).feedback_mandatory,
+          feedback_anonymous: !!(fbc as any).feedback_anonymous,
+        }).eq("id", id)
+      }
       await ensureProgramRules(id)
       affectsMembers = true
       break

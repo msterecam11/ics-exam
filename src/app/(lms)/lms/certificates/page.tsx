@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
+import { certificateNeedsFeedback } from "@/lib/lms-feedback"
 import { Award, Download, CalendarDays, BookOpen, Lock } from "lucide-react"
 
 function formatDate(iso: string) {
@@ -30,7 +31,7 @@ export default async function CertificatesPage() {
     .from("lms_certificates")
     // A course retaken in a later program has one certificate per enrollment;
     // the program name tells them apart.
-    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(id, name, is_individual))")
+    .select("id, course_id, enrollment_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(id, name, is_individual))")
     .eq("student_id", student.id)
     .is("revoked_at", null)
     .order("issued_at", { ascending: false })
@@ -44,6 +45,10 @@ export default async function CertificatesPage() {
     .order("enrolled_at", { ascending: false })
   const activeEnrollments = currentVisible(activeRows as any[])
 
+  // FB-3: mandatory feedback not given yet → certificate can't be downloaded.
+  const needsFeedback = new Set<string>()
+  for (const c of (certs ?? []) as any[]) if (c.enrollment_id && (await certificateNeedsFeedback(c.enrollment_id))) needsFeedback.add(c.id)
+
   const certificates = (certs ?? []).map((c: any) => ({
     id:                c.id,
     course_id:         c.course_id,
@@ -54,6 +59,7 @@ export default async function CertificatesPage() {
                          : (c.source_title ?? "Certificate"),
     issued_at:         c.issued_at,
     released:          !!c.released_at,
+    needsFeedback:     needsFeedback.has(c.id),
     program:           c.lms_enrollments?.lms_programs && !c.lms_enrollments.lms_programs.is_individual
                          ? { id: c.lms_enrollments.lms_programs.id as string, name: c.lms_enrollments.lms_programs.name as string }
                          : null,
@@ -177,11 +183,24 @@ export default async function CertificatesPage() {
                     </div>
                   </div>
 
+                  {cert.released && cert.needsFeedback && (
+                    <Link href={`/lms/courses/${cert.course_id}#feedback`}
+                      className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 hover:bg-amber-100 transition-colors">
+                      <Lock className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold text-amber-800">Complete the feedback to download</span>
+                        <span className="block text-[11px] text-amber-700 mt-0.5">A short feedback form for this course is required first.</span>
+                      </span>
+                    </Link>
+                  )}
+
                   {/* Download button */}
                   <div className="mt-auto">
                     <button
                       disabled
-                      title={cert.released
+                      title={cert.needsFeedback
+                        ? "Complete the course feedback first"
+                        : cert.released
                         ? "Certificate template is being prepared by our team"
                         : "This certificate has not been released yet"}
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-400 cursor-not-allowed select-none"

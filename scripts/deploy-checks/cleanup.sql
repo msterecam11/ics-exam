@@ -21,6 +21,7 @@ begin
   delete from lms_progress            where student_id = any(test_students);
   delete from lms_report_assessments  where student_id = any(test_students);
   delete from lms_feedback            where student_id = any(test_students);
+  delete from lms_program_feedback    where student_id = any(test_students);
   delete from lms_enrollments         where student_id = any(test_students);
   delete from lms_program_members     where program_id = any(test_programs);
   delete from lms_programs            where id = any(test_programs);

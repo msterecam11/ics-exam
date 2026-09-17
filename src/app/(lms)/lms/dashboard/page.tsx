@@ -5,13 +5,13 @@ import Link from "next/link"
 import {
   BookOpen, CheckCircle2, Clock, ArrowRight,
   MapPin, Video, TrendingUp, AlertTriangle,
-  PlayCircle, Calendar, Flame, Lock,
+  PlayCircle, Calendar, Flame, Lock, Star,
   GraduationCap, Award, Rocket, FolderKanban,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible, getCourseLocks } from "@/lib/lms-enrollment"
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
-import { getStudentPrograms, nextCourse, daysUntil, deadlineLevel } from "@/lib/lms-student-portal"
+import { getStudentPrograms, nextCourse, daysUntil, deadlineLevel, getFeedbackRequests } from "@/lib/lms-student-portal"
 import { DeadlineBadge, fmtDay, ProgressBar } from "@/components/lms/portal/PortalBits"
 
 export default async function StudentDashboard() {
@@ -179,6 +179,7 @@ export default async function StudentDashboard() {
     }).filter(w => w.level),
   ]
   const isLocked = (courseId: string) => locks.get(courseId)?.locked === true
+  const feedbackRequests = await getFeedbackRequests(student.id, enrollments)
 
   const daysSinceLogin = (lastLoginResult as any).data?.last_login
     ? Math.floor((Date.now() - new Date((lastLoginResult as any).data.last_login).getTime()) / 86_400_000)
@@ -269,6 +270,30 @@ export default async function StudentDashboard() {
           <ArrowRight className={cn("h-3.5 w-3.5 flex-shrink-0", w.level === "red" ? "text-red-400" : "text-amber-400")} />
         </Link>
       ))}
+
+      {/* ── Feedback waiting (FB-2 / FB-5) ─────────────────────────── */}
+      {feedbackRequests.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+            <Star className="h-4 w-4 text-amber-500" />
+            <h3 className="text-sm font-semibold text-slate-800">Your feedback is requested</h3>
+          </div>
+          {feedbackRequests.map(r => (
+            <Link key={r.kind === "course" ? `c-${r.course_id}` : `p-${r.program_id}`}
+              href={r.kind === "course" ? `/lms/courses/${r.course_id}#feedback` : `/lms/programs/${r.program_id}#program-survey`}
+              className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-800 truncate">{r.kind === "course" ? r.title : `${r.name}: program survey`}</p>
+                {r.kind === "course" && r.program && <p className="text-[11px] text-slate-400 truncate">{r.program}</p>}
+              </div>
+              {r.kind === "course" && r.mandatory && (
+                <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full shrink-0">Needed for certificate</span>
+              )}
+              <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* ── Stat cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

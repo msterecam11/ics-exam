@@ -632,8 +632,11 @@ export default function StudentCourseReportPages({ report, includeSecurity = fal
                   ))}
                 </div>
               )}
+              {feedback.recommend && (
+                <p className="text-xs text-slate-600">Would recommend this course: <span className="font-semibold capitalize">{feedback.recommend}</span></p>
+              )}
               {feedback.comment && (
-                <div className="border-l-2 border-[#1B4F8A]/30 pl-4"><MessageSquareText className="h-4 w-4 text-slate-300 mb-1" /><p className="text-sm text-slate-600 italic leading-relaxed">&ldquo;{feedback.comment}&rdquo;</p></div>
+                <div className="border-l-2 border-[#1B4F8A]/30 pl-4"><MessageSquareText className="h-4 w-4 text-slate-300 mb-1" /><p className="text-sm text-slate-600 italic leading-relaxed whitespace-pre-line">&ldquo;{feedback.comment}&rdquo;</p></div>
               )}
             </div>
             <PageFooter page={pageNo("feedback")} total={totalPages} />

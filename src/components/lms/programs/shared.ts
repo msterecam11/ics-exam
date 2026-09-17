@@ -15,7 +15,7 @@ export type ProgramDetail = {
     start_date: string | null; end_date: string | null; capacity: number | null
     after_end_access: "read_only" | "full" | "locked"
     certificate_enabled: boolean; certificate_auto_release: boolean
-    feedback_enabled: boolean; feedback_mandatory: boolean; progress_enforcement: boolean
+    feedback_enabled: boolean; feedback_mandatory: boolean; feedback_anonymous: boolean; progress_enforcement: boolean
     duplicated_from: string | null; created_at: string
     lms_companies: { id: string; name: string; code: string; logo_url: string | null } | null
   }

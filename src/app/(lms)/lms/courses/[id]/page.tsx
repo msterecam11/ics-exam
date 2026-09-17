@@ -9,13 +9,14 @@ import {
   CheckCircle2, PlayCircle, FileText, Image as ImageIcon,
   Link2, ListOrdered, HelpCircle, ClipboardList,
   Lock, Globe, Monitor, Layers, Clock, ChevronRight,
-  CalendarDays, MapPin, Video, FlaskConical, GraduationCap, History, Award,
+  CalendarDays, MapPin, Video, FlaskConical, GraduationCap, History, Award, Star,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
 import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enrollment"
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
+import { getFeedbackState } from "@/lib/lms-feedback"
 
 // ── Icons & labels ────────────────────────────────────────────
 const CONTENT_ICONS: Record<string, React.ElementType> = {
@@ -311,18 +312,11 @@ export default async function StudentCoursePage({
   // live per-module detail (including optional modules).
   const overallPct = Math.min(100, Math.round((enrollment as any).progress_pct ?? 0))
 
-  // Check if student already submitted feedback
-  let alreadySubmittedFeedback = false
-  if (enrollment.status === "completed" && course.feedback_enabled) {
-    const { data: existingFeedback } = await db
-      .from("lms_feedback")
-      .select("id")
-      .eq("enrollment_id", current.id)
-      .maybeSingle()
-    alreadySubmittedFeedback = !!existingFeedback
-  }
-
-  const showFeedbackForm = enrollment.status === "completed" && course.feedback_enabled && !alreadySubmittedFeedback
+  // Feedback (FB-1/2/3): program settings apply inside a program; asked once the
+  // course is completed or every exam attempt is used without passing.
+  const fb = await getFeedbackState(current)
+  const showFeedbackForm = fb.due
+  const alreadySubmittedFeedback = fb.settings.enabled && fb.submitted
 
   const DeliveryIcon  = DELIVERY_ICONS[course.delivery_mode] ?? Globe
 
@@ -353,6 +347,19 @@ export default async function StudentCoursePage({
             )}
           </div>
         </div>
+      )}
+
+      {/* Feedback asked (mandatory ones hold the certificate download) */}
+      {showFeedbackForm && (
+        <a href="#feedback" className={cn("rounded-xl px-4 py-3 flex items-center gap-3 text-sm border transition-colors",
+          fb.settings.mandatory ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-[#1B4F8A]/5 border-[#1B4F8A]/15 text-[#1B4F8A] hover:bg-[#1B4F8A]/10")}>
+          <Star className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            <span className="font-semibold">{fb.settings.mandatory ? "Feedback required" : "Tell us how the course went"}</span>
+            <span className="block text-xs opacity-80">{fb.settings.mandatory ? "Answer the short feedback form to download your certificate." : "A short feedback form is waiting at the bottom of this page."}</span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        </a>
       )}
 
       {/* Date access banners */}
@@ -841,9 +848,10 @@ export default async function StudentCoursePage({
 
         {/* ── Feedback form ────────────────────────────────── */}
         {showFeedbackForm && (
-          <CourseFeedbackForm courseId={courseId} isAnonymous={course.feedback_anonymous} />
+          <CourseFeedbackForm courseId={courseId} isAnonymous={fb.settings.anonymous} askInstructor={fb.askInstructor}
+            mandatory={fb.settings.mandatory} reason={fb.reason ?? "completed"} />
         )}
-        {enrollment.status === "completed" && course.feedback_enabled && alreadySubmittedFeedback && (
+        {alreadySubmittedFeedback && (
           <div className="bg-white rounded-xl border border-slate-200 px-6 py-5 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />

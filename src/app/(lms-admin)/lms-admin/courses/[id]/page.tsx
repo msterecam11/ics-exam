@@ -1206,7 +1206,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
           <input type="checkbox" checked={form.feedback_enabled} onChange={e => set("feedback_enabled", e.target.checked)} className="mt-0.5" />
           <div>
             <p className="text-sm font-medium">Enable feedback form</p>
-            <p className="text-xs text-slate-500 mt-0.5">Students see a feedback form after completing the course</p>
+            <p className="text-xs text-slate-500 mt-0.5">For students enrolled outside a program. Programs have their own feedback settings (a new program starts from these).</p>
           </div>
         </label>
         {form.feedback_enabled && (

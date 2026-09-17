@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { readFeedbackRatings, readFeedbackComments, COURSE_RATING_LABELS, FEEDBACK_ROW_COLUMNS } from "@/lib/lms-feedback"
 import { scoreObjectiveQuestion, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 import { enrollmentAttendance } from "@/lib/lms-sessions"
@@ -70,7 +71,7 @@ export interface CourseReport {
   // Cohort benchmark within the same course (null when alone / no comparators).
   cohort: { rank: number; total: number; classAvg: number; selfScore: number } | null
   // This student's own course feedback — only when the course collects it by name.
-  feedback: { ratings: { label: string; value: number | null }[]; comment: string | null } | null
+  feedback: { ratings: { label: string; value: number | null }[]; comment: string | null; recommend?: string | null } | null
 }
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
@@ -425,24 +426,24 @@ export async function buildCourseReport(
     }
   }
 
-  // ── This student's own feedback — only when the course collects it by name ──
+  // ── This student's own feedback — only when it was given by name (FB-6) ──
+  // The response's own anonymous flag decides (it records the setting the
+  // student answered under), and the program being anonymous now hides it too.
   let feedback: CourseReport["feedback"] = null
-  if ((courseRes.data as any).feedback_anonymous === false) {
+  {
     const { data: fb } = await db
       .from("lms_feedback")
-      .select("rating_overall, rating_content, rating_instructor, rating_pace, rating_materials, comments, is_anonymous")
+      .select(`${FEEDBACK_ROW_COLUMNS}, lms_programs(feedback_anonymous)`)
       .eq("enrollment_id", enrollmentId).maybeSingle()
-    // Respect a per-submission anonymous flag too — never attribute anonymous feedback.
-    if (fb && (fb as any).is_anonymous !== true) {
+    const programAnonymous = (fb as any)?.lms_programs?.feedback_anonymous === true
+    const courseAnonymous = !(fb as any)?.program_id && (courseRes.data as any).feedback_anonymous === true
+    if (fb && (fb as any).is_anonymous !== true && !programAnonymous && !courseAnonymous) {
+      const r = readFeedbackRatings(fb)
+      const c = readFeedbackComments(fb)
       feedback = {
-        ratings: [
-          { label: "Overall", value: num((fb as any).rating_overall) },
-          { label: "Content", value: num((fb as any).rating_content) },
-          { label: "Instructor", value: num((fb as any).rating_instructor) },
-          { label: "Pace", value: num((fb as any).rating_pace) },
-          { label: "Materials", value: num((fb as any).rating_materials) },
-        ].filter(r => r.value !== null),
-        comment: (fb as any).comments?.trim() || null,
+        ratings: COURSE_RATING_LABELS.map(([k, label]) => ({ label, value: r[k] })).filter(x => x.value !== null),
+        comment: [c.general, c.wentWell && `What went well: ${c.wentWell}`, c.improve && `What to improve: ${c.improve}`].filter(Boolean).join("\n\n") || null,
+        recommend: (fb as any).recommend ?? null,
       }
     }
   }

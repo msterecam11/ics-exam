@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils"
 import { getStudentPrograms, nextCourse } from "@/lib/lms-student-portal"
 import { sessionsForViewers, sessionToday, enrollmentAttendance } from "@/lib/lms-sessions"
 import { DeadlineBadge, fmtDay, ProgressBar } from "@/components/lms/portal/PortalBits"
+import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
+import { getProgramSurveyState } from "@/lib/lms-feedback"
 
 export default async function StudentProgramPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -50,6 +52,8 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
   const att = attendance.reduce((s, a) => a ? { total: s.total + a.sessionTotal - a.excusedCount, present: s.present + a.presentCount } : s, { total: 0, present: 0 })
   const attendancePct = att.total > 0 ? Math.round((att.present / att.total) * 100) : null
   const titleByCourse = new Map(p.courses.map(c => [c.course_id, c.title]))
+  // End-of-program survey (FB-5) — once every course is completed.
+  const survey = await getProgramSurveyState(p.member_id)
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -129,6 +133,15 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
           <p className="font-semibold">You&apos;ve completed every course in this program.</p>
         </div>
       ) : null}
+
+      {survey?.due && (
+        <CourseFeedbackForm kind="program" programId={p.program.id} isAnonymous={survey.anonymous} askInstructor={survey.askInstructor} />
+      )}
+      {survey?.enabled && survey.submitted && (
+        <div className="bg-white rounded-xl border border-slate-200 px-5 py-3.5 flex items-center gap-3 text-sm text-slate-700">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> Thank you, your program survey has been submitted.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Courses in order */}

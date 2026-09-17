@@ -499,6 +499,14 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                 })}
               </div>
 
+              {feedback.recommend && (
+                <p className="text-xs text-slate-600 avoid-break">
+                  Would recommend: <span className="font-semibold text-emerald-700">{Math.round((feedback.recommend.yes / feedback.recommend.answered) * 100)}% yes</span>
+                  {" · "}{feedback.recommend.maybe} maybe · {feedback.recommend.no} no
+                  <span className="text-slate-400"> ({feedback.recommend.answered} answered)</span>
+                </p>
+              )}
+
               {feedback.comments.length > 0 && (
                 <div className="avoid-break">
                   <p className={`${SECTION} mb-2`}>What students said</p>

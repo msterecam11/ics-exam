@@ -40,9 +40,9 @@ export default async function LmsReportsPage() {
               <MessageSquare className="h-6 w-6 text-amber-500" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-slate-800">Course Feedback</p>
+              <p className="font-semibold text-slate-800">Feedback</p>
               <p className="text-sm text-muted-foreground mt-1">
-                View student feedback and ratings for each course
+                Course feedback and program surveys, by program and course
               </p>
             </div>
             <div className="flex items-center text-xs font-medium text-amber-600 gap-1">
