@@ -30,9 +30,26 @@ interface Student {
   email:      string
   job_title:  string | null
   company:    string | null
+  company_id: string | null
+  employee_number: string | null
+  phone:      string | null
+  department: string | null
+  lms_companies: { id: string; name: string; code: string; status: string } | null
   language:   string
   last_login: string | null
   created_at: string
+}
+
+interface CompanyOption { id: string; name: string; code: string; status: string }
+
+// Active companies for pickers (inactive ones can't take new students).
+function useCompanies(open: boolean) {
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/lms/companies?status=active").then(r => r.ok ? r.json() : []).then(d => setCompanies(Array.isArray(d) ? d : []))
+  }, [open])
+  return companies
 }
 
 interface Pagination {
@@ -62,7 +79,11 @@ function StudentModal({
   const [name,       setName]       = useState(student?.name       ?? "")
   const [email,      setEmail]      = useState(student?.email      ?? "")
   const [jobTitle,   setJobTitle]   = useState(student?.job_title  ?? "")
-  const [company,    setCompany]    = useState(student?.company    ?? "")
+  const [companyId,  setCompanyId]  = useState(student?.company_id ?? "")
+  const [department, setDepartment] = useState(student?.department ?? "")
+  const [employeeNo, setEmployeeNo] = useState(student?.employee_number ?? "")
+  const [phone,      setPhone]      = useState(student?.phone ?? "")
+  const companies = useCompanies(open)
   const [password,   setPassword]   = useState("")
   const [showPw,     setShowPw]     = useState(false)
   const [sendEmail,  setSendEmail]  = useState(true)
@@ -73,7 +94,10 @@ function StudentModal({
     setName(student?.name      ?? "")
     setEmail(student?.email    ?? "")
     setJobTitle(student?.job_title ?? "")
-    setCompany(student?.company    ?? "")
+    setCompanyId(student?.company_id ?? "")
+    setDepartment(student?.department ?? "")
+    setEmployeeNo(student?.employee_number ?? "")
+    setPhone(student?.phone ?? "")
     setPassword("")
   }, [student])
 
@@ -81,7 +105,10 @@ function StudentModal({
     e.preventDefault()
     setSaving(true)
 
-    const body: any = { name, email, job_title: jobTitle || null, company: company || null }
+    const body: any = {
+      name, email, job_title: jobTitle || null, department: department || null,
+      company_id: companyId || null, employee_number: employeeNo || null, phone: phone || null,
+    }
     if (!isEdit) { body.password = password; body.sendEmail = sendEmail }
     else if (password) { body.password = password }
 
@@ -122,8 +149,34 @@ function StudentModal({
               <Input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="Pilot" />
             </div>
             <div className="space-y-1">
+              <Label>Department</Label>
+              <Input value={department} onChange={e => setDepartment(e.target.value)} placeholder="Operations" />
+            </div>
+            <div className="col-span-2 space-y-1">
               <Label>Company</Label>
-              <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Airline Co." />
+              <select
+                value={companyId}
+                onChange={e => setCompanyId(e.target.value)}
+                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
+              >
+                <option value="">Individual (no company)</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+                {/* Keep a currently linked company selectable even if it is now inactive */}
+                {student?.lms_companies && !companies.some(c => c.id === student.company_id) && (
+                  <option value={student.lms_companies.id}>{student.lms_companies.name} (inactive)</option>
+                )}
+              </select>
+              {isEdit && !student?.company_id && student?.company && (
+                <p className="text-xs text-amber-600">Currently typed as &quot;{student.company}&quot; — not linked to a company yet.</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label>Employee No.</Label>
+              <Input value={employeeNo} onChange={e => setEmployeeNo(e.target.value)} placeholder="Optional" />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Optional" />
             </div>
           </div>
 
@@ -188,6 +241,13 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
   const [courses,    setCourses]    = useState<{ id: string; title: string }[]>([])
   const [uploading,  setUploading]  = useState(false)
   const [sendEmails, setSendEmails] = useState(true)
+  const [assignCompanyId, setAssignCompanyId] = useState("")
+  const [preview,    setPreview]    = useState<{
+    rows: number
+    companies: { key: string; value: string; rows: number; match: CompanyOption | null }[]
+  } | null>(null)
+  const [actions,    setActions]    = useState<Record<string, "create" | "none" | "skip" | "">>({})
+  const companies = useCompanies(open)
   const [result,     setResult]     = useState<{
     total: number; success: number; errors: number; skipped: number;
     results: { row: number; email: string; status: string; error?: string }[]
@@ -198,31 +258,55 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     fetch("/api/lms/courses").then(r => r.json()).then(d => setCourses(d.courses ?? []))
   }, [open])
 
+  function formData(mode?: "preview") {
+    const fd = new FormData()
+    fd.append("file", file!)
+    if (courseId) fd.append("enroll_course_id", courseId)
+    fd.append("send_emails", sendEmails ? "true" : "false")
+    if (assignCompanyId) fd.append("company_id", assignCompanyId)
+    if (mode) fd.append("mode", mode)
+    else fd.append("company_actions", JSON.stringify(Object.fromEntries(Object.entries(actions).filter(([, v]) => v))))
+    return fd
+  }
+
+  // Step 1: check the file — how its company values match existing companies.
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
     if (!file) { toast.error("Select a CSV file"); return }
     setUploading(true)
-    const fd = new FormData()
-    fd.append("file", file)
-    if (courseId) fd.append("enroll_course_id", courseId)
-    fd.append("send_emails", sendEmails ? "true" : "false")
-    const res  = await fetch("/api/lms/import", { method: "POST", body: fd })
-    const data = await res.json()
+    const res  = await fetch("/api/lms/import", { method: "POST", body: formData("preview") })
+    const data = await res.json().catch(() => ({}))
+    setUploading(false)
+    if (!res.ok) { toast.error(data.error ?? "Could not read the file"); return }
+    setPreview(data)
+    setActions({})
+  }
+
+  const unknownCompanies = (preview?.companies ?? []).filter(c => !c.match)
+  const unresolved = unknownCompanies.filter(c => !actions[c.key]).length
+
+  // Step 2: import.
+  async function runImport() {
+    if (!file) return
+    if (unresolved) { toast.error("Choose what to do with each unknown company"); return }
+    setUploading(true)
+    const res  = await fetch("/api/lms/import", { method: "POST", body: formData() })
+    const data = await res.json().catch(() => ({}))
     setUploading(false)
     if (!res.ok) { toast.error(data.error ?? "Import failed"); return }
     setResult(data)
     if (data.success > 0) onDone()
   }
 
-  function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true) }
+  function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true); setPreview(null); setActions({}); setAssignCompanyId("") }
 
   function downloadTemplate() {
     // Header matches the columns the import parser understands. Two sample
     // rows show the format; password left blank = auto-generated + emailed.
     const csv = [
-      "name,email,password,job_title,company,department,language",
-      "John Smith,john.smith@example.com,,Ramp Agent,ICS Aviation,Ground Operations,en",
-      "Sara Ali,sara.ali@example.com,,Air Traffic Controller,ICS Aviation,ATC,en",
+      "name,email,password,job_title,company,department,employee_number,phone,language",
+      "John Smith,john.smith@example.com,,Ramp Agent,RAC,Ground Operations,E1001,,en",
+      "Sara Ali,sara.ali@example.com,,Air Traffic Controller,,ATC,,,en",
     ].join("\r\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const url  = URL.createObjectURL(blob)
@@ -242,7 +326,52 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
           <DialogTitle>Import Students from CSV</DialogTitle>
         </DialogHeader>
 
-        {!result ? (
+        {!result && preview ? (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-slate-600">
+              <span className="font-semibold">{preview.rows}</span> row{preview.rows !== 1 ? "s" : ""} found.
+              {assignCompanyId && <> All students will be added to <span className="font-semibold">{companies.find(c => c.id === assignCompanyId)?.name}</span>.</>}
+            </p>
+            {!assignCompanyId && preview.companies.length > 0 && (
+              <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                {preview.companies.map(c => (
+                  <div key={c.key} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800 truncate">&quot;{c.value}&quot; <span className="text-xs text-slate-400">· {c.rows} row{c.rows !== 1 ? "s" : ""}</span></p>
+                      {c.match
+                        ? <p className={c.match.status === "active" ? "text-xs text-emerald-600" : "text-xs text-red-500"}>
+                            {c.match.status === "active" ? `Matches ${c.match.name} (${c.match.code})` : `${c.match.name} is inactive — these rows will fail`}
+                          </p>
+                        : <p className="text-xs text-amber-600">No company with this name or code</p>}
+                    </div>
+                    {!c.match && (
+                      <select
+                        value={actions[c.key] ?? ""}
+                        onChange={e => setActions(a => ({ ...a, [c.key]: e.target.value as any }))}
+                        className="h-8 rounded-md border border-slate-200 px-2 text-xs bg-white shrink-0"
+                      >
+                        <option value="">Choose…</option>
+                        <option value="create">Create company</option>
+                        <option value="none">Import as individuals</option>
+                        <option value="skip">Skip these rows</option>
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!assignCompanyId && preview.companies.length === 0 && (
+              <p className="text-xs text-slate-400">No company values in this file — students will be imported as individuals.</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPreview(null)}>Back</Button>
+              <Button onClick={runImport} disabled={uploading || unresolved > 0} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {uploading ? "Importing…" : `Import ${preview.rows} row${preview.rows !== 1 ? "s" : ""}`}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : !result ? (
           <form onSubmit={handleUpload} className="space-y-4 py-2">
             <div className="flex items-center justify-between rounded-lg bg-[#1B4F8A]/5 border border-[#1B4F8A]/15 px-3 py-2.5">
               <span className="text-xs text-slate-600">Not sure of the format? Start from our template.</span>
@@ -265,10 +394,23 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
                 <code className="bg-slate-100 px-1 rounded">email</code>.
                 Optional: <code className="bg-slate-100 px-1 rounded">password</code>,{" "}
                 <code className="bg-slate-100 px-1 rounded">job_title</code>,{" "}
-                <code className="bg-slate-100 px-1 rounded">company</code>,{" "}
-                <code className="bg-slate-100 px-1 rounded">department</code>.
+                <code className="bg-slate-100 px-1 rounded">company</code> (code or name),{" "}
+                <code className="bg-slate-100 px-1 rounded">department</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">employee_number</code>,{" "}
+                <code className="bg-slate-100 px-1 rounded">phone</code>.
                 Passwords auto-generated if not provided.
               </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Add all to company (optional)</Label>
+              <select
+                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
+                value={assignCompanyId}
+                onChange={e => setAssignCompanyId(e.target.value)}
+              >
+                <option value="">Use the file&apos;s company column</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+              </select>
             </div>
             <div className="space-y-1">
               <Label>Auto-enroll in Course (optional)</Label>
@@ -294,7 +436,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
               <Button type="button" variant="outline" onClick={() => { onClose(); reset() }}>Cancel</Button>
               <Button type="submit" disabled={uploading} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                {uploading ? "Importing…" : "Import"}
+                {uploading ? "Checking…" : "Check file"}
               </Button>
             </DialogFooter>
           </form>
@@ -313,9 +455,9 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
                 </div>
               ))}
             </div>
-            {result.errors > 0 && (
+            {(result.errors > 0 || result.results.some(r => r.status === "skipped")) && (
               <div className="max-h-40 overflow-y-auto space-y-1">
-                {result.results.filter(r => r.status === "error").map(r => (
+                {result.results.filter(r => r.status === "error" || r.status === "skipped").map(r => (
                   <p key={r.row} className="text-xs text-red-600">
                     Row {r.row} ({r.email}): {r.error}
                   </p>
@@ -346,12 +488,16 @@ export default function StudentsPage() {
   const [editTarget, setEditTarget] = useState<Student | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [csvOpen,    setCsvOpen]    = useState(false)
+  const [typeFilter, setTypeFilter] = useState("")       // "" | "company" | "individual" | <company id>
+  const filterCompanies = useCompanies(true)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function load(page = 1, q = searchQ) {
+  async function load(page = 1, q = searchQ, filter = typeFilter) {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page), limit: "50" })
     if (q) params.set("q", q)
+    if (filter === "company" || filter === "individual") params.set("type", filter)
+    else if (filter) params.set("company_id", filter)
     const res  = await fetch(`/api/lms/students?${params}`)
     const data = await res.json()
     setStudents(data.students ?? [])
@@ -406,15 +552,31 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder="Search by name, email or company…"
-          value={search}
-          onChange={e => handleSearchChange(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search + type/company filter */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search by name, email or company…"
+            value={search}
+            onChange={e => handleSearchChange(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <select
+          value={typeFilter}
+          onChange={e => { setTypeFilter(e.target.value); load(1, searchQ, e.target.value) }}
+          className="h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
+        >
+          <option value="">All students</option>
+          <option value="company">Company participants</option>
+          <option value="individual">Individuals</option>
+          {filterCompanies.length > 0 && (
+            <optgroup label="Company">
+              {filterCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </optgroup>
+          )}
+        </select>
       </div>
 
       {/* Table */}
@@ -460,10 +622,17 @@ export default function StudentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <div className="flex items-center gap-1.5 text-slate-600">
-                        {s.company && <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                        <span>{s.company ?? <span className="text-slate-300">—</span>}</span>
-                      </div>
+                      {s.lms_companies ? (
+                        <Link href={`/lms-admin/companies/${s.lms_companies.id}`} className="flex items-center gap-1.5 text-slate-700 hover:text-[#1B4F8A]">
+                          <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          <span>{s.lms_companies.name}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-xs text-slate-500">Individual</Badge>
+                          {s.company && <span className="text-xs text-amber-600" title="Typed company, not linked to a company record">&quot;{s.company}&quot; · not linked</span>}
+                        </div>
+                      )}
                       {s.job_title && <p className="text-xs text-slate-400">{s.job_title}</p>}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">

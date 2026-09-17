@@ -37,7 +37,6 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_title: data.job_title,
-          company:   data.company,
           language:  data.language,
         }),
       }).catch(() => null)
@@ -166,8 +165,8 @@ export default function ProfilePage() {
           <Field
             label="Company"
             icon={Building2}
-            value={data.company ?? ""}
-            onChange={v => setData((d: any) => ({ ...d, company: v }))}
+            value={data.company ?? "Individual"}
+            disabled   // set by your training administrator
           />
           <Field
             label="Language"

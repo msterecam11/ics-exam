@@ -26,7 +26,9 @@ export async function PATCH(req: Request) {
   // certificates, so students cannot change it themselves; an admin corrects it.
   // Any name sent is ignored rather than rejected, so an older page that still
   // posts it keeps saving the other fields.
-  const { job_title, company, language } = await req.json().catch(() => ({}))
+  // company is set by an admin (it links the student to a client and decides
+  // which reports they appear in), so it is ignored here like name.
+  const { job_title, language } = await req.json().catch(() => ({}))
 
   // No type or length checks existed: a non-string name threw inside .trim()
   // and returned an unhandled 500, and any length was stored. Strings only,
@@ -37,15 +39,14 @@ export async function PATCH(req: Request) {
     : typeof v === "string" ? (v.trim().slice(0, max) || null)
     : "INVALID"
 
-  const titleV = str(job_title, 120), companyV = str(company, 120)
-  if ([titleV, companyV].includes("INVALID") || (language !== undefined && typeof language !== "string"))
+  const titleV = str(job_title, 120)
+  if ([titleV].includes("INVALID") || (language !== undefined && typeof language !== "string"))
     return NextResponse.json({ error: "Invalid profile fields" }, { status: 400 })
 
   const { error } = await db
     .from("lms_students")
     .update({
       job_title: titleV,
-      company:   companyV,
       language,
     })
     .eq("id", student.id)

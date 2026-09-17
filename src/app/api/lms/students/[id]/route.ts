@@ -17,7 +17,7 @@ export async function GET(
 
   const [{ data: student, error: sErr }, { data: enrollments }, { data: paths }] = await Promise.all([
     db.from("lms_students")
-      .select("id, name, email, job_title, company, department, language, last_login, created_at")
+      .select("id, name, email, job_title, company, company_id, employee_number, phone, department, language, last_login, created_at, lms_companies(id, name, code, status)")
       .eq("id", id)
       .single(),
     db.from("lms_enrollments")

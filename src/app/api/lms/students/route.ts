@@ -21,6 +21,27 @@ function isMgr(role?: string) {
 // email never needs them for a substring search, so they are replaced with
 // spaces instead of escaped. "." stays so email fragments like "gmail.com" still
 // match — without a "," or "(" it cannot start a new condition.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const STUDENT_COLUMNS = "id, name, email, job_title, company, company_id, employee_number, phone, department, language, created_at, lms_companies(id, name, code, status)"
+
+// Resolves the company a student is being linked to. `undefined` = not being
+// changed; `null` = individual (no company). Only an ACTIVE company can be
+// newly assigned. The free-text `company` field is no longer written here — a
+// database trigger keeps it equal to the linked company's name.
+async function resolveCompanyId(v: unknown): Promise<{ ok: true; id: string | null | undefined } | { ok: false; error: string }> {
+  if (v === undefined) return { ok: true, id: undefined }
+  if (v === null || v === "") return { ok: true, id: null }
+  if (typeof v !== "string" || !UUID_RE.test(v)) return { ok: false, error: "Invalid company" }
+  const { data } = await db.from("lms_companies").select("id, status").eq("id", v).maybeSingle()
+  if (!data) return { ok: false, error: "Company not found" }
+  if ((data as any).status !== "active") return { ok: false, error: "This company is inactive — reactivate it before adding students" }
+  return { ok: true, id: v }
+}
+
+const optText = (v: unknown, max: number) =>
+  v === undefined ? undefined : (typeof v === "string" ? (v.trim().slice(0, max) || null) : null)
+
 function escapeFilterValue(v: string) {
   return v.replace(/[,:()"\\*%]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100)
 }
@@ -32,16 +53,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
-  const search = searchParams.get("q") ?? ""
-  const page   = parseInt(searchParams.get("page") ?? "1")
-  const limit  = parseInt(searchParams.get("limit") ?? "50")
-  const offset = (page - 1) * limit
+  const search    = searchParams.get("q") ?? ""
+  const page      = Math.max(1, parseInt(searchParams.get("page") ?? "1") || 1)
+  const limit     = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") ?? "50") || 50))
+  const offset    = (page - 1) * limit
+  const companyId = searchParams.get("company_id")
+  const type      = searchParams.get("type")   // "company" | "individual"
 
   let query = db
     .from("lms_students")
-    .select("id, name, email, job_title, company, language, last_login, created_at", { count: "exact" })
+    .select(`id, name, email, job_title, company, company_id, employee_number, phone, department, language, last_login, created_at,
+             lms_companies(id, name, code, status)`, { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
+
+  if (companyId && UUID_RE.test(companyId)) query = query.eq("company_id", companyId)
+  if (type === "company")    query = query.not("company_id", "is", null)
+  if (type === "individual") query = query.is("company_id", null)
 
   if (search) {
     const s = escapeFilterValue(search)
@@ -65,7 +93,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { name, email, password, job_title, company, department, language, sendEmail } = body
+  const { name, email, password, job_title, department, language, sendEmail } = body
 
   if (!name?.trim())  return NextResponse.json({ error: "Name required" },  { status: 400 })
   if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 })
@@ -76,6 +104,9 @@ export async function POST(req: Request) {
 
   // Cost 10 like every other student password — see PATCH below for why a
   // different cost reopens the login timing leak.
+  const companyRes = await resolveCompanyId(body.company_id)
+  if (!companyRes.ok) return NextResponse.json({ error: companyRes.error }, { status: 400 })
+
   const password_hash = await bcrypt.hash(password, 10)
 
   const { data, error } = await db
@@ -85,11 +116,13 @@ export async function POST(req: Request) {
       email:      email.trim().toLowerCase(),
       password_hash,
       job_title:  job_title?.trim()  || null,
-      company:    company?.trim()    || null,
+      company_id: companyRes.id ?? null,
       department: department?.trim() || null,
+      employee_number: optText(body.employee_number, 50) ?? null,
+      phone:           optText(body.phone, 50) ?? null,
       language:   language ?? "en",
     })
-    .select("id, name, email, job_title, company, language, created_at")
+    .select(STUDENT_COLUMNS)
     .single()
 
   if (error) {
@@ -124,7 +157,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const { id, name, email, password, job_title, company, department, language } = body
+  const { id, name, email, password, job_title, department, language } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
   const updates: Record<string, unknown> = {}
@@ -135,7 +168,12 @@ export async function PATCH(req: Request) {
     updates.email = email.trim().toLowerCase()
   }
   if (job_title !== undefined) updates.job_title  = job_title?.trim() || null
-  if (company   !== undefined) updates.company    = company?.trim()   || null
+  const companyRes = await resolveCompanyId(body.company_id)
+  if (!companyRes.ok) return NextResponse.json({ error: companyRes.error }, { status: 400 })
+  if (companyRes.id !== undefined) updates.company_id = companyRes.id
+  const empNo = optText(body.employee_number, 50), phone = optText(body.phone, 50)
+  if (empNo !== undefined) updates.employee_number = empNo
+  if (phone !== undefined) updates.phone = phone
   if (department !== undefined) updates.department = department?.trim() || null
   if (language)           updates.language   = language
   if (password) {
@@ -157,7 +195,7 @@ export async function PATCH(req: Request) {
     .from("lms_students")
     .update(updates)
     .eq("id", id)
-    .select("id, name, email, job_title, company, language, created_at")
+    .select(STUDENT_COLUMNS)
     .single()
 
   if (error) {
