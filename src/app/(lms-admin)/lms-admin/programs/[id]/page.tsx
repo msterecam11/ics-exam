@@ -14,6 +14,7 @@ import { type ProgramDetail, PROGRAM_STATUS_STYLE, fmtDate, postJson } from "@/c
 import ProgramStructureTab from "@/components/lms/programs/ProgramStructureTab"
 import ProgramStudentsTab from "@/components/lms/programs/ProgramStudentsTab"
 import ProgramSettingsTab from "@/components/lms/programs/ProgramSettingsTab"
+import ProgramSessionsTab from "@/components/lms/programs/ProgramSessionsTab"
 
 const TABS = [
   { key: "overview",  label: "Overview",  icon: LayoutDashboard },
@@ -178,13 +179,7 @@ export default function ProgramPage({ params, searchParams }: {
       {tab === "structure" && <ProgramStructureTab detail={detail} isAdmin={isAdmin} onChanged={load} />}
       {tab === "students" && <ProgramStudentsTab detail={detail} isAdmin={isAdmin} onChanged={load} />}
 
-      {tab === "sessions" && (
-        <div className="py-16 text-center bg-white rounded-xl border border-dashed border-slate-200">
-          <CalendarDays className="h-10 w-10 text-slate-200 mx-auto mb-2" />
-          <p className="text-slate-600 font-medium text-sm">Program sessions &amp; attendance come in the next step</p>
-          <p className="text-xs text-slate-400 mt-1">Classes will belong to the program (optionally one track), so groups never share each other&apos;s attendance.</p>
-        </div>
-      )}
+      {tab === "sessions" && <ProgramSessionsTab detail={detail} isAdmin={isAdmin} />}
 
       {tab === "progress" && (
         current.length === 0 ? <p className="text-sm text-slate-400 py-12 text-center">No students yet.</p> : (

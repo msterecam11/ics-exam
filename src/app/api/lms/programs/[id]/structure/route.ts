@@ -62,6 +62,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (!trackId) return NextResponse.json({ error: "Track not found" }, { status: 404 })
       const { count } = await db.from("lms_program_members").select("*", { count: "exact", head: true }).eq("track_id", trackId)
       if ((count ?? 0) > 0) return NextResponse.json({ error: "Move this track's students to another track first" }, { status: 409 })
+      const { count: sessions } = await db.from("lms_sessions").select("*", { count: "exact", head: true }).eq("track_id", trackId)
+      if ((sessions ?? 0) > 0) return NextResponse.json({ error: "This track has class sessions. Delete them or move them to another track first" }, { status: 409 })
       const { error } = await db.from("lms_program_tracks").delete().eq("id", trackId)
       if (error) return NextResponse.json({ error: "Could not delete track" }, { status: 500 })
       break
@@ -106,6 +108,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     case "remove_item": {
       const itemId = typeof body.item_id === "string" && UUID_RE.test(body.item_id) ? body.item_id : null
       if (!itemId) return NextResponse.json({ error: "item_id required" }, { status: 400 })
+
+      // Class sessions scheduled for a course this item delivers would be left
+      // with nobody on their roster. Refuse while any exist for a course that
+      // would no longer be delivered to the session's track (or to anyone).
+      const { data: progSessions } = await db.from("lms_sessions").select("course_id, track_id").eq("program_id", id)
+      if ((progSessions ?? []).length) {
+        const { data: others } = await db.from("lms_program_items").select("id, track_id, course_id, path_id").eq("program_id", id).neq("id", itemId)
+        const pathIds = [...new Set(((others ?? []) as any[]).filter(o => o.path_id).map(o => o.path_id))]
+        const { data: pcs } = pathIds.length
+          ? await db.from("lms_learning_path_courses").select("path_id, course_id").in("path_id", pathIds)
+          : { data: [] }
+        const coursesOfItem = (o: any) => o.course_id ? [o.course_id] : ((pcs ?? []) as any[]).filter(pc => pc.path_id === o.path_id).map(pc => pc.course_id)
+        const remaining = (trackId: string | null) => new Set(((others ?? []) as any[])
+          .filter(o => o.track_id === null || (trackId !== null && o.track_id === trackId))
+          .flatMap(coursesOfItem))
+        const { data: allTracks } = await db.from("lms_program_tracks").select("id").eq("program_id", id)
+        const orphaned = ((progSessions ?? []) as any[]).some(s => s.track_id
+          ? !remaining(s.track_id).has(s.course_id)
+          : ![null, ...((allTracks ?? []) as any[]).map(t => t.id)].some(t => remaining(t).has(s.course_id)))
+        if (orphaned)
+          return NextResponse.json({ error: "This program has class sessions for that course. Delete those sessions first" }, { status: 409 })
+      }
       const { error, count } = await db.from("lms_program_items").delete({ count: "exact" }).eq("id", itemId).eq("program_id", id)
       if (error) return NextResponse.json({ error: "Could not remove it" }, { status: 500 })
       if (!count) return NextResponse.json({ error: "Not found" }, { status: 404 })

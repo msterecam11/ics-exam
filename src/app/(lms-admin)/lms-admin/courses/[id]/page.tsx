@@ -1302,344 +1302,71 @@ function ModuleContentEditor({ mod, courseId }: { mod: Module; courseId: string 
   }
 }
 
-// ── Session Panel — schedule sessions from within the module ───
-function SessionPanel({ moduleId, courseId, moduleName }: { moduleId: string; courseId: string; moduleName: string }) {
+// ── Session Panel — sessions linked to this module (read-only) ──
+// Courses are templates: class sessions are scheduled per program (Program
+// Manager → program → Sessions) so each group has its own dates and
+// attendance. This lists the sessions linked to this module across programs.
+function SessionPanel({ moduleId, moduleName }: { moduleId: string; courseId: string; moduleName: string }) {
   interface LiveSession {
     id: string; title: string; session_date: string; start_time: string
-    duration_minutes: number; location: string | null; meeting_link: string | null
-    closed_at: string | null; is_open: boolean; attendance_count: number
-    notes: string | null; agenda: string | null
-    topics_covered: string | null; instructor_notes: string | null
+    duration_minutes: number; location: string | null
+    is_open: boolean; attendance_count: number
+    program_id: string | null; program_name: string | null; track_name: string | null
   }
 
-  const [sessions,   setSessions]   = useState<LiveSession[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-  const [saving,     setSaving]     = useState(false)
-  const [toggling,   setToggling]   = useState<string | null>(null)
-  const [form, setForm] = useState({
-    title: "", session_date: "", start_time: "09:00",
-    duration_minutes: 60, location: "", meeting_link: "",
-    late_threshold: 15, notes: "", agenda: "",
-  })
-  const [closeModal, setCloseModal] = useState<{ id: string; title: string } | null>(null)
-  const [closeForm,  setCloseForm]  = useState({ topics_covered: "", instructor_notes: "" })
+  const [sessions, setSessions] = useState<LiveSession[]>([])
+  const [loading,  setLoading]  = useState(true)
 
-  async function loadSessions() {
+  useEffect(() => {
     setLoading(true)
-    const res = await fetch(`/api/lms/sessions?module_id=${moduleId}`)
-    if (res.ok) setSessions(await res.json())
-    setLoading(false)
-  }
-
-  useEffect(() => { loadSessions() }, [moduleId])
-
-  async function createSession(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.session_date) { toast.error("Date required"); return }
-    setSaving(true)
-    const res = await fetch("/api/lms/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, module_id: moduleId, course_id: courseId }),
-    })
-    const data = await res.json()
-    setSaving(false)
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success("Session scheduled")
-    setShowCreate(false)
-    setForm({ title: "", session_date: "", start_time: "09:00", duration_minutes: 60, location: "", meeting_link: "", late_threshold: 15, notes: "", agenda: "" })
-    loadSessions()
-  }
-
-  async function toggleSession(id: string, isOpen: boolean, session?: LiveSession) {
-    if (isOpen) {
-      // Show wrap-up modal before closing
-      setCloseForm({ topics_covered: session?.topics_covered ?? "", instructor_notes: session?.instructor_notes ?? "" })
-      setCloseModal({ id, title: session?.title ?? "Session" })
-      return
-    }
-    setToggling(id)
-    const res = await fetch("/api/lms/sessions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, action: "open" }),
-    })
-    setToggling(null)
-    if (!res.ok) { toast.error("Failed"); return }
-    toast.success("Session opened")
-    loadSessions()
-  }
-
-  async function confirmCloseSession(skipWrapUp = false) {
-    if (!closeModal) return
-    setToggling(closeModal.id)
-    const payload: Record<string, unknown> = { id: closeModal.id, action: "close" }
-    if (!skipWrapUp) {
-      payload.topics_covered   = closeForm.topics_covered   || null
-      payload.instructor_notes = closeForm.instructor_notes || null
-    }
-    const res = await fetch("/api/lms/sessions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    setToggling(null)
-    setCloseModal(null)
-    if (!res.ok) { toast.error("Failed to close session"); return }
-    toast.success("Session closed")
-    loadSessions()
-  }
-
-  async function deleteSession(id: string, title: string) {
-    if (!confirm(`Delete "${title}"?`)) return
-    const res  = await fetch(`/api/lms/sessions?id=${id}`, { method: "DELETE" })
-    const data = await res.json()
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success("Session deleted")
-    loadSessions()
-  }
+    fetch(`/api/lms/sessions?module_id=${moduleId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setSessions(Array.isArray(d) ? d : []))
+      .finally(() => setLoading(false))
+  }, [moduleId])
 
   return (
     <div className="max-w-3xl mx-auto pb-20">
-      <div className="mb-8 pb-6 border-b border-slate-100 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold text-[#1B4F8A] uppercase tracking-wider mb-1.5 flex items-center gap-2">
-            <span>📅</span> Live Sessions
-          </p>
-          <h2 className="text-2xl font-bold text-slate-900 leading-tight">{moduleName}</h2>
-          <p className="text-slate-500 mt-1.5 text-sm">Schedule sessions for this module</p>
-        </div>
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="shrink-0 bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2"
-        >
-          <Plus className="h-4 w-4" /> Schedule Session
-        </Button>
+      <div className="mb-6 pb-6 border-b border-slate-100">
+        <p className="text-xs font-bold text-[#1B4F8A] uppercase tracking-wider mb-1.5 flex items-center gap-2">
+          <span>📅</span> Live Sessions
+        </p>
+        <h2 className="text-2xl font-bold text-slate-900 leading-tight">{moduleName}</h2>
+        <p className="text-slate-500 mt-1.5 text-sm">
+          Sessions are scheduled per program, so each group has its own dates and attendance:
+          open <Link href="/lms-admin/programs" className="text-[#1B4F8A] font-medium hover:underline">Program Manager</Link> → a program → <strong>Sessions</strong>, and link the session to this module.
+        </p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-        </div>
+        <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
       ) : sessions.length === 0 ? (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-16 text-center">
-          <span className="text-5xl block mb-4">📅</span>
-          <p className="text-lg font-semibold text-slate-700">No sessions scheduled</p>
-          <p className="text-sm text-slate-400 mt-1">Add a live session for this module</p>
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="mt-4 bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2"
-          >
-            <Plus className="h-4 w-4" /> Schedule Session
-          </Button>
+        <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-12 text-center">
+          <span className="text-4xl block mb-3">📅</span>
+          <p className="font-semibold text-slate-700">No sessions linked to this module yet</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {sessions.map(s => (
-            <div
-              key={s.id}
-              className="bg-white rounded-xl border border-slate-200 hover:border-[#1B4F8A]/30 hover:shadow-sm transition-all"
-            >
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {s.is_open && (
-                        <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> LIVE
-                        </span>
-                      )}
-                      <Badge className={cn("text-xs border-0", s.is_open ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
-                        {s.is_open ? "Open" : "Closed"}
-                      </Badge>
-                    </div>
-                    <h3 className="font-semibold text-slate-900 truncate">{s.title}</h3>
-                    {s.agenda && (
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{s.agenda}</p>
-                    )}
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {new Date(s.session_date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                        {" · "}{s.start_time?.slice(0, 5)} · {s.duration_minutes} min
-                      </span>
-                      {s.location && (
-                        <span className="text-xs text-slate-500 flex items-center gap-1">
-                          <Tag className="h-3.5 w-3.5" /> {s.location}
-                        </span>
-                      )}
-                      {s.meeting_link && (
-                        <a href={s.meeting_link} target="_blank" rel="noreferrer"
-                           className="text-xs text-[#1B4F8A] hover:underline flex items-center gap-1">
-                          <ExternalLink className="h-3 w-3" /> Join Link
-                        </a>
-                      )}
-                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" /> {s.attendance_count} checked in
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Link href={`/lms-admin/sessions/${s.id}`}>
-                      <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                        Attendance <ChevronRight className="h-3 w-3" />
-                      </Button>
-                    </Link>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem onClick={() => toggleSession(s.id, s.is_open, s)} className="gap-2">
-                          {toggling === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                          {s.is_open ? "Close Session" : "Open Session"}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => deleteSession(s.id, s.title)}
-                          className="gap-2 text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
+            <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900 text-sm truncate">{s.title}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {new Date(s.session_date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {" · "}{s.start_time?.slice(0, 5)} · {s.duration_minutes} min
+                  {s.location ? ` · ${s.location}` : ""}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {s.program_name ? `${s.program_name}${s.track_name ? ` · ${s.track_name}` : ""}` : "No program"} · {s.attendance_count} attended{s.is_open ? "" : " · closed"}
+                </p>
               </div>
+              <Link href={`/lms-admin/sessions/${s.id}`}>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1">Attendance <ChevronRight className="h-3 w-3" /></Button>
+              </Link>
             </div>
           ))}
         </div>
       )}
-
-      {/* ── Close Session Wrap-Up Modal ───────────────────────── */}
-      <Dialog open={!!closeModal} onOpenChange={open => { if (!open) setCloseModal(null) }}>
-        <DialogContent className="max-w-md" showCloseButton={false}>
-          <DialogHeader className="px-0 pb-4 border-b border-slate-100">
-            <div className="flex items-center justify-between">
-              <DialogTitle className="font-bold text-slate-900">Close Session</DialogTitle>
-              <Button variant="ghost" size="icon" onClick={() => setCloseModal(null)} className="h-8 w-8">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-sm text-slate-500 mt-1">
-              Optionally record what was covered — this helps build richer AI reports later.
-            </p>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label>Topics Covered <span className="text-slate-400 font-normal">(optional)</span></Label>
-              <textarea
-                className="w-full h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
-                placeholder="What topics were actually covered in this session?"
-                value={closeForm.topics_covered}
-                onChange={e => setCloseForm(f => ({ ...f, topics_covered: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instructor Notes <span className="text-slate-400 font-normal">(optional)</span></Label>
-              <textarea
-                className="w-full h-20 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
-                placeholder="Any observations about this session…"
-                value={closeForm.instructor_notes}
-                onChange={e => setCloseForm(f => ({ ...f, instructor_notes: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter className="px-0 pt-4 border-0 bg-transparent gap-2">
-            <Button type="button" variant="ghost" className="text-slate-500" onClick={() => confirmCloseSession(true)}>
-              Skip & Close
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setCloseModal(null)}>Cancel</Button>
-            <Button
-              type="button"
-              className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white"
-              onClick={() => confirmCloseSession(false)}
-              disabled={toggling === closeModal?.id}
-            >
-              {toggling === closeModal?.id && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Close Session
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Schedule Session Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" showCloseButton={false}>
-          <DialogHeader className="px-0 pb-4 border-b border-slate-100">
-            <div className="flex items-center justify-between">
-              <DialogTitle className="font-bold text-slate-900">Schedule Session</DialogTitle>
-              <Button variant="ghost" size="icon" onClick={() => setShowCreate(false)} className="h-8 w-8">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </DialogHeader>
-          <form onSubmit={createSession} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label>Session Title *</Label>
-              <Input
-                placeholder={`e.g. ${moduleName} – Live Q&A`}
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Date *</Label>
-                <Input type="date" value={form.session_date} onChange={e => setForm(f => ({ ...f, session_date: e.target.value }))} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Start Time *</Label>
-                <Input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} required />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Duration (min)</Label>
-                <Input type="number" min={15} step={15} value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: +e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Late After (min)</Label>
-                <Input type="number" min={0} value={form.late_threshold} onChange={e => setForm(f => ({ ...f, late_threshold: +e.target.value }))} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Location</Label>
-              <Input placeholder="e.g. Room 3A, Building B" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Meeting Link</Label>
-              <Input placeholder="https://zoom.us/j/..." value={form.meeting_link} onChange={e => setForm(f => ({ ...f, meeting_link: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Agenda <span className="text-slate-400 font-normal">(what will be covered)</span></Label>
-              <textarea
-                className="w-full h-20 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
-                placeholder="Topics planned for this session…"
-                value={form.agenda}
-                onChange={e => setForm(f => ({ ...f, agenda: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <textarea
-                className="w-full h-16 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 focus:border-[#1B4F8A]"
-                placeholder="Any notes for instructors or students…"
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-            <DialogFooter className="px-0 pt-2 border-0 bg-transparent">
-              <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white" disabled={saving}>
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Schedule
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

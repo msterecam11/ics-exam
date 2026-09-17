@@ -29,9 +29,13 @@ interface Session {
   attendance_count: number
   course_id:        string
   course_title:     string | null
+  program_id:       string | null
+  program_name:     string | null
+  track_name:       string | null
 }
 
-interface Course { id: string; title: string }
+interface Course  { id: string; title: string }
+interface Program { id: string; name: string; status: string }
 
 export default function SessionsPage() {
   const [sessions,     setSessions]     = useState<Session[]>([])
@@ -39,12 +43,16 @@ export default function SessionsPage() {
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState("")
   const [courseFilter, setCourseFilter] = useState("")
+  const [programs,      setPrograms]      = useState<Program[]>([])
+  const [programFilter, setProgramFilter] = useState("")
   const [toggling,     setToggling]     = useState<string | null>(null)
 
-  async function loadSessions(cid?: string) {
+  async function loadSessions() {
     setLoading(true)
-    const params = cid ? `?course_id=${cid}` : ""
-    const res = await fetch(`/api/lms/sessions${params}`)
+    const qs = new URLSearchParams()
+    if (courseFilter)  qs.set("course_id", courseFilter)
+    if (programFilter) qs.set("program_id", programFilter)
+    const res = await fetch(`/api/lms/sessions${qs.toString() ? `?${qs}` : ""}`)
     if (res.ok) {
       const data = await res.json()
       setSessions(Array.isArray(data) ? data : [])
@@ -56,8 +64,11 @@ export default function SessionsPage() {
     const res = await fetch("/api/lms/courses")
     if (res.ok) {
       const d = await res.json()
-      setCourses(Array.isArray(d.courses) ? d.courses : [])
+      // /api/lms/courses returns an array (this read d.courses, so the filter was always empty)
+      setCourses(Array.isArray(d) ? d : [])
     }
+    const pr = await fetch("/api/lms/programs")
+    if (pr.ok) { const d = await pr.json(); setPrograms(Array.isArray(d) ? d : []) }
   }
 
   useEffect(() => {
@@ -65,8 +76,9 @@ export default function SessionsPage() {
   }, [])
 
   useEffect(() => {
-    loadSessions(courseFilter || undefined)
-  }, [courseFilter])
+    loadSessions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseFilter, programFilter])
 
   async function toggleSession(id: string, isOpen: boolean) {
     setToggling(id)
@@ -78,8 +90,8 @@ export default function SessionsPage() {
     const data = await res.json()
     setToggling(null)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success(isOpen ? "Session closed" : "Session opened")
-    loadSessions(courseFilter || undefined)
+    toast.success(isOpen ? "Session closed" : "Session reopened")
+    loadSessions()
   }
 
   async function deleteSession(id: string, title: string) {
@@ -88,13 +100,14 @@ export default function SessionsPage() {
     const data = await res.json()
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
     toast.success("Session deleted")
-    loadSessions(courseFilter || undefined)
+    loadSessions()
   }
 
   const filtered = sessions.filter(s =>
     s.title.toLowerCase().includes(search.toLowerCase()) ||
     (s.location ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (s.course_title ?? "").toLowerCase().includes(search.toLowerCase())
+    (s.course_title ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (s.program_name ?? "").toLowerCase().includes(search.toLowerCase())
   )
 
   const openCount   = sessions.filter(s => s.is_open).length
@@ -125,7 +138,7 @@ export default function SessionsPage() {
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
         <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" />
         <span>
-          To schedule a new session, open a course, select a <strong>Live Session</strong> module, and use the Content tab.
+          Sessions are scheduled per program: open <Link href="/lms-admin/programs" className="font-semibold underline">Program Manager</Link> → a program → <strong>Sessions</strong>. Each program&apos;s students only see (and are marked for) their own sessions.
         </span>
       </div>
 
@@ -145,9 +158,19 @@ export default function SessionsPage() {
           value={courseFilter}
           onChange={e => setCourseFilter(e.target.value)}
         >
-          <option value="">All Courses</option>
+          <option value="">All courses</option>
           {courses.map(c => (
             <option key={c.id} value={c.id}>{c.title}</option>
+          ))}
+        </select>
+        <select
+          className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 bg-white min-w-44"
+          value={programFilter}
+          onChange={e => setProgramFilter(e.target.value)}
+        >
+          <option value="">All programs</option>
+          {programs.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
       </div>
@@ -162,7 +185,7 @@ export default function SessionsPage() {
           <Calendar className="h-12 w-12 text-slate-200 mx-auto mb-4" />
           <p className="text-slate-500 font-medium">No sessions found</p>
           <p className="text-sm text-slate-400 mt-1">
-            Schedule sessions from within a Live Session module in a course
+            Schedule sessions from a program in Program Manager
           </p>
         </div>
       ) : (
@@ -184,11 +207,6 @@ export default function SessionsPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            {s.is_open && (
-                              <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                                <Radio className="h-3 w-3 animate-pulse" /> LIVE
-                              </span>
-                            )}
                             <Badge className={cn("text-xs border-0", s.is_open
                               ? "bg-emerald-100 text-emerald-700"
                               : "bg-slate-100 text-slate-500"
@@ -198,6 +216,11 @@ export default function SessionsPage() {
                           </div>
                           <h3 className="font-semibold text-slate-900 truncate">{s.title}</h3>
                           <div className="mt-2 space-y-1">
+                            {s.program_name && (
+                              <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium">
+                                <Users className="h-3.5 w-3.5" /> {s.program_name}{s.track_name ? ` · ${s.track_name}` : ""}
+                              </p>
+                            )}
                             {s.course_title && (
                               <p className="text-xs text-[#1B4F8A] flex items-center gap-1.5 font-medium">
                                 <BookOpen className="h-3.5 w-3.5" /> {s.course_title}
@@ -213,7 +236,7 @@ export default function SessionsPage() {
                               </p>
                             )}
                             <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                              <Users className="h-3.5 w-3.5" /> {s.attendance_count} checked in
+                              <Users className="h-3.5 w-3.5" /> {s.attendance_count} attended
                             </p>
                           </div>
                         </div>
@@ -226,7 +249,7 @@ export default function SessionsPage() {
                               {toggling === s.id
                                 ? <Loader2 className="h-4 w-4 animate-spin" />
                                 : <Radio className="h-4 w-4" />}
-                              {s.is_open ? "Close Session" : "Open Session"}
+                              {s.is_open ? "Close session" : "Reopen session"}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
