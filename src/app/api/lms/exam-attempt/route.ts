@@ -5,7 +5,7 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
-import { recalculateAttemptScore, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { recalculateAttemptScore, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
 import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
 
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     .update({ submitted_at: submittedAt.toISOString() })
     .eq("id", openSession.id)
     .is("submitted_at", null)
-    .select("id, started_at")
+    .select("id, started_at, paper")
     .maybeSingle()
 
   if (!claimed)
@@ -123,8 +123,13 @@ export async function POST(req: Request) {
   // student should see them — but it cannot count as a pass.
   const overTime  = limitS !== null && elapsedS > limitS + EXAM_GRACE_S
 
+  // Grade against the paper frozen when this session opened, not the module's
+  // current questions — an edit made while the student was sitting the exam
+  // must not change what they are marked on. (Sessions opened before frozen
+  // papers fall back to the current questions.)
+  const questions: any[] = paperFor(claimed as any, module.questions)
+
   // AI-score any open_ended questions
-  const questions: any[] = (module.questions as any[] | null) ?? []
   const openEndedQs = questions.filter((q: any) => q.type === "open_ended")
   const aiScores: Record<string, { score: number; justification: string }> = {}
 
@@ -182,6 +187,7 @@ export async function POST(req: Request) {
       max_score:    correctedMaxScore,
       passed:       correctedPassed,
       answers:      answers ?? [],
+      paper:        questions,
       ai_feedback:  {
         ...(openEndedQs.length > 0 ? { open_ended_scores: aiScores } : {}),
         ...(security_events       ? { security_events }              : {}),

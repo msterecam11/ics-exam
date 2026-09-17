@@ -15,7 +15,7 @@ interface Props {
 export default function ExamClient({ moduleId, courseId, examTitle, questions, settings, attemptNo }: Props) {
   // Opens (or resumes) the server-side exam session. The server's remaining
   // time drives the countdown, so the limit is measured and enforced server-side.
-  async function handleStart(): Promise<{ remainingS: number | null } | null> {
+  async function handleStart(): Promise<{ remainingS: number | null; questions?: ExamQuestion[] } | null> {
     try {
       const res  = await fetch("/api/lms/exam-attempt/start", {
         method:  "POST",
@@ -27,7 +27,7 @@ export default function ExamClient({ moduleId, courseId, examTitle, questions, s
         toast.error(data.error ?? "Could not start the exam")
         return null
       }
-      return { remainingS: data.remaining_s ?? null }
+      return { remainingS: data.remaining_s ?? null, questions: Array.isArray(data.questions) ? data.questions : undefined }
     } catch {
       toast.error("Connection error — the exam could not be started.")
       return null

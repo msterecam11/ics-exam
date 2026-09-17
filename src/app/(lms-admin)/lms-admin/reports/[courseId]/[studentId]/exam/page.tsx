@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import { db } from "@/lib/db"
+import { paperFor } from "@/lib/lms-exam-scoring"
 import ExamAttemptsView from "./ExamAttemptsView"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
@@ -77,7 +78,7 @@ export default async function StudentExamResultsPage({ params }: Props) {
   if (examMod) {
     const { data } = await db
       .from("lms_module_attempts")
-      .select("id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, submitted_at, graded_at")
+      .select("id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, submitted_at, graded_at, paper")
       .eq("module_id", examMod.id)
       .eq("student_id", studentId)
       .order("attempt_no", { ascending: true })
@@ -92,7 +93,8 @@ export default async function StudentExamResultsPage({ params }: Props) {
         passed: !!a.passed,
         submittedAt: a.submitted_at ?? a.graded_at ?? null,
         timeS: a.time_spent_s ?? 0,
-        answers: buildItems(questions, a.answers ?? {}, aiScores),
+        // The paper this attempt was taken on (frozen at start), not today's exam.
+        answers: buildItems(paperFor(a, questions), a.answers ?? {}, aiScores),
         security: sec ? {
           tabs: Number(sec.tabs ?? 0), fs: Number(sec.fs ?? 0),
           rightClicks: Number(sec.rightClicks ?? 0), copyAttempts: Number(sec.copyAttempts ?? 0),

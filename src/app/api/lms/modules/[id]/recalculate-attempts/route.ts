@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { recalculateAttemptScore, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { recalculateAttemptScore, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 
 // Admin: re-grades every existing attempt on a Final Exam module against
@@ -44,7 +44,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
   const { data: attempts, error: fetchError } = await db
     .from("lms_module_attempts")
-    .select("id, student_id, score, max_score, passed, answers, ai_feedback")
+    .select("id, student_id, score, max_score, passed, answers, ai_feedback, paper")
     .eq("module_id", moduleId)
 
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
@@ -55,14 +55,26 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   type Snapshot = { score: number; maxScore: number; passed: boolean }
   const flips: { student_id: string; before: Snapshot; after: Snapshot }[] = []
 
+  const currentById = new Map(questions.map(q => [q.id, q]))
+
   for (const attempt of attempts) {
+    // Deliberate correction: each question the student ACTUALLY had on their
+    // frozen paper takes its current version (fixed key, points). Questions
+    // added to the exam since are not added to their paper, and questions
+    // removed since stay as they were — the student is only ever marked on
+    // what they answered. (Attempts from before frozen papers have none, and
+    // are re-marked against the whole current exam, as before.)
+    const oldPaper = paperFor(attempt as any, questions)
+    const newPaper = oldPaper.map(pq => currentById.get(pq.id) ?? pq)
+
     const openEndedScores = (attempt.ai_feedback as any)?.open_ended_scores as Record<string, { score: number }> | undefined
+    const paperIds = new Set(newPaper.map(q => q.id))
     const openEndedEarned = openEndedScores
-      ? Object.values(openEndedScores).reduce((sum, s) => sum + (s?.score ?? 0), 0)
+      ? Object.entries(openEndedScores).reduce((sum, [qid, s]) => sum + (paperIds.has(qid) ? (s?.score ?? 0) : 0), 0)
       : 0
 
     const { score, maxScore, pct } = recalculateAttemptScore(
-      questions,
+      newPaper,
       (attempt.answers as any) ?? {},
       openEndedEarned
     )
@@ -79,13 +91,19 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const before = { score: Number(attempt.score), maxScore: Number(attempt.max_score), passed: attempt.passed }
     const after = { score, maxScore, passed }
 
-    if (before.score !== after.score || before.maxScore !== after.maxScore || before.passed !== after.passed) {
-      changedStudentIds.add(attempt.student_id)
-      flips.push({ student_id: attempt.student_id, before, after })
+    const resultChanged = before.score !== after.score || before.maxScore !== after.maxScore || before.passed !== after.passed
+    const paperChanged  = JSON.stringify(newPaper) !== JSON.stringify((attempt as any).paper ?? null)
+    if (resultChanged || paperChanged) {
+      if (resultChanged) {
+        changedStudentIds.add(attempt.student_id)
+        flips.push({ student_id: attempt.student_id, before, after })
+      }
 
+      // The corrected paper is saved too, so the answer review and reports show
+      // the key the score was recalculated with.
       const { error: updateError } = await db
         .from("lms_module_attempts")
-        .update({ score, max_score: maxScore, passed })
+        .update({ score, max_score: maxScore, passed, paper: newPaper })
         .eq("id", attempt.id)
 
       if (updateError) {

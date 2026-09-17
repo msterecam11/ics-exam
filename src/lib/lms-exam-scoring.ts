@@ -127,6 +127,19 @@ export function sanitizeQuestionsForClient(questions: ExamQuestion[]): ExamQuest
   })
 }
 
+// The exam paper a stored attempt (or open session) was taken on.
+//
+// Since frozen papers, the exact questions — answer key, points, rubric — are
+// saved when the student presses Begin Exam, and everything after that
+// (grading, answer review, reports) reads THAT paper. Editing the exam then
+// only affects students who start later. Attempts from before frozen papers
+// have no saved paper and fall back to the module's current questions, which
+// is how they have always been displayed.
+export function paperFor(row: { paper?: unknown } | null | undefined, moduleQuestions: unknown): ExamQuestion[] {
+  if (Array.isArray(row?.paper)) return row!.paper as ExamQuestion[]
+  return Array.isArray(moduleQuestions) ? (moduleQuestions as ExamQuestion[]) : []
+}
+
 // Re-grades one attempt's stored raw `answers` against the CURRENT
 // `questions` (the possibly-just-corrected key). `openEndedEarned` is the
 // sum of the attempt's already-stored AI scores for its open_ended

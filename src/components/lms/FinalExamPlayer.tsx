@@ -305,7 +305,7 @@ export default function FinalExamPlayer({
   onSubmit?:    (data: SubmitPayload) => Promise<{ score: number; max_score: number; pct: number; passed: boolean; time_limit_exceeded?: boolean; ai_scores?: Record<string, { score: number; justification: string }> } | null | void>
   /** Opens/resumes the server-side exam session. Returns the server's remaining
    *  time (null = untimed), or null if the exam could not be started. */
-  onStart?:     () => Promise<{ remainingS: number | null } | null>
+  onStart?:     () => Promise<{ remainingS: number | null; questions?: ExamQuestion[] } | null>
   attemptNo?:   number
   courseUrl?:   string
 }) {
@@ -315,9 +315,10 @@ export default function FinalExamPlayer({
   const showResults = settings?.show_results         ?? true
   const showCorrect = settings?.show_correct_answers ?? false
 
-  // Shuffle once on mount — stable across re-renders
-  const [activeQuestions] = useState<ExamQuestion[]>(() => {
-    let qs = settings?.shuffle_questions ? shuffleArray(questions) : [...questions]
+  // Shuffle once — stable across re-renders. Replaced when the server returns
+  // the paper frozen for this session (see start()).
+  const prepareQuestions = (source: ExamQuestion[]) => {
+    let qs = settings?.shuffle_questions ? shuffleArray(source) : [...source]
     if (settings?.shuffle_options) {
       qs = qs.map(q => {
         if ((q.type === "mcq_single" || q.type === "mcq_multiple") && q.options) {
@@ -333,7 +334,8 @@ export default function FinalExamPlayer({
       })
     }
     return qs
-  })
+  }
+  const [activeQuestions, setActiveQuestions] = useState<ExamQuestion[]>(() => prepareQuestions(questions))
 
   const [phase,   setPhase]   = useState<Phase>("intro")
   const [current, setCurrent] = useState(0)
@@ -451,6 +453,9 @@ export default function FinalExamPlayer({
         return
       }
       remainingS = session.remainingS
+      // Show exactly the paper the server froze for this session — it may
+      // differ from what the page loaded with if the exam was edited since.
+      if (session.questions?.length) setActiveQuestions(prepareQuestions(session.questions))
     }
 
     // A resumed session already at 0 still needs one tick to auto-submit.

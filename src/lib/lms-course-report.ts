@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { scoreObjectiveQuestion, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { scoreObjectiveQuestion, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -103,7 +103,7 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
     db.from("lms_module_analysis").select("module_id, analysis").eq("course_id", courseId),
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s").eq("student_id", studentId).eq("course_id", courseId),
+    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s, paper").eq("student_id", studentId).eq("course_id", courseId),
     db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("student_id", studentId),
     db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
@@ -197,13 +197,15 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
   // mastery distribution, the topic heatmap and the at-risk flags.
   const hasExamAttempt = !!examMod && attempts.some((a: any) => a.module_id === examMod.id)
   if (examMod && hasExamAttempt) {
-    const examQuestions: any[] = Array.isArray((examMod as any).questions) ? (examMod as any).questions : []
+    const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
+    const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
+    // Mark against the paper this attempt was actually taken on, so editing the
+    // exam later can't change a finished learner's section and topic scores.
+    const examQuestions: any[] = paperFor(best, (examMod as any).questions)
     const qById = new Map(examQuestions.map((q: any) => [q.id, q]))
     const sections: any[] = Array.isArray(analysisBy.get(examMod.id)?.sections) ? analysisBy.get(examMod.id)!.sections : []
     const questionTopics: Record<string, string> = (analysisBy.get(examMod.id) as any)?.question_topics ?? {}
     const moduleTitleById = new Map<string, string>(modules.map((m: any) => [m.id, m.title]))
-    const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
-    const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
     const answers: any = best?.answers && typeof best.answers === "object" && !Array.isArray(best.answers) ? best.answers : {}
     // AI-graded open-ended scores from the attempt (so scenario questions aren't scored 0).
     const aiScores: any = best?.ai_feedback?.open_ended_scores ?? {}

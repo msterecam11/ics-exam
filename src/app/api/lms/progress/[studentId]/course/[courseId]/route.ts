@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { paperFor } from "@/lib/lms-exam-scoring"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -96,7 +97,7 @@ export async function GET(
 
   const { data: examAttempts } = examModIds.length
     ? await db.from("lms_module_attempts")
-        .select("id, module_id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, started_at, submitted_at, lms_modules(id, title, activity_settings, questions)")
+        .select("id, module_id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, started_at, submitted_at, paper, lms_modules(id, title, activity_settings, questions)")
         .eq("student_id", studentId)
         .in("module_id", examModIds)
         .order("submitted_at", { ascending: false })
@@ -137,7 +138,7 @@ export async function GET(
       copy_attempts:    sec.copyAttempts ?? 0,
       answers:       (a as any).answers,
       ai_feedback:   (a as any).ai_feedback,
-      questions:     (a as any).lms_modules?.questions ?? [],
+      questions:     paperFor(a as any, (a as any).lms_modules?.questions),   // the paper this attempt was taken on
     })
     if ((a as any).passed) examsByModule[mid].passed = true
   }

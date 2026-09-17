@@ -125,7 +125,7 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
     const questions: any[] = Array.isArray(examMod.questions) ? examMod.questions : []
     const { data: attempts } = await db
       .from("lms_module_attempts")
-      .select("student_id, answers, ai_feedback, score")
+      .select("student_id, answers, ai_feedback, score, paper")
       .eq("module_id", examMod.id)
       .in("student_id", rows.map(x => x.e.student_id))
     const bestByStu = new Map<string, any>()
@@ -133,19 +133,34 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
       const cur = bestByStu.get(a.student_id)
       if (!cur || (a.score ?? 0) > (cur.score ?? 0)) bestByStu.set(a.student_id, a)
     }
+    // Each attempt is marked with ITS OWN frozen version of a question (key and
+    // points as they were when that student sat the exam). An attempt whose
+    // paper doesn't contain the question — added to the exam later — doesn't
+    // count towards it, instead of counting as a 0.
+    const paperById = new Map<any, Map<string, any>>()
+    const versionOf = (q: any, a: any): any | null => {
+      if (!Array.isArray(a.paper)) return q
+      let m = paperById.get(a)
+      if (!m) { m = new Map((a.paper as any[]).map(pq => [pq.id, pq])); paperById.set(a, m) }
+      return m.get(q.id) ?? null
+    }
     // Fraction (0..1) of a question's points a given attempt earned.
     const fracOf = (q: any, a: any): number => {
-      const pts = Number(q.points ?? 0); if (pts <= 0) return 0
+      const v = versionOf(q, a) ?? q
+      const pts = Number(v.points ?? 0); if (pts <= 0) return 0
       const answers = (a.answers && typeof a.answers === "object" && !Array.isArray(a.answers)) ? a.answers : {}
       const ai = a.ai_feedback?.open_ended_scores ?? {}
-      const earned = q.type === "open_ended" ? Number(ai[q.id]?.score ?? 0) : gradeQuestion(q, answers[q.id])
+      const earned = v.type === "open_ended" ? Number(ai[v.id]?.score ?? 0) : gradeQuestion(v, answers[v.id])
       return earned / pts
     }
     const takers = [...bestByStu.values()]
     const perQ = questions.map(q => {
       const pts = Number(q.points ?? 0)
       let fracSum = 0, full = 0, n = 0
-      for (const a of takers) { const f = fracOf(q, a); n++; fracSum += f; if (pts > 0 && f >= 1) full++ }
+      for (const a of takers) {
+        if (!versionOf(q, a)) continue
+        const f = fracOf(q, a); n++; fracSum += f; if (pts > 0 && f >= 1) full++
+      }
       return { qid: q.id, text: String(q.text ?? ""), correctPct: n ? round((full / n) * 100) : 0, avgPct: n ? round((fracSum / n) * 100) : 0, n }
     })
     const difficulty = { mastered: 0, mixed: 0, struggled: 0, total: perQ.length }
@@ -161,7 +176,10 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
       const sorted = [...takersWithId].sort((x, y) => y.mastery - x.mastery)
       const g = Math.max(1, Math.floor(sorted.length / 3))
       const top = sorted.slice(0, g), bottom = sorted.slice(-g)
-      const grpAvg = (grp: typeof top, q: any) => grp.reduce((s, t) => s + fracOf(q, t.a), 0) / grp.length
+      const grpAvg = (grp: typeof top, q: any) => {
+        const had = grp.filter(t => versionOf(q, t.a))
+        return had.length ? had.reduce((s, t) => s + fracOf(q, t.a), 0) / had.length : 0
+      }
       const statByQid = new Map(perQ.map(p => [p.qid, p]))
       flagged = questions
         .filter((q: any) => Number(q.points ?? 0) > 0)

@@ -1330,7 +1330,9 @@ export default function ActivityEditor({
   async function handleRecalculate() {
     if (!confirm(
       "Re-grade every student's existing attempt on this exam against the current answer key?\n\n" +
-      "This updates their stored score and pass/fail if it changes. Open-ended question scores are kept as-is."
+      "Each student is re-marked only on the questions they actually had — questions added since are not added to their paper. " +
+      "This updates their stored score, pass/fail and answer review if they change. Open-ended question scores are kept as-is.\n\n" +
+      "Editing the exam without pressing this never changes existing results."
     )) return
 
     setRecalculating(true)
