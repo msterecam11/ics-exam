@@ -104,7 +104,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const memberId = body?.member_id
   if (typeof memberId !== "string" || !UUID_RE.test(memberId)) return NextResponse.json({ error: "member_id required" }, { status: 400 })
   const { data: memberRow } = await db
-    .from("lms_program_members").select("id, student_id, track_id, status, lms_students(name)")
+    .from("lms_program_members").select("id, student_id, track_id, status, withdrawn_at, lms_students(name)")
     .eq("id", memberId).eq("program_id", id).maybeSingle()
   if (!memberRow) return NextResponse.json({ error: "Student is not in this program" }, { status: 404 })
   const member = memberRow as any
@@ -170,6 +170,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (error || !newMember) return NextResponse.json({ error: "Could not add to the target program" }, { status: 500 })
       const newMemberId = (newMember as any).id as string
 
+      // Remembered so a move that can't enroll the student anywhere is undone.
+      const { data: movedRows } = await db.from("lms_enrollments").select("id, status").eq("member_id", memberId)
+      const moved = (movedRows ?? []) as { id: string; status: string }[]
+      const droppedIds = moved.filter(e => e.status === "active").map(e => e.id)
+
       if (body.action === "transfer") {
         // The enrollments themselves move, so their progress, attempts and
         // certificates move with them.
@@ -177,10 +182,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await db.from("lms_program_members").update({ status: "withdrawn", withdrawn_at: new Date().toISOString() }).eq("id", memberId)
       } else {
         // Retake: the old program keeps its record; the student starts fresh.
-        await db.from("lms_enrollments").update({ status: "dropped" }).eq("member_id", memberId).eq("status", "active")
+        if (droppedIds.length) await db.from("lms_enrollments").update({ status: "dropped" }).in("id", droppedIds)
         await db.from("lms_program_members").update({ status: "withdrawn", withdrawn_at: new Date().toISOString() }).eq("id", memberId)
       }
       const sync = await syncMemberEnrollments(newMemberId, session.user.id, { notify: true })
+
+      // Nothing could be enrolled in the target (e.g. the course is still active
+      // elsewhere): put everything back, so the student isn't left out of both
+      // programs with their finished courses hidden.
+      // (A transfer that moved enrollments has succeeded — they carry the record.)
+      if (sync.issues.length && sync.created === 0 && sync.reactivated === 0 && (body.action === "retake" || moved.length === 0)) {
+        if (body.action === "retake" && droppedIds.length)
+          await db.from("lms_enrollments").update({ status: "active" }).in("id", droppedIds)
+        await db.from("lms_program_members").update({ status: member.status, withdrawn_at: member.withdrawn_at ?? null }).eq("id", memberId)
+        await db.from("lms_program_members").delete().eq("id", newMemberId)
+        return NextResponse.json({
+          error: `Nothing was changed: ${sync.issues.map(i => i.reason).filter((r, i, a) => a.indexOf(r) === i).join("; ")}`,
+          issues: sync.issues,
+        }, { status: 409 })
+      }
       await auditLog(session, `lms.program.members.${body.action}`, "lms_program", id, who, { member_id: memberId, to_program_id: toId })
       return NextResponse.json({ ok: true, sync })
     }
