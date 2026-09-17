@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { coursesForTrack } from "@/lib/lms-program-courses"
 import { syncEnrollmentProgress } from "@/lib/lms-completion"
 import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
 
@@ -19,40 +20,8 @@ export const PROGRAM_COLUMNS = `id, name, company_id, is_individual, reference, 
   capacity, status, structure, after_end_access, certificate_enabled, certificate_auto_release,
   feedback_enabled, feedback_mandatory, progress_enforcement, duplicated_from, created_at, updated_at`
 
-/** Ordered course ids delivered to a track (null = members without a track / everyone). */
-export async function coursesForTrack(programId: string, trackId: string | null): Promise<string[]> {
-  const { data: items } = await db
-    .from("lms_program_items")
-    .select("course_id, path_id, track_id, order_index")
-    .eq("program_id", programId)
-    .order("order_index", { ascending: true })
-
-  // Common items (no track) first, then the track's own.
-  const relevant = ((items ?? []) as any[])
-    .filter(i => i.track_id === null || (trackId && i.track_id === trackId))
-    .sort((a, b) => (a.track_id === null ? 0 : 1) - (b.track_id === null ? 0 : 1) || a.order_index - b.order_index)
-
-  const pathIds = [...new Set(relevant.filter(i => i.path_id).map(i => i.path_id))]
-  const pathCourses = new Map<string, string[]>()
-  if (pathIds.length) {
-    const { data: pcs } = await db
-      .from("lms_learning_path_courses")
-      .select("path_id, course_id, order_index")
-      .in("path_id", pathIds)
-      .order("order_index", { ascending: true })
-    for (const pc of (pcs ?? []) as any[]) {
-      if (!pathCourses.has(pc.path_id)) pathCourses.set(pc.path_id, [])
-      pathCourses.get(pc.path_id)!.push(pc.course_id)
-    }
-  }
-
-  const out: string[] = []
-  for (const i of relevant) {
-    const ids = i.course_id ? [i.course_id] : (pathCourses.get(i.path_id) ?? [])
-    for (const cid of ids) if (!out.includes(cid)) out.push(cid)
-  }
-  return out
-}
+// Ordered course ids delivered to a track (lives in lms-program-courses to avoid an import cycle).
+export { coursesForTrack }
 
 /** Every course the program delivers (all tracks), for rules and reports. */
 export async function allProgramCourses(programId: string): Promise<string[]> {

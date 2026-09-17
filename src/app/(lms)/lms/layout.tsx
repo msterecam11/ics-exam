@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import LmsStudentShell from "@/components/lms/LmsStudentShell"
 import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
-import { sessionsForViewers } from "@/lib/lms-sessions"
+import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 
 export default async function LmsLayout({ children }: { children: React.ReactNode }) {
   const student = await getStudentSession()
@@ -13,8 +13,8 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
   // Student Passwords). Nothing in the portal is reachable until they do.
   if (student.mustChangePassword) redirect("/lms/change-password")
 
-  const today   = new Date().toISOString().slice(0, 10)
-  const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const today   = sessionToday()
+  const in7days = sessionToday(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
 
   // Active enrolled course IDs
   const { data: enrollmentRows } = await db
@@ -31,18 +31,10 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
     q => q.gte("session_date", today).lte("session_date", in7days).is("closed_at", null),
   ).catch(() => [])).length
 
-  // Submitted assignments awaiting grading
-  const { count: pendingCount } = await db
-    .from("lms_assignment_submissions")
-    .select("id", { count: "exact", head: true })
-    .in("enrollment_id", enrollments.map((e: any) => e.id))
-    .eq("status", "submitted")
-
   return (
     <LmsStudentShell
       student={{ name: student.name, email: student.email }}
       upcomingSessions={upcomingSessions}
-      pendingAssignments={pendingCount ?? 0}
     >
       <SessionExpiredGuard loginUrl="/lms/login" reason="For security, your learning session has timed out." />
       {children}

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { coursesForTrack } from "@/lib/lms-program-courses"
 
 // ── Enrollment-based records ─────────────────────────────────────────────
 //
@@ -30,6 +31,8 @@ export type EnrollmentProgram = {
   id: string
   name: string
   status: "draft" | "active" | "completed" | "archived"
+  is_individual: boolean
+  start_date: string | null
   end_date: string | null
   after_end_access: "read_only" | "full" | "locked"
   certificate_enabled: boolean
@@ -56,10 +59,10 @@ export type EnrollmentContext = {
 
 const ENROLLMENT_SELECT = `
   id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id,
-  lms_programs(id, name, status, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
+  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
   lms_program_members(status, end_date_override, track_id)`
 
-function todayISO(now = new Date()) {
+export function todayISO(now = new Date()) {
   // Program dates are calendar dates; compare in the institute's day (UTC+3).
   return new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10)
 }
@@ -137,7 +140,7 @@ export async function getCurrentEnrollments(studentId: string): Promise<Enrollme
 /** Columns to add to an lms_enrollments select (which must also include
  *  course_id, status and enrolled_at) so rows can go through currentVisible(). */
 export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id,
-  lms_programs(id, name, status, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
+  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
   lms_program_members(status, end_date_override, track_id)`
 
 /**
@@ -162,6 +165,91 @@ export function currentVisible<T extends Record<string, any>>(rows: T[] | null |
   return out
 }
 
+
+// ── Course locks (program start, sequential courses) ─────────────────────
+//
+// A lock keeps a course VISIBLE (it's listed, with the reason) but closes its
+// content: nothing can be opened or recorded until it lifts. Two causes:
+//   • the program hasn't reached its start date yet;
+//   • the program uses sequential courses (progress_enforcement) and an
+//     earlier course in the member's track isn't completed.
+// Only full access is ever locked — review-only access after a program ends
+// never is, so finished learners can always look back.
+
+export type CourseLock =
+  | { locked: false }
+  | { locked: true; kind: "not_started"; reason: string; opensOn: string }
+  | { locked: true; kind: "sequential"; reason: string; blockedBy: { course_id: string; title: string } }
+
+type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access">
+
+function fmtDay(iso: string) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+}
+
+/** Locks for several enrollments at once (list pages). Keyed by course_id. */
+export async function getCourseLocks(items: LockInput[], now = new Date()): Promise<Map<string, CourseLock>> {
+  const out = new Map<string, CourseLock>()
+  const today = todayISO(now)
+  const sequential: LockInput[] = []
+
+  for (const e of items) {
+    out.set(e.course_id, { locked: false })
+    if (e.access !== "full" || !e.program || e.status === "dropped") continue
+    if (e.program.start_date && today < e.program.start_date) {
+      out.set(e.course_id, {
+        locked: true, kind: "not_started", opensOn: e.program.start_date,
+        reason: `This program opens on ${fmtDay(e.program.start_date)}.`,
+      })
+      continue
+    }
+    // A completed course is never re-locked.
+    if (e.program.progress_enforcement && e.member_id && e.status === "active") sequential.push(e)
+  }
+  if (!sequential.length) return out
+
+  // One order + one status lookup per program member.
+  const byMember = new Map<string, LockInput[]>()
+  for (const e of sequential) {
+    if (!byMember.has(e.member_id!)) byMember.set(e.member_id!, [])
+    byMember.get(e.member_id!)!.push(e)
+  }
+  const titles = new Map<string, string>()
+  for (const [memberId, list] of byMember) {
+    const first = list[0]
+    const order = await coursesForTrack(first.program_id!, first.member?.track_id ?? null)
+    const { data: rows } = await db
+      .from("lms_enrollments")
+      .select("course_id, status")
+      .eq("member_id", memberId)
+      .neq("status", "dropped")
+    const status = new Map(((rows ?? []) as any[]).map(r => [r.course_id as string, r.status as string]))
+
+    for (const e of list) {
+      const pos = order.indexOf(e.course_id)
+      if (pos <= 0) continue
+      // The first earlier course the member is enrolled in and hasn't completed.
+      const blocker = order.slice(0, pos).find(cid => status.has(cid) && status.get(cid) !== "completed")
+      if (!blocker) continue
+      if (!titles.has(blocker)) {
+        const { data: c } = await db.from("lms_courses").select("title").eq("id", blocker).maybeSingle()
+        titles.set(blocker, (c as any)?.title ?? "the previous course")
+      }
+      const title = titles.get(blocker)!
+      out.set(e.course_id, {
+        locked: true, kind: "sequential", blockedBy: { course_id: blocker, title },
+        reason: `Complete "${title}" to unlock this course.`,
+      })
+    }
+  }
+  return out
+}
+
+export async function getCourseLock(e: LockInput | null, now = new Date()): Promise<CourseLock> {
+  if (!e) return { locked: false }
+  return (await getCourseLocks([e], now)).get(e.course_id) ?? { locked: false }
+}
+
 /** True if the student may open this course (full or review access). */
 export async function hasCourseAccess(studentId: string, courseId: string | null | undefined): Promise<boolean> {
   const e = await getCurrentEnrollment(studentId, courseId)
@@ -177,6 +265,8 @@ export async function getWritableEnrollment(studentId: string, courseId: string 
   const e = await getCurrentEnrollment(studentId, courseId)
   if (!e || e.access === "none") return { ok: false, status: 403, error: e?.accessNote ?? "Not enrolled in this course" }
   if (e.access === "read_only") return { ok: false, status: 403, error: e.accessNote ?? "This course is review-only" }
+  const lock = await getCourseLock(e)
+  if (lock.locked) return { ok: false, status: 403, error: lock.reason }
   return { ok: true, enrollment: e }
 }
 

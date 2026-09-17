@@ -9,13 +9,13 @@ import {
   CheckCircle2, PlayCircle, FileText, Image as ImageIcon,
   Link2, ListOrdered, HelpCircle, ClipboardList,
   Lock, Globe, Monitor, Layers, Clock, ChevronRight,
-  CalendarDays, MapPin, Video, FlaskConical, GraduationCap,
+  CalendarDays, MapPin, Video, FlaskConical, GraduationCap, History, Award,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
-import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
-import { sessionsForViewers } from "@/lib/lms-sessions"
+import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enrollment"
+import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 
 // ── Icons & labels ────────────────────────────────────────────
 const CONTENT_ICONS: Record<string, React.ElementType> = {
@@ -88,9 +88,48 @@ export default async function StudentCoursePage({
 
   if (!course) notFound()
 
+  // Dates: inside a program the PROGRAM's dates and rules apply (the course is
+  // a template); the course's own dates only matter for enrollments made
+  // outside any program.
   const now = new Date()
-  const courseNotStarted = course.start_date && new Date(course.start_date) > now
-  const courseEnded      = course.end_date   && new Date(course.end_date)   < now
+  const courseNotStarted = !current.program && course.start_date && new Date(course.start_date) > now
+  const courseEnded      = !current.program && course.end_date   && new Date(course.end_date)   < now
+
+  // Program start date / sequential courses.
+  const lock = await getCourseLock(current)
+
+  // Program + track shown on the header.
+  let trackName: string | null = null
+  if (current.member?.track_id) {
+    const { data: t } = await db.from("lms_program_tracks").select("name").eq("id", current.member.track_id).maybeSingle()
+    trackName = (t as any)?.name ?? null
+  }
+
+  // Earlier runs of this course (retakes in another program). Each keeps its
+  // own records; they are listed read-only here.
+  const { data: otherRuns } = await db
+    .from("lms_enrollments")
+    .select("id, status, enrolled_at, completed_at, progress_pct, lms_programs(name)")
+    .eq("student_id", student.id)
+    .eq("course_id", courseId)
+    .neq("id", current.id)
+    .order("enrolled_at", { ascending: false })
+  const previousRuns = ((otherRuns ?? []) as any[])
+  const runIds = previousRuns.map(r => r.id)
+  const [{ data: runAttempts }, { data: runCerts }] = runIds.length
+    ? await Promise.all([
+        db.from("lms_module_attempts").select("enrollment_id, passed, score, max_score, attempt_no").in("enrollment_id", runIds).order("attempt_no", { ascending: false }),
+        db.from("lms_certificates").select("enrollment_id, id, released_at, revoked_at").in("enrollment_id", runIds),
+      ])
+    : [{ data: [] as any[] }, { data: [] as any[] }]
+  const runExam = new Map<string, { passed: boolean; pct: number }>()
+  for (const a of (runAttempts ?? []) as any[]) {
+    // Best result wins: a pass beats a fail, then the higher score.
+    const pct = a.max_score > 0 ? Math.round((a.score / a.max_score) * 100) : 0
+    const prev = runExam.get(a.enrollment_id)
+    if (!prev || (a.passed && !prev.passed) || (a.passed === prev.passed && pct > prev.pct)) runExam.set(a.enrollment_id, { passed: !!a.passed, pct })
+  }
+  const runCert = new Map<string, boolean>(((runCerts ?? []) as any[]).map(c => [c.enrollment_id, !!c.released_at && !c.revoked_at]))
 
   // Fetch modules with content
   const { data: modules } = await db
@@ -125,7 +164,7 @@ export default async function StudentCoursePage({
   )
 
   // Separate upcoming (open, future or today) vs past sessions
-  const today = new Date().toISOString().slice(0, 10)
+  const today = sessionToday()
   const upcomingSessions = (liveSessions ?? []).filter(
     (s: any) => s.session_date >= today && !s.closed_at
   ).reverse() // chronological
@@ -290,13 +329,29 @@ export default async function StudentCoursePage({
   const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
 
       {/* Program access banner (program ended → review only) */}
       {current.accessNote && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-slate-700">
           <span className="text-lg">📘</span>
           <p>{current.accessNote}</p>
+        </div>
+      )}
+
+      {/* Program not open yet / earlier course still to finish */}
+      {lock.locked && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3 text-sm text-amber-800">
+          <Lock className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">{lock.kind === "not_started" ? "Program not open yet" : "Course locked"}</p>
+            <p className="text-amber-700 text-xs mt-0.5">{lock.reason}</p>
+            {lock.kind === "sequential" && (
+              <Link href={`/lms/courses/${lock.blockedBy.course_id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-900 underline mt-1">
+                Go to {lock.blockedBy.title} <ChevronRight className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
         </div>
       )}
 
@@ -334,6 +389,11 @@ export default async function StudentCoursePage({
             </div>
           )}
           <div className="p-6">
+            {current.program && !current.program.is_individual && (
+              <Link href={`/lms/programs/${current.program.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1B4F8A] hover:underline mb-2">
+                {current.program.name}{trackName ? ` · ${trackName}` : ""} <ChevronRight className="h-3 w-3" />
+              </Link>
+            )}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-xl font-bold text-slate-900">{course.title}</h1>
@@ -389,7 +449,7 @@ export default async function StudentCoursePage({
             const isAssign  = mod.module_type === "assignment"
             const isSession = mod.module_type === "live_session"
             const isSingle  = isPackage || isExam || isAssign || isSession
-            const isLocked  = mod.isModuleLocked === true || !!courseNotStarted
+            const isLocked  = mod.isModuleLocked === true || !!courseNotStarted || lock.locked
 
             // For single-action modules, wrap the whole card in a Link
             const href = isPackage ? `/lms/courses/${courseId}/package/${mod.id}`
@@ -568,7 +628,7 @@ export default async function StudentCoursePage({
                         const Icon   = CONTENT_ICONS[item.type] ?? FileText
                         const color  = CONTENT_COLORS[item.type] ?? "text-slate-600 bg-slate-100"
 
-                        let locked = !!courseNotStarted
+                        let locked = !!courseNotStarted || lock.locked
                         if (!locked && course.progress_enforcement && ci > 0) {
                           const prevMandatory = mod.items.slice(0, ci).filter((i: any) => i.is_mandatory)
                           locked = prevMandatory.some((i: any) => progressMap.get(i.id)?.status !== "completed")
@@ -733,6 +793,49 @@ export default async function StudentCoursePage({
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Previous attempts (earlier runs of this course) ───────── */}
+        {previousRuns.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <History className="h-5 w-5 text-[#1B4F8A]" />
+              Previous attempts
+            </h2>
+            <p className="text-xs text-slate-500 px-1">You took this course before. Those results are kept separately and don&apos;t affect this attempt.</p>
+            {previousRuns.map(r => {
+              const exam = runExam.get(r.id)
+              return (
+                <div key={r.id} className="bg-white rounded-xl border border-slate-200 px-5 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="text-sm font-medium text-slate-800">{r.lms_programs?.name ?? "Individual enrollment"}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Enrolled {fmtDate(r.enrolled_at)}
+                      {r.completed_at && <> · Completed {fmtDate(r.completed_at)}</>}
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500">{Math.min(100, Math.round(r.progress_pct ?? 0))}% progress</span>
+                  {exam && (
+                    <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
+                      exam.passed ? "bg-emerald-100 text-emerald-700" : "bg-red-50 text-red-600")}>
+                      Final exam {exam.passed ? "passed" : "not passed"} · {exam.pct}%
+                    </span>
+                  )}
+                  <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full",
+                    r.status === "completed" ? "bg-emerald-100 text-emerald-700"
+                    : r.status === "dropped" ? "bg-slate-100 text-slate-500"
+                    : "bg-blue-100 text-blue-700")}>
+                    {r.status === "completed" ? "Completed" : r.status === "dropped" ? "Withdrawn" : "Active"}
+                  </span>
+                  {runCert.get(r.id) && (
+                    <Link href="/lms/certificates" className="text-xs font-medium text-[#1B4F8A] hover:underline flex items-center gap-1">
+                      <Award className="h-3.5 w-3.5" /> Certificate
+                    </Link>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

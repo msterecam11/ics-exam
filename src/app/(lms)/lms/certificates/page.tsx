@@ -1,6 +1,7 @@
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect } from "next/navigation"
+import Link from "next/link"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 import { Award, Download, CalendarDays, BookOpen, Lock } from "lucide-react"
 
@@ -29,7 +30,7 @@ export default async function CertificatesPage() {
     .from("lms_certificates")
     // A course retaken in a later program has one certificate per enrollment;
     // the program name tells them apart.
-    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(name))")
+    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(id, name, is_individual))")
     .eq("student_id", student.id)
     .is("revoked_at", null)
     .order("issued_at", { ascending: false })
@@ -53,19 +54,36 @@ export default async function CertificatesPage() {
                          : (c.source_title ?? "Certificate"),
     issued_at:         c.issued_at,
     released:          !!c.released_at,
-    program:           c.lms_enrollments?.lms_programs?.name ?? null,
+    program:           c.lms_enrollments?.lms_programs && !c.lms_enrollments.lms_programs.is_individual
+                         ? { id: c.lms_enrollments.lms_programs.id as string, name: c.lms_enrollments.lms_programs.name as string }
+                         : null,
   }))
+
+  // Grouped by program (SP): a program's certificates together, labelled with
+  // the year(s) they were issued; courses taken on their own come last.
+  const groups: { key: string; title: string; years: string; items: typeof certificates }[] = []
+  for (const cert of certificates) {
+    const key = cert.program?.id ?? "individual"
+    let g = groups.find(x => x.key === key)
+    if (!g) { g = { key, title: cert.program?.name ?? "Individual courses", years: "", items: [] }; groups.push(g) }
+    g.items.push(cert)
+  }
+  for (const g of groups) {
+    const ys = [...new Set(g.items.map(c => new Date(c.issued_at).getUTCFullYear()))].sort()
+    g.years = ys.length > 1 ? `${ys[0]}–${ys[ys.length - 1]}` : String(ys[0] ?? "")
+  }
+  groups.sort((a, b) => (a.key === "individual" ? 1 : 0) - (b.key === "individual" ? 1 : 0))
 
   const pendingCount = certificates.filter(c => !c.released).length
 
   const inProgress = (activeEnrollments ?? []) as any[]
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-8">
 
       {/* Earned certificates */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">My Certificates</h1>
             {/* Was "Issued automatically once you complete a course", which is
@@ -91,8 +109,18 @@ export default async function CertificatesPage() {
             </div>
           </div>
         ) : (
+          <div className="space-y-6">
+          {groups.map(g => (
+          <section key={g.key}>
+            <div className="flex items-center gap-2 mb-3">
+              {g.key === "individual"
+                ? <h2 className="text-sm font-semibold text-slate-700">{g.title}</h2>
+                : <Link href={`/lms/programs/${g.key}`} className="text-sm font-semibold text-slate-700 hover:text-[#1B4F8A]">{g.title}</Link>}
+              {g.years && <span className="text-xs text-slate-400">· {g.years}</span>}
+              <span className="text-xs text-slate-400 ml-auto">{g.items.length}</span>
+            </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {certificates.map(cert => (
+            {g.items.map(cert => (
               <div
                 key={cert.id}
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col"
@@ -115,7 +143,7 @@ export default async function CertificatesPage() {
                       <p className="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">
                         {cert.title}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">{cert.program ? `${cert.program} · ` : ""}ICS Aviation Institute</p>
+                      <p className="text-xs text-slate-400 mt-0.5">ICS Aviation Institute</p>
                     </div>
                   </div>
 
@@ -168,6 +196,9 @@ export default async function CertificatesPage() {
                 </div>
               </div>
             ))}
+          </div>
+          </section>
+          ))}
           </div>
         )}
       </div>

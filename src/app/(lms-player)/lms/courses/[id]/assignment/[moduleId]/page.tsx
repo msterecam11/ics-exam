@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowLeft } from "lucide-react"
 import AssignmentClient, { type RubricCriterion, type Submission } from "./AssignmentClient"
-import { getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getCourseLock } from "@/lib/lms-enrollment"
 
 export default async function AssignmentPage({
   params,
@@ -20,6 +20,8 @@ export default async function AssignmentPage({
   // Verify enrollment (the current one — submissions are per enrollment)
   const enrollment = await getCurrentEnrollment(student.id, courseId)
   if (!enrollment || enrollment.access === "none") notFound()
+  // Program not open yet / earlier course unfinished: back to the course page, which explains.
+  if ((await getCourseLock(enrollment)).locked) redirect(`/lms/courses/${courseId}`)
 
   // Fetch module
   const { data: module } = await db

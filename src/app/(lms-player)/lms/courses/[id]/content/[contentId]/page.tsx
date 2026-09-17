@@ -2,7 +2,7 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import ContentPlayer from "./ContentPlayer"
-import { getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getCourseLock } from "@/lib/lms-enrollment"
 
 export default async function ContentPage({
   params,
@@ -16,6 +16,8 @@ export default async function ContentPage({
   // Verify enrollment (the current one — progress is per enrollment)
   const enrollment = await getCurrentEnrollment(student.id, courseId)
   if (!enrollment || enrollment.access === "none") redirect(`/lms/courses/${courseId}`)
+  // Program not open yet / earlier course unfinished: back to the course page, which explains.
+  if ((await getCourseLock(enrollment)).locked) redirect(`/lms/courses/${courseId}`)
 
   // Fetch content item with its module
   const { data: item } = await db

@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getCourseLock } from "@/lib/lms-enrollment"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import {
   isScoredItemType, scoreQuestions, itemMaxAttempts, itemPassMark,
@@ -103,6 +103,12 @@ export async function POST(
     // open player are accepted as no-ops so the page doesn't show errors.
     if (completed_item_id === undefined && item_answers === undefined) return NextResponse.json(null)
     return NextResponse.json({ error: enrollment.accessNote ?? "This course is review-only" }, { status: 403 })
+  }
+  // Program not started yet / an earlier course still open (sequential courses).
+  const lock = await getCourseLock(enrollment)
+  if (lock.locked) {
+    if (completed_item_id === undefined && item_answers === undefined) return NextResponse.json(null)
+    return NextResponse.json({ error: lock.reason }, { status: 403 })
   }
 
   const [{ data: existing }, { data: pkgItems, error: itemsErr }] = await Promise.all([

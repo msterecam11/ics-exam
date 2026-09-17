@@ -9,7 +9,7 @@ import { ArrowLeft } from "lucide-react"
 import ExamClient from "./ExamClient"
 import type { ExamQuestion, ExamSettings } from "@/components/lms/FinalExamPlayer"
 import { sanitizeQuestionsForClient } from "@/lib/lms-exam-scoring"
-import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enrollment"
 
 export default async function StudentExamPage({
   params,
@@ -24,6 +24,8 @@ export default async function StudentExamPage({
   // Verify enrollment (the current one — attempts and rules are per enrollment)
   const enrollment = await getCurrentEnrollment(student.id, courseId)
   if (!enrollment || enrollment.access === "none") notFound()
+  // Program not open yet / earlier course unfinished: back to the course page, which explains.
+  if ((await getCourseLock(enrollment)).locked) redirect(`/lms/courses/${courseId}`)
 
   // Fetch module
   const { data: module } = await db

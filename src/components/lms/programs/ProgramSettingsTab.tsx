@@ -113,7 +113,7 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
 
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
         <p className="text-sm font-semibold text-slate-800">Learning &amp; completion</p>
-        <Toggle k="progress_enforcement" label="Sequential progress" hint="Students complete each module before the next" />
+        <Toggle k="progress_enforcement" label="Sequential courses" hint="Students complete each course before the next one opens (in the order set on the Structure tab)" />
         <Toggle k="certificate_enabled" label="Issue course certificates" hint="When a student passes a course's final exam in this program" />
         {form.certificate_enabled && <Toggle k="certificate_auto_release" indent label="Release certificates automatically" hint="Unchecked = held until an admin releases them" />}
         <Toggle k="feedback_enabled" label="Course feedback survey" hint="Asked when a student completes a course" />

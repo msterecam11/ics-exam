@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import {
-  LayoutDashboard, BookOpen, Calendar, ClipboardList,
+  LayoutDashboard, BookOpen, Calendar, FolderKanban,
   Award, UserCircle, LogOut, Bell, Menu,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -12,10 +12,10 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 
 const NAV = [
-  { href: "/lms/dashboard",    label: "Dashboard",      icon: LayoutDashboard, badge: null },
+  { href: "/lms/dashboard",    label: "Home",           icon: LayoutDashboard, badge: null },
+  { href: "/lms/programs",     label: "My Programs",    icon: FolderKanban,    badge: null },
   { href: "/lms/courses",      label: "My Courses",     icon: BookOpen,        badge: null },
   { href: "/lms/schedule",     label: "My Schedule",    icon: Calendar,        badge: "sessions" },
-  { href: "/lms/assignments",  label: "My Assignments", icon: ClipboardList,   badge: "assignments" },
   { href: "/lms/certificates", label: "Certificates",   icon: Award,           badge: null },
   { href: "/lms/profile",      label: "My Profile",     icon: UserCircle,      badge: null },
 ] as const
@@ -24,7 +24,6 @@ interface Props {
   children: React.ReactNode
   student: { name: string; email: string }
   upcomingSessions?: number
-  pendingAssignments?: number
 }
 
 interface SidebarContentProps {
@@ -113,13 +112,11 @@ export default function LmsStudentShell({
   children,
   student,
   upcomingSessions = 0,
-  pendingAssignments = 0,
 }: Props) {
   const pathname = usePathname()
 
   const badges: Record<string, number> = {
-    sessions:    upcomingSessions,
-    assignments: pendingAssignments,
+    sessions: upcomingSessions,
   }
 
   const initials = student.name

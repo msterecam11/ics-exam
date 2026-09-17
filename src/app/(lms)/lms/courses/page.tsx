@@ -1,8 +1,9 @@
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect } from "next/navigation"
-import CoursesTabs from "./CoursesTabs"
-import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
+import CoursesTabs, { type CourseRow } from "./CoursesTabs"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible, getCourseLocks } from "@/lib/lms-enrollment"
+import { daysUntil, deadlineLevel } from "@/lib/lms-student-portal"
 
 export default async function MyCoursesPage() {
   const student = await getStudentSession()
@@ -22,80 +23,51 @@ export default async function MyCoursesPage() {
   // One current, accessible enrollment per course (a course retaken in a new
   // program shows once; draft or withdrawn programs don't show).
   const rawEnrollments = currentVisible(enrollmentRows as any[])
-  const allCourseIds = rawEnrollments
-    .map((e: any) => e.lms_courses?.id)
-    .filter(Boolean)
+  const allCourseIds = rawEnrollments.map((e: any) => e.lms_courses?.id).filter(Boolean)
   const enrollmentIds = rawEnrollments.map((e: any) => e.id)
 
   // ── 2. Parallel fetches ──────────────────────────────────────
-  const [
-    modulesResult,
-    progResult,
-    pkgProgResult,
-    inProgressResult,
-    cohortMembersResult,
-  ] = await Promise.all([
-    // All modules for these courses
+  const [modulesResult, progResult, pkgProgResult, inProgressResult, locks] = await Promise.all([
     allCourseIds.length
-      ? db.from("lms_modules")
-          .select("id, course_id, estimated_duration, module_type")
-          .in("course_id", allCourseIds)
+      ? db.from("lms_modules").select("id, course_id, estimated_duration, module_type").in("course_id", allCourseIds)
       : Promise.resolve({ data: [] }),
 
     // Standard content-item progress
     allCourseIds.length
-      ? db.from("lms_progress")
-          .select("course_id, status, content_item_id, updated_at")
-          .in("enrollment_id", enrollmentIds)
+      ? db.from("lms_progress").select("course_id, status, content_item_id, updated_at").in("enrollment_id", enrollmentIds)
       : Promise.resolve({ data: [] }),
 
     // Package progress (one row per package module)
     allCourseIds.length
-      ? db.from("lms_package_progress")
-          .select("course_id, module_id, status, completed_items, updated_at")
-          .in("enrollment_id", enrollmentIds)
+      ? db.from("lms_package_progress").select("course_id, module_id, status, updated_at").in("enrollment_id", enrollmentIds)
       : Promise.resolve({ data: [] }),
 
-    // Last in-progress content item per course (for Continue button)
+    // Last in-progress content item per course (for the Continue button)
     allCourseIds.length
-      ? db.from("lms_progress")
-          .select("course_id, content_item_id, updated_at")
-          .in("enrollment_id", enrollmentIds)
-          .eq("status", "in_progress")
+      ? db.from("lms_progress").select("course_id, content_item_id, updated_at")
+          .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
           .order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] }),
 
-    // Cohort memberships
-    db.from("lms_cohort_members")
-      // lms_cohort_members has no `id` and no `is_active` column (it is
-      // cohort_id, student_id, added_at, added_by, track_id). Selecting and
-      // filtering on them made this query fail on every page load — it shows up
-      // in the Postgres logs as "column lms_cohort_members.id does not exist" —
-      // and since the error was never checked, cohorts (and the learning paths
-      // found through them) always rendered as "none assigned".
-      .select("track_id, cohort_id, lms_cohorts(id, name, mode, start_date, end_date, learning_path_id)")
-      .eq("student_id", student.id),
+    // Program start date / sequential-course locks.
+    getCourseLocks(rawEnrollments.map((e: any) => ({
+      course_id: e.course_id, status: e.status, program_id: e.program_id ?? null, member_id: e.member_id ?? null,
+      program: e.lms_programs ?? null, member: e.lms_program_members ?? null, access: e.access,
+    }))),
   ])
 
   // ── 3. Last accessed + module count ─────────────────────────
   const lastAccessedByCourse: Record<string, string> = {}
-  for (const row of (pkgProgResult.data ?? []) as any[]) {
-    if (!lastAccessedByCourse[row.course_id] || row.updated_at > lastAccessedByCourse[row.course_id])
-      lastAccessedByCourse[row.course_id] = row.updated_at
-  }
-  for (const row of (progResult.data ?? []) as any[]) {
+  for (const row of [...((pkgProgResult.data ?? []) as any[]), ...((progResult.data ?? []) as any[])]) {
     if (!lastAccessedByCourse[row.course_id] || row.updated_at > lastAccessedByCourse[row.course_id])
       lastAccessedByCourse[row.course_id] = row.updated_at
   }
 
-  // Last in-progress item per course
   const nextItemByCourse: Record<string, string> = {}
   for (const row of (inProgressResult.data ?? []) as any[]) {
-    if (!nextItemByCourse[row.course_id])
-      nextItemByCourse[row.course_id] = row.content_item_id
+    if (!nextItemByCourse[row.course_id]) nextItemByCourse[row.course_id] = row.content_item_id
   }
 
-  // Module count + total minutes per course
   const moduleCountByCourse:  Record<string, number> = {}
   const totalMinutesByCourse: Record<string, number> = {}
   for (const m of (modulesResult.data ?? []) as any[]) {
@@ -103,150 +75,49 @@ export default async function MyCoursesPage() {
     totalMinutesByCourse[m.course_id] = (totalMinutesByCourse[m.course_id] ?? 0) + (m.estimated_duration ?? 0)
   }
 
-  // ── 4. Shape enrollments ─────────────────────────────────────
-  // progress_pct is stored by syncEnrollmentProgress — use it directly
-  const enrollments = (rawEnrollments ?? []).map((e: any) => {
-    const cid = e.lms_courses?.id
+  // ── 4. Shape ─────────────────────────────────────────────────
+  // progress_pct is stored by syncEnrollmentProgress — use it directly.
+  const courses: CourseRow[] = rawEnrollments.map((e: any) => {
+    const cid        = e.lms_courses?.id
     const totalMins  = totalMinutesByCourse[cid] ?? 0
-    const pct        = e.progress_pct ?? 0
-    const remainMins = Math.round(totalMins * (1 - pct / 100))
+    const pct        = Math.min(100, Math.round(e.progress_pct ?? 0))
+
+    // Inside a program its dates apply (the student's extension wins); outside
+    // one, the course's own dates.
+    const prog      = e.program_id ? e.lms_programs : null
+    const startDate = prog ? (prog.start_date ?? null) : (e.lms_courses?.start_date ? String(e.lms_courses.start_date).slice(0, 10) : null)
+    const endDate   = prog
+      ? (e.lms_program_members?.end_date_override ?? prog.end_date ?? null)
+      : (e.lms_courses?.end_date ? String(e.lms_courses.end_date).slice(0, 10) : null)
+    const daysLeft  = e.status === "active" && e.access === "full" && endDate ? daysUntil(endDate) : null
+    const lock      = locks.get(cid)
 
     return {
       id:            e.id,
       status:        e.status,
-      enrolled_at:   e.enrolled_at,
-      completed_at:  e.completed_at,
       course: {
         id:            cid,
         title:         e.lms_courses?.title        ?? "Untitled",
         delivery_mode: e.lms_courses?.delivery_mode ?? "online",
         thumbnail_url: e.lms_courses?.thumbnail_url ?? null,
-        start_date:    e.lms_courses?.start_date    ?? null,
-        end_date:      e.lms_courses?.end_date      ?? null,
       },
+      program:       prog && !prog.is_individual ? { id: prog.id, name: prog.name } : null,
+      startDate,
+      endDate,
+      daysLeft:      daysLeft !== null && daysLeft >= 0 ? daysLeft : null,
+      deadline:      deadlineLevel(daysLeft),
+      extended:      !!prog && !!e.lms_program_members?.end_date_override && e.lms_program_members.end_date_override !== prog.end_date,
+      readOnly:      e.access === "read_only",
+      accessNote:    e.accessNote ?? null,
+      lockReason:    lock?.locked ? lock.reason : null,
       progress:      pct,
       lastAccessed:  lastAccessedByCourse[cid] ?? null,
       nextContentId: nextItemByCourse[cid]     ?? null,
       moduleCount:   moduleCountByCourse[cid]  ?? 0,
       totalMinutes:  totalMins,
-      remainMinutes: remainMins,
+      remainMinutes: Math.round(totalMins * (1 - pct / 100)),
     }
   })
 
-  // ── 5. Cohorts ───────────────────────────────────────────────
-  const memberRows = (cohortMembersResult.data ?? []) as any[]
-  const cohortIds  = memberRows.map((m: any) => m.cohort_id).filter(Boolean)
-
-  const [unifiedResult, tracksResult, ownTrackResult] = await Promise.all([
-    cohortIds.length
-      ? db.from("lms_cohort_courses")
-          .select("cohort_id, order_index, lms_courses(id, title, delivery_mode, start_date, end_date)")
-          .in("cohort_id", cohortIds).order("order_index", { ascending: true })
-      : Promise.resolve({ data: [] }),
-
-    cohortIds.length
-      ? db.from("lms_cohort_tracks")
-          .select("id, name, cohort_id")
-          .in("cohort_id", cohortIds).order("order_index", { ascending: true })
-      : Promise.resolve({ data: [] }),
-
-    memberRows.map((m: any) => m.track_id).filter(Boolean).length
-      ? db.from("lms_cohort_track_courses")
-          .select("track_id, order_index, lms_courses(id, title, delivery_mode, start_date, end_date)")
-          .in("track_id", memberRows.map((m: any) => m.track_id).filter(Boolean))
-          .order("order_index", { ascending: true })
-      : Promise.resolve({ data: [] }),
-  ])
-
-  const unifiedByCohort: Record<string, any[]> = {}
-  for (const r of (unifiedResult.data ?? []) as any[]) {
-    if (!unifiedByCohort[r.cohort_id]) unifiedByCohort[r.cohort_id] = []
-    unifiedByCohort[r.cohort_id].push(r)
-  }
-  const tracksByCohort: Record<string, { id: string; name: string }[]> = {}
-  for (const t of (tracksResult.data ?? []) as any[]) {
-    if (!tracksByCohort[t.cohort_id]) tracksByCohort[t.cohort_id] = []
-    tracksByCohort[t.cohort_id].push({ id: t.id, name: t.name })
-  }
-  const coursesByTrack: Record<string, any[]> = {}
-  for (const r of (ownTrackResult.data ?? []) as any[]) {
-    if (!coursesByTrack[r.track_id]) coursesByTrack[r.track_id] = []
-    coursesByTrack[r.track_id].push(r)
-  }
-
-  const progressByCourse: Record<string, number> = {}
-  for (const e of (rawEnrollments ?? []) as any[]) {
-    if (e.lms_courses?.id) progressByCourse[e.lms_courses.id] = e.progress_pct ?? 0
-  }
-
-  function shapeCourse(row: any, idx: number) {
-    const c = row.lms_courses
-    return {
-      id: c?.id ?? "", title: c?.title ?? "Untitled",
-      delivery_mode: c?.delivery_mode ?? "online",
-      start_date: c?.start_date ?? null, end_date: c?.end_date ?? null,
-      progress: progressByCourse[c?.id] ?? 0,
-      order_index: row.order_index ?? idx,
-    }
-  }
-
-  const cohorts = memberRows.map((m: any) => {
-    const cohort    = m.lms_cohorts as any
-    const isUnified = cohort?.mode === "unified"
-    const trackId   = m.track_id ?? null
-    return {
-      memberId: m.cohort_id,   // one membership per cohort — the natural key
-      cohort: {
-        id: cohort?.id ?? m.cohort_id, name: cohort?.name ?? "Cohort",
-        mode: cohort?.mode ?? "unified",
-        start_date: cohort?.start_date ?? null, end_date: cohort?.end_date ?? null,
-        courses: isUnified ? (unifiedByCohort[cohort?.id] ?? []).map(shapeCourse) : [],
-        learning_path_id: cohort?.learning_path_id ?? null,
-      },
-      trackId,
-      track: trackId ? {
-        id: trackId,
-        name: (tracksByCohort[cohort?.id] ?? []).find((t: any) => t.id === trackId)?.name ?? "My Track",
-        courses: (coursesByTrack[trackId] ?? []).map(shapeCourse),
-      } : null,
-      allTracks: tracksByCohort[cohort?.id] ?? [],
-    }
-  })
-
-  // ── 6. Learning paths ────────────────────────────────────────
-  const lpIds = [...new Set(
-    memberRows.map((m: any) => (m.lms_cohorts as any)?.learning_path_id).filter(Boolean)
-  )] as string[]
-
-  let learningPaths: any[] = []
-  if (lpIds.length) {
-    const [lpRows, lpCourseRows] = await Promise.all([
-      db.from("lms_learning_paths").select("id, title, description").in("id", lpIds),
-      // path_id, not learning_path_id (which does not exist here) — see dashboard.
-      db.from("lms_learning_path_courses")
-        .select("path_id, order_index, lms_courses(id, title, delivery_mode, start_date, end_date)")
-        .in("path_id", lpIds).order("order_index", { ascending: true }),
-    ])
-    learningPaths = (lpRows.data ?? []).map((lp: any) => {
-      const courses = (lpCourseRows.data ?? [])
-        .filter((r: any) => r.path_id === lp.id)
-        .map((r: any, idx: number) => shapeCourse(r, idx))
-      const lpCohort = memberRows.find((m: any) => (m.lms_cohorts as any)?.learning_path_id === lp.id)
-      const lpCohortData = lpCohort ? (lpCohort.lms_cohorts as any) : null
-      return {
-        id: lp.id, title: lp.title, description: lp.description ?? null,
-        start_date: lpCohortData?.start_date ?? null,
-        end_date:   lpCohortData?.end_date   ?? null,
-        courses,
-      }
-    })
-  }
-
-  return (
-    <CoursesTabs
-      enrollments={enrollments}
-      learningPaths={learningPaths}
-      cohorts={cohorts}
-    />
-  )
+  return <CoursesTabs courses={courses} />
 }

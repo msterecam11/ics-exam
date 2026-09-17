@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { canUseQuiz, getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { canUseQuiz, getCurrentEnrollment, getCourseLock } from "@/lib/lms-enrollment"
 
 // POST /api/lms/quiz-attempt
 // Body: { quiz_id, content_item_id, course_id, answers }
@@ -165,7 +165,8 @@ export async function POST(req: Request) {
       .single()
 
     const current = module ? await getCurrentEnrollment(studentId, course_id) : null
-    if (module && current && current.access === "full") {
+    // A locked course (program not started / earlier course open) records nothing.
+    if (module && current && current.access === "full" && !(await getCourseLock(current)).locked) {
       await db.from("lms_progress").upsert({
         student_id:      studentId,
         enrollment_id:   current.id,

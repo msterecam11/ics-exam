@@ -3,7 +3,7 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import PackagePlayer, { type PackagePlayerProps } from "@/components/lms/PackagePlayer"
 import { type PackageItem } from "@/components/lms/PackageEditor"
-import { getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getCourseLock } from "@/lib/lms-enrollment"
 import { isScoredItemType, stripAnswerKey } from "@/lib/lms-package-scoring"
 
 export default async function PackagePlayerPage({
@@ -23,6 +23,8 @@ export default async function PackagePlayerPage({
   // Verify enrollment (the current one — progress is per enrollment)
   const enrollment = await getCurrentEnrollment(student.id, courseId)
   if (!enrollment || enrollment.access === "none") redirect(`/lms/courses/${courseId}`)
+  // Program not open yet / earlier course unfinished: back to the course page, which explains.
+  if ((await getCourseLock(enrollment)).locked) redirect(`/lms/courses/${courseId}`)
 
   // Verify module belongs to course and is package type
   const { data: module } = await db
