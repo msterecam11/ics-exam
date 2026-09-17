@@ -2,7 +2,7 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import ContentPlayer from "./ContentPlayer"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 
 export default async function ContentPage({
   params,
@@ -13,16 +13,9 @@ export default async function ContentPage({
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Verify enrollment
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id, status")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .single()
-
-  if (!enrollment) redirect(`/lms/courses/${courseId}`)
+  // Verify enrollment (the current one — progress is per enrollment)
+  const enrollment = await getCurrentEnrollment(student.id, courseId)
+  if (!enrollment || enrollment.access === "none") redirect(`/lms/courses/${courseId}`)
 
   // Fetch content item with its module
   const { data: item } = await db
@@ -44,9 +37,9 @@ export default async function ContentPage({
   const { data: progress } = await db
     .from("lms_progress")
     .select("status, position, time_spent")
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .eq("content_item_id", contentId)
-    .single()
+    .maybeSingle()
 
   // Fetch course title
   const { data: course } = await db

@@ -1,6 +1,7 @@
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect } from "next/navigation"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 import { Award, Download, CalendarDays, BookOpen, Lock } from "lucide-react"
 
 function formatDate(iso: string) {
@@ -26,18 +27,21 @@ export default async function CertificatesPage() {
   // Revoked certificates ARE still excluded — that is a withdrawal, not a delay.
   const { data: certs } = await db
     .from("lms_certificates")
-    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title)")
+    // A course retaken in a later program has one certificate per enrollment;
+    // the program name tells them apart.
+    .select("id, course_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(name))")
     .eq("student_id", student.id)
     .is("revoked_at", null)
     .order("issued_at", { ascending: false })
 
   // In-progress enrollments (active, not yet completed)
-  const { data: activeEnrollments } = await db
+  const { data: activeRows } = await db
     .from("lms_enrollments")
-    .select("id, progress_pct, lms_courses(id, title)")
+    .select(`id, course_id, status, enrolled_at, progress_pct, ${ENROLLMENT_ACCESS_COLUMNS}, lms_courses(id, title)`)
     .eq("student_id", student.id)
     .eq("status", "active")
     .order("enrolled_at", { ascending: false })
+  const activeEnrollments = currentVisible(activeRows as any[])
 
   const certificates = (certs ?? []).map((c: any) => ({
     id:                c.id,
@@ -49,6 +53,7 @@ export default async function CertificatesPage() {
                          : (c.source_title ?? "Certificate"),
     issued_at:         c.issued_at,
     released:          !!c.released_at,
+    program:           c.lms_enrollments?.lms_programs?.name ?? null,
   }))
 
   const pendingCount = certificates.filter(c => !c.released).length
@@ -110,7 +115,7 @@ export default async function CertificatesPage() {
                       <p className="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">
                         {cert.title}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">ICS Aviation Institute</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{cert.program ? `${cert.program} · ` : ""}ICS Aviation Institute</p>
                     </div>
                   </div>
 

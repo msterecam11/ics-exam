@@ -7,7 +7,7 @@ import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathComplet
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { recalculateAttemptScore, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getWritableEnrollment, getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 
 // POST /api/lms/exam-attempt
 // Body: { module_id, course_id, answers, security_events }
@@ -49,16 +49,9 @@ export async function POST(req: Request) {
   // checkCourseCompletion, whose certificate issuance does not look at
   // enrollment either. So a passing submission from outside the course would
   // have produced a certificate for a course the student was never enrolled in.
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id")
-    .eq("student_id", studentId)
-    .eq("course_id", course_id)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .maybeSingle()
-
-  if (!enrollment)
-    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  const writable = await getWritableEnrollment(studentId, course_id)
+  if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
+  const enrollment = writable.enrollment
 
   // Single source of truth for the exam pass mark: the course-level
   // `final_exam_pass_mark` (edited in Course Settings) governs. We fall back to
@@ -70,15 +63,17 @@ export async function POST(req: Request) {
     .eq("id", course_id)
     .single()
 
-  // Count existing attempts
+  // Count existing attempts — of THIS enrollment (a retake starts from zero)
   const { count } = await db
     .from("lms_module_attempts")
     .select("*", { count: "exact", head: true })
     .eq("module_id", module_id)
-    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollment.id)
 
   const settings = module.activity_settings as any
-  const maxAttempts = settings?.max_attempts ?? 3
+  // Program rules first (pass mark / attempts per program), else the course's.
+  const rules = await getExamRules(enrollment, course as any, settings)
+  const maxAttempts = rules.maxAttempts
 
   if ((count ?? 0) >= maxAttempts)
     return NextResponse.json({ error: `Maximum ${maxAttempts} attempt(s) reached` }, { status: 409 })
@@ -93,7 +88,7 @@ export async function POST(req: Request) {
   const { data: openSession } = await db
     .from("lms_exam_sessions")
     .select("id")
-    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollment.id)
     .eq("module_id", module_id)
     .is("submitted_at", null)
     .maybeSingle()
@@ -152,8 +147,8 @@ export async function POST(req: Request) {
     }
   }))
 
-  // Authoritative pass mark (course setting → module setting → 70).
-  const passMark = (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70
+  // Authoritative pass mark (program rule → course setting → module setting → 70).
+  const passMark = rules.passMark
 
   // Grade every objective question (mcq/ordering/matching) server-side against
   // the module's current answer key, then add the AI-graded open_ended sum —
@@ -180,6 +175,7 @@ export async function POST(req: Request) {
     .insert({
       module_id,
       student_id:   studentId,
+      enrollment_id: enrollment.id,
       course_id,
       attempt_no:   attemptNo,
       status:       "graded",
@@ -211,11 +207,11 @@ export async function POST(req: Request) {
 
   // Sync progress + check completion
   if (course_id) {
-    await syncEnrollmentProgress(studentId, course_id)
+    await syncEnrollmentProgress(studentId, course_id, enrollment.id)
     if (correctedPassed) {
       // Run all completion checks in parallel — each is independently non-critical
       await Promise.all([
-        checkCourseCompletion(studentId, course_id),
+        checkCourseCompletion(studentId, course_id, enrollment.id),
         checkLearningPathCompletion(studentId, course_id),
         checkCohortCompletion(studentId, course_id),
       ])
@@ -249,13 +245,20 @@ export async function DELETE(req: Request) {
   if (!moduleId || !studentId)
     return NextResponse.json({ error: "module_id and student_id required" }, { status: 400 })
 
+  // Resets the attempts of the student's CURRENT enrollment only — attempts
+  // from earlier programs are history and stay.
+  const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
+  const current = await getCurrentEnrollment(studentId, (mod as any)?.course_id)
+  if (!current) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+
+  await db.from("lms_exam_sessions").delete().eq("module_id", moduleId).eq("enrollment_id", current.id)
   const { error } = await db
     .from("lms_module_attempts")
     .delete()
     .eq("module_id", moduleId)
-    .eq("student_id", studentId)
+    .eq("enrollment_id", current.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return NextResponse.json({ error: "Could not reset attempts" }, { status: 500 })
 
   return NextResponse.json({ ok: true })
 }
@@ -284,11 +287,15 @@ export async function GET(req: Request) {
   if (studentSession && studentId !== studentSession.id)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
+  const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
+  const current = await getCurrentEnrollment(studentId, (mod as any)?.course_id)
+  if (!current) return NextResponse.json([])
+
   const { data, error } = await db
     .from("lms_module_attempts")
     .select("id, attempt_no, status, score, max_score, passed, submitted_at")
     .eq("module_id", moduleId)
-    .eq("student_id", studentId)
+    .eq("enrollment_id", current.id)
     .order("attempt_no", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -4,16 +4,18 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Clock, MapPin, Video, CheckCircle2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 
 export default async function SchedulePage() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  const { data: enrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("course_id")
+    .select(`id, course_id, status, enrolled_at, ${ENROLLMENT_ACCESS_COLUMNS}`)
     .eq("student_id", student.id)
     .in("status", ["active", "completed"])
+  const enrollments = currentVisible(enrollmentRows as any[])
 
   const courseIds = (enrollments ?? []).map((e: any) => e.course_id).filter(Boolean)
 

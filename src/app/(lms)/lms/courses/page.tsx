@@ -2,25 +2,30 @@ import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect } from "next/navigation"
 import CoursesTabs from "./CoursesTabs"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 
 export default async function MyCoursesPage() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
   // ── 1. Enrollments ───────────────────────────────────────────
-  const { data: rawEnrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
     .select(`
-      id, status, enrolled_at, completed_at, progress_pct,
+      id, course_id, status, enrolled_at, completed_at, progress_pct, ${ENROLLMENT_ACCESS_COLUMNS},
       lms_courses(id, title, delivery_mode, thumbnail_url, start_date, end_date)
     `)
     .eq("student_id", student.id)
     .in("status", ["active", "completed"])
     .order("enrolled_at", { ascending: false })
 
-  const allCourseIds = (rawEnrollments ?? [])
+  // One current, accessible enrollment per course (a course retaken in a new
+  // program shows once; draft or withdrawn programs don't show).
+  const rawEnrollments = currentVisible(enrollmentRows as any[])
+  const allCourseIds = rawEnrollments
     .map((e: any) => e.lms_courses?.id)
     .filter(Boolean)
+  const enrollmentIds = rawEnrollments.map((e: any) => e.id)
 
   // ── 2. Parallel fetches ──────────────────────────────────────
   const [
@@ -41,25 +46,22 @@ export default async function MyCoursesPage() {
     allCourseIds.length
       ? db.from("lms_progress")
           .select("course_id, status, content_item_id, updated_at")
-          .eq("student_id", student.id)
-          .in("course_id", allCourseIds)
+          .in("enrollment_id", enrollmentIds)
       : Promise.resolve({ data: [] }),
 
     // Package progress (one row per package module)
     allCourseIds.length
       ? db.from("lms_package_progress")
           .select("course_id, module_id, status, completed_items, updated_at")
-          .eq("student_id", student.id)
-          .in("course_id", allCourseIds)
+          .in("enrollment_id", enrollmentIds)
       : Promise.resolve({ data: [] }),
 
     // Last in-progress content item per course (for Continue button)
     allCourseIds.length
       ? db.from("lms_progress")
           .select("course_id, content_item_id, updated_at")
-          .eq("student_id", student.id)
+          .in("enrollment_id", enrollmentIds)
           .eq("status", "in_progress")
-          .in("course_id", allCourseIds)
           .order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] }),
 

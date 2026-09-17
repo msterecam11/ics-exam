@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import LmsStudentShell from "@/components/lms/LmsStudentShell"
 import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 
 export default async function LmsLayout({ children }: { children: React.ReactNode }) {
   const student = await getStudentSession()
@@ -15,13 +16,14 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
   const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   // Active enrolled course IDs
-  const { data: enrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("course_id")
+    .select(`id, course_id, status, enrolled_at, ${ENROLLMENT_ACCESS_COLUMNS}`)
     .eq("student_id", student.id)
     .eq("status", "active")
+  const enrollments = currentVisible(enrollmentRows as any[]).filter(e => e.access === "full")
 
-  const courseIds = (enrollments ?? []).map((e: any) => e.course_id)
+  const courseIds = enrollments.map((e: any) => e.course_id)
 
   // Upcoming sessions in next 7 days
   let upcomingSessions = 0
@@ -40,7 +42,7 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
   const { count: pendingCount } = await db
     .from("lms_assignment_submissions")
     .select("id", { count: "exact", head: true })
-    .eq("student_id", student.id)
+    .in("enrollment_id", enrollments.map((e: any) => e.id))
     .eq("status", "submitted")
 
   return (

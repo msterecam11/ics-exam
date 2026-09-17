@@ -9,7 +9,7 @@ import { ArrowLeft } from "lucide-react"
 import ExamClient from "./ExamClient"
 import type { ExamQuestion, ExamSettings } from "@/components/lms/FinalExamPlayer"
 import { sanitizeQuestionsForClient } from "@/lib/lms-exam-scoring"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 
 export default async function StudentExamPage({
   params,
@@ -21,20 +21,16 @@ export default async function StudentExamPage({
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Verify enrollment
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id, status")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .single()
-  if (!enrollment) notFound()
+  // Verify enrollment (the current one — attempts and rules are per enrollment)
+  const enrollment = await getCurrentEnrollment(student.id, courseId)
+  if (!enrollment || enrollment.access === "none") notFound()
 
   // Fetch module
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, title, module_type, questions, activity_settings")
+    // lock_until_previous was not selected, so the server-side lock below never
+    // ran and the exam could be opened by URL before the previous module was done.
+    .select("id, title, module_type, questions, activity_settings, lock_until_previous")
     .eq("id", moduleId)
     .eq("course_id", courseId)
     .single()
@@ -68,7 +64,7 @@ export default async function StudentExamPage({
           const { data: pp } = await db
             .from("lms_package_progress")
             .select("status")
-            .eq("student_id", student.id)
+            .eq("enrollment_id", enrollment.id)
             .eq("package_id", pkgId)
             .maybeSingle()
           prevDone = pp?.status === "passed" || pp?.status === "completed"
@@ -79,7 +75,7 @@ export default async function StudentExamPage({
         const { data: att } = await db
           .from("lms_module_attempts")
           .select("passed")
-          .eq("student_id", student.id)
+          .eq("enrollment_id", enrollment.id)
           .eq("module_id", (prev as any).id)
           .eq("passed", true)
           .limit(1)
@@ -92,8 +88,7 @@ export default async function StudentExamPage({
           const { data: prog } = await db
             .from("lms_progress")
             .select("content_item_id, status")
-            .eq("student_id", student.id)
-            .eq("course_id", courseId)
+            .eq("enrollment_id", enrollment.id)
             .in("content_item_id", mandItems.map((i: any) => i.id))
           const doneSet = new Set((prog ?? []).filter((p: any) => p.status === "completed").map((p: any) => p.content_item_id))
           prevDone = mandItems.every((i: any) => doneSet.has(i.id))
@@ -107,22 +102,25 @@ export default async function StudentExamPage({
   // Fetch course (for header)
   const { data: course } = await db
     .from("lms_courses")
-    .select("id, title")
+    .select("id, title, final_exam_pass_mark")
     .eq("id", courseId)
     .single()
 
-  // Count previous attempts by this student
+  // Count previous attempts of this enrollment
   const { count: attemptCount } = await db
     .from("lms_module_attempts")
     .select("*", { count: "exact", head: true })
     .eq("module_id", moduleId)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
 
   // Sanitized before it ever reaches the client — the real answer key stays
   // server-side and is only consulted at grading time (exam-attempt/route.ts).
   const questions = sanitizeQuestionsForClient((module.questions as ExamQuestion[] | null) ?? []) as ExamQuestion[]
-  const settings  = (module.activity_settings as ExamSettings | null)
-  const maxAttempts = settings?.max_attempts ?? 3
+  // Pass mark and attempts shown to the student are the ones grading uses
+  // (the program's rules when the enrollment belongs to a program).
+  const rules = await getExamRules(enrollment, course as any, module.activity_settings)
+  const settings  = { ...((module.activity_settings as ExamSettings | null) ?? {}), pass_mark: rules.passMark, max_attempts: rules.maxAttempts } as ExamSettings
+  const maxAttempts = rules.maxAttempts
   const usedAttempts = attemptCount ?? 0
   const attemptNo = usedAttempts + 1
 
@@ -139,8 +137,8 @@ export default async function StudentExamPage({
     )
   }
 
-  // Max attempts reached
-  if (usedAttempts >= maxAttempts) {
+  // Program ended (review-only) or max attempts reached
+  if (enrollment.access === "read_only" || usedAttempts >= maxAttempts) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <header className="bg-[#1B4F8A] text-white sticky top-0 z-30 shadow">
@@ -155,9 +153,13 @@ export default async function StudentExamPage({
         <main className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
           <div className="bg-white rounded-2xl border border-slate-200 p-8 max-w-md w-full text-center space-y-3">
             <p className="text-4xl">🔒</p>
-            <h2 className="text-lg font-bold text-slate-900">No Attempts Remaining</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {enrollment.access === "read_only" ? "Exam Closed" : "No Attempts Remaining"}
+            </h2>
             <p className="text-sm text-slate-500">
-              You have used all {maxAttempts} attempt{maxAttempts !== 1 ? "s" : ""} for this exam.
+              {enrollment.access === "read_only"
+                ? enrollment.accessNote
+                : `You have used all ${maxAttempts} attempt${maxAttempts !== 1 ? "s" : ""} for this exam.`}
             </p>
             <Link href={`/lms/courses/${courseId}`}
               className="inline-block mt-2 text-sm text-[#1B4F8A] underline underline-offset-2">

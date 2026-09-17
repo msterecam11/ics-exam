@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowLeft } from "lucide-react"
 import AssignmentClient, { type RubricCriterion, type Submission } from "./AssignmentClient"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 
 export default async function AssignmentPage({
   params,
@@ -17,15 +17,9 @@ export default async function AssignmentPage({
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Verify enrollment
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .single()
-  if (!enrollment) notFound()
+  // Verify enrollment (the current one — submissions are per enrollment)
+  const enrollment = await getCurrentEnrollment(student.id, courseId)
+  if (!enrollment || enrollment.access === "none") notFound()
 
   // Fetch module
   const { data: module } = await db
@@ -53,7 +47,7 @@ export default async function AssignmentPage({
     .from("lms_module_attempts")
     .select("id, attempt_no, status, score, max_score, passed, answers, ai_feedback, submitted_at")
     .eq("module_id", moduleId)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .order("attempt_no", { ascending: false })
     .limit(1)
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { sendEmail, buildCompletionEmail } from "@/lib/email"
+import { getCurrentEnrollment, type EnrollmentContext } from "@/lib/lms-enrollment"
 import crypto from "crypto"
 
 // ── Certificate number generator ──────────────────────────────
@@ -44,10 +45,11 @@ function generateCertificateNumber(): string {
 
 // ── Issue certificate (deduped) ────────────────────────────────
 async function issueCertificate({
-  studentId, courseId, title, type, sourceId, sourceTitle, autoRelease = true,
+  studentId, courseId, enrollmentId, title, type, sourceId, sourceTitle, autoRelease = true,
 }: {
   studentId:    string
   courseId?:    string | null
+  enrollmentId?: string | null  // course certificates belong to one enrollment
   title:        string
   type:         "course" | "learning_path" | "cohort"
   sourceId?:    string
@@ -55,7 +57,17 @@ async function issueCertificate({
   autoRelease?: boolean   // when true, the certificate is released to the student immediately
 }): Promise<string | null> {
   // Dedup: check if already issued
-  if (type === "course" && courseId) {
+  if (type === "course" && enrollmentId) {
+    // One course certificate per ENROLLMENT: a retake in a new program earns
+    // its own certificate; the earlier one stays on record.
+    const { data: ex } = await db
+      .from("lms_certificates")
+      .select("id")
+      .eq("enrollment_id", enrollmentId)
+      .eq("type", "course")
+      .maybeSingle()
+    if (ex) return null
+  } else if (type === "course" && courseId) {
     const { data: ex } = await db
       .from("lms_certificates")
       .select("id")
@@ -80,6 +92,7 @@ async function issueCertificate({
     const { error } = await db.from("lms_certificates").insert({
       student_id:        studentId,
       course_id:         courseId ?? null,
+      enrollment_id:     enrollmentId ?? null,
       verification_code: verificationCode,
       type,
       source_id:         sourceId    ?? null,
@@ -93,8 +106,9 @@ async function issueCertificate({
   return null
 }
 
-// ── Check if student passed the final exam of a course ─────────
-async function passedFinalExam(studentId: string, courseId: string): Promise<boolean> {
+// ── Check if an enrollment passed the final exam of its course ──
+async function passedFinalExam(enrollment: Pick<EnrollmentContext, "id" | "course_id">): Promise<boolean> {
+  const courseId = enrollment.course_id
   // The final exam is the completion gate whether or not it's flagged
   // mandatory — don't require is_mandatory here (an admin toggling it optional
   // shouldn't silently break course completion / certificate issuance).
@@ -113,27 +127,61 @@ async function passedFinalExam(studentId: string, courseId: string): Promise<boo
     .from("lms_module_attempts")
     .select("*", { count: "exact", head: true })
     .eq("module_id", examModule.id)
-    .eq("student_id", studentId)
+    .eq("enrollment_id", enrollment.id)
     .eq("passed", true)
 
   return (count ?? 0) > 0
 }
 
+async function enrollmentProgram(enrollmentId: string): Promise<{ program_id: string | null; program: EnrollmentContext["program"] }> {
+  const { data } = await db
+    .from("lms_enrollments")
+    .select("program_id, lms_programs(id, name, status, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement)")
+    .eq("id", enrollmentId)
+    .maybeSingle()
+  return { program_id: (data as any)?.program_id ?? null, program: (data as any)?.lms_programs ?? null }
+}
+
+// ── PROGRAM member completion ──────────────────────────────────
+// A member is completed once every course enrollment they have in the program
+// (excluding withdrawn ones) is completed. (Program/track certificates come
+// with the certificate template work.)
+export async function checkProgramMemberCompletion(studentId: string, programId: string) {
+  try {
+    const { data: rows } = await db
+      .from("lms_enrollments")
+      .select("status")
+      .eq("student_id", studentId)
+      .eq("program_id", programId)
+      .neq("status", "dropped")
+    if (!rows?.length || rows.some((r: any) => r.status !== "completed")) return
+    await db.from("lms_program_members")
+      .update({ status: "completed" })
+      .eq("program_id", programId).eq("student_id", studentId).eq("status", "active")
+  } catch (err) {
+    console.error("[completion] checkProgramMemberCompletion failed", { studentId, programId, err })
+  }
+}
+
 // ── COURSE completion ──────────────────────────────────────────
 // Triggered when student passes the final exam.
 // Certificate issued if: final exam passed + course.certificate_enabled
-export async function checkCourseCompletion(studentId: string, courseId: string) {
+export async function checkCourseCompletion(studentId: string, courseId: string, enrollmentId?: string) {
   try {
-    const passed = await passedFinalExam(studentId, courseId)
-    if (!passed) return
+    // Completion is per enrollment (the current one unless a specific one is given).
+    const enrollment = enrollmentId
+      ? { id: enrollmentId, course_id: courseId, ...(await enrollmentProgram(enrollmentId)) }
+      : await getCurrentEnrollment(studentId, courseId)
+    if (!enrollment || !(await passedFinalExam(enrollment))) return
 
     // Mark enrollment as completed
     await db
       .from("lms_enrollments")
       .update({ status: "completed", completed_at: new Date().toISOString(), progress_pct: 100 })
-      .eq("student_id", studentId)
-      .eq("course_id", courseId)
+      .eq("id", enrollment.id)
       .eq("status", "active")
+
+    if (enrollment.program_id) await checkProgramMemberCompletion(studentId, enrollment.program_id)
 
     // Fetch course
     const { data: course } = await db
@@ -144,12 +192,15 @@ export async function checkCourseCompletion(studentId: string, courseId: string)
 
     if (!course) return
 
-    const certEnabled = (course as any).certificate_enabled !== false
+    // A program's certificate settings govern its enrollments (PM-4); outside a
+    // program the course settings apply as before.
+    const program = enrollment.program
+    const certEnabled = program ? program.certificate_enabled : (course as any).certificate_enabled !== false
     if (!certEnabled) return
 
     const certNumber = await issueCertificate({
-      studentId, courseId, title: course.title, type: "course",
-      autoRelease: (course as any).certificate_auto_release === true,
+      studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
+      autoRelease: program ? program.certificate_auto_release : (course as any).certificate_auto_release === true,
     })
 
     if (certNumber) {
@@ -230,7 +281,7 @@ export async function checkLearningPathCompletion(studentId: string, courseId: s
       // allowed (the limit only blocks at max_attempts), so this was reachable.
       const { data: passedRows } = await db
         .from("lms_module_attempts")
-        .select("module_id")
+        .select("module_id, enrollment_id")
         .eq("student_id", studentId)
         .eq("passed", true)
         .in("module_id", finalExams.map((e: any) => e.id))
@@ -348,7 +399,7 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
       // allowed (the limit only blocks at max_attempts), so this was reachable.
       const { data: passedRows } = await db
         .from("lms_module_attempts")
-        .select("module_id")
+        .select("module_id, enrollment_id")
         .eq("student_id", studentId)
         .eq("passed", true)
         .in("module_id", finalExams.map((e: any) => e.id))
@@ -393,8 +444,12 @@ export async function checkCohortCompletion(studentId: string, courseId: string)
 //                 exam → passed=100%, attempted=30%, else 0%
 //                 content → completed_mandatory / total_mandatory
 //   course % = Math.round(avg of all mandatory module %s)
-export async function syncEnrollmentProgress(studentId: string, courseId: string) {
+export async function syncEnrollmentProgress(studentId: string, courseId: string, enrollmentId?: string) {
   try {
+    // Progress belongs to one enrollment: the current one unless given.
+    const enrollment = enrollmentId ? { id: enrollmentId } : await getCurrentEnrollment(studentId, courseId)
+    if (!enrollment) return
+
     // 1. Modules that count toward completion. Prefer mandatory modules, but
     //    if a course has NONE marked mandatory (e.g. every module set optional),
     //    fall back to ALL modules — otherwise progress freezes at 0% forever
@@ -436,11 +491,11 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         : Promise.resolve([]),
       pkgIds.length
         ? db.from("lms_package_progress").select("package_id, status, completed_items")
-            .eq("student_id", studentId).in("package_id", pkgIds).then(r => r.data ?? [])
+            .eq("enrollment_id", enrollment.id).in("package_id", pkgIds).then(r => r.data ?? [])
         : Promise.resolve([]),
       examModIds.length
         ? db.from("lms_module_attempts").select("module_id, passed")
-            .eq("student_id", studentId).in("module_id", examModIds)
+            .eq("enrollment_id", enrollment.id).in("module_id", examModIds)
             .order("attempt_no", { ascending: false }).then(r => r.data ?? [])
         : Promise.resolve([]),
       cntModIds.length
@@ -449,7 +504,7 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         : Promise.resolve([]),
       cntModIds.length
         ? db.from("lms_progress").select("content_item_id")
-            .eq("student_id", studentId).eq("course_id", courseId).eq("status", "completed").then(r => r.data ?? [])
+            .eq("enrollment_id", enrollment.id).eq("status", "completed").then(r => r.data ?? [])
         : Promise.resolve([]),
     ])
 
@@ -498,8 +553,8 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
     // assignment attempts, incl. optional modules). Stored so the roster,
     // dashboard, and reports read one number instead of re-summing.
     const [allPkgTime, allAttemptTime] = await Promise.all([
-      db.from("lms_package_progress").select("time_spent").eq("student_id", studentId).eq("course_id", courseId).then(r => r.data ?? []),
-      db.from("lms_module_attempts").select("time_spent_s").eq("student_id", studentId).eq("course_id", courseId).then(r => r.data ?? []),
+      db.from("lms_package_progress").select("time_spent").eq("enrollment_id", enrollment.id).then(r => r.data ?? []),
+      db.from("lms_module_attempts").select("time_spent_s").eq("enrollment_id", enrollment.id).then(r => r.data ?? []),
     ])
     const timeSpentS =
       (allPkgTime as any[]).reduce((s, p) => s + (p.time_spent ?? 0), 0) +
@@ -507,15 +562,13 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     await db.from("lms_enrollments")
       .update({ progress_pct: pct, time_spent_s: timeSpentS })
-      .eq("student_id", studentId)
-      .eq("course_id", courseId)
+      .eq("id", enrollment.id)
 
     // Reset "completed" enrollment if content was added and progress dropped below 100%
     if (pct < 100) {
       await db.from("lms_enrollments")
         .update({ status: "active", completed_at: null })
-        .eq("student_id", studentId)
-        .eq("course_id", courseId)
+        .eq("id", enrollment.id)
         .eq("status", "completed")
     }
   } catch (err) {

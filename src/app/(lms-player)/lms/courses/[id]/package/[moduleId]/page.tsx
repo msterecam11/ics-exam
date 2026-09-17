@@ -3,7 +3,7 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import PackagePlayer, { type PackagePlayerProps } from "@/components/lms/PackagePlayer"
 import { type PackageItem } from "@/components/lms/PackageEditor"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { isScoredItemType, stripAnswerKey } from "@/lib/lms-package-scoring"
 
 export default async function PackagePlayerPage({
@@ -15,21 +15,14 @@ export default async function PackagePlayerPage({
 }) {
   const { id: courseId, moduleId } = await params
   const { review } = await searchParams
-  const isReview = review === "true"
+  const reviewRequested = review === "true"
 
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Verify enrollment
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id, status")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .single()
-
-  if (!enrollment) redirect(`/lms/courses/${courseId}`)
+  // Verify enrollment (the current one — progress is per enrollment)
+  const enrollment = await getCurrentEnrollment(student.id, courseId)
+  if (!enrollment || enrollment.access === "none") redirect(`/lms/courses/${courseId}`)
 
   // Verify module belongs to course and is package type
   const { data: module } = await db
@@ -61,6 +54,9 @@ export default async function PackagePlayerPage({
 
   if (!pkg) notFound()
 
+  // A program that has ended is review-only: nothing is recorded.
+  const isReview = reviewRequested || enrollment.access === "read_only"
+
   const items: PackageItem[] = ((pkg as any).lms_package_items ?? [])
     .sort((a: any, b: any) => a.order_index - b.order_index)
     .map((item: any): PackageItem => ({
@@ -78,7 +74,7 @@ export default async function PackagePlayerPage({
   const { data: progress } = await db
     .from("lms_package_progress")
     .select("current_item_index, completed_items, item_scores, status, score")
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .eq("package_id", pkg.id)
     .maybeSingle()
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { examTimeLimitS, elapsedSince, isSessionExpired } from "@/lib/lms-exam-session"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getWritableEnrollment, getExamRules } from "@/lib/lms-enrollment"
 import { sanitizeQuestionsForClient, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 
 // POST /api/lms/exam-attempt/start
@@ -33,23 +33,20 @@ export async function POST(req: Request) {
   if (!module || (module as any).module_type !== "final_exam")
     return NextResponse.json({ error: "Module not found" }, { status: 404 })
 
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id")
-    .eq("student_id", student.id)
-    .eq("course_id", course_id)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .maybeSingle()
-  if (!enrollment)
-    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  // The enrollment the exam is taken under (its program's rules apply). A
+  // withdrawn student, or a program that has ended, can't start an exam.
+  const writable = await getWritableEnrollment(student.id, course_id)
+  if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
+  const enrollment = writable.enrollment
 
   const settings    = module.activity_settings as any
-  const maxAttempts = settings?.max_attempts ?? 3
+  const { data: course } = await db.from("lms_courses").select("final_exam_pass_mark").eq("id", course_id).maybeSingle()
+  const { maxAttempts } = await getExamRules(enrollment, course as any, settings)
   const { count } = await db
     .from("lms_module_attempts")
     .select("*", { count: "exact", head: true })
     .eq("module_id", module_id)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
   if ((count ?? 0) >= maxAttempts)
     return NextResponse.json({ error: `Maximum ${maxAttempts} attempt(s) reached` }, { status: 409 })
 
@@ -77,7 +74,7 @@ export async function POST(req: Request) {
   const { data: open } = await db
     .from("lms_exam_sessions")
     .select("id, started_at, paper")
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .eq("module_id", module_id)
     .is("submitted_at", null)
     .maybeSingle()
@@ -97,7 +94,7 @@ export async function POST(req: Request) {
 
   const { data: created, error } = await db
     .from("lms_exam_sessions")
-    .insert({ student_id: student.id, module_id, course_id, started_at: now.toISOString(), paper: currentQuestions })
+    .insert({ student_id: student.id, enrollment_id: enrollment.id, module_id, course_id, started_at: now.toISOString(), paper: currentQuestions })
     .select("started_at, paper")
     .single()
 
@@ -107,7 +104,7 @@ export async function POST(req: Request) {
     const { data: winner } = await db
       .from("lms_exam_sessions")
       .select("started_at, paper")
-      .eq("student_id", student.id)
+      .eq("enrollment_id", enrollment.id)
       .eq("module_id", module_id)
       .is("submitted_at", null)
       .maybeSingle()

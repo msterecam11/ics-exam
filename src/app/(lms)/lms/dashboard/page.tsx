@@ -9,23 +9,27 @@ import {
   GraduationCap, Award, Rocket, Route, Users, GitBranch,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 
 export default async function StudentDashboard() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
   // ── Step 1: enrollments ───────────────────────────────────────
-  const { data: enrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
     .select(`
-      id, status, enrolled_at, completed_at, progress_pct, time_spent_s,
+      id, course_id, status, enrolled_at, completed_at, progress_pct, time_spent_s, ${ENROLLMENT_ACCESS_COLUMNS},
       lms_courses(id, title, description, delivery_mode, thumbnail_url, end_date, start_date)
     `)
     .eq("student_id", student.id)
     .in("status", ["active", "completed"])
     .order("enrolled_at", { ascending: false })
 
-  const courseIds = (enrollments ?? []).map((e: any) => e.lms_courses?.id).filter(Boolean)
+  // One current, accessible enrollment per course.
+  const enrollments = currentVisible(enrollmentRows as any[])
+  const courseIds = enrollments.map((e: any) => e.lms_courses?.id).filter(Boolean)
+  const enrollmentIds = enrollments.map((e: any) => e.id)
   const today     = new Date().toISOString().slice(0, 10)
 
   // ── Step 2: all queries in parallel ──────────────────────────
@@ -41,7 +45,7 @@ export default async function StudentDashboard() {
   ] = await Promise.all([
     db.from("lms_progress")
       .select("content_item_id, course_id, updated_at, position, lms_content_items(id, title, type)")
-      .eq("student_id", student.id).eq("status", "in_progress")
+      .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
       .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
 
     courseIds.length
@@ -66,7 +70,7 @@ export default async function StudentDashboard() {
 
     db.from("lms_progress")
       .select("content_item_id, course_id, updated_at, lms_content_items(title, type)")
-      .eq("student_id", student.id).eq("status", "completed")
+      .in("enrollment_id", enrollmentIds).eq("status", "completed")
       .order("updated_at", { ascending: false }).limit(4),
 
     // Cohort memberships with cohort info + learning path
@@ -88,14 +92,14 @@ export default async function StudentDashboard() {
     courseIds.length
       ? db.from("lms_package_progress")
           .select("module_id, course_id, current_item_index, updated_at, lms_packages(title, lms_modules(title))")
-          .eq("student_id", student.id).eq("status", "in_progress").in("course_id", courseIds)
+          .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
           .order("updated_at", { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
 
     courseIds.length
       ? db.from("lms_package_progress")
           .select("package_id, completed_at, updated_at, lms_packages(title, lms_modules(title))")
-          .eq("student_id", student.id).in("status", ["passed", "completed"]).in("course_id", courseIds)
+          .in("enrollment_id", enrollmentIds).in("status", ["passed", "completed"])
           .order("completed_at", { ascending: false }).limit(4)
       : Promise.resolve({ data: [] }),
   ])

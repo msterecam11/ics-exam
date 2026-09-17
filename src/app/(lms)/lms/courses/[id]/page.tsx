@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 
 // ── Icons & labels ────────────────────────────────────────────
 const CONTENT_ICONS: Record<string, React.ElementType> = {
@@ -66,16 +66,17 @@ export default async function StudentCoursePage({
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
-  // Verify enrollment
-  const { data: enrollment } = await db
+  // Verify enrollment — the student's CURRENT enrollment in this course; all
+  // progress shown below belongs to it (an earlier program's run is history).
+  const current = await getCurrentEnrollment(student.id, courseId)
+  if (!current || current.access === "none") notFound()
+  const { data: enrollmentRow } = await db
     .from("lms_enrollments")
     .select("id, status, enrolled_at, completed_at, progress_pct, time_spent_s")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
+    .eq("id", current.id)
     .single()
-
-  if (!enrollment) notFound()
+  if (!enrollmentRow) notFound()
+  const enrollment = enrollmentRow
 
   // Fetch course
   const { data: course } = await db
@@ -135,8 +136,7 @@ export default async function StudentCoursePage({
   const { data: progressRows } = await db
     .from("lms_progress")
     .select("content_item_id, status, position")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
+    .eq("enrollment_id", current.id)
 
   const progressMap = new Map(
     (progressRows ?? []).map((p: any) => [p.content_item_id, p])
@@ -161,7 +161,7 @@ export default async function StudentCoursePage({
       const [pkgProgResult, pkgItemsResult] = await Promise.all([
         db.from("lms_package_progress")
           .select("package_id, module_id, status, score, completed_items")
-          .eq("student_id", student.id)
+          .eq("enrollment_id", current.id)
           .in("package_id", pkgIds),
         db.from("lms_package_items")
           .select("package_id")
@@ -194,7 +194,7 @@ export default async function StudentCoursePage({
     const { data: examAttempts } = await db
       .from("lms_module_attempts")
       .select("module_id, passed, score, max_score, attempt_no")
-      .eq("student_id", student.id)
+      .eq("enrollment_id", current.id)
       .in("module_id", examModuleIds)
       .order("attempt_no", { ascending: false })
 
@@ -209,7 +209,7 @@ export default async function StudentCoursePage({
         const pct = a.max_score > 0 ? Math.round((a.score / a.max_score) * 100) : 0
         // Find max_attempts from module's activity_settings
         const mod = (modules ?? []).find((m: any) => m.id === a.module_id)
-        const maxAttempts = (mod?.activity_settings as any)?.max_attempts ?? 3
+        const maxAttempts = (await getExamRules(current, null, mod?.activity_settings)).maxAttempts
         examAttemptMap.set(a.module_id, {
           passed: a.passed,
           score: pct,
@@ -291,6 +291,14 @@ export default async function StudentCoursePage({
 
   return (
     <div className="p-6 space-y-6">
+
+      {/* Program access banner (program ended → review only) */}
+      {current.accessNote && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-slate-700">
+          <span className="text-lg">📘</span>
+          <p>{current.accessNote}</p>
+        </div>
+      )}
 
       {/* Date access banners */}
       {courseNotStarted && (

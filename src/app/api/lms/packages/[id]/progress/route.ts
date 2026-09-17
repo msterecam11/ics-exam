@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import {
   isScoredItemType, scoreQuestions, itemMaxAttempts, itemPassMark,
@@ -21,6 +21,11 @@ export async function GET(
 
   const { id } = await params
 
+  // Progress of the student's CURRENT enrollment in the package's course.
+  const { data: pkg } = await db.from("lms_packages").select("course_id").eq("id", id).maybeSingle()
+  const enrollment = await getCurrentEnrollment(student.id, (pkg as any)?.course_id)
+  if (!enrollment || enrollment.access === "none") return NextResponse.json(null)
+
   const { data, error } = await db
     .from("lms_package_progress")
     .select(`
@@ -28,7 +33,7 @@ export async function GET(
       current_item_index, completed_items, item_scores,
       status, score, time_spent, started_at, completed_at, updated_at
     `)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .eq("package_id", id)
     .maybeSingle()
 
@@ -88,24 +93,22 @@ export async function POST(
   const module_id = (pkg as any).module_id
   const course_id = (pkg as any).course_id
 
-  // And the student has to actually be enrolled in the course that owns it.
-  if (course_id) {
-    const { data: enrollment } = await db
-      .from("lms_enrollments")
-      .select("id")
-      .eq("student_id", student.id)
-      .eq("course_id", course_id)
-      .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-      .maybeSingle()
-
-    if (!enrollment)
-      return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  // And the student has to be enrolled in the course that owns it — progress is
+  // recorded under that enrollment (a retake in another program starts fresh).
+  const enrollment = await getCurrentEnrollment(student.id, course_id)
+  if (!enrollment || enrollment.access === "none")
+    return NextResponse.json({ error: enrollment?.accessNote ?? "Not enrolled in this course" }, { status: 403 })
+  if (enrollment.access === "read_only") {
+    // Review after a program ended: nothing is recorded. Time beacons from the
+    // open player are accepted as no-ops so the page doesn't show errors.
+    if (completed_item_id === undefined && item_answers === undefined) return NextResponse.json(null)
+    return NextResponse.json({ error: enrollment.accessNote ?? "This course is review-only" }, { status: 403 })
   }
 
   const [{ data: existing }, { data: pkgItems, error: itemsErr }] = await Promise.all([
     db.from("lms_package_progress")
       .select("id, completed_items, item_scores, time_spent, status")
-      .eq("student_id", student.id)
+      .eq("enrollment_id", enrollment.id)
       .eq("package_id", id)
       .maybeSingle(),
     db.from("lms_package_items").select("id, type, config, required").eq("package_id", id),
@@ -228,6 +231,7 @@ export async function POST(
 
   const upsertRow = {
     student_id:      student.id,
+    enrollment_id:   enrollment.id,
     package_id:      id,
     ...(module_id  && { module_id }),
     ...(course_id  && { course_id }),
@@ -241,11 +245,12 @@ export async function POST(
     updated_at:      new Date().toISOString(),
   }
 
-  const { data, error } = await db
-    .from("lms_package_progress")
-    .upsert(upsertRow, { onConflict: "student_id,package_id" })
-    .select()
-    .single()
+  // One progress row per enrollment + package. Update the existing row or
+  // insert a new one (rather than upsert on a unique key, so this works for a
+  // retake enrollment alongside the earlier enrollment's row).
+  const { data, error } = existing
+    ? await db.from("lms_package_progress").update(upsertRow).eq("id", existing.id).select().single()
+    : await db.from("lms_package_progress").insert(upsertRow).select().single()
 
   if (error) return NextResponse.json({ error: "Could not save progress" }, { status: 500 })
 
@@ -254,20 +259,20 @@ export async function POST(
   // works), and when the package result changes. (Not on every time beacon of
   // an already-finished package — those now carry a recomputed status too.)
   if (course_id && (becameTerminal || completed_item_id)) {
-    await syncEnrollmentProgress(student.id, course_id)
+    await syncEnrollmentProgress(student.id, course_id, enrollment.id)
   } else if (course_id && increment > 0) {
     // Time-only beacon — refresh just the enrollment time (recomputed from
     // source) so the dashboard/roster stay live without the full progress calc.
     const [pkgT, attT] = await Promise.all([
-      db.from("lms_package_progress").select("time_spent").eq("student_id", student.id).eq("course_id", course_id),
-      db.from("lms_module_attempts").select("time_spent_s").eq("student_id", student.id).eq("course_id", course_id),
+      db.from("lms_package_progress").select("time_spent").eq("enrollment_id", enrollment.id),
+      db.from("lms_module_attempts").select("time_spent_s").eq("enrollment_id", enrollment.id),
     ])
     const total = (pkgT.data ?? []).reduce((s: number, p: any) => s + (p.time_spent ?? 0), 0)
                 + (attT.data ?? []).reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0)
-    await db.from("lms_enrollments").update({ time_spent_s: total }).eq("student_id", student.id).eq("course_id", course_id)
+    await db.from("lms_enrollments").update({ time_spent_s: total }).eq("id", enrollment.id)
   }
   if (becameTerminal && course_id && finalStatus === "passed") {
-    await checkCourseCompletion(student.id, course_id)
+    await checkCourseCompletion(student.id, course_id, enrollment.id)
   }
 
   return NextResponse.json(itemResult ? { ...data, item_result: itemResult } : data)

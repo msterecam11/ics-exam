@@ -4,17 +4,19 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { ClipboardList, CheckCircle2, Clock, Star, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 
 export default async function AssignmentsPage() {
   const student = await getStudentSession()
   if (!student) redirect("/lms/login")
 
   // All enrolled courses
-  const { data: enrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("course_id, lms_courses(id, title)")
+    .select(`id, course_id, status, enrolled_at, ${ENROLLMENT_ACCESS_COLUMNS}, lms_courses(id, title)`)
     .eq("student_id", student.id)
     .in("status", ["active", "completed"])
+  const enrollments = currentVisible(enrollmentRows as any[])
 
   const courseIds = (enrollments ?? []).map((e: any) => e.course_id).filter(Boolean)
 
@@ -38,7 +40,7 @@ export default async function AssignmentsPage() {
   const { data: submissions } = await db
     .from("lms_assignment_submissions")
     .select("id, content_item_id, course_id, status, score, feedback, submitted_at, graded_at")
-    .eq("student_id", student.id)
+    .in("enrollment_id", enrollments.map((e: any) => e.id))
 
   const submissionMap = new Map<string, any>()
   for (const sub of submissions ?? []) {
