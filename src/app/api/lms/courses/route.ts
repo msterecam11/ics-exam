@@ -172,11 +172,18 @@ export async function PATCH(req: Request) {
   // certificates. When it's turned ON, release any certs currently held for
   // this course (so completed students get them without a separate button).
   if (fields.certificate_auto_release === true) {
-    await db.from("lms_certificates")
+    // Only certificates of enrollments OUTSIDE programs: a program has its own
+    // release setting, which the course default doesn't override.
+    const { data: programEnrollments } = await db
+      .from("lms_enrollments").select("id").eq("course_id", id).not("program_id", "is", null)
+    let release = db.from("lms_certificates")
       .update({ released_at: new Date().toISOString(), released_by: session.user.id })
       .eq("course_id", id)
       .is("released_at", null)
       .is("revoked_at", null)
+    const programIds = (programEnrollments ?? []).map((e: any) => e.id)
+    if (programIds.length) release = release.or(`enrollment_id.is.null,enrollment_id.not.in.(${programIds.join(",")})`)
+    await release
   }
 
   // Keep the exam module's own pass_mark in sync with the course setting so the

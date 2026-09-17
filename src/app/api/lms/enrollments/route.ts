@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -78,15 +79,21 @@ export async function POST(req: Request) {
   // dropped/removed (reactivate), and brand-new (insert). This makes
   // re-enrolling a dropped student work — an upsert with ignoreDuplicates
   // used to silently skip the leftover "dropped" row.
-  const { data: existing } = await db
-    .from("lms_enrollments")
-    .select("id, student_id, status")
-    .eq("course_id", course_id)
-    .in("student_id", student_ids)
-
-  const existingByStudent = new Map((existing ?? []).map((e: any) => [e.student_id, e]))
-  const toInsert     = student_ids.filter((sid: string) => !existingByStudent.has(sid))
-  const toReactivate = (existing ?? []).filter((e: any) => e.status !== "active")
+  //
+  // Each student's CURRENT enrollment decides: active → skip; an earlier
+  // enrollment outside any program → reactivate that record; an enrollment
+  // that belongs to a program (finished or withdrawn there) → a new, separate
+  // enrollment, so the program's record stays as it was.
+  const currents = await Promise.all(student_ids.map((sid: string) => getCurrentEnrollment(sid, course_id)))
+  const toInsert: string[] = []
+  const toReactivate: { id: string; student_id: string }[] = []
+  student_ids.forEach((sid: string, i: number) => {
+    const cur = currents[i]
+    if (!cur) toInsert.push(sid)
+    else if (cur.status === "active") return
+    else if (!cur.program_id) toReactivate.push({ id: cur.id, student_id: sid })
+    else toInsert.push(sid)
+  })
 
   // Check course capacity against the seats this request ADDS. It used to add
   // the full selection to the active count, so re-selecting students who were
@@ -224,8 +231,7 @@ export async function DELETE(req: Request) {
     // enrollment. Check where progress actually lives.
     const tables = ["lms_progress", "lms_package_progress", "lms_module_attempts", "lms_assignment_submissions", "lms_certificates"]
     const results = await Promise.all(tables.map(t =>
-      db.from(t).select("*", { count: "exact", head: true })
-        .eq("student_id", enr.student_id).eq("course_id", enr.course_id)
+      db.from(t).select("*", { count: "exact", head: true }).eq("enrollment_id", id)
     ))
     if (results.some(r => r.error))
       return NextResponse.json({ error: "Could not verify the student has no progress" }, { status: 500 })

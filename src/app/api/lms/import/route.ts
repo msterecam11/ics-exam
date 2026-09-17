@@ -189,9 +189,8 @@ export async function POST(req: Request) {
       enrolled_by: session.user.id,
       status:      "active",
     }))
-    await db
-      .from("lms_enrollments")
-      .upsert(rows, { onConflict: "student_id,course_id", ignoreDuplicates: true })
+    // Newly created students have no enrollments yet, so a plain insert.
+    await db.from("lms_enrollments").insert(rows)
   }
 
   // Emails — mirror the individual flow: every new student gets their login

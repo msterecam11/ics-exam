@@ -39,13 +39,21 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   // Enrollments with student data — progress_pct and last_login are the same
   // source-of-truth columns the admin dashboard/reports read (kept in sync by
   // syncEnrollmentProgress), so the viewer sees identical numbers.
-  const { data: enrollments } = await db
+  const { data: enrollmentRows } = await db
     .from("lms_enrollments")
     .select("id, student_id, status, enrolled_at, completed_at, progress_pct, lms_students(id, name, email, company, job_title, last_login)")
     .eq("course_id", courseId)
     .neq("status", "dropped")
 
-  const studentIds = (enrollments ?? []).map((e: any) => e.student_id)
+  // Each learner's current enrollment only (a course retaken later counts once).
+  const rankStatus = (s: string) => (s === "active" ? 0 : 1)
+  const seen = new Set<string>()
+  const enrollments = [...((enrollmentRows ?? []) as any[])]
+    .sort((a, b) => rankStatus(a.status) - rankStatus(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))
+    .filter(e => (seen.has(e.student_id) ? false : (seen.add(e.student_id), true)))
+  const enrollmentIds = enrollments.map((e: any) => e.id)
+
+  const studentIds = enrollments.map((e: any) => e.student_id)
   if (studentIds.length === 0) {
     return { access_id: row.id, resource_type: row.resource_type, resource_id: courseId, label: row.label, permissions: p, students: [] }
   }
@@ -57,8 +65,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     const { data: modAttempts } = await db
       .from("lms_module_attempts")
       .select("student_id, score, max_score")
-      .eq("course_id", courseId)
-      .in("student_id", studentIds)
+      .in("enrollment_id", enrollmentIds)
 
     const best: Record<string, number> = {}
     ;(modAttempts ?? []).forEach((a: any) => {
@@ -101,8 +108,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     const { data: subs } = await db
       .from("lms_assignment_submissions")
       .select("student_id, status")
-      .eq("course_id", courseId)
-      .in("student_id", studentIds)
+      .in("enrollment_id", enrollmentIds)
 
     ;(subs ?? []).forEach((s: any) => {
       if (!assignmentsByStudent[s.student_id])
@@ -118,8 +124,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     const { data: certs } = await db
       .from("lms_certificates")
       .select("student_id, issued_at, released_at")
-      .eq("course_id", courseId)
-      .in("student_id", studentIds)
+      .in("enrollment_id", enrollmentIds)
 
     ;(certs ?? []).forEach((c: any) => {
       certByStudent[c.student_id] = {

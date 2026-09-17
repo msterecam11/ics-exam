@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 
 // POST /api/lms/enrollments/reset
 // Body: { course_id, student_id }
@@ -16,8 +17,13 @@ export async function POST(req: Request) {
   if (!course_id || !student_id)
     return NextResponse.json({ error: "course_id and student_id required" }, { status: 400 })
 
-  // Wipe all progress for this student in this course (keyed on student+course).
-  // Certificates are deliberately NOT deleted.
+  // Resets the student's CURRENT enrollment in the course. Earlier program runs
+  // (a course taken again later) are history and are never touched.
+  const current = await getCurrentEnrollment(student_id, course_id)
+  if (!current) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+
+  // Wipe all progress of this enrollment. Certificates are deliberately NOT
+  // deleted (their link to the enrollment is cleared by the database).
   const targets = [
     // Exam sessions first: they reference attempts, and an open session left
     // behind would otherwise be resumed (with an old clock) after re-enrolment.
@@ -29,15 +35,24 @@ export async function POST(req: Request) {
   ] as const
 
   for (const table of targets) {
-    const { error } = await db.from(table).delete()
-      .eq("student_id", student_id).eq("course_id", course_id)
-    if (error) return NextResponse.json({ error: `${table}: ${error.message}` }, { status: 500 })
+    const { error } = await db.from(table).delete().eq("enrollment_id", current.id)
+    if (error) return NextResponse.json({ error: `Could not reset ${table.replace("lms_", "").replace(/_/g, " ")}` }, { status: 500 })
+  }
+  await db.from("lms_report_assessments").delete().eq("enrollment_id", current.id)
+
+  if (current.program_id) {
+    // Inside a program the student stays a member: keep the enrollment and
+    // start it over, rather than leaving the member with no course.
+    const { error: enrErr } = await db.from("lms_enrollments")
+      .update({ status: "active", completed_at: null, progress_pct: 0, time_spent_s: 0 })
+      .eq("id", current.id)
+    if (enrErr) return NextResponse.json({ error: "Could not reset the enrollment" }, { status: 500 })
+    return NextResponse.json({ ok: true, kept_enrollment: true })
   }
 
-  // Remove the enrollment itself (student drops off the roster)
-  const { error: enrErr } = await db.from("lms_enrollments").delete()
-    .eq("student_id", student_id).eq("course_id", course_id)
-  if (enrErr) return NextResponse.json({ error: enrErr.message }, { status: 500 })
+  // Outside programs: remove the enrollment itself (student drops off the roster)
+  const { error: enrErr } = await db.from("lms_enrollments").delete().eq("id", current.id)
+  if (enrErr) return NextResponse.json({ error: "Could not remove the enrollment" }, { status: 500 })
 
   return NextResponse.json({ ok: true })
 }
