@@ -1144,9 +1144,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     }
     if (mark !== (course.final_exam_pass_mark ?? 70) && !confirm(
       `Change the final exam pass mark to ${mark}%?\n\n` +
-      "Every student's existing exam result will be re-checked against the new mark. " +
+      "Existing exam results of students who are NOT in a program will be re-checked against the new mark. " +
       "Students who now pass will complete the course and receive their certificate as usual. " +
-      "Students who now fail keep any certificate already issued."
+      "Students who now fail keep any certificate already issued.\n\n" +
+      "Programs keep their own pass mark (set in Program Manager), so their results don't change."
     )) return
     setSaving(true)
     const res = await fetch("/api/lms/courses", {
@@ -1197,7 +1198,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         {form.certificate_enabled && (
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>
         )}
-        <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Changing it re-checks every existing exam result against the new mark.</p></div>
+        <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Default for new programs, and the mark for students outside programs (their existing results are re-checked). Programs keep their own copy.</p></div>
       </div>
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1B4F8A]" /> Course Feedback</h3>
