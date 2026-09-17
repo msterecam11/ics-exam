@@ -15,14 +15,18 @@ export type Audience = "internal" | "client"
 // Program report (RL-5) — or one track of it (RL-4). The same component is
 // the on-screen report and the PDF. For a client (RP-16) internal notes are
 // left out unless asked for, and feedback follows FB-6 / FB-8.
-export default function ProgramReportView({ data, audience = "internal", includeComments = false, includeInternal = false, assessment = null, forPrint = false }: {
+export default function ProgramReportView({ data, audience = "internal", includeComments = false, includeInternal = false, assessment = null, forPrint = false, linkMode = "admin" }: {
   data: ProgramReport; audience?: Audience; includeComments?: boolean; includeInternal?: boolean
   assessment?: any | null; forPrint?: boolean
+  /** Where names link to: the admin reports, the viewer portal, or nowhere (PDF). */
+  linkMode?: "admin" | "viewer" | "none"
 }) {
   const { program, stats, courses, trackComparison, atRisk, roster, scope } = data
   const client = audience === "client"
   const showInternal = !client || includeInternal
-  const links = !forPrint
+  const mode = forPrint ? "none" : linkMode
+  const links = mode !== "none"
+  const viewer = mode === "viewer"
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const subtitle = `${program.name}${scope.trackName ? ` · ${scope.trackName}` : ""}`
   const logo = program.company?.logo_url ?? null
@@ -37,8 +41,12 @@ export default function ProgramReportView({ data, audience = "internal", include
   const order = ["cover", "overview", ...(hasTracks ? ["tracks"] : []), "courses", ...(hasAtRisk ? ["atrisk"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "roster"]
   const pageNo = (k: string) => order.indexOf(k) + 1
   const total = order.length
-  const studentHref = (id: string) => `/lms-admin/reports/programs/${program.id}/students/${id}`
-  const courseHref = (id: string) => `/lms-admin/reports/${id}/group?program=${program.id}${scope.trackId ? `&track=${scope.trackId}` : ""}`
+  const studentHref = (id: string) => viewer
+    ? `/viewer/lms/program/${program.id}/student/${id}`
+    : `/lms-admin/reports/programs/${program.id}/students/${id}`
+  const trackHref = (id: string) => viewer ? `/viewer/lms/program/${program.id}?track=${id}` : `/lms-admin/reports/programs/${program.id}?track=${id}`
+  // Course cohort reports stay staff-only; a viewer sees results per student.
+  const courseHref = (id: string) => viewer ? null : `/lms-admin/reports/${id}/group?program=${program.id}${scope.trackId ? `&track=${scope.trackId}` : ""}`
 
   return (
     <>
@@ -142,7 +150,7 @@ export default function ProgramReportView({ data, audience = "internal", include
                   {trackComparison.map(t => (
                     <tr key={t.trackId ?? "none"} className="avoid-break">
                       <td className="py-2.5 font-medium text-slate-800">
-                        {links && t.trackId ? <Link href={`/lms-admin/reports/programs/${program.id}?track=${t.trackId}`} className="hover:text-[#1B4F8A] hover:underline">{t.name}</Link> : t.name}
+                        {links && t.trackId ? <Link href={trackHref(t.trackId)} className="hover:text-[#1B4F8A] hover:underline">{t.name}</Link> : t.name}
                       </td>
                       <td className="py-2.5 text-slate-700">{t.students}</td>
                       <td className="py-2.5 pr-4"><div className="flex items-center gap-2"><div className="flex-1"><Bar pct={t.avgProgress} color="#1B4F8A" /></div><span className="w-9 text-right text-slate-600">{fmtPct(t.avgProgress)}</span></div></td>
@@ -175,7 +183,7 @@ export default function ProgramReportView({ data, audience = "internal", include
                   {courses.map(c => (
                     <tr key={c.course_id} className="avoid-break">
                       <td className="py-2.5 pr-2">
-                        {links ? <Link href={courseHref(c.course_id)} className="font-medium text-slate-800 hover:text-[#1B4F8A] hover:underline">{c.title}</Link> : <span className="font-medium text-slate-800">{c.title}</span>}
+                        {links && courseHref(c.course_id) ? <Link href={courseHref(c.course_id)!} className="font-medium text-slate-800 hover:text-[#1B4F8A] hover:underline">{c.title}</Link> : <span className="font-medium text-slate-800">{c.title}</span>}
                         <p className="text-[10px] text-slate-400">{c.certificates} certificate{c.certificates !== 1 ? "s" : ""} · avg progress {fmtPct(c.avgProgress)}</p>
                       </td>
                       <td className="py-2.5 text-slate-700">{c.enrolled}</td>
@@ -189,7 +197,7 @@ export default function ProgramReportView({ data, audience = "internal", include
                 </tbody>
               </table>
             )}
-            {links && courses.length > 0 && <p className="text-[10px] text-slate-400 no-print">Open a course for its full cohort report within this program: module performance, topic heatmap, exam item analysis and ranking.</p>}
+            {links && !viewer && courses.length > 0 && <p className="text-[10px] text-slate-400 no-print">Open a course for its full cohort report within this program: module performance, topic heatmap, exam item analysis and ranking.</p>}
           </div>
           <PageFooter page={pageNo("courses")} total={total} confidential={!client} />
         </Page>

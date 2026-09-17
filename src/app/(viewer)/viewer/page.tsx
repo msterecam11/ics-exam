@@ -406,10 +406,22 @@ interface LmsStudent {
   certificates_earned?: number | null
 }
 
+interface LmsProgramInfo {
+  name: string; company: string | null; company_id: string | null; status: string
+  start_date: string | null; end_date: string | null
+  students: number; completion_rate: number | null; pass_rate: number | null; certificates: number
+}
+interface LmsCompanyInfo {
+  name: string; programs: number; trained: number
+  completion_rate: number | null; pass_rate: number | null; certificates: number
+}
 interface LmsItem {
   access_id: string; resource_type: string; resource_id: string
   label: string; permissions: Record<string, boolean>
   students: LmsStudent[]
+  program?: LmsProgramInfo
+  company?: LmsCompanyInfo
+  programs?: { id: string; name: string; status: string; students: number; completion_rate: number | null; pass_rate: number | null }[]
 }
 
 // ─── LMS section ─────────────────────────────────────────────────────────────
@@ -426,6 +438,9 @@ function LmsSection({ items }: { items: LmsItem[] }) {
           const isOpen = expanded[item.access_id] !== false
           const p = item.permissions
           const isCohort = item.resource_type === "cohort"
+          const isProgram = item.resource_type === "program"
+          const isCompany = item.resource_type === "company"
+          const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v}%`)
 
           return (
             <div key={item.access_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -439,14 +454,18 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                   </div>
                   <div className="text-left">
                     <p className="font-semibold text-slate-800 text-sm">{item.label}</p>
-                    <p className="text-xs text-slate-400 mt-0.5 capitalize">
-                      {item.resource_type} · {item.students.length} student{item.students.length !== 1 ? "s" : ""}
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {isCompany
+                        ? `Client · ${item.company?.programs ?? 0} program${(item.company?.programs ?? 0) !== 1 ? "s" : ""} · ${item.company?.trained ?? 0} trained`
+                        : isProgram
+                          ? [`Program`, item.program?.company, `${item.students.length} student${item.students.length !== 1 ? "s" : ""}`, `completion ${pct(item.program?.completion_rate)}`].filter(Boolean).join(" · ")
+                          : `${item.resource_type} · ${item.students.length} student${item.students.length !== 1 ? "s" : ""}`}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="hidden sm:flex gap-1">
-                    {["progress","scores","attendance","assignments","certificates","last_login","reports"].map(k => p[k] && (
+                    {["progress","scores","attendance","assignments","certificates","last_login","reports"].filter(k => !((isProgram || isCompany) && (k === "assignments" || k === "last_login"))).map(k => p[k] && (
                       <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">
                         {k === "last_login" ? "last login" : k}
                       </span>
@@ -456,8 +475,25 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 </div>
               </button>
 
+              {/* Report links (program / client scopes) */}
+              {isOpen && p.reports && (isProgram || isCompany) && (
+                <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-2">
+                  <a href={isCompany ? `/viewer/lms/client/${item.resource_id}` : `/viewer/lms/program/${item.resource_id}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
+                    <Eye className="h-3.5 w-3.5" /> {isCompany ? "Client report" : "Program report"}
+                  </a>
+                  {isCompany && (item.programs ?? []).map(pr => (
+                    <a key={pr.id} href={`/viewer/lms/program/${pr.id}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 border border-emerald-200 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors">
+                      {pr.name} <span className="text-slate-400">· {pr.students} · {pct(pr.completion_rate)}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+
               {/* Student list */}
-              {isOpen && (
+              {isOpen && !isCompany && (
                 item.students.length === 0 ? (
                   <p className="px-5 pb-5 text-sm text-slate-400">No students enrolled yet.</p>
                 ) : (
@@ -465,7 +501,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                     {/* Column headers */}
                     <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] px-5 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60 border-b border-slate-100">
                       <span>Student</span>
-                      {p.progress     && <span className="text-center px-3">{isCohort ? "Courses" : "Progress"}</span>}
+                      {p.progress     && <span className="text-center px-3">{isCohort || isProgram ? "Courses" : "Progress"}</span>}
                       {p.scores       && <span className="text-center px-3">Score</span>}
                       {p.attendance   && <span className="text-center px-3">Attend.</span>}
                       {p.certificates && <span className="text-center px-3">Cert.</span>}
@@ -484,10 +520,10 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                         {/* Progress */}
                         {p.progress && (
                           <div className="px-3 text-center">
-                            {isCohort ? (
+                            {isCohort || isProgram ? (
                               <div>
                                 <p className="text-xs font-semibold text-slate-700">{s.courses_completed ?? 0}/{s.courses_enrolled ?? 0}</p>
-                                <p className="text-[10px] text-slate-400">done</p>
+                                <p className="text-[10px] text-slate-400">done{isProgram && s.progress_pct != null ? ` · ${s.progress_pct}%` : ""}</p>
                               </div>
                             ) : s.progress_pct != null ? (
                               <div className="flex flex-col items-center gap-1">
@@ -525,7 +561,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                         {/* Certificate */}
                         {p.certificates && (
                           <div className="px-3 flex justify-center">
-                            {isCohort ? (
+                            {isCohort || isProgram ? (
                               s.certificates_earned
                                 ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                                     <Award className="h-3 w-3" />{s.certificates_earned}
@@ -558,9 +594,11 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                               <Eye className="h-3.5 w-3.5" />View
                             </button>
                           )}
-                          {/* Report — only for a course-scope grant (a report is tied to one specific course) */}
+                          {/* Report — course grant: that course's report; program grant: the
+                              student's report for the whole program */}
                           {p.reports && !isCohort && (
-                            <a href={`/viewer/lms/report/${s.id}/${item.resource_id}`} target="_blank" rel="noopener noreferrer"
+                            <a href={isProgram ? `/viewer/lms/program/${item.resource_id}/student/${s.id}` : `/viewer/lms/report/${s.id}/${item.resource_id}`}
+                              target="_blank" rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
                               <Eye className="h-3.5 w-3.5" />Report
                             </a>

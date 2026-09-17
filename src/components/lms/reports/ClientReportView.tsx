@@ -14,12 +14,15 @@ import type { Audience } from "@/components/lms/reports/ProgramReportView"
 const STATUS: Record<string, string> = { active: "Running", completed: "Completed", archived: "Archived", draft: "Draft" }
 
 // Client report (RL-7): every program delivered to one company.
-export default function ClientReportView({ data, audience = "internal", includeComments = false, forPrint = false }: {
+export default function ClientReportView({ data, audience = "internal", includeComments = false, forPrint = false, linkMode = "admin" }: {
   data: ClientReport; audience?: Audience; includeComments?: boolean; forPrint?: boolean
+  linkMode?: "admin" | "viewer" | "none"
 }) {
   const { company, totals, programs } = data
   const client = audience === "client"
-  const links = !forPrint
+  const mode = forPrint ? "none" : linkMode
+  const links = mode !== "none"
+  const programHref = (id: string) => mode === "viewer" ? `/viewer/lms/program/${id}` : `/lms-admin/reports/programs/${id}`
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const logo = company.logo_url
   const courseFb = client ? clientSafeFeedback(data.feedback, includeComments) : { ...data.feedback, suppressed: false }
@@ -143,7 +146,7 @@ export default function ClientReportView({ data, audience = "internal", includeC
                   {programs.map(p => (
                     <tr key={p.id} className="avoid-break">
                       <td className="py-2.5 pr-2">
-                        {links ? <Link href={`/lms-admin/reports/programs/${p.id}`} className="font-medium text-slate-800 hover:text-[#1B4F8A] hover:underline">{p.name}</Link> : <span className="font-medium text-slate-800">{p.name}</span>}
+                        {links ? <Link href={programHref(p.id)} className="font-medium text-slate-800 hover:text-[#1B4F8A] hover:underline">{p.name}</Link> : <span className="font-medium text-slate-800">{p.name}</span>}
                         <p className="text-[10px] text-slate-400">{[STATUS[p.status] ?? p.status, (p.start_date || p.end_date) && `${fmtDay(p.start_date)} → ${fmtDay(p.end_date)}`, p.reference].filter(Boolean).join(" · ")}</p>
                       </td>
                       <td className="py-2.5 text-slate-700">{p.students}</td>

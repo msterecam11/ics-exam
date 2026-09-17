@@ -31,10 +31,13 @@ function PageFooter({ page, total }: { page: number; total: number }) {
     </div>
   )
 }
-function CoverRing({ score }: { score: number }) {
+// Mastery is exam-weighted and needs the course's exam topics analysed. With
+// nothing to measure yet the ring reads "—" / "Not assessed", never 0% Weak.
+function CoverRing({ score }: { score: number | null }) {
   const size = 164, sw = 12, r = (size - sw) / 2, circ = 2 * Math.PI * r
-  const offset = circ * (1 - Math.min(score, 100) / 100)
-  const band = score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 60 ? { label: "Developing", col: "#fbbf24" } : { label: "Weak", col: "#f87171" }
+  const offset = circ * (1 - Math.min(score ?? 0, 100) / 100)
+  const band = score === null ? { label: "Not assessed", col: "#94a3b8" }
+    : score >= 80 ? { label: "Strong", col: "#34d399" } : score >= 60 ? { label: "Developing", col: "#fbbf24" } : { label: "Weak", col: "#f87171" }
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -42,7 +45,7 @@ function CoverRing({ score }: { score: number }) {
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={band.col} strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-extrabold text-white leading-none">{score}%</span>
+        <span className="text-3xl font-extrabold text-white leading-none">{score === null ? "—" : `${score}%`}</span>
         <span className="text-[9px] font-bold tracking-widest uppercase text-white/50 mt-1.5">Avg Mastery</span>
         <span className="text-xs font-bold tracking-widest uppercase" style={{ color: band.col }}>{band.label}</span>
       </div>
@@ -268,7 +271,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
               <p className="text-white/50 text-sm mt-2"><span className="capitalize">{course.delivery_mode}</span> · {stats.enrolled} {scope.allRuns ? "enrollments" : "students"}</p>
               <p className="text-white/40 text-xs mt-1">{scopeLabel}</p>
             </div>
-            <CoverRing score={stats.avgMastery ?? 0} />
+            <CoverRing score={stats.avgMastery} />
             <div className="flex items-center gap-8">
               <div className="text-center"><p className="text-2xl font-bold text-white">{stats.completionRate}%</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Completed</p></div>
               {stats.examExists && <><div className="h-10 w-px bg-white/15" /><div className="text-center"><p className="text-2xl font-bold text-white">{stats.examPassRate !== null ? `${stats.examPassRate}%` : "—"}</p><p className="text-white/40 text-[10px] uppercase tracking-widest mt-1">Exam Pass Rate</p></div></>}
@@ -291,7 +294,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
               <div className="grid grid-cols-4 gap-3">
                 {[
                   { label: "Enrolled", value: `${stats.enrolled}`, sub: `${stats.completed} completed` },
-                  { label: "Avg Mastery", value: stats.avgMastery !== null ? `${stats.avgMastery}%` : "—", sub: "exam-weighted", color: sc(stats.avgMastery).t },
+                  { label: "Avg Mastery", value: stats.avgMastery !== null ? `${stats.avgMastery}%` : "—", sub: stats.avgMastery !== null ? "exam-weighted" : "run Expert Analyze on the course", color: sc(stats.avgMastery).t },
                   { label: "Exam Pass Rate", value: stats.examExists && stats.examPassRate !== null ? `${stats.examPassRate}%` : "—", sub: !stats.examExists ? "no exam" : stats.examAttempted === 0 ? "nobody sat it yet" : `${stats.examPassed}/${stats.examAttempted} of those who sat it`, color: stats.examExists ? sc(stats.examPassRate).t : "#94a3b8" },
                   { label: "Avg Time", value: fmtTime(stats.avgTimeS), sub: "per student" },
                 ].map(m => (

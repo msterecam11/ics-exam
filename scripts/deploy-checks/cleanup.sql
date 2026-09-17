@@ -6,7 +6,7 @@ declare
   test_students uuid[] := array(select id from lms_students where email like 'pm.student%.temp@icsaviation.test');
   test_courses  uuid[] := array(select id from lms_courses where title like 'ZZ TEST Course %');
   test_programs uuid[] := array(select id from lms_programs where name like 'ZZ TEST Program%');
-  test_admin    uuid[] := array(select id from admin_users where email = 'pm.admin.temp@icsaviation.test');
+  test_admin    uuid[] := array(select id from admin_users where email like 'pm.admin%.temp@icsaviation.test' or email like 'pm.viewer%.temp@icsaviation.test');
 begin
   if exists (select 1 from lms_enrollments where course_id = any(test_courses) and not (student_id = any(test_students))) then raise exception 'ABORT: non-test student in test course'; end if;
   if exists (select 1 from lms_enrollments where student_id = any(test_students) and not (course_id = any(test_courses))) then raise exception 'ABORT: test student in real course'; end if;
@@ -36,6 +36,7 @@ begin
   delete from lms_modules             where course_id = any(test_courses);
   delete from lms_courses             where id = any(test_courses);
   delete from audit_logs              where actor_id = any(test_admin) or actor_name = 'PM Test Admin Temp';
+  delete from viewer_access           where user_id = any(test_admin);
   delete from admin_users             where id = any(test_admin);
   delete from rate_limits             where key in ('lms-login:::1', 'lms-login:::ffff:127.0.0.1', 'login:::1', 'login:::ffff:127.0.0.1');
 end $$;

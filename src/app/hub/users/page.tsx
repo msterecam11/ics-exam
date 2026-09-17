@@ -56,8 +56,10 @@ const INTERVIEW_SCOPES = [
   { id: "config", label: "Config", api: "/api/interview/configs",labelField: "name"  },
 ]
 const LMS_SCOPES = [
-  { id: "course", label: "Course", api: "/api/lms/courses",      labelField: "title" },
-  { id: "cohort", label: "Cohort", api: "/api/lms/cohorts",      labelField: "name"  },
+  { id: "program", label: "Program", api: "/api/lms/programs",   labelField: "name"  },
+  { id: "company", label: "Client",  api: "/api/lms/companies",  labelField: "name"  },
+  { id: "course",  label: "Course",  api: "/api/lms/courses",    labelField: "title" },
+  { id: "cohort",  label: "Cohort",  api: "/api/lms/cohorts",    labelField: "name"  },
 ]
 
 const EXAM_PERMISSIONS: { key: string; label: string; desc: string }[] = [
@@ -78,7 +80,7 @@ const LMS_PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "attendance",   label: "Attendance",   desc: "Session attendance records" },
   { key: "assignments",  label: "Assignments",  desc: "Submission status and grades" },
   { key: "certificates", label: "Certificates", desc: "Certificate issuance status" },
-  { key: "reports",      label: "Reports",      desc: "Full individual course report with mastery, exam breakdown, and AI analysis" },
+  { key: "reports",      label: "Reports",      desc: "Program, client and student reports (client copy, no internal notes) and individual course reports" },
   { key: "last_login",   label: "Last Login",   desc: "When the student last logged in to the LMS" },
 ]
 

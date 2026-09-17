@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { sessionIsFor, sessionToday } from "@/lib/lms-sessions"
+import { loadProgramReport, loadClientReport } from "@/lib/lms-report-scope"
 
 export async function GET() {
   const session = await auth()
@@ -29,10 +30,73 @@ export async function GET() {
       items.push(await resolveCourse(row.resource_id, row, p))
     } else if (row.resource_type === "cohort") {
       items.push(await resolveCohort(row.resource_id, row, p))
+    } else if (row.resource_type === "program") {
+      const item = await resolveProgram(row.resource_id, row, p)
+      if (item) items.push(item)
+    } else if (row.resource_type === "company") {
+      const item = await resolveCompany(row.resource_id, row, p)
+      if (item) items.push(item)
     }
   }
 
   return NextResponse.json(items)
+}
+
+// ── Program scope (RL-9) ──────────────────────────────────────────────────────
+// The same numbers as the program report, filtered by the granted permissions.
+// Withdrawn students and e-mail addresses are never included.
+async function resolveProgram(programId: string, row: any, p: Record<string, boolean>) {
+  const cached = await loadProgramReport(programId, null)
+  if (!cached) return null
+  const r = cached.data
+  return {
+    access_id: row.id, resource_type: "program", resource_id: programId,
+    label: row.label || r.program.name, permissions: p,
+    program: {
+      name: r.program.name,
+      company: r.program.company?.name ?? null,
+      company_id: r.program.company?.id ?? null,
+      status: r.program.status,
+      start_date: r.program.start_date, end_date: r.program.end_date,
+      students: r.stats.members - r.stats.withdrawn,
+      completion_rate: r.stats.completionRate,
+      pass_rate: r.stats.passRate,
+      certificates: r.stats.certificates,
+    },
+    students: r.roster.filter(x => x.status !== "withdrawn").map(x => ({
+      id: x.student_id, name: x.name, email: "", company: r.program.company?.name ?? null, job_title: x.job_title,
+      track: x.track,
+      courses_enrolled: x.coursesTotal, courses_completed: x.coursesDone,
+      progress_pct: p.progress ? x.progress : null,
+      quiz_avg_score: p.scores ? x.avgScore : null,
+      attendance_pct: p.attendance ? x.attendancePct : null,
+      assignments: null,
+      certificate: null,
+      certificates_earned: p.certificates ? x.certificates : null,
+      last_login: null,
+    })),
+  }
+}
+
+// ── Client (company) scope ────────────────────────────────────────────────────
+async function resolveCompany(companyId: string, row: any, p: Record<string, boolean>) {
+  const cached = await loadClientReport(companyId)
+  if (!cached) return null
+  const r = cached.data
+  return {
+    access_id: row.id, resource_type: "company", resource_id: companyId,
+    label: row.label || r.company.name, permissions: p,
+    company: {
+      name: r.company.name,
+      programs: r.totals.programs, trained: r.totals.trained,
+      completion_rate: r.totals.completionRate, pass_rate: r.totals.passRate, certificates: r.totals.certificates,
+    },
+    programs: r.programs.map(x => ({
+      id: x.id, name: x.name, status: x.status, students: x.students,
+      completion_rate: x.completionRate, pass_rate: x.passRate,
+    })),
+    students: [],
+  }
 }
 
 // ── Course scope ──────────────────────────────────────────────────────────────

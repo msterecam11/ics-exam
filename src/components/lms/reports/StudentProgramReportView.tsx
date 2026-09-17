@@ -9,13 +9,18 @@ import type { Audience } from "@/components/lms/reports/ProgramReportView"
 
 // Student in a program (RL-6): courses in order, results, certificates, time,
 // attendance, feedback given (named answers only), links to each course report.
-export default function StudentProgramReportView({ data, audience = "internal", includeInternal = false, forPrint = false }: {
+export default function StudentProgramReportView({ data, audience = "internal", includeInternal = false, forPrint = false, linkMode = "admin" }: {
   data: StudentProgramReport; audience?: Audience; includeInternal?: boolean; forPrint?: boolean
+  linkMode?: "admin" | "viewer" | "none"
 }) {
   const { program, student, member, totals, courses, survey } = data
   const client = audience === "client"
   const showInternal = !client || includeInternal
-  const links = !forPrint
+  const mode = forPrint ? "none" : linkMode
+  const links = mode !== "none"
+  const courseHref = (c: { course_id: string; enrollment_id: string }) => mode === "viewer"
+    ? `/viewer/lms/report/${student.id}/${c.course_id}?enrollment=${c.enrollment_id}`
+    : `/lms-admin/reports/${c.course_id}/${student.id}?enrollment=${c.enrollment_id}&from=${encodeURIComponent(`/lms-admin/reports/programs/${program.id}/students/${student.id}`)}`
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
   const logo = program.company?.logo_url ?? null
   const subtitle = `${student.name} · ${program.name}`
@@ -80,7 +85,7 @@ export default function StudentProgramReportView({ data, audience = "internal", 
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-800">
                           <span className="text-slate-400 mr-1.5">{i + 1}.</span>
-                          {links ? <Link href={`/lms-admin/reports/${c.course_id}/${student.id}?enrollment=${c.enrollment_id}&from=${encodeURIComponent(`/lms-admin/reports/programs/${program.id}/students/${student.id}`)}`} className="hover:text-[#1B4F8A] hover:underline">{c.title}</Link> : c.title}
+                          {links ? <Link href={courseHref(c)} className="hover:text-[#1B4F8A] hover:underline">{c.title}</Link> : c.title}
                         </p>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           {c.status === "completed" ? <span className="text-emerald-600 inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Completed {fmtDay(c.completedAt)}</span>
