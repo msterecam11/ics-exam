@@ -22,7 +22,7 @@ export async function GET(
       .single(),
     db.from("lms_enrollments")
       // progress_pct is stored and kept current by syncEnrollmentProgress — use it directly
-      .select("id, status, enrolled_at, completed_at, progress_pct, lms_courses(id, title, status)")
+      .select("id, status, enrolled_at, completed_at, progress_pct, program_id, lms_courses(id, title, status), lms_programs(id, name)")
       .eq("student_id", id)
       .order("enrolled_at", { ascending: false }),
     db.from("lms_learning_path_members")
@@ -59,21 +59,24 @@ export async function GET(
   const { data: examAttempts } = await db
     .from("lms_module_attempts")
     .select(`
-      id, module_id, course_id, attempt_no, score, max_score, passed, submitted_at,
+      id, module_id, course_id, enrollment_id, attempt_no, score, max_score, passed, submitted_at,
       lms_modules(id, title, activity_settings)
     `)
     .eq("student_id", id)
     .order("attempt_no", { ascending: false })
     .limit(100) as any
 
-  // Group exam attempts by module_id
+  // Group exam attempts by enrollment + module (a retake is a separate run with
+  // its own attempt count).
   const examAttemptsByModule: Record<string, any[]> = {}
   for (const a of examAttempts ?? []) {
-    if (!examAttemptsByModule[a.module_id]) examAttemptsByModule[a.module_id] = []
-    examAttemptsByModule[a.module_id].push(a)
+    const key = `${a.enrollment_id}|${a.module_id}`
+    if (!examAttemptsByModule[key]) examAttemptsByModule[key] = []
+    examAttemptsByModule[key].push(a)
   }
 
-  const exam_summaries = Object.entries(examAttemptsByModule).map(([moduleId, attempts]) => {
+  const exam_summaries = Object.entries(examAttemptsByModule).map(([key, attempts]) => {
+    const moduleId = key.split("|")[1]
     const mod = (attempts[0] as any).lms_modules
     const maxAttempts = (mod?.activity_settings as any)?.max_attempts ?? 3
     const latestPassed = attempts.some((a: any) => a.passed)
@@ -116,6 +119,7 @@ export async function GET(
       enrolled_at:  e.enrolled_at,
       completed_at: e.completed_at,
       progress_pct: e.progress_pct ?? 0,
+      program:      e.lms_programs ?? null,
       course:       e.lms_courses,
     })),
     learning_paths: (paths ?? []).map((p: any) => ({

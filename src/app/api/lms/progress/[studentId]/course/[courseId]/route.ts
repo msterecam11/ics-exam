@@ -2,13 +2,14 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
+import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
 // GET /api/lms/progress/[studentId]/course/[courseId]
 // Full detail: quizzes, assignments, exams (with answers + security), packages
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ studentId: string; courseId: string }> }
 ) {
   const session = await auth()
@@ -18,18 +19,31 @@ export async function GET(
   const { studentId, courseId } = await params
 
   // ── Course + enrollment ──────────────────────────────────────────────────
-  const [{ data: course }, { data: enrollment }] = await Promise.all([
+  // One enrollment's detail: ?enrollment_id= for a specific (e.g. earlier)
+  // program run, otherwise the student's current enrollment in the course.
+  const requested = new URL(req.url).searchParams.get("enrollment_id")
+  const ctx = requested ? await getEnrollmentById(requested) : await getCurrentEnrollment(studentId, courseId)
+  const [{ data: course }, { data: enrollment }, { data: history }] = await Promise.all([
     db.from("lms_courses")
       .select("id, title, status, delivery_mode, thumbnail_url, final_exam_pass_mark")
       .eq("id", courseId).single(),
+    ctx && ctx.student_id === studentId && ctx.course_id === courseId
+      ? db.from("lms_enrollments")
+          // progress_pct is stored and kept current by syncEnrollmentProgress — use it directly
+          .select("id, status, enrolled_at, completed_at, progress_pct, program_id, lms_programs(id, name)")
+          .eq("id", ctx.id).single()
+      : Promise.resolve({ data: null }),
+    // Every enrollment of this student in this course, for switching between runs.
     db.from("lms_enrollments")
-      // progress_pct is stored and kept current by syncEnrollmentProgress — use it directly
-      .select("id, status, enrolled_at, completed_at, progress_pct")
-      .eq("student_id", studentId).eq("course_id", courseId).single(),
+      .select("id, status, enrolled_at, completed_at, lms_programs(id, name)")
+      .eq("student_id", studentId).eq("course_id", courseId)
+      .order("enrolled_at", { ascending: false }),
   ])
 
   if (!course)      return NextResponse.json({ error: "Course not found" }, { status: 404 })
-  if (!enrollment)  return NextResponse.json({ error: "Student not enrolled" }, { status: 404 })
+  if (!enrollment || !ctx)  return NextResponse.json({ error: "Student not enrolled" }, { status: 404 })
+  const enrollmentId = (enrollment as any).id as string
+  const rules = await getExamRules(ctx, course as any, null)
 
   // Use the stored progress_pct (computed by syncEnrollmentProgress on every student action)
   const progress_pct: number = (enrollment as any).progress_pct ?? 0
@@ -60,7 +74,7 @@ export async function GET(
   const { data: assignmentAttempts } = assignmentModuleIds.length
     ? await db.from("lms_module_attempts")
         .select("id, status, score, max_score, passed, answers, ai_feedback, submitted_at, graded_at, module_id, lms_modules(id, title)")
-        .eq("student_id", studentId)
+        .eq("enrollment_id", enrollmentId)
         .in("module_id", assignmentModuleIds)
         .order("submitted_at", { ascending: false })
     : { data: [] as any[] }
@@ -98,7 +112,7 @@ export async function GET(
   const { data: examAttempts } = examModIds.length
     ? await db.from("lms_module_attempts")
         .select("id, module_id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, started_at, submitted_at, paper, lms_modules(id, title, activity_settings, questions)")
-        .eq("student_id", studentId)
+        .eq("enrollment_id", enrollmentId)
         .in("module_id", examModIds)
         .order("submitted_at", { ascending: false })
     : { data: [] }
@@ -113,10 +127,10 @@ export async function GET(
       examsByModule[mid] = {
         module_id:    mid,
         module_title: mod?.title ?? "Exam",
-        max_attempts: settings?.max_attempts ?? 3,
-        // Grading uses the course's final_exam_pass_mark first (exam-attempt
-        // route); showing the module setting could disagree with the result.
-        pass_mark:    (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70,
+        // The rules grading used: the program's when the enrollment has one,
+        // else the course pass mark and the exam module's attempts.
+        max_attempts: rules.source === "program" ? rules.maxAttempts : (settings?.max_attempts ?? 3),
+        pass_mark:    rules.source === "program" ? rules.passMark : ((course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70),
         passed:       false,
         attempts:     [],
       }
@@ -167,7 +181,7 @@ export async function GET(
       pkgIds.length
         ? db.from("lms_package_progress")
             .select("package_id, module_id, completed_items, item_scores, status, updated_at")
-            .eq("student_id", studentId).in("package_id", pkgIds)
+            .eq("enrollment_id", enrollmentId).in("package_id", pkgIds)
         : Promise.resolve({ data: [] }),
       pkgIds.length
         ? db.from("lms_package_items")
@@ -274,6 +288,7 @@ export async function GET(
   return NextResponse.json({
     course,
     enrollment,
+    enrollment_history: history ?? [],
     progress_pct,
     modules: modules ?? [],
     quizzes:     courseQuizAttempts,

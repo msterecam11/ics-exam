@@ -48,9 +48,18 @@ export async function GET(req: Request) {
 
   if (progErr) return NextResponse.json({ error: progErr.message }, { status: 500 })
 
+  // A learner who retook the course has a progress row per enrollment; show
+  // their most recent run (rows are ordered newest first).
+  const seenRun = new Set<string>()
+  const latestRows = (progressRows ?? []).filter((r: any) => {
+    const key = `${r.package_id}|${r.student_id}`
+    if (seenRun.has(key)) return false
+    seenRun.add(key); return true
+  })
+
   // 3. Group progress rows by package_id
   const progressByPackage: Record<string, typeof progressRows> = {}
-  for (const row of progressRows ?? []) {
+  for (const row of latestRows) {
     if (!progressByPackage[row.package_id]) progressByPackage[row.package_id] = []
     progressByPackage[row.package_id].push(row)
   }

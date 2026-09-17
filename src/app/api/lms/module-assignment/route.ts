@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -66,11 +66,16 @@ export async function GET(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  // Submissions of the student's current enrollment in the module's course.
+  const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
+  const enrollment = await getCurrentEnrollment(student.id, (mod as any)?.course_id)
+  if (!enrollment || enrollment.access === "none") return NextResponse.json([])
+
   const { data, error } = await db
     .from("lms_module_attempts")
     .select("id, attempt_no, status, score, max_score, passed, answers, ai_feedback, submitted_at")
     .eq("module_id", moduleId)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .order("attempt_no", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -114,8 +119,9 @@ export async function POST(req: Request) {
 
   // No enrollment check existed: any signed-in student could submit an
   // assignment (and trigger AI grading) in any course by id.
-  if (!(await hasCourseAccess(student.id, course_id)))
-    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  const writable = await getWritableEnrollment(student.id, course_id)
+  if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
+  const enrollment = writable.enrollment
 
   // Due date check
   if (module.assignment_due_date) {
@@ -128,7 +134,7 @@ export async function POST(req: Request) {
     .from("lms_module_attempts")
     .select("*", { count: "exact", head: true })
     .eq("module_id", module_id)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
 
   const maxAttempts = module.assignment_max_attempts ?? 99
   if ((count ?? 0) >= maxAttempts)
@@ -169,6 +175,7 @@ export async function POST(req: Request) {
     .insert({
       module_id,
       student_id:   student.id,
+      enrollment_id: enrollment.id,
       course_id,
       attempt_no:   attemptNo,
       status,

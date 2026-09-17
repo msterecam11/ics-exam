@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getStudentSession } from "@/lib/lms-auth"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { auth } from "@/lib/auth"
 
 // POST /api/lms/feedback — student submits feedback
@@ -18,14 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "course_id and rating_overall required" }, { status: 400 })
   }
 
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id, status")
-    .eq("student_id", student.id)
-    .eq("course_id", course_id)
-    .single()
-
-  if (!enrollment || enrollment.status !== "completed") {
+  // Feedback belongs to the current enrollment (one per program run).
+  const enrollment = await getCurrentEnrollment(student.id, course_id)
+  if (!enrollment || enrollment.access === "none" || enrollment.status !== "completed") {
     return NextResponse.json({ error: "Course not completed" }, { status: 403 })
   }
 
@@ -42,8 +38,7 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await db
     .from("lms_feedback")
     .select("id")
-    .eq("student_id", student.id)
-    .eq("course_id", course_id)
+    .eq("enrollment_id", enrollment.id)
     .maybeSingle()
 
   if (existing) {
@@ -54,6 +49,7 @@ export async function POST(req: NextRequest) {
     .from("lms_feedback")
     .insert({
       student_id:        student.id,
+      enrollment_id:     enrollment.id,
       course_id,
       rating_overall,
       rating_content:    rating_content    ?? null,

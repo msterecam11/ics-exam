@@ -40,16 +40,26 @@ export interface GroupReport {
 const round = (n: number) => Math.round(n)
 
 // ── Builder ────────────────────────────────────────────────────────
-export async function buildGroupReport(courseId: string): Promise<GroupReport | null> {
+// The group is one set of enrollments: a program's enrollments in this course
+// when programId is given, otherwise each learner's current enrollment in the
+// course (so a learner who retook the course counts once, with the latest run).
+export async function buildGroupReport(courseId: string, opts?: { programId?: string }): Promise<GroupReport | null> {
+  let enrollQuery = db.from("lms_enrollments").select("id, student_id, status, enrolled_at").eq("course_id", courseId).neq("status", "dropped")
+  if (opts?.programId) enrollQuery = enrollQuery.eq("program_id", opts.programId)
   const [courseRes, enrollRes, modulesRes] = await Promise.all([
     db.from("lms_courses").select("id, title, delivery_mode").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("student_id, status").eq("course_id", courseId).neq("status", "dropped"),
+    enrollQuery,
     db.from("lms_modules").select("id, title, module_type, order_index, questions").eq("course_id", courseId).order("order_index"),
   ])
   if (!courseRes.data) return null
 
   const course  = courseRes.data as any
-  const enr     = (enrollRes.data ?? []) as any[]
+  const rank = (s: string) => (s === "active" ? 0 : 1)
+  const byStudent = new Map<string, any>()
+  for (const e of [...((enrollRes.data ?? []) as any[])].sort((a, b) => rank(a.status) - rank(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))) {
+    if (!byStudent.has(e.student_id)) byStudent.set(e.student_id, e)
+  }
+  const enr     = [...byStudent.values()]
   const modules = (modulesRes.data ?? []) as any[]
   const examMod = modules.find(m => m.module_type === "final_exam")
   const modOrder = new Map<string, number>(modules.map((m: any) => [m.id, m.order_index ?? 999]))
@@ -59,7 +69,7 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
   // stats independently, and each per-student report's own cohort ranking
   // would otherwise rebuild every OTHER member's report too, turning this
   // O(N) call into O(N²).
-  const reports = await Promise.all(enr.map(e => buildCourseReport(e.student_id, courseId, { computeCohort: false })))
+  const reports = await Promise.all(enr.map(e => buildCourseReport(e.student_id, courseId, { computeCohort: false, enrollmentId: e.id })))
   const rows = enr
     .map((e, i) => ({ e, r: reports[i] }))
     .filter((x): x is { e: any; r: NonNullable<typeof x.r> } => x.r !== null)
@@ -127,7 +137,7 @@ export async function buildGroupReport(courseId: string): Promise<GroupReport | 
       .from("lms_module_attempts")
       .select("student_id, answers, ai_feedback, score, paper")
       .eq("module_id", examMod.id)
-      .in("student_id", rows.map(x => x.e.student_id))
+      .in("enrollment_id", rows.map(x => x.e.id))
     const bestByStu = new Map<string, any>()
     for (const a of (attempts ?? []) as any[]) {
       const cur = bestByStu.get(a.student_id)

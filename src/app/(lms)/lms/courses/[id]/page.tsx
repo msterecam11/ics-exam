@@ -277,8 +277,7 @@ export default async function StudentCoursePage({
     const { data: existingFeedback } = await db
       .from("lms_feedback")
       .select("id")
-      .eq("student_id", student.id)
-      .eq("course_id", courseId)
+      .eq("enrollment_id", current.id)
       .maybeSingle()
     alreadySubmittedFeedback = !!existingFeedback
   }

@@ -40,11 +40,16 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     .single()
 
   const settings = module.activity_settings as any
-  const passMark = (course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70
+  const coursePassMark = Number((course as any)?.final_exam_pass_mark ?? settings?.pass_mark ?? 70)
+
+  // Pass mark per enrollment: a program's own rule, else the course's.
+  const { data: programRules } = await db
+    .from("lms_program_course_rules").select("program_id, pass_mark").eq("course_id", module.course_id)
+  const ruleByProgram = new Map(((programRules ?? []) as any[]).map(r => [r.program_id as string, Number(r.pass_mark)]))
 
   const { data: attempts, error: fetchError } = await db
     .from("lms_module_attempts")
-    .select("id, student_id, score, max_score, passed, answers, ai_feedback, paper")
+    .select("id, student_id, enrollment_id, score, max_score, passed, answers, ai_feedback, paper, lms_enrollments(program_id)")
     .eq("module_id", moduleId)
 
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
@@ -53,7 +58,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
   const changedStudentIds = new Set<string>()
   type Snapshot = { score: number; maxScore: number; passed: boolean }
-  const flips: { student_id: string; before: Snapshot; after: Snapshot }[] = []
+  const flips: { student_id: string; enrollment_id: string | null; before: Snapshot; after: Snapshot }[] = []
 
   const currentById = new Map(questions.map(q => [q.id, q]))
 
@@ -80,6 +85,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     )
     // An attempt submitted after the time limit can never pass; ignoring the
     // flag here turned over-time attempts into passes on every recalculation.
+    const programId = (attempt as any).lms_enrollments?.program_id as string | null | undefined
+    const passMark: number = (programId ? ruleByProgram.get(programId) : undefined) ?? coursePassMark
     const passed = !(attempt.ai_feedback as any)?.time_limit_exceeded && pct >= passMark
 
     // max_score has to be part of the comparison, not just written alongside it.
@@ -96,7 +103,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     if (resultChanged || paperChanged) {
       if (resultChanged) {
         changedStudentIds.add(attempt.student_id)
-        flips.push({ student_id: attempt.student_id, before, after })
+        flips.push({ student_id: attempt.student_id, enrollment_id: (attempt as any).enrollment_id ?? null, before, after })
       }
 
       // The corrected paper is saved too, so the answer review and reports show
@@ -120,7 +127,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const newlyPassed = flips.filter((f) => !f.before.passed && f.after.passed)
   for (const f of newlyPassed) {
     await Promise.all([
-      checkCourseCompletion(f.student_id, module.course_id),
+      checkCourseCompletion(f.student_id, module.course_id, f.enrollment_id ?? undefined),
       checkLearningPathCompletion(f.student_id, module.course_id),
       checkCohortCompletion(f.student_id, module.course_id),
     ])

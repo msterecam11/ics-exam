@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { db } from "@/lib/db"
 
 function isMgr(role?: string) {
@@ -120,15 +121,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "This session is closed" }, { status: 409 })
 
   // Verify student is enrolled
-  const { data: enr } = await db
-    .from("lms_enrollments")
-    .select("id")
-    .eq("student_id", student.id)
-    .eq("course_id", lmsSession.course_id)
-    .eq("status", "active")
-    .single()
-
-  if (!enr)
+  const enr = await getCurrentEnrollment(student.id, lmsSession.course_id)
+  if (!enr || enr.status !== "active" || enr.access !== "full")
     return NextResponse.json({ error: "You are not enrolled in this course" }, { status: 403 })
 
   // Already checked in?

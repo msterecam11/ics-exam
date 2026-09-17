@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
 
 // GET /api/lms/progress?course_id=xxx  — student's own progress for a course
 export async function GET(req: Request) {
@@ -13,11 +13,13 @@ export async function GET(req: Request) {
   const courseId = searchParams.get("course_id")
   if (!courseId) return NextResponse.json({ error: "course_id required" }, { status: 400 })
 
+  const enrollment = await getCurrentEnrollment(student.id, courseId)
+  if (!enrollment || enrollment.access === "none") return NextResponse.json([])
+
   const { data, error } = await db
     .from("lms_progress")
     .select("content_item_id, module_id, status, position, time_spent, completed_at")
-    .eq("student_id", student.id)
-    .eq("course_id", courseId)
+    .eq("enrollment_id", enrollment.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
@@ -56,20 +58,14 @@ export async function POST(req: Request) {
   if (!item || item.module_id !== module_id || itemCourseId !== course_id)
     return NextResponse.json({ error: "Content item does not belong to that module/course" }, { status: 400 })
 
-  const { data: enrollment } = await db
-    .from("lms_enrollments")
-    .select("id")
-    .eq("student_id", student.id)
-    .eq("course_id", course_id)
-    .in("status", [...COURSE_ACCESS_STATUSES])   // an unenrolled (dropped) student has no access
-    .maybeSingle()
-
-  if (!enrollment)
-    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  const writable = await getWritableEnrollment(student.id, course_id)
+  if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
+  const enrollment = writable.enrollment
 
   const now = new Date().toISOString()
   const upsertData: Record<string, unknown> = {
     student_id:      student.id,
+    enrollment_id:   enrollment.id,
     content_item_id,
     module_id,
     course_id,
@@ -92,9 +88,9 @@ export async function POST(req: Request) {
   const { data: existing } = await db
     .from("lms_progress")
     .select("id, started_at, status")
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .eq("content_item_id", content_item_id)
-    .single()
+    .maybeSingle()
 
   if (!existing) {
     upsertData.started_at = now
@@ -110,7 +106,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await db
     .from("lms_progress")
-    .upsert(upsertData, { onConflict: "student_id,content_item_id" })
+    .upsert(upsertData, { onConflict: "enrollment_id,content_item_id" })
     .select()
     .single()
 
@@ -118,8 +114,8 @@ export async function POST(req: Request) {
 
   // Sync progress % and check course completion
   if (status === "completed") {
-    await syncEnrollmentProgress(student.id, course_id)
-    await checkCourseCompletion(student.id, course_id)
+    await syncEnrollmentProgress(student.id, course_id, enrollment.id)
+    await checkCourseCompletion(student.id, course_id, enrollment.id)
   }
 
   return NextResponse.json(data)

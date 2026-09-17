@@ -27,7 +27,7 @@ export async function GET(
   // ── Enrollments — progress_pct stored by syncEnrollmentProgress ─────────
   const { data: enrollments, error: enrErr } = await db
     .from("lms_enrollments")
-    .select("id, status, enrolled_at, completed_at, progress_pct, lms_courses(id, title, status)")
+    .select("id, status, enrolled_at, completed_at, progress_pct, program_id, lms_courses(id, title, status), lms_programs(id, name)")
     .eq("student_id", studentId)
     .order("enrolled_at", { ascending: false })
 
@@ -58,6 +58,7 @@ export async function GET(
       status:       e.status,
       enrolled_at:  e.enrolled_at,
       completed_at: e.completed_at,
+      program:      e.lms_programs ?? null,
       progress_pct: e.progress_pct ?? 0,
       course:       e.lms_courses ?? null,
     })),

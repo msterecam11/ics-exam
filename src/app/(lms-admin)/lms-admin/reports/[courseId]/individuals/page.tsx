@@ -25,7 +25,7 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
   const [courseRes, enrollRes, examModRes] = await Promise.all([
     db.from("lms_courses").select("id, title").eq("id", courseId).single(),
     db.from("lms_enrollments")
-      .select("id, status, time_spent_s, lms_students(id, name, email, company, job_title)")
+      .select("id, status, enrolled_at, time_spent_s, lms_students(id, name, email, company, job_title)")
       .eq("course_id", courseId)
       .order("enrolled_at", { ascending: false }),
     db.from("lms_modules").select("id").eq("course_id", courseId).eq("module_type", "final_exam").order("order_index", { ascending: true }).limit(1),
@@ -33,7 +33,13 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
 
   if (!courseRes.data) notFound()
   const course      = courseRes.data as any
-  const enrollments = (enrollRes.data ?? []) as any[]
+  // Each learner's current enrollment (a course retaken in a later program
+  // appears once, with the latest run).
+  const rankStatus = (s: string) => (s === "active" ? 0 : s === "completed" ? 1 : 2)
+  const seenStudents = new Set<string>()
+  const enrollments = [...((enrollRes.data ?? []) as any[])]
+    .sort((a, b) => rankStatus(a.status) - rankStatus(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))
+    .filter(e => { const sid = e.lms_students?.id; if (!sid || seenStudents.has(sid)) return false; seenStudents.add(sid); return true })
   const examModuleId = ((examModRes.data ?? []) as any[])[0]?.id ?? null
 
   // Final-exam attempts for all students in this course
@@ -41,15 +47,16 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
   if (examModuleId) {
     const { data } = await db
       .from("lms_module_attempts")
-      .select("student_id, passed, score, max_score, attempt_no")
+      .select("student_id, enrollment_id, passed, score, max_score, attempt_no")
       .eq("module_id", examModuleId)
+      .in("enrollment_id", enrollments.map((e: any) => e.id))
       .order("attempt_no", { ascending: false })
     attempts = data ?? []
   }
 
   const rows = enrollments.map((e: any) => {
     const s = e.lms_students
-    const mine = attempts.filter(a => a.student_id === s?.id)
+    const mine = attempts.filter(a => a.enrollment_id === e.id)
     const attemptCount = mine.length
     // best attempt = highest pct
     const best = mine

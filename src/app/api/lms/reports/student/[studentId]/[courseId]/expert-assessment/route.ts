@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { rateLimit } from "@/lib/rateLimit"
 import { buildCourseReport } from "@/lib/lms-course-report"
 import Groq from "groq-sdk"
@@ -22,10 +23,13 @@ export async function GET(_req: Request, { params }: Params) {
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { studentId, courseId } = await params
+  // The assessment of the student's current enrollment in the course.
+  const current = await getCurrentEnrollment(studentId, courseId)
+  if (!current) return NextResponse.json(null)
   const { data } = await db
     .from("lms_report_assessments")
     .select("assessment, generated_at")
-    .eq("student_id", studentId).eq("course_id", courseId)
+    .eq("enrollment_id", current.id)
     .maybeSingle()
 
   return NextResponse.json(data ?? null)
@@ -207,11 +211,13 @@ Write a professional 3-4 sentence behavioral assessment describing the pattern o
     } catch { /* security analysis is optional — skip on failure */ }
   }
 
+  const current = await getCurrentEnrollment(studentId, courseId)
+  if (!current) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
   const { data, error } = await db
     .from("lms_report_assessments")
     .upsert(
-      { student_id: studentId, course_id: courseId, assessment, generated_by: session.user.id, generated_at: new Date().toISOString() },
-      { onConflict: "student_id,course_id" }
+      { student_id: studentId, course_id: courseId, enrollment_id: current.id, assessment, generated_by: session.user.id, generated_at: new Date().toISOString() },
+      { onConflict: "enrollment_id" }
     )
     .select("assessment, generated_at")
     .single()

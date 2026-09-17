@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
+import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 import ExamAttemptsView from "./ExamAttemptsView"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
@@ -71,16 +72,18 @@ export default async function StudentExamResultsPage({ params }: Props) {
   const course  = courseRes.data as any
   const examMod = ((examRes.data ?? []) as any[])[0] ?? null
 
-  const passMark = Number(course.final_exam_pass_mark ?? examMod?.activity_settings?.pass_mark ?? 70)
+  // The student's current enrollment: its attempts, and the pass mark grading used.
+  const current = await getCurrentEnrollment(studentId, courseId)
+  const passMark = (await getExamRules(current, course, examMod?.activity_settings)).passMark
   const questions: any[] = Array.isArray(examMod?.questions) ? examMod.questions : []
 
   let attempts: any[] = []
-  if (examMod) {
+  if (examMod && current) {
     const { data } = await db
       .from("lms_module_attempts")
       .select("id, attempt_no, score, max_score, passed, answers, ai_feedback, time_spent_s, submitted_at, graded_at, paper")
       .eq("module_id", examMod.id)
-      .eq("student_id", studentId)
+      .eq("enrollment_id", current.id)
       .order("attempt_no", { ascending: true })
 
     attempts = (data ?? []).map((a: any) => {

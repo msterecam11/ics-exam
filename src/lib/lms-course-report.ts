@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { scoreObjectiveQuestion, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -88,12 +89,21 @@ export function gradeQuestion(q: any, ans: any): number {
 }
 
 // ── Builder ────────────────────────────────────────────────────────
-export async function buildCourseReport(studentId: string, courseId: string, opts?: { computeCohort?: boolean }): Promise<CourseReport | null> {
+// A report describes ONE enrollment: the given one, or the student's current
+// enrollment in the course. A course retaken in a later program has a separate
+// report per enrollment.
+export async function buildCourseReport(
+  studentId: string, courseId: string,
+  opts?: { computeCohort?: boolean; enrollmentId?: string },
+): Promise<CourseReport | null> {
   const computeCohort = opts?.computeCohort !== false
+  const enrollmentId = opts?.enrollmentId ?? (await getCurrentEnrollment(studentId, courseId))?.id
+  if (!enrollmentId) return null
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
     db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("status, enrolled_at, completed_at, progress_pct").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
+    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id")
+      .eq("id", enrollmentId).eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
   ])
   if (!studentRes.data || !courseRes.data || !enrollRes.data) return null
 
@@ -102,11 +112,11 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
     db.from("lms_modules").select("id, title, module_type, order_index, activity_settings, questions").eq("course_id", courseId).order("order_index"),
     db.from("lms_module_analysis").select("module_id, analysis").eq("course_id", courseId),
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
-    db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s, paper").eq("student_id", studentId).eq("course_id", courseId),
-    db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("student_id", studentId),
+    db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("enrollment_id", enrollmentId),
+    db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s, paper").eq("enrollment_id", enrollmentId),
+    db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("enrollment_id", enrollmentId),
     db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
-    db.from("lms_report_assessments").select("assessment, generated_at").eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
+    db.from("lms_report_assessments").select("assessment, generated_at").eq("enrollment_id", enrollmentId).maybeSingle(),
   ])
 
   const modules    = modulesRes.data ?? []
@@ -180,7 +190,8 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
         score: num(best.score), maxScore: num(best.max_score), pct,
         passed: !!examAttempts.some((a: any) => a.passed),
         attempts: examAttempts.length, maxAttempts,
-        passMark: Number((courseRes.data as any).final_exam_pass_mark ?? (examMod as any).activity_settings?.pass_mark ?? 70),
+        // The pass mark grading used: the program's rule when there is one.
+        passMark: (await getExamRules(enrollRes.data as any, courseRes.data as any, (examMod as any).activity_settings)).passMark,
         timeSpent: examAttempts.reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0),
       }
     }
@@ -385,14 +396,20 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
   // class average down with a score they never earned.
   let cohort: CourseReport["cohort"] = null
   if (computeCohort && overallScore !== null) {
-    const { data: cohortEnrolls } = await db
+    // Compared with the same group: the other enrollments of this course in
+    // the SAME program (or, outside programs, the other non-program enrollments).
+    const programId = (enrollRes.data as any).program_id as string | null
+    let cohortQuery = db
       .from("lms_enrollments")
-      .select("student_id")
+      .select("id, student_id")
       .eq("course_id", courseId)
       .neq("status", "dropped")
-    const otherIds = (cohortEnrolls ?? []).map((r: any) => r.student_id as string).filter(sid => sid !== studentId)
+    cohortQuery = programId ? cohortQuery.eq("program_id", programId) : cohortQuery.is("program_id", null)
+    const { data: cohortEnrolls } = await cohortQuery
+    const others = (cohortEnrolls ?? []).filter((r: any) => r.student_id !== studentId) as { id: string; student_id: string }[]
+    const otherIds = others.map(o => o.student_id)
     if (otherIds.length > 0) {
-      const otherReports = await Promise.all(otherIds.map(sid => buildCourseReport(sid, courseId, { computeCohort: false })))
+      const otherReports = await Promise.all(others.map(o => buildCourseReport(o.student_id, courseId, { computeCohort: false, enrollmentId: o.id })))
       const ranked = [
         { sid: studentId, val: overallScore },
         ...otherIds
@@ -411,7 +428,7 @@ export async function buildCourseReport(studentId: string, courseId: string, opt
     const { data: fb } = await db
       .from("lms_feedback")
       .select("rating_overall, rating_content, rating_instructor, rating_pace, rating_materials, comments, is_anonymous")
-      .eq("student_id", studentId).eq("course_id", courseId).maybeSingle()
+      .eq("enrollment_id", enrollmentId).maybeSingle()
     // Respect a per-submission anonymous flag too — never attribute anonymous feedback.
     if (fb && (fb as any).is_anonymous !== true) {
       feedback = {

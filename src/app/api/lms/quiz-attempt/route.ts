@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-import { canUseQuiz } from "@/lib/lms-enrollment"
+import { canUseQuiz, getCurrentEnrollment } from "@/lib/lms-enrollment"
 
 // POST /api/lms/quiz-attempt
 // Body: { quiz_id, content_item_id, course_id, answers }
@@ -164,15 +164,17 @@ export async function POST(req: Request) {
       .eq("id", content_item_id)
       .single()
 
-    if (module) {
+    const current = module ? await getCurrentEnrollment(studentId, course_id) : null
+    if (module && current && current.access === "full") {
       await db.from("lms_progress").upsert({
         student_id:      studentId,
+        enrollment_id:   current.id,
         content_item_id,
         module_id:       module.module_id,
         course_id,
         status:          "completed",
         completed_at:    new Date().toISOString(),
-      }, { onConflict: "student_id,content_item_id" })
+      }, { onConflict: "enrollment_id,content_item_id" })
     }
   }
 

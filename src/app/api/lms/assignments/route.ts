@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
-import { COURSE_ACCESS_STATUSES, hasCourseAccess } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
@@ -57,11 +57,16 @@ export async function GET(req: Request) {
   if (!contentItemId)
     return NextResponse.json({ error: "content_item_id required" }, { status: 400 })
 
+  const { data: ciRow } = await db
+    .from("lms_content_items").select("lms_modules!inner(course_id)").eq("id", contentItemId).maybeSingle()
+  const enrollment = await getCurrentEnrollment(student.id, (ciRow as any)?.lms_modules?.course_id)
+  if (!enrollment || enrollment.access === "none") return NextResponse.json(null)
+
   const { data } = await db
     .from("lms_assignment_submissions")
     .select("id, text_response, file_url, file_path, file_name, status, score, max_score, feedback, graded_at, submitted_at")
     .eq("content_item_id", contentItemId)
-    .eq("student_id", student.id)
+    .eq("enrollment_id", enrollment.id)
     .maybeSingle()
 
   if (!data) return NextResponse.json(null)
@@ -96,8 +101,9 @@ export async function POST(req: Request) {
     .from("lms_content_items").select("id, lms_modules!inner(course_id)").eq("id", content_item_id).maybeSingle()
   if (!ci || (ci as any).lms_modules?.course_id !== course_id)
     return NextResponse.json({ error: "Content item does not belong to that course" }, { status: 400 })
-  if (!(await hasCourseAccess(student.id, course_id)))
-    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 })
+  const writable = await getWritableEnrollment(student.id, course_id)
+  if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
+  const enrollment = writable.enrollment
 
   // Upsert — allow resubmission (replaces old)
   const { data, error } = await db
@@ -105,6 +111,7 @@ export async function POST(req: Request) {
     .upsert({
       content_item_id,
       student_id:    student.id,
+      enrollment_id: enrollment.id,
       course_id,
       text_response: text_response?.trim() || null,
       file_path:     file_path || null,
@@ -118,7 +125,7 @@ export async function POST(req: Request) {
       graded_at:     null,
       submitted_at:  new Date().toISOString(),
       updated_at:    new Date().toISOString(),
-    }, { onConflict: "content_item_id,student_id" })
+    }, { onConflict: "enrollment_id,content_item_id" })
     .select()
     .single()
 
@@ -127,12 +134,13 @@ export async function POST(req: Request) {
   // Mark progress as completed
   await db.from("lms_progress").upsert({
     student_id:      student.id,
+    enrollment_id:   enrollment.id,
     content_item_id,
     course_id,
     status:          "completed",
     position:        {},
     updated_at:      new Date().toISOString(),
-  }, { onConflict: "student_id,content_item_id" })
+  }, { onConflict: "enrollment_id,content_item_id" })
 
   return NextResponse.json(data, { status: 201 })
 }
