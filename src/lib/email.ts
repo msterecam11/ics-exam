@@ -12,7 +12,7 @@
  * with a different shared mailbox.
  */
 
-import { sendGraphMailAs } from "@/lib/ms-graph"
+import { sendGraphMailAs, isReservedTestAddress } from "@/lib/ms-graph"
 import { db } from "@/lib/db"
 
 const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -42,7 +42,8 @@ export async function sendEmail(opts: SendOptions) {
   let errorMsg: string | null = null
 
   try {
-    await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: to, subject, html })
+    if (isReservedTestAddress(to)) status = "skipped"   // reserved test domain — never deliverable
+    else await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: to, subject, html })
   } catch (e: any) {
     status   = "failed"
     errorMsg = e?.message ?? "Unknown error"

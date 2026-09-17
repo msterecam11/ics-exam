@@ -600,6 +600,17 @@ export async function sendAssessorCredentialsEmail(input: AssessorCredentialsEma
 // permission (used for alep@ics-aviation.com).  Just pass a different fromEmail
 // to send from lms@ics-aviation.com or any other shared mailbox.
 
+/**
+ * True for addresses on domains reserved for testing and documentation
+ * (RFC 2606 / RFC 6761): .test, .example, .invalid, .localhost, example.com/net/org.
+ * Mail to them can never be delivered — sending would only bounce off our
+ * mailbox and hurt its sender reputation — so they are never sent.
+ */
+export function isReservedTestAddress(email: string): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? ""
+  return /\.(test|example|invalid|localhost)$/.test(domain) || /^(.+\.)?example\.(com|net|org)$/.test(domain)
+}
+
 export async function sendGraphMailAs(opts: {
   fromEmail:   string   // e.g. "lms@ics-aviation.com"
   toEmail:     string
@@ -607,6 +618,10 @@ export async function sendGraphMailAs(opts: {
   subject:     string
   html:        string
 }): Promise<void> {
+  if (isReservedTestAddress(opts.toEmail)) {
+    console.info("[mail] not sent to reserved test address", opts.toEmail)
+    return
+  }
   const token = await getAccessToken()
 
   const res = await fetch(`${GRAPH_BASE}/users/${opts.fromEmail}/sendMail`, {

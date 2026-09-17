@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { randomString } from "@/lib/utils"
 import { sendEmail, buildEnrollmentEmail, sendStudentCredentialsEmail } from "@/lib/email"
+import { syncMemberEnrollments } from "@/lib/lms-programs"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -32,12 +33,32 @@ export async function POST(req: Request) {
   const sendEmails     = (formData.get("send_emails") as string) !== "false"  // default true
   const preview        = formData.get("mode") === "preview"
   const fixedCompanyId = (formData.get("company_id") as string) || null
+  // Optional: add every newly created student to a program (and track).
+  const programId      = (formData.get("program_id") as string) || null
+  const programTrackId = (formData.get("track_id") as string) || null
   let companyActions: Record<string, "create" | "none" | "skip"> = {}
   try { companyActions = JSON.parse((formData.get("company_actions") as string) || "{}") ?? {} } catch {
     return NextResponse.json({ error: "Invalid company_actions" }, { status: 400 })
   }
 
   if (!file) return NextResponse.json({ error: "file required" }, { status: 400 })
+
+  let program: { id: string; name: string; status: string; structure: string } | null = null
+  if (programId) {
+    if (session.user.role !== "admin") return NextResponse.json({ error: "Only an admin can import into a program" }, { status: 403 })
+    if (enrollCourseId) return NextResponse.json({ error: "Choose a program or a course to enroll in, not both" }, { status: 400 })
+    const { data: prog } = await db.from("lms_programs").select("id, name, status, structure").eq("id", programId).maybeSingle()
+    if (!prog) return NextResponse.json({ error: "Program not found" }, { status: 400 })
+    program = prog as any
+    if (program!.status === "completed" || program!.status === "archived")
+      return NextResponse.json({ error: `Students can't be added to a ${program!.status} program` }, { status: 400 })
+    if (program!.structure === "tracks") {
+      const { data: track } = programTrackId
+        ? await db.from("lms_program_tracks").select("id").eq("id", programTrackId).eq("program_id", programId).maybeSingle()
+        : { data: null }
+      if (!track) return NextResponse.json({ error: "Choose a track in that program" }, { status: 400 })
+    }
+  }
   if (!file.name.toLowerCase().endsWith(".csv"))
     return NextResponse.json({ error: "File must be a .csv" }, { status: 400 })
 
@@ -193,6 +214,19 @@ export async function POST(req: Request) {
     await db.from("lms_enrollments").insert(rows)
   }
 
+  // Add the new students to the chosen program (enrollments per its structure).
+  const programIssues: string[] = []
+  if (program && created.length) {
+    for (const c of created) {
+      const { data: member, error: mErr } = await db.from("lms_program_members")
+        .insert({ program_id: program.id, student_id: c.id, track_id: program.structure === "tracks" ? programTrackId : null, added_by: session.user.id })
+        .select("id").single()
+      if (mErr || !member) { programIssues.push(`${c.email}: could not add to the program`); continue }
+      const r = await syncMemberEnrollments((member as any).id, session.user.id)
+      programIssues.push(...r.issues.map(i => `${c.email}: ${i.reason}`))
+    }
+  }
+
   // Emails — mirror the individual flow: every new student gets their login
   // credentials; if enrolled into a course, they also get the enrollment
   // email. Fire-and-forget (same pattern as the enroll endpoint).
@@ -204,6 +238,13 @@ export async function POST(req: Request) {
     }
     for (const c of created) {
       sendStudentCredentialsEmail({ studentName: c.name, studentEmail: c.email, password: c.rawPass }).catch(() => {})
+      if (program && program.status === "active") {
+        const { data: enr } = await db.from("lms_enrollments").select("course_id, lms_courses(title)").eq("student_id", c.id).eq("program_id", program.id).eq("status", "active")
+        for (const e of (enr ?? []) as any[]) {
+          const { subject, html } = buildEnrollmentEmail({ studentName: c.name, courseTitle: e.lms_courses?.title ?? "your course", courseId: e.course_id })
+          sendEmail({ type: "enrollment", to: c.email, subject, html, studentId: c.id, courseId: e.course_id }).catch(() => {})
+        }
+      }
       if (enrollCourseId && courseTitle) {
         const { subject, html } = buildEnrollmentEmail({ studentName: c.name, courseTitle, courseId: enrollCourseId })
         sendEmail({ type: "enrollment", to: c.email, subject, html, studentId: c.id, courseId: enrollCourseId }).catch(() => {})
@@ -226,7 +267,7 @@ export async function POST(req: Request) {
     results,
   })
 
-  return NextResponse.json({ total, success, errors, skipped, results })
+  return NextResponse.json({ total, success, errors, skipped, results, program_issues: programIssues })
 }
 
 // Creates a company chosen as "create" in the import preview. The code is

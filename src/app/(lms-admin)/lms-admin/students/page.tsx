@@ -242,6 +242,20 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
   const [uploading,  setUploading]  = useState(false)
   const [sendEmails, setSendEmails] = useState(true)
   const [assignCompanyId, setAssignCompanyId] = useState("")
+  const [programId, setProgramId] = useState("")
+  const [programTracks, setProgramTracks] = useState<{ id: string; name: string }[]>([])
+  const [programTrackId, setProgramTrackId] = useState("")
+  const [programs, setPrograms] = useState<{ id: string; name: string; status: string; structure: string }[]>([])
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/lms/programs").then(r => r.ok ? r.json() : []).then(d =>
+      setPrograms((Array.isArray(d) ? d : []).filter((p: any) => p.status === "draft" || p.status === "active")))
+  }, [open])
+  useEffect(() => {
+    setProgramTracks([]); setProgramTrackId("")
+    if (!programId) return
+    fetch(`/api/lms/programs/${programId}`).then(r => r.ok ? r.json() : null).then(d => { setProgramTracks(d?.tracks ?? []); setProgramTrackId(d?.tracks?.[0]?.id ?? "") })
+  }, [programId])
   const [preview,    setPreview]    = useState<{
     rows: number
     companies: { key: string; value: string; rows: number; match: CompanyOption | null }[]
@@ -255,7 +269,8 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 
   useEffect(() => {
     if (!open) return
-    fetch("/api/lms/courses").then(r => r.json()).then(d => setCourses(d.courses ?? []))
+    // /api/lms/courses returns an array (this read d.courses, so the list was always empty)
+    fetch("/api/lms/courses").then(r => r.json()).then(d => setCourses(Array.isArray(d) ? d : (d.courses ?? [])))
   }, [open])
 
   function formData(mode?: "preview") {
@@ -264,6 +279,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     if (courseId) fd.append("enroll_course_id", courseId)
     fd.append("send_emails", sendEmails ? "true" : "false")
     if (assignCompanyId) fd.append("company_id", assignCompanyId)
+    if (programId) { fd.append("program_id", programId); if (programTrackId) fd.append("track_id", programTrackId) }
     if (mode) fd.append("mode", mode)
     else fd.append("company_actions", JSON.stringify(Object.fromEntries(Object.entries(actions).filter(([, v]) => v))))
     return fd
@@ -295,10 +311,11 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
     setUploading(false)
     if (!res.ok) { toast.error(data.error ?? "Import failed"); return }
     setResult(data)
+    if (data.program_issues?.length) toast.warning(`Some program enrollments couldn't be created: ${data.program_issues.slice(0, 3).join("; ")}`, { duration: 10000 })
     if (data.success > 0) onDone()
   }
 
-  function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true); setPreview(null); setActions({}); setAssignCompanyId("") }
+  function reset() { setFile(null); setCourseId(""); setResult(null); setSendEmails(true); setPreview(null); setActions({}); setAssignCompanyId(""); setProgramId("") }
 
   function downloadTemplate() {
     // Header matches the columns the import parser understands. Two sample
@@ -413,6 +430,27 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
               </select>
             </div>
             <div className="space-y-1">
+              <Label>Add to program (optional)</Label>
+              <select
+                className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
+                value={programId}
+                onChange={e => { setProgramId(e.target.value); if (e.target.value) setCourseId("") }}
+              >
+                <option value="">No program</option>
+                {programs.map(p => <option key={p.id} value={p.id}>{p.name}{p.status === "draft" ? " (draft)" : ""}</option>)}
+              </select>
+              {programTracks.length > 0 && (
+                <select
+                  className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700 mt-2"
+                  value={programTrackId}
+                  onChange={e => setProgramTrackId(e.target.value)}
+                >
+                  {programTracks.map(t => <option key={t.id} value={t.id}>Track: {t.name}</option>)}
+                </select>
+              )}
+            </div>
+            {!programId && (
+            <div className="space-y-1">
               <Label>Auto-enroll in Course (optional)</Label>
               <select
                 className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white text-slate-700"
@@ -423,6 +461,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
                 {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
               </select>
             </div>
+            )}
             <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
               <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} className="mt-0.5" />
               <span className="text-sm text-slate-700">
