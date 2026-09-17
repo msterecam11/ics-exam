@@ -117,9 +117,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
             </p>
           </div>
         </div>
-        {isAdmin && (
-          <Button variant="outline" onClick={() => setEditOpen(true)} className="gap-2"><Edit className="h-4 w-4" /> Edit</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Link href={`/lms-admin/reports/clients/${company.id}`} className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 hover:bg-slate-50">Client report</Link>
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setEditOpen(true)} className="gap-2"><Edit className="h-4 w-4" /> Edit</Button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">

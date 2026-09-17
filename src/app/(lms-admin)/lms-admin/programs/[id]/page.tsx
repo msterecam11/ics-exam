@@ -219,9 +219,14 @@ export default function ProgramPage({ params, searchParams }: {
 
       {tab === "reports" && (
         <div className="space-y-3 max-w-2xl">
-          <p className="text-sm text-slate-600">Reports for each course this program delivers:</p>
+          <Link href={`/lms-admin/reports/programs/${id}`}
+            className="flex items-center justify-between bg-[#1B4F8A] text-white rounded-xl px-5 py-3.5 hover:bg-[#163f6e]">
+            <span className="text-sm font-semibold">Program report: students, course results, tracks, feedback, PDF &amp; Excel</span>
+            <BarChart3 className="h-4 w-4" />
+          </Link>
+          <p className="text-sm text-slate-600">Each course&apos;s cohort report within this program:</p>
           {detail.rules.length === 0 ? <p className="text-sm text-slate-400">No courses yet.</p> : detail.rules.map(r => (
-            <Link key={r.course_id} href={`/lms-admin/reports/${r.course_id}`}
+            <Link key={r.course_id} href={`/lms-admin/reports/${r.course_id}/group?program=${id}`}
               className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:border-[#1B4F8A]/30">
               <span className="text-sm text-slate-800">{r.lms_courses?.title}</span>
               <BarChart3 className="h-4 w-4 text-slate-400" />
@@ -232,7 +237,6 @@ export default function ProgramPage({ params, searchParams }: {
             <span className="text-sm text-slate-800">Feedback: program survey and course feedback</span>
             <MessageSquare className="h-4 w-4 text-slate-400" />
           </Link>
-          <p className="text-xs text-slate-400">Reports organised by client → program → track (combined program report, exports) come with the Reports step.</p>
         </div>
       )}
 

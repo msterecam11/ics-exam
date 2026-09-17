@@ -15,7 +15,7 @@ import { getEnrollmentById, getExamRules, type EnrollmentContext } from "@/lib/l
 // FB-6  Anonymous means names are never shown anywhere. Group breakdowns shared
 //       outside the institute need at least FEEDBACK_MIN_GROUP responses.
 
-export const FEEDBACK_MIN_GROUP = 3
+export { FEEDBACK_MIN_GROUP } from "@/lib/lms-report-shared"
 export const RECOMMEND_VALUES = ["yes", "maybe", "no"] as const
 export type Recommend = (typeof RECOMMEND_VALUES)[number]
 const MAX_TEXT = 2000

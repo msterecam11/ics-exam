@@ -72,6 +72,9 @@ export interface CourseReport {
   cohort: { rank: number; total: number; classAvg: number; selfScore: number } | null
   // This student's own course feedback — only when the course collects it by name.
   feedback: { ratings: { label: string; value: number | null }[]; comment: string | null; recommend?: string | null } | null
+  // RL-1: where this run belongs, and the student's other runs of the course.
+  context: { enrollmentId: string; program: { id: string; name: string } | null; track: string | null; client: string | null }
+  runs: { enrollmentId: string; program: string | null; status: string; enrolledAt: string; completedAt: string | null; bestPct: number | null; passed: boolean; current: boolean }[]
 }
 
 const num = (v: any): number | null => (v === null || v === undefined || isNaN(Number(v)) ? null : Number(v))
@@ -104,7 +107,7 @@ export async function buildCourseReport(
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
     db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id, lms_program_members(track_id)")
+    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id, lms_program_members(track_id, lms_program_tracks(name)), lms_programs(id, name, is_individual, lms_companies(name))")
       .eq("id", enrollmentId).eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
   ])
   if (!studentRes.data || !courseRes.data || !enrollRes.data) return null
@@ -448,7 +451,35 @@ export async function buildCourseReport(
     }
   }
 
+  // ── Context + other runs of this course (retakes) ──
+  const enr: any = enrollRes.data
+  const prog = enr.lms_programs && !enr.lms_programs.is_individual ? enr.lms_programs : null
+  const { data: allRuns } = await db.from("lms_enrollments")
+    .select("id, status, enrolled_at, completed_at, lms_programs(name, is_individual)")
+    .eq("student_id", studentId).eq("course_id", courseId).order("enrolled_at", { ascending: false })
+  const runIds = ((allRuns ?? []) as any[]).map(r => r.id)
+  const examIds = (modules as any[]).filter(m => m.module_type === "final_exam").map(m => m.id)
+  const { data: runAttempts } = runIds.length && examIds.length
+    ? await db.from("lms_module_attempts").select("enrollment_id, score, max_score, passed").in("enrollment_id", runIds).in("module_id", examIds)
+    : { data: [] as any[] }
+  const runs = ((allRuns ?? []) as any[]).map(r => {
+    const mine = ((runAttempts ?? []) as any[]).filter(a => a.enrollment_id === r.id)
+    const pcts = mine.map(a => (Number(a.max_score) > 0 ? Math.round((Number(a.score) / Number(a.max_score)) * 100) : null)).filter((v): v is number => v !== null)
+    return {
+      enrollmentId: r.id, program: r.lms_programs && !r.lms_programs.is_individual ? r.lms_programs.name : null,
+      status: r.status, enrolledAt: r.enrolled_at, completedAt: r.completed_at,
+      bestPct: pcts.length ? Math.max(...pcts) : null, passed: mine.some(a => a.passed), current: r.id === enrollmentId,
+    }
+  })
+
   return {
+    context: {
+      enrollmentId,
+      program: prog ? { id: prog.id, name: prog.name } : null,
+      track: enr.lms_program_members?.lms_program_tracks?.name ?? null,
+      client: prog?.lms_companies?.name ?? null,
+    },
+    runs,
     student: studentRes.data as any,
     course: courseRes.data as any,
     enrollment: enrollRes.data as any,

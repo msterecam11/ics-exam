@@ -17,14 +17,24 @@ function isMgr(role?: string) { return role === "admin" || role === "instructor"
 
 type Params = { params: Promise<{ studentId: string; courseId: string }> }
 
+// The run a request is about: ?enrollment= / body.enrollment_id when given (and
+// it really is this student's run of this course), else the current one.
+async function runOf(studentId: string, courseId: string, requested: unknown) {
+  if (typeof requested === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested)) {
+    const { data } = await db.from("lms_enrollments").select("id").eq("id", requested).eq("student_id", studentId).eq("course_id", courseId).maybeSingle()
+    return data ? { id: (data as any).id as string } : null
+  }
+  return getCurrentEnrollment(studentId, courseId)
+}
+
 // GET — return the stored expert assessment
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { studentId, courseId } = await params
   // The assessment of the student's current enrollment in the course.
-  const current = await getCurrentEnrollment(studentId, courseId)
+  const current = await runOf(studentId, courseId, new URL(req.url).searchParams.get("enrollment"))
   if (!current) return NextResponse.json(null)
   const { data } = await db
     .from("lms_report_assessments")
@@ -49,7 +59,9 @@ export async function POST(req: Request, { params }: Params) {
   const body = await req.json().catch(() => ({}))
   const includeSecurity = !!body.includeSecurity
   const { studentId, courseId } = await params
-  const report = await buildCourseReport(studentId, courseId)
+  const run = await runOf(studentId, courseId, body.enrollment_id)
+  if (!run) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+  const report = await buildCourseReport(studentId, courseId, { enrollmentId: run.id })
   if (!report) return NextResponse.json({ error: "Report data not found" }, { status: 404 })
 
   // Grounded per-module metrics — the model writes an analysis per module (like the exam's per-section analysis).
@@ -211,8 +223,7 @@ Write a professional 3-4 sentence behavioral assessment describing the pattern o
     } catch { /* security analysis is optional — skip on failure */ }
   }
 
-  const current = await getCurrentEnrollment(studentId, courseId)
-  if (!current) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+  const current = run
   const { data, error } = await db
     .from("lms_report_assessments")
     .upsert(

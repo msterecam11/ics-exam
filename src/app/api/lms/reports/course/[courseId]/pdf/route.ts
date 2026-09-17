@@ -3,95 +3,30 @@ export const maxDuration = 60
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { getBrowser } from "@/lib/browser"
-import { PDFDocument } from "pdf-lib"
+import { renderReportPdf } from "@/lib/lms-report-pdf"
+import { parseCourseScope, courseScopeQuery } from "@/lib/lms-report-scope"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ courseId: string }> }
-) {
+// GET /api/lms/reports/course/[courseId]/pdf[?program=&track= | ?scope=all]
+export async function GET(req: Request, { params }: { params: Promise<{ courseId: string }> }) {
   const session = await auth()
   if (!session || !isMgr(session.user.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { courseId } = await params
+  const sp = new URL(req.url).searchParams
+  const scope = parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope") })
 
-  const courseRes = await db.from("lms_courses").select("title").eq("id", courseId).single()
-  if (!courseRes.data)
-    return NextResponse.json({ error: "Course not found" }, { status: 404 })
-
-  const courseTitle = (courseRes.data as any).title ?? "Course"
-
-  const port   = process.env.PORT ?? "3000"
-  const secret = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/lms/course/${courseId}?pdf_secret=${secret}`
-
-  const browser = await getBrowser()
-
-  try {
-    const page = await browser.newPage()
-    await page.setViewport({ width: 794, height: 1122, deviceScaleFactor: 1 })
-    // "load" not "networkidle0" — dev-mode HMR WebSockets stay open
-    // indefinitely and would make networkidle0 hang/timeout.
-    await page.goto(printUrl, { waitUntil: "load", timeout: 60000 })
-    await page.waitForSelector("[data-report-page]", { timeout: 20000 })
-    await new Promise(r => setTimeout(r, 1500))
-
-    await page.addStyleTag({
-      content: "html, body { margin: 0 !important; padding: 0 !important; }\n#report-root { margin: 0 !important; }",
-    })
-
-    const pageCount: number = await page.evaluate(
-      () => document.querySelectorAll("[data-report-page]").length
-    )
-    if (pageCount === 0) throw new Error("No [data-report-page] sections found")
-
-    const merged = await PDFDocument.create()
-
-    // Pass each page's measured size directly to page.pdf()'s width/height —
-    // NOT via a dynamically-injected `@page` rule + preferCSSPageSize, which
-    // is timing-dependent and was producing oversized pages with dead space.
-    for (let i = 0; i < pageCount; i++) {
-      await page.evaluate((idx: number) => {
-        document.querySelectorAll<HTMLElement>("[data-report-page]").forEach((el, j) => {
-          el.style.display = j === idx ? "" : "none"
-        })
-        window.scrollTo(0, 0)
-      }, i)
-
-      const { w, h } = await page.evaluate((idx: number) => {
-        const el = document.querySelectorAll("[data-report-page]")[idx] as HTMLElement
-        const rect = el.getBoundingClientRect()
-        return { w: Math.ceil(rect.width), h: Math.ceil(rect.height) }
-      }, i)
-
-      const pagePdfBytes = await page.pdf({
-        printBackground: true,
-        width:  `${w}px`,
-        height: `${h}px`,
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      })
-
-      const singleDoc = await PDFDocument.load(pagePdfBytes)
-      const [copiedPage] = await merged.copyPages(singleDoc, [0])
-      merged.addPage(copiedPage)
-    }
-
-    const pdfBytes = await merged.save()
-
-    const filename = `${courseTitle} - Course Report.pdf`
-      .replace(/[^\x00-\x7F]/g, "-").replace(/[/\\?%*:|"<>]/g, "-").replace(/-{2,}/g, "-").trim()
-    const filenameEncoded = encodeURIComponent(`${courseTitle} — Course Report.pdf`)
-
-    return new Response(Buffer.from(pdfBytes), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"; filename*=UTF-8''${filenameEncoded}`,
-      },
-    })
-  } finally {
-    await browser.close()
+  const courseRes = await db.from("lms_courses").select("title").eq("id", courseId).maybeSingle()
+  if (!courseRes.data) return NextResponse.json({ error: "Course not found" }, { status: 404 })
+  let suffix = scope.allRuns ? " - All runs" : ""
+  if (scope.programId) {
+    const { data: p } = await db.from("lms_programs").select("name").eq("id", scope.programId).maybeSingle()
+    if (!p) return NextResponse.json({ error: "Program not found" }, { status: 404 })
+    suffix = ` - ${(p as any).name}`
   }
+
+  const q = courseScopeQuery(scope)
+  return renderReportPdf(`/print/lms/course/${courseId}${q ? `?${q}` : ""}`, `${(courseRes.data as any).title}${suffix} - Course Report.pdf`)
 }

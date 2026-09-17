@@ -49,7 +49,7 @@ export default async function LmsCourseReportHubPage({ params }: Props) {
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">Choose a report to view.</p>
+      <p className="text-sm text-muted-foreground">Choose a report to view. The group report can cover current students, every run of the course (analytics, with a comparison between programs), or one program and track.</p>
 
       {/* Two choices */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -68,6 +68,27 @@ export default async function LmsCourseReportHubPage({ params }: Props) {
                 <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                   Cohort overview — completion, module performance, class ranking, exam analysis,
                   and the AI expert report. Print &amp; PDF.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Course analytics across programs (RL-8) */}
+        <Link href={`/lms-admin/reports/${courseId}/group?scope=all`} className="group block">
+          <Card className="h-full hover:shadow-md transition-shadow group-hover:border-[#1B4F8A]/30">
+            <CardContent className="p-6 flex flex-col gap-3">
+              <div className="flex items-start justify-between">
+                <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-emerald-600" />
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-[#1B4F8A] transition-colors mt-1" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800">Course Analytics</p>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Every run of the course across programs: pass rate, hardest questions and a
+                  comparison between programs. For improving the course itself.
                 </p>
               </div>
             </CardContent>

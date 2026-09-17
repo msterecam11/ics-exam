@@ -5,6 +5,9 @@ import { readFeedbackRatings, readFeedbackComments, COURSE_RATING_LABELS, FEEDBA
 // ── Types ──────────────────────────────────────────────────────────
 export interface GroupReport {
   course: { id: string; title: string; delivery_mode: string | null }
+  // Which enrollments this report covers (RP-3): one program (optionally one
+  // track), or every run of the course across programs (course analytics).
+  scope: { programId: string | null; programName: string | null; trackId: string | null; trackName: string | null; allRuns: boolean }
   generatedAt: string
   stats: {
     enrolled: number; completed: number; completionRate: number
@@ -23,8 +26,8 @@ export interface GroupReport {
     // discrimination) — likely ambiguous or miskeyed, worth reviewing.
     flagged: { text: string; discrimination: number; avgPct: number; n: number }[]
   }
-  ranking: { id: string; name: string; mastery: number | null; examPct: number | null; passed: boolean | null; completion: number }[]
-  atRisk: { id: string; name: string; mastery: number | null; reasons: string[] }[]
+  ranking: { id: string; enrollmentId: string; program: string | null; name: string; mastery: number | null; examPct: number | null; passed: boolean | null; completion: number }[]
+  atRisk: { id: string; enrollmentId: string; program: string | null; name: string; mastery: number | null; reasons: string[] }[]
   attendance: { overallPct: number } | null
   feedback: {
     count: number
@@ -33,7 +36,7 @@ export interface GroupReport {
     recommend?: { yes: number; maybe: number; no: number; answered: number }
   } | null
   roster: {
-    id: string; name: string; company: string | null; jobTitle: string | null
+    id: string; enrollmentId: string; program: string | null; name: string; company: string | null; jobTitle: string | null
     mastery: number | null; examPct: number | null; passed: boolean | null
     completion: number; timeS: number; attendancePct: number | null; atRisk: boolean
   }[]
@@ -42,26 +45,42 @@ export interface GroupReport {
 const round = (n: number) => Math.round(n)
 
 // ── Builder ────────────────────────────────────────────────────────
-// The group is one set of enrollments: a program's enrollments in this course
-// when programId is given, otherwise each learner's current enrollment in the
-// course (so a learner who retook the course counts once, with the latest run).
-export async function buildGroupReport(courseId: string, opts?: { programId?: string }): Promise<GroupReport | null> {
-  let enrollQuery = db.from("lms_enrollments").select("id, student_id, status, enrolled_at").eq("course_id", courseId).neq("status", "dropped")
-  if (opts?.programId) enrollQuery = enrollQuery.eq("program_id", opts.programId)
-  const [courseRes, enrollRes, modulesRes] = await Promise.all([
+// The group is one set of enrollments (RP-3):
+//   programId (+ trackId) → that program's (track's) enrollments in this course
+//   allRuns               → every run across all programs (course analytics, RL-8)
+//   neither               → each learner's current enrollment in the course (a
+//                            learner who retook the course counts once).
+export async function buildGroupReport(courseId: string, opts?: { programId?: string | null; trackId?: string | null; allRuns?: boolean }): Promise<GroupReport | null> {
+  const programId = opts?.programId ?? null
+  const trackId = programId ? (opts?.trackId ?? null) : null
+  const allRuns = !programId && !!opts?.allRuns
+  let enrollQuery = db.from("lms_enrollments")
+    .select("id, student_id, status, enrolled_at, program_id, lms_programs(name), lms_program_members(track_id)")
+    .eq("course_id", courseId).neq("status", "dropped")
+  if (programId) enrollQuery = enrollQuery.eq("program_id", programId)
+  const [courseRes, enrollRes, modulesRes, programRes, trackRes] = await Promise.all([
     db.from("lms_courses").select("id, title, delivery_mode").eq("id", courseId).single(),
     enrollQuery,
     db.from("lms_modules").select("id, title, module_type, order_index, questions").eq("course_id", courseId).order("order_index"),
+    programId ? db.from("lms_programs").select("name").eq("id", programId).maybeSingle() : Promise.resolve({ data: null }),
+    trackId ? db.from("lms_program_tracks").select("name").eq("id", trackId).eq("program_id", programId!).maybeSingle() : Promise.resolve({ data: null }),
   ])
   if (!courseRes.data) return null
+  if (programId && !programRes.data) return null
 
   const course  = courseRes.data as any
+  let candidates = (enrollRes.data ?? []) as any[]
+  if (trackId) candidates = candidates.filter(e => e.lms_program_members?.track_id === trackId)
   const rank = (s: string) => (s === "active" ? 0 : 1)
-  const byStudent = new Map<string, any>()
-  for (const e of [...((enrollRes.data ?? []) as any[])].sort((a, b) => rank(a.status) - rank(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))) {
-    if (!byStudent.has(e.student_id)) byStudent.set(e.student_id, e)
+  let enr: any[]
+  if (allRuns) enr = candidates
+  else {
+    const byStudent = new Map<string, any>()
+    for (const e of [...candidates].sort((a, b) => rank(a.status) - rank(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))) {
+      if (!byStudent.has(e.student_id)) byStudent.set(e.student_id, e)
+    }
+    enr = [...byStudent.values()]
   }
-  const enr     = [...byStudent.values()]
   const modules = (modulesRes.data ?? []) as any[]
   const examMod = modules.find(m => m.module_type === "final_exam")
   const modOrder = new Map<string, number>(modules.map((m: any) => [m.id, m.order_index ?? 999]))
@@ -135,15 +154,22 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   let itemAnalysis: GroupReport["itemAnalysis"] = { hardest: [], difficulty: { mastered: 0, mixed: 0, struggled: 0, total: 0 }, flagged: [] }
   if (examMod) {
     const questions: any[] = Array.isArray(examMod.questions) ? examMod.questions : []
-    const { data: attempts } = await db
-      .from("lms_module_attempts")
-      .select("student_id, answers, ai_feedback, score, paper")
-      .eq("module_id", examMod.id)
-      .in("enrollment_id", rows.map(x => x.e.id))
+    const enrollmentIds = rows.map(x => x.e.id)
+    const attempts: any[] = []
+    for (let i = 0; i < enrollmentIds.length; i += 150) {
+      const { data } = await db
+        .from("lms_module_attempts")
+        .select("enrollment_id, answers, ai_feedback, score, paper")
+        .eq("module_id", examMod.id)
+        .in("enrollment_id", enrollmentIds.slice(i, i + 150))
+      attempts.push(...(data ?? []))
+    }
+    // Best attempt per ENROLLMENT (a learner in two programs counts twice in
+    // course analytics — each run is its own result).
     const bestByStu = new Map<string, any>()
-    for (const a of (attempts ?? []) as any[]) {
-      const cur = bestByStu.get(a.student_id)
-      if (!cur || (a.score ?? 0) > (cur.score ?? 0)) bestByStu.set(a.student_id, a)
+    for (const a of attempts) {
+      const cur = bestByStu.get(a.enrollment_id)
+      if (!cur || (a.score ?? 0) > (cur.score ?? 0)) bestByStu.set(a.enrollment_id, a)
     }
     // Each attempt is marked with ITS OWN frozen version of a question (key and
     // points as they were when that student sat the exam). An attempt whose
@@ -182,7 +208,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
     // Discrimination — do top-third students outperform bottom-third on each
     // question? Low/negative separation flags an ambiguous or miskeyed item.
     let flagged: GroupReport["itemAnalysis"]["flagged"] = []
-    const masteryByStu = new Map<string, number>(rows.map(x => [x.r.student.id, x.r.overall.score ?? 0]))
+    const masteryByStu = new Map<string, number>(rows.map(x => [x.e.id, x.r.overall.score ?? 0]))
     const takersWithId = [...bestByStu.entries()].map(([sid, a]) => ({ a, mastery: masteryByStu.get(sid) ?? 0 }))
     if (takersWithId.length >= 6) {
       const sorted = [...takersWithId].sort((x, y) => y.mastery - x.mastery)
@@ -212,7 +238,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   // roster already shows "—" for them, and ranking them as a 0 implies they sat
   // the exam and scored nothing. Nulls sort last without claiming a score.
   const ranking = rows
-    .map(x => ({ id: x.r.student.id, name: x.r.student.name, mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null, completion: x.r.overall.completionPct }))
+    .map(x => ({ id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name, mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null, completion: x.r.overall.completionPct }))
     .sort((a, b) => (b.mastery ?? -1) - (a.mastery ?? -1))
   const atRisk = rows.map(x => {
     const reasons: string[] = []
@@ -221,9 +247,9 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
     if (x.r.exam && !x.r.exam.passed) reasons.push("Failed exam")
     if (x.r.overall.attendancePct !== null && x.r.overall.attendancePct < 50) reasons.push("Low attendance")
     if (x.r.overall.completionPct < 50) reasons.push("Low completion")
-    return { id: x.r.student.id, name: x.r.student.name, mastery: m, reasons }
+    return { id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name, mastery: m, reasons }
   }).filter(a => a.reasons.length > 0)
-  const atRiskIds = new Set(atRisk.map(a => a.id))
+  const atRiskIds = new Set(atRisk.map(a => a.enrollmentId))
 
   // Attendance (cohort)
   const attPcts = rows.map(x => x.r.overall.attendancePct).filter((p): p is number => p !== null)
@@ -256,15 +282,16 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   }
 
   const roster = rows.map(x => ({
-    id: x.r.student.id, name: x.r.student.name,
+    id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name,
     company: x.r.student.company ?? null, jobTitle: (x.r.student as any).job_title ?? null,
     mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null,
     completion: x.r.overall.completionPct, timeS: x.r.overall.timeSpent, attendancePct: x.r.overall.attendancePct,
-    atRisk: atRiskIds.has(x.r.student.id),
+    atRisk: atRiskIds.has(x.e.id),
   })).sort((a, b) => (b.mastery ?? -1) - (a.mastery ?? -1))
 
   return {
     course: { id: course.id, title: course.title, delivery_mode: course.delivery_mode ?? "online" },
+    scope: { programId, programName: (programRes.data as any)?.name ?? null, trackId, trackName: (trackRes.data as any)?.name ?? null, allRuns },
     generatedAt: new Date().toISOString(),
     stats: {
       enrolled, completed, completionRate: enrolled ? round((completed / enrolled) * 100) : 0,

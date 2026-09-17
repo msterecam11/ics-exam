@@ -11,8 +11,15 @@ import { toast } from "sonner"
 import type { CourseReport } from "@/lib/lms-course-report"
 import StudentCourseReportPages from "@/components/lms/StudentCourseReportPages"
 
-export default function StudentCourseReportView({ params }: { params: Promise<{ courseId: string; studentId: string }> }) {
+export default function StudentCourseReportView({ params, searchParams }: {
+  params: Promise<{ courseId: string; studentId: string }>
+  searchParams: Promise<{ enrollment?: string; from?: string }>
+}) {
   const { courseId, studentId } = use(params)
+  const { enrollment, from } = use(searchParams)
+  // A specific run (e.g. from a program report or "Previous attempts"); default = current.
+  const runQ = enrollment ? `?enrollment=${encodeURIComponent(enrollment)}` : ""
+  const backHref = from && from.startsWith("/lms-admin/") ? from : `/lms-admin/reports/${courseId}`
   const [report, setReport] = useState<CourseReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -21,20 +28,20 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   const [includeSecurity, setIncludeSecurity] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/lms/reports/student/${studentId}/${courseId}`)
+    fetch(`/api/lms/reports/student/${studentId}/${courseId}${runQ}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { setReport(d); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [studentId, courseId])
+  }, [studentId, courseId, runQ])
 
   async function generateAssessment() {
     setGenerating(true)
     try {
-      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/expert-assessment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ includeSecurity }) })
+      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/expert-assessment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ includeSecurity, enrollment_id: enrollment }) })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error ?? "Failed to generate"); return }
       // re-fetch so per-module AI is attached server-side
-      const fresh = await fetch(`/api/lms/reports/student/${studentId}/${courseId}`).then(r => r.json())
+      const fresh = await fetch(`/api/lms/reports/student/${studentId}/${courseId}${runQ}`).then(r => r.json())
       setReport(fresh)
       toast.success("Expert assessment generated")
     } catch { toast.error("Failed to generate") }
@@ -45,7 +52,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
     setDownloading(true)
     toast.info("Generating PDF…")
     try {
-      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/pdf?includeSecurity=${includeSecurity}`)
+      const res = await fetch(`/api/lms/reports/student/${studentId}/${courseId}/pdf?includeSecurity=${includeSecurity}${enrollment ? `&enrollment=${encodeURIComponent(enrollment)}` : ""}`)
       if (!res.ok) { toast.error("PDF generation failed"); return }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -61,7 +68,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
   if (!report) return (
     <div className="max-w-3xl mx-auto py-16 text-center text-slate-400">
       <p>Report not found for this student.</p>
-      <Link href={`/lms-admin/reports/${courseId}`} className="text-sm text-[#1B4F8A] underline mt-3 inline-block">← Back to course report</Link>
+      <Link href={backHref} className="text-sm text-[#1B4F8A] underline mt-3 inline-block">← Back</Link>
     </div>
   )
 
@@ -119,10 +126,21 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
       {/* ── Toolbar ── */}
       <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
         <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Link href={`/lms-admin/reports/${courseId}`} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
+          <Link href={backHref} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800" aria-label="Back"><ArrowLeft className="h-4 w-4" /></Link>
           <span className="font-medium text-slate-800">{student.name}</span>
           <span className="text-slate-300">·</span>
           <span className="truncate max-w-[240px]">{course.title}</span>
+          {report.runs.length > 1 && (
+            <select aria-label="Program run" value={report.context.enrollmentId}
+              onChange={e => { window.location.href = `/lms-admin/reports/${courseId}/${studentId}?enrollment=${e.target.value}${from ? `&from=${encodeURIComponent(from)}` : ""}` }}
+              className="h-8 rounded-lg border border-slate-200 px-2 text-xs bg-white max-w-[220px]">
+              {report.runs.map(r => (
+                <option key={r.enrollmentId} value={r.enrollmentId}>
+                  {(r.program ?? "Outside programs")} · {new Date(r.enrolledAt).getFullYear()}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {assessment ? (
@@ -145,7 +163,7 @@ export default function StudentCourseReportView({ params }: { params: Promise<{ 
       {/* ── Report — same component the PDF route and Viewer Portal render,
            so what you see here is exactly what gets downloaded ── */}
       <div style={{ boxShadow: "0 0 0 1px #e2e8f0" }}>
-        <StudentCourseReportPages report={report} includeSecurity={includeSecurity} />
+        <StudentCourseReportPages report={report} includeSecurity={includeSecurity} showPreviousRuns />
       </div>
     </>
   )

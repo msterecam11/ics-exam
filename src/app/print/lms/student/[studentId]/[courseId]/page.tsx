@@ -6,11 +6,11 @@ import StudentCourseReportPages from "@/components/lms/StudentCourseReportPages"
 
 interface Props {
   params: Promise<{ studentId: string; courseId: string }>
-  searchParams: Promise<{ pdf_secret?: string; includeSecurity?: string }>
+  searchParams: Promise<{ pdf_secret?: string; includeSecurity?: string; enrollment?: string }>
 }
 
 export default async function PrintStudentLmsReport({ params, searchParams }: Props) {
-  const { pdf_secret, includeSecurity } = await searchParams
+  const { pdf_secret, includeSecurity, enrollment } = await searchParams
   const { studentId, courseId } = await params
 
   // Must match the authorization on the report pages this mirrors. Previously
@@ -26,9 +26,9 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
     const isStaff = role === "admin" || role === "instructor"
     if (!isStaff && !(await canViewLmsReport(session.user.id, studentId, courseId))) notFound()
   }
-  const report = await buildCourseReport(studentId, courseId)
+  const report = await buildCourseReport(studentId, courseId, enrollment && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enrollment) ? { enrollmentId: enrollment } : undefined)
   if (!report) notFound()
 
   // Opt-in, not opt-out: only include the integrity section when explicitly asked.
-  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity === "true"} forPrint />
+  return <StudentCourseReportPages report={report} includeSecurity={includeSecurity === "true"} forPrint showPreviousRuns={validSecret} />
 }

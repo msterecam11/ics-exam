@@ -12,6 +12,8 @@ begin
   if exists (select 1 from lms_enrollments where student_id = any(test_students) and not (course_id = any(test_courses))) then raise exception 'ABORT: test student in real course'; end if;
   if exists (select 1 from lms_program_members where program_id = any(test_programs) and not (student_id = any(test_students))) then raise exception 'ABORT: non-test student in test program'; end if;
   if exists (select 1 from lms_program_items where program_id = any(test_programs) and not (course_id = any(test_courses))) then raise exception 'ABORT: real course in test program'; end if;
+  delete from lms_report_cache        where cache_key like any (array(select '%' || id::text || '%' from unnest(test_programs || test_courses) id));
+  delete from lms_scoped_assessments  where program_id = any(test_programs) or course_id = any(test_courses);
   delete from lms_attendance          where student_id = any(test_students);
   delete from lms_sessions            where course_id = any(test_courses);
   delete from lms_certificates        where student_id = any(test_students);

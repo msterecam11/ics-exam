@@ -13,19 +13,21 @@ function fmtTime(s: number) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-interface Props { params: Promise<{ courseId: string }> }
+interface Props { params: Promise<{ courseId: string }>; searchParams: Promise<{ program?: string }> }
 
 // Individual reports — a roster table; each row opens that student's report.
-export default async function LmsIndividualReportsPage({ params }: Props) {
+export default async function LmsIndividualReportsPage({ params, searchParams }: Props) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) redirect("/auth/login")
 
   const { courseId } = await params
+  const { program } = await searchParams
+  const programId = program && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(program) ? program : null
 
   const [courseRes, enrollRes, examModRes] = await Promise.all([
     db.from("lms_courses").select("id, title").eq("id", courseId).single(),
     db.from("lms_enrollments")
-      .select("id, status, enrolled_at, time_spent_s, lms_students(id, name, email, company, job_title)")
+      .select("id, status, enrolled_at, time_spent_s, program_id, lms_programs(id, name, is_individual), lms_students(id, name, email, company, job_title)")
       .eq("course_id", courseId)
       .order("enrolled_at", { ascending: false }),
     db.from("lms_modules").select("id").eq("course_id", courseId).eq("module_type", "final_exam").order("order_index", { ascending: true }).limit(1),
@@ -37,7 +39,9 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
   // appears once, with the latest run).
   const rankStatus = (s: string) => (s === "active" ? 0 : s === "completed" ? 1 : 2)
   const seenStudents = new Set<string>()
-  const enrollments = [...((enrollRes.data ?? []) as any[])]
+  // Programs this course ran in, for the filter (RL-2).
+  const programOptions = [...new Map(((enrollRes.data ?? []) as any[]).filter(e => e.lms_programs && !e.lms_programs.is_individual).map(e => [e.lms_programs.id, e.lms_programs.name])).entries()]
+  const enrollments = [...((enrollRes.data ?? []) as any[]).filter(e => !programId || e.program_id === programId)]
     .sort((a, b) => rankStatus(a.status) - rankStatus(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))
     .filter(e => { const sid = e.lms_students?.id; if (!sid || seenStudents.has(sid)) return false; seenStudents.add(sid); return true })
   const examModuleId = ((examModRes.data ?? []) as any[])[0]?.id ?? null
@@ -63,6 +67,8 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
       .map(a => ({ passed: a.passed, pct: a.max_score > 0 ? Math.round((a.score / a.max_score) * 100) : null }))
       .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1))[0] ?? null
     return {
+      enrollmentId: e.id,
+      program:    e.lms_programs && !e.lms_programs.is_individual ? e.lms_programs.name : null,
       id:         s?.id,
       name:       s?.name ?? "—",
       email:      s?.email ?? "",
@@ -88,10 +94,20 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
           </div>
           <div>
             <h2 className="text-xl font-bold leading-tight">Individual Reports</h2>
-            <p className="text-muted-foreground text-sm">{course.title} · {rows.length} students</p>
+            <p className="text-muted-foreground text-sm">{course.title} · {rows.length} students{programId ? ` · ${programOptions.find(([id]) => id === programId)?.[1] ?? "program"}` : ""}</p>
           </div>
         </div>
       </div>
+
+      {programOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Program:</span>
+          <Link href={`/lms-admin/reports/${courseId}/individuals`} className={`px-2.5 py-1 rounded-lg border ${!programId ? "border-[#1B4F8A] text-[#1B4F8A] bg-[#1B4F8A]/5 font-medium" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>All</Link>
+          {programOptions.map(([id, name]) => (
+            <Link key={id} href={`/lms-admin/reports/${courseId}/individuals?program=${id}`} className={`px-2.5 py-1 rounded-lg border ${programId === id ? "border-[#1B4F8A] text-[#1B4F8A] bg-[#1B4F8A]/5 font-medium" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{name}</Link>
+          ))}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -116,7 +132,7 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
                   <td className="py-3 px-4 text-muted-foreground">{i + 1}</td>
                   <td className="py-3 px-4">
                     <p className="font-medium text-slate-800">{r.name}</p>
-                    <p className="text-xs text-muted-foreground">{r.email}</p>
+                    <p className="text-xs text-muted-foreground">{r.email}{r.program ? ` · ${r.program}` : ""}</p>
                   </td>
                   <td className="py-3 px-4 text-slate-600">{r.company}</td>
                   <td className="py-3 px-4 text-slate-600">{r.jobTitle}</td>
@@ -128,7 +144,7 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
                     {!r.best ? (
                       <span className="text-muted-foreground">Not attempted</span>
                     ) : (
-                      <Link href={`/lms-admin/reports/${courseId}/${r.id}/exam`}
+                      <Link href={`/lms-admin/reports/${courseId}/${r.id}/exam?enrollment=${r.enrollmentId}`}
                         title="View exam answers & attempts"
                         className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
                           r.best.passed
@@ -139,7 +155,7 @@ export default async function LmsIndividualReportsPage({ params }: Props) {
                     )}
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <Link href={`/lms-admin/reports/${courseId}/${r.id}`}
+                    <Link href={`/lms-admin/reports/${courseId}/${r.id}?enrollment=${r.enrollmentId}`}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-[#1B4F8A]/30 text-[#1B4F8A] px-3 py-1.5 text-xs font-medium hover:bg-[#1B4F8A] hover:text-white transition-colors">
                       <FileText className="h-3.5 w-3.5" /> Report
                     </Link>

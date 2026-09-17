@@ -32,10 +32,12 @@ export async function GET(
   const { searchParams } = new URL(req.url)
   // Opt-in: an unqualified PDF request must not emit the integrity section.
   const includeSecurity = searchParams.get("includeSecurity") ?? "false"
+  const enrollment = searchParams.get("enrollment")
+  const enrollmentParam = enrollment && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enrollment) ? `&enrollment=${enrollment}` : ""
 
   const port    = process.env.PORT ?? "3000"
   const secret  = encodeURIComponent(process.env.PDF_INTERNAL_SECRET ?? "")
-  const printUrl = `http://localhost:${port}/print/lms/student/${studentId}/${courseId}?pdf_secret=${secret}&includeSecurity=${encodeURIComponent(includeSecurity)}`
+  const printUrl = `http://localhost:${port}/print/lms/student/${studentId}/${courseId}?pdf_secret=${secret}&includeSecurity=${encodeURIComponent(includeSecurity)}${enrollmentParam}`
 
   const browser = await getBrowser()
 

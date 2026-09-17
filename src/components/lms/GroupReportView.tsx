@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2, Users, AlertTriangle, Medal } from "lucide-react"
 import { toast } from "sonner"
 import type { GroupReport } from "@/lib/lms-group-report"
+import type { CourseComparisonRow } from "@/lib/lms-program-report"
+import CourseScopePicker from "@/components/lms/reports/CourseScopePicker"
 
 // ── Chrome ──────────────────────────────────────────────────────────
 function PageHeader({ title, subtitle, today }: { title: string; subtitle?: string; today: string }) {
@@ -63,9 +65,62 @@ function heat(pct: number) {
   return { bg: "#FCEBEB", border: "#F7C1C1", text: "#A32D2D", tag: "#A32D2D" }
 }
 
+// Results of one course per program (course analytics, RL-8).
+function ComparisonTable({ rows, courseId, links }: { rows: CourseComparisonRow[]; courseId: string; links: boolean }) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
+          <th className="py-2 font-semibold">Program</th>
+          <th className="py-2 font-semibold">Enrolled</th>
+          <th className="py-2 font-semibold">Completion</th>
+          <th className="py-2 font-semibold">Pass rate</th>
+          <th className="py-2 font-semibold">Avg score</th>
+          <th className="py-2 font-semibold">Avg time</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100">
+        {rows.map(r => {
+          const key = r.program_id ?? "outside"
+          return (
+            <tr key={key}>
+              <td className="py-2">
+                {r.program_id && links
+                  ? <Link href={`/lms-admin/reports/${courseId}/group?program=${r.program_id}`} className="font-medium text-slate-800 hover:text-[#1B4F8A] hover:underline">{r.name}</Link>
+                  : <span className="font-medium text-slate-800">{r.name}</span>}
+                {r.company ? <p className="text-[10px] text-slate-400">{r.company}</p> : null}
+              </td>
+              <td className="py-2 text-slate-700">{r.enrolled}</td>
+              <td className="py-2 text-slate-700">{r.completionRate !== null ? `${r.completionRate}%` : "—"}</td>
+              <td className="py-2 font-medium" style={{ color: sc(r.passRate).t }}>{`${r.passRate !== null ? `${r.passRate}%` : "—"}${r.sat ? ` (${r.sat} sat)` : ""}`}</td>
+              <td className="py-2 font-medium" style={{ color: sc(r.avgScore).t }}>{r.avgScore !== null ? `${r.avgScore}%` : "—"}</td>
+              <td className="py-2 text-slate-500">{fmtTime(r.avgTimeS)}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
 // ── Main ────────────────────────────────────────────────────────────
-export default function GroupReportView({ data, assessment, generatedAt, forPrint = false }: { data: GroupReport; assessment: any | null; generatedAt: string | null; forPrint?: boolean }) {
+export default function GroupReportView({ data, assessment, generatedAt, forPrint = false, comparison = null, builtAt = null, scopeOptions = null }: {
+  data: GroupReport; assessment: any | null; generatedAt: string | null; forPrint?: boolean
+  /** RL-8: results per program, shown on the all-runs course analytics view. */
+  comparison?: CourseComparisonRow[] | null
+  /** RP-18: when the cached copy was built. */
+  builtAt?: string | null
+  /** Programs (and tracks) delivering the course, for the scope picker (screen only). */
+  scopeOptions?: { id: string; name: string; status: string; tracks: { id: string; name: string }[] }[] | null
+}) {
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
+  const scope = data.scope ?? { programId: null, programName: null, trackId: null, trackName: null, allRuns: false }
+  const scopeLabel = scope.programName
+    ? `${scope.programName}${scope.trackName ? ` · ${scope.trackName}` : ""}`
+    : scope.allRuns ? "All runs across programs" : "Current enrollments"
+  const scopeQuery = [scope.programId && `program=${scope.programId}`, scope.trackId && `track=${scope.trackId}`, scope.allRuns && "scope=all"].filter(Boolean).join("&")
+  const studentHref = (r: { id: string; enrollmentId?: string }) =>
+    `/lms-admin/reports/${course.id}/${r.id}${r.enrollmentId ? `?enrollment=${r.enrollmentId}` : ""}`
   const [ai, setAi] = useState<any | null>(assessment)
 
   // Defined here (not at module scope) so it can see `forPrint`. Pages size
@@ -91,8 +146,11 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   const hasAttendance = !!attendance
   const hasFeedback   = !!feedback && feedback.ratings.length > 0
   const hasExpert     = !!ai && !!ai.executive_summary
+  const hasComparison = !!comparison && comparison.length > 1
   const pageOrder = [
-    "cover", "overview", "modules",
+    "cover", "overview",
+    ...(hasComparison ? ["comparison"] : []),
+    "modules",
     ...(hasHeatmap ? ["heatmap"] : []),
     ...(hasItems ? ["items"] : []),
     ...(hasRanking ? ["ranking"] : []),
@@ -109,7 +167,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   async function generate() {
     setGenerating(true)
     try {
-      const res = await fetch(`/api/lms/reports/course/${course.id}/expert-assessment`, { method: "POST" })
+      const res = await fetch(`/api/lms/reports/course/${course.id}/expert-assessment${scopeQuery ? `?${scopeQuery}` : ""}`, { method: "POST" })
       const d = await res.json()
       if (!res.ok) { toast.error(d.error ?? "Failed to generate"); return }
       setAi(d.assessment)
@@ -120,10 +178,10 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   async function downloadPDF() {
     setDownloading(true); toast.info("Generating PDF — this may take a few seconds…")
     try {
-      const res = await fetch(`/api/lms/reports/course/${course.id}/pdf`)
+      const res = await fetch(`/api/lms/reports/course/${course.id}/pdf${scopeQuery ? `?${scopeQuery}` : ""}`)
       if (!res.ok) { toast.error("PDF generation failed"); return }
       const blob = await res.blob(); const url = URL.createObjectURL(blob)
-      const a = document.createElement("a"); a.href = url; a.download = `${course.title} - Cohort Report.pdf`
+      const a = document.createElement("a"); a.href = url; a.download = `${course.title}${scope.programName ? ` - ${scope.programName}` : ""} - Cohort Report.pdf`
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
       toast.success("PDF downloaded")
     } catch { toast.error("Failed to download PDF") }
@@ -166,8 +224,15 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
             <Link href={`/lms-admin/reports/${course.id}`} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
             <Users className="h-4 w-4 text-slate-400" />
             <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
-            <span className="text-slate-300">· cohort</span>
+            <span className="text-slate-400 truncate max-w-[220px]">· {scopeLabel}</span>
+            {builtAt && (
+              <span className="text-[11px] text-slate-400 hidden md:inline">
+                · updated {new Date(builtAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {" "}<a href={`?${[scopeQuery, "refresh=1"].filter(Boolean).join("&")}`} className="text-[#1B4F8A] hover:underline">Refresh</a>
+              </span>
+            )}
           </div>
+          {scopeOptions && <CourseScopePicker courseId={course.id} options={scopeOptions} programId={scope.programId} trackId={scope.trackId} allRuns={scope.allRuns} />}
           <div className="flex items-center gap-2">
             {ai ? (
               <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">
@@ -200,7 +265,8 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
             <p className="text-white/50 text-[11px] uppercase tracking-[0.4em]">Cohort Course Report</p>
             <div>
               <h1 className="text-4xl font-extrabold text-white tracking-tight">{course.title}</h1>
-              <p className="text-white/50 text-sm mt-2 capitalize">{course.delivery_mode} · {stats.enrolled} students</p>
+              <p className="text-white/50 text-sm mt-2"><span className="capitalize">{course.delivery_mode}</span> · {stats.enrolled} {scope.allRuns ? "enrollments" : "students"}</p>
+              <p className="text-white/40 text-xs mt-1">{scopeLabel}</p>
             </div>
             <CoverRing score={stats.avgMastery ?? 0} />
             <div className="flex items-center gap-8">
@@ -290,6 +356,19 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
           </div>
           <PageFooter page={pageNo("overview")} total={totalPages} />
         </Page>
+
+        {/* PROGRAM COMPARISON (course analytics, RL-8) */}
+        {hasComparison && comparison && (
+          <Page>
+            <PageHeader title="Comparison Between Programs" subtitle={course.title} today={today} />
+            <div className="px-12 py-7 space-y-4">
+              <p className={SECTION}>Same course, each program&apos;s results</p>
+              <ComparisonTable rows={comparison} courseId={course.id} links={!forPrint} />
+              <p className="text-[10px] text-slate-400">Pass rate counts only students who sat the final exam; average score uses each student&apos;s best attempt.</p>
+            </div>
+            <PageFooter page={pageNo("comparison")} total={totalPages} />
+          </Page>
+        )}
 
         {/* PAGE 3 — MODULE PERFORMANCE */}
         <Page>
@@ -411,9 +490,9 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                   const medal = i === 0 ? "#facc15" : i === 1 ? "#94a3b8" : i === 2 ? "#d97706" : null
                   const c = sc(r.mastery)
                   return (
-                    <div key={r.id} className="avoid-break flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-100">
+                    <div key={r.enrollmentId ?? r.id} className="avoid-break flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-100">
                       <span className="w-6 flex items-center justify-center text-xs font-bold text-slate-400">{medal ? <Medal className="h-3.5 w-3.5" style={{ color: medal }} /> : i + 1}</span>
-                      <Link href={`/lms-admin/reports/${course.id}/${r.id}`} className="flex-1 text-xs font-medium text-slate-700 hover:text-[#1B4F8A] hover:underline">{r.name}</Link>
+                      <Link href={studentHref(r)} className="flex-1 text-xs font-medium text-slate-700 hover:text-[#1B4F8A] hover:underline">{r.name}{scope.allRuns && r.program && <span className="text-slate-400 font-normal"> · {r.program}</span>}</Link>
                       {stats.examExists && r.examPct != null && <span className="text-[10px] text-slate-400">exam {r.examPct}%</span>}
                       <span className="text-xs font-bold w-12 text-right" style={{ color: c.t }}>{r.mastery !== null ? `${r.mastery}%` : "—"}</span>
                     </div>
@@ -432,11 +511,11 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
             <div className="px-12 py-7 space-y-3">
               <p className={SECTION}>{atRisk.length} student{atRisk.length !== 1 ? "s" : ""} flagged for intervention</p>
               {atRisk.map(a => (
-                <div key={a.id} className="avoid-break flex items-start gap-3 p-3 border border-red-100 bg-red-50/40 rounded-xl">
+                <div key={a.enrollmentId ?? a.id} className="avoid-break flex items-start gap-3 p-3 border border-red-100 bg-red-50/40 rounded-xl">
                   <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0"><AlertTriangle className="h-4 w-4 text-red-500" /></div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <Link href={`/lms-admin/reports/${course.id}/${a.id}`} className="text-sm font-semibold text-slate-700 hover:text-[#1B4F8A] hover:underline">{a.name}</Link>
+                      <Link href={studentHref(a)} className="text-sm font-semibold text-slate-700 hover:text-[#1B4F8A] hover:underline">{a.name}{scope.allRuns && a.program && <span className="text-slate-400 font-normal text-xs"> · {a.program}</span>}</Link>
                       {a.mastery !== null && <span className="text-[10px] font-bold" style={{ color: sc(a.mastery).t }}>{a.mastery}% mastery</span>}
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-1">{a.reasons.map((rr, i) => <span key={i} className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{rr}</span>)}</div>
@@ -531,7 +610,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] bg-blue-50 px-2 py-0.5 rounded-full">AI Expert Assessment</span>
                   <h2 className="text-xl font-bold text-slate-800 mt-2">{course.title}</h2>
-                  <p className="text-xs text-slate-400 mt-1">Cohort-wide analysis · {stats.enrolled} students</p>
+                  <p className="text-xs text-slate-400 mt-1">Cohort-wide analysis · {scopeLabel} · {stats.enrolled} students</p>
                 </div>
                 <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center shrink-0" style={{ background: sc(stats.avgMastery).b }}>
                   <span className="text-xl font-extrabold" style={{ color: sc(stats.avgMastery).t }}>{stats.avgMastery !== null ? `${stats.avgMastery}%` : "—"}</span>
@@ -595,11 +674,11 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {roster.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={r.enrollmentId ?? r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="py-2">
-                      <Link href={`/lms-admin/reports/${course.id}/${r.id}`} className="group/row inline-block hover:underline underline-offset-2 decoration-[#1B4F8A]/40">
+                      <Link href={studentHref(r)} className="group/row inline-block hover:underline underline-offset-2 decoration-[#1B4F8A]/40">
                         <p className="font-medium text-slate-800 group-hover/row:text-[#1B4F8A]">{r.name}{r.atRisk && <span className="ml-1.5 text-[8px] font-bold uppercase text-red-500">· at risk</span>}</p>
-                        <p className="text-[10px] text-slate-400">{[r.jobTitle, r.company].filter(Boolean).join(" · ")}</p>
+                        <p className="text-[10px] text-slate-400">{[scope.allRuns ? r.program ?? "Outside programs" : null, r.jobTitle, r.company].filter(Boolean).join(" · ")}</p>
                       </Link>
                     </td>
                     <td className="py-2 font-medium" style={{ color: sc(r.mastery).t }}>{r.mastery !== null ? `${r.mastery}%` : "—"}</td>

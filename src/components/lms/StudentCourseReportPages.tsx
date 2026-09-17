@@ -112,7 +112,9 @@ function TopicRadar({ topics }: { topics: { topic: string; pct: number }[] }) {
 // carries behavioural surveillance (tab switches, copy attempts) plus an AI
 // integrity risk rating about a named person, so it must be opted into
 // explicitly rather than leaking into any consumer that forgets the prop.
-export default function StudentCourseReportPages({ report, includeSecurity = false, forPrint = false }: { report: CourseReport; includeSecurity?: boolean; forPrint?: boolean }) {
+// showPreviousRuns: the student's other runs of this course (other programs) —
+// staff views only; a client/viewer report shows just this run.
+export default function StudentCourseReportPages({ report, includeSecurity = false, forPrint = false, showPreviousRuns = false }: { report: CourseReport; includeSecurity?: boolean; forPrint?: boolean; showPreviousRuns?: boolean }) {
   const { student, course, enrollment, overall, modules, exam, examSections, topicScores, assessment, security,
           examTrajectory, cohort, feedback, assignments } = report
 
@@ -205,6 +207,9 @@ export default function StudentCourseReportPages({ report, includeSecurity = fal
             </div>
             <div className="px-8 py-4 rounded-2xl border border-white/10 bg-white/5 text-center">
               <p className="text-white/80 text-sm font-semibold">{course.title}</p>
+              {report.context?.program && (
+                <p className="text-white/50 text-[11px] mt-1">{[report.context.client, report.context.program.name, report.context.track].filter(Boolean).join(" · ")}</p>
+              )}
               <div className="mt-1.5"><span className="inline-block text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full" style={{ background: completed ? "rgba(52,211,153,0.18)" : "rgba(96,165,250,0.18)", color: completed ? "#6ee7b7" : "#93c5fd" }}>{completed ? "● Completed" : "● In progress"}</span></div>
               <p className="text-white/30 text-[10px] mt-1.5">Enrolled {new Date(enrollment.enrolled_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}{enrollment.completed_at && ` · Completed ${new Date(enrollment.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}</p>
             </div>
@@ -235,6 +240,22 @@ export default function StudentCourseReportPages({ report, includeSecurity = fal
                 ))}
               </div>
             </div>
+
+            {showPreviousRuns && (report.runs ?? []).filter(r => !r.current).length > 0 && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-3`}>Previous Attempts <span className="text-slate-300 font-normal normal-case">· other runs of this course, kept separately</span></p>
+                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100">
+                  {report.runs.filter(r => !r.current).map(r => (
+                    <div key={r.enrollmentId} className="flex items-center gap-3 px-4 py-2.5 text-xs">
+                      <span className="flex-1 font-medium text-slate-700">{r.program ?? "Outside programs"}</span>
+                      <span className="text-slate-400">{new Date(r.enrolledAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span>
+                      <span className={r.status === "completed" ? "text-emerald-600" : r.status === "dropped" ? "text-slate-400" : "text-blue-600"}>{r.status === "completed" ? "Completed" : r.status === "dropped" ? "Withdrawn" : "Active"}</span>
+                      <span className="w-28 text-right" style={{ color: r.bestPct === null ? "#94a3b8" : r.passed ? "#059669" : "#DC2626" }}>{r.bestPct === null ? "No exam" : `Exam ${r.passed ? "passed" : "not passed"} · ${r.bestPct}%`}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {cohort && (
               <div className="avoid-break">

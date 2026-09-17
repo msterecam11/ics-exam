@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
-import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
+import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
 import ExamAttemptsView from "./ExamAttemptsView"
 
 function isMgr(role?: string) { return role === "admin" || role === "instructor" }
@@ -51,9 +51,9 @@ function buildItems(questions: any[], answers: any, aiScores: any) {
   }))
 }
 
-interface Props { params: Promise<{ courseId: string; studentId: string }> }
+interface Props { params: Promise<{ courseId: string; studentId: string }>; searchParams: Promise<{ enrollment?: string }> }
 
-export default async function StudentExamResultsPage({ params }: Props) {
+export default async function StudentExamResultsPage({ params, searchParams }: Props) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) redirect("/auth/login")
 
@@ -72,8 +72,12 @@ export default async function StudentExamResultsPage({ params }: Props) {
   const course  = courseRes.data as any
   const examMod = ((examRes.data ?? []) as any[])[0] ?? null
 
-  // The student's current enrollment: its attempts, and the pass mark grading used.
-  const current = await getCurrentEnrollment(studentId, courseId)
+  // The run shown: ?enrollment= (e.g. opened from a program report) when it is
+  // this student's run of this course, else their current enrollment.
+  const { enrollment: requested } = await searchParams
+  const current = requested && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested)
+    ? await getEnrollmentById(requested).then(e => (e && e.student_id === studentId && e.course_id === courseId ? e : null))
+    : await getCurrentEnrollment(studentId, courseId)
   const passMark = (await getExamRules(current, course, examMod?.activity_settings)).passMark
   const questions: any[] = Array.isArray(examMod?.questions) ? examMod.questions : []
 

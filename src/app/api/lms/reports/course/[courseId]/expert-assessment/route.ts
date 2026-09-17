@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
-import { buildGroupReport } from "@/lib/lms-group-report"
+import { loadGroupReport, loadCourseAssessment, parseCourseScope, courseAssessmentKey } from "@/lib/lms-report-scope"
 import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
@@ -13,18 +13,21 @@ type Params = { params: Promise<{ courseId: string }> }
 
 export const maxDuration = 60
 
-// GET — stored course-level (cohort) expert assessment
-export async function GET(_req: Request, { params }: Params) {
+const scopeOf = (req: Request) => {
+  const sp = new URL(req.url).searchParams
+  return parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope") })
+}
+
+// GET — stored cohort expert assessment (?program=&track= for a program's cohort)
+export async function GET(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const { courseId } = await params
-  const { data } = await db.from("lms_course_assessments")
-    .select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
-  return NextResponse.json(data ?? null)
+  return NextResponse.json(await loadCourseAssessment(courseId, scopeOf(req)))
 }
 
 // POST — generate the cohort expert assessment from REAL mastery metrics
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
@@ -35,7 +38,10 @@ export async function POST(_req: Request, { params }: Params) {
   }
 
   const { courseId } = await params
-  const report = await buildGroupReport(courseId)
+  // A program's cohort gets its own analysis; the course-wide one is unchanged.
+  const scope = scopeOf(req)
+  const cached = await loadGroupReport(courseId, scope)
+  const report = cached?.data
   if (!report) return NextResponse.json({ error: "Course not found" }, { status: 404 })
   if (report.stats.enrolled === 0) return NextResponse.json({ error: "No students enrolled" }, { status: 400 })
 
@@ -51,7 +57,8 @@ export async function POST(_req: Request, { params }: Params) {
 
   const prompt = `You are an expert aviation training analyst at ICS Aviation writing a COHORT report for the instructor. Base every statement strictly on the data below — do not invent facts. Focus on GROUP patterns, never individuals.
 
-COURSE: ${report.course.title}
+COURSE: ${report.course.title}${report.scope?.programName ? `
+PROGRAM: ${report.scope.programName}${report.scope.trackName ? ` (track ${report.scope.trackName})` : ""}` : ""}
 COHORT: ${s.enrolled} students · ${s.completed} completed (${s.completionRate}%) · avg mastery ${s.avgMastery ?? "—"}% · avg time ${Math.round(s.avgTimeS / 60)} min/student
 FINAL EXAM: ${s.examExists ? `${s.examPassed}/${s.enrolled} passed (pass rate ${s.examPassRate}%)` : "none"}
 MASTERY DISTRIBUTION (students per band): ${dist}
@@ -115,12 +122,20 @@ Return ONLY valid JSON (no markdown):
     at_risk_patterns:  String(parsed.at_risk_patterns ?? ""),
   }
 
-  await db.from("lms_course_assessments").upsert({
-    course_id:    courseId,
-    assessment,
-    generated_by: session.user.id,
-    generated_at: new Date().toISOString(),
-  }, { onConflict: "course_id" })
+  if (scope.programId) {
+    await db.from("lms_scoped_assessments").upsert({
+      scope_key: courseAssessmentKey(courseId, scope), kind: "course_in_program",
+      course_id: courseId, program_id: scope.programId, track_id: scope.trackId,
+      assessment, generated_by: session.user.id, generated_at: new Date().toISOString(),
+    }, { onConflict: "scope_key" })
+  } else {
+    await db.from("lms_course_assessments").upsert({
+      course_id:    courseId,
+      assessment,
+      generated_by: session.user.id,
+      generated_at: new Date().toISOString(),
+    }, { onConflict: "course_id" })
+  }
 
   return NextResponse.json({ assessment, generated_at: new Date().toISOString() })
 }
