@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { type ProgramDetail, postJson } from "./shared"
+import ProgramEmailSettings from "@/components/lms/emails/ProgramEmailSettings"
 
 type Staff = { id: string; name: string; email: string; role: string }
 
@@ -129,6 +130,8 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
             hint="Student names are never shown with answers, in any report or export. Answers already given anonymously stay anonymous." />
         </>}
       </section>
+
+      <ProgramEmailSettings programId={p.id} initial={(p.email_settings ?? {}) as any} locked={locked} onSaved={onChanged} />
 
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
         <p className="text-sm font-semibold text-slate-800">Instructors</p>

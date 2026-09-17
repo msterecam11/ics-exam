@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { sendStudentCredentialsEmail } from "@/lib/email"
+import { loadEmailSettings, effectiveRule } from "@/lib/lms-email-settings"
 
 function isMgr(role?: string) {
   return role === "admin" || role === "instructor"
@@ -135,12 +136,21 @@ export async function POST(req: Request) {
   let emailError: string | null = null
   if (sendEmail) {
     try {
-      await sendStudentCredentialsEmail({
-        studentName:  name.trim(),
-        studentEmail: email.trim().toLowerCase(),
-        password,
-      })
-      emailSent = true
+      // EM-1 — the welcome mail obeys its switch like every other email.
+      const settings = await loadEmailSettings()
+      const eff = effectiveRule(settings, "welcome")
+      if (!eff.enabled) {
+        emailError = eff.reason ?? "Welcome e-mails are turned off"
+      } else {
+        await sendStudentCredentialsEmail({
+          studentName:  name.trim(),
+          studentEmail: email.trim().toLowerCase(),
+          password,
+          testAddress: settings.config.test_mode ? settings.config.test_address : null,
+          studentId: (data as any)?.id ?? null,
+        })
+        emailSent = true
+      }
     } catch (err: any) {
       emailError = err?.message ?? "Unknown email error"
       console.error("[LMS student email] failed:", emailError)

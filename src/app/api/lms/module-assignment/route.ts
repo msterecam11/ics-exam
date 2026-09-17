@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { notifyGradingDue } from "@/lib/lms-email-events"
 import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
@@ -191,6 +192,15 @@ export async function POST(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // EM-15 — work that still needs a human mark. An AI-graded submission is
+  // already scored, so nobody is asked to look at it.
+  if (status === "submitted")
+    notifyGradingDue({
+      studentId: student.id, courseId: course_id,
+      moduleTitle: module.title ?? "Assignment", submittedAt: now,
+    }).catch(err => console.error("[email] grading notice failed", err))
+
   return NextResponse.json(attempt, { status: 201 })
 }
 

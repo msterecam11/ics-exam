@@ -14,6 +14,7 @@
 
 import { sendGraphMailAs, isReservedTestAddress } from "@/lib/ms-graph"
 import { db } from "@/lib/db"
+import type { EmailRuleCode } from "@/lib/lms-email-rules"
 
 const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 // The "from" mailbox. Always defaults to the lms@ shared box — deliberately
@@ -22,7 +23,11 @@ const APP_URL   = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 const LMS_EMAIL = process.env.LMS_EMAIL ?? "lms@ics-aviation.com"
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type EmailType = "enrollment" | "session_reminder" | "completion" | "password_reset" | "course_reminder"
+// The older callers use the first five names; everything that goes through the
+// EM-1..EM-20 rules logs its rule code as the type instead.
+export type EmailType =
+  | "enrollment" | "session_reminder" | "completion" | "password_reset" | "course_reminder"
+  | EmailRuleCode
 
 interface SendOptions {
   type:       EmailType
@@ -32,6 +37,14 @@ interface SendOptions {
   studentId?: string
   courseId?:  string
   sessionId?: string
+  // ── EM-19 log detail (set by sendRuleEmail) ──
+  rule?:           string
+  programId?:      string
+  /** Who it was really for, when test mode redirected it. */
+  intendedEmail?:  string
+  reason?:         string
+  /** "redirected", so a test-mode send isn't counted as a normal delivery. */
+  statusOverride?: string
 }
 
 // ── Core send + log ────────────────────────────────────────────────────────
@@ -57,18 +70,23 @@ export async function sendEmail(opts: SendOptions) {
     student_id: studentId ?? null,
     course_id:  courseId  ?? null,
     session_id: sessionId ?? null,
-    status,
+    status:     status === "sent" && opts.statusOverride ? opts.statusOverride : status,
     error:      errorMsg,
+    rule:           opts.rule ?? null,
+    program_id:     opts.programId ?? null,
+    intended_email: opts.intendedEmail ?? null,
+    reason:         opts.reason ?? null,
   })
 
   return { ok: status === "sent", error: errorMsg }
 }
 
 // ── Brand colours ──────────────────────────────────────────────────────────
-const BLUE = "#1B4F8A"
-const GOLD = "#D4AF37"
+export const BLUE = "#1B4F8A"
+export const GOLD = "#D4AF37"
+export const APP_BASE_URL = APP_URL
 
-function baseTemplate(bodyHtml: string) {
+export function baseTemplate(bodyHtml: string) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,11 +132,11 @@ function baseTemplate(bodyHtml: string) {
 </html>`
 }
 
-function btn(label: string, href: string) {
+export function btn(label: string, href: string) {
   return `<a href="${href}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;margin-top:24px;">${label}</a>`
 }
 
-function chip(label: string, value: string) {
+export function chip(label: string, value: string) {
   return `<tr>
     <td style="padding:6px 0;color:#64748b;font-size:14px;width:130px;vertical-align:top;">${label}</td>
     <td style="padding:6px 0;color:#1e293b;font-size:14px;font-weight:600;">${value}</td>
@@ -258,6 +276,9 @@ export async function sendStudentCredentialsEmail(opts: {
   studentEmail: string
   password:     string
   isReset?:     boolean
+  /** Test mode: deliver here instead, and record who it was really for. */
+  testAddress?: string | null
+  studentId?:   string | null
 }) {
   const { studentName, studentEmail, password, isReset } = opts
   const loginUrl = `${APP_URL}/lms/login`
@@ -287,13 +308,31 @@ export async function sendStudentCredentialsEmail(opts: {
     ? `Your ICS Aviation LMS Password Has Been Reset`
     : `Welcome to ICS Aviation LMS — Your Account Is Ready`
 
-  await sendGraphMailAs({
-    fromEmail: LMS_EMAIL,
-    toEmail:   studentEmail,
-    toName:    studentName,
-    subject,
-    html:      baseTemplate(body),
-  })
+  // Carries a password, so it is the one email that must reach a real person
+  // even while everything else is redirected — test mode still applies, but the
+  // log keeps the intended recipient either way (EM-19).
+  const redirected = !!opts.testAddress && opts.testAddress !== studentEmail
+  const recipient  = redirected ? opts.testAddress! : studentEmail
+
+  let status = "sent"
+  let errorMsg: string | null = null
+  try {
+    if (isReservedTestAddress(recipient)) status = "skipped"
+    else await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: recipient, toName: studentName, subject, html: baseTemplate(body) })
+  } catch (e: any) {
+    status = "failed"
+    errorMsg = e?.message ?? "Unknown error"
+    throw e
+  } finally {
+    await db.from("lms_email_log").insert({
+      type: "welcome", rule: "welcome",
+      to_email: recipient, intended_email: redirected ? studentEmail : null,
+      subject, student_id: opts.studentId ?? null,
+      status: status === "sent" && redirected ? "redirected" : status,
+      error: errorMsg,
+      reason: redirected ? "Test mode — redirected" : null,
+    }).then(() => {}, () => {})
+  }
 }
 
 /** Sent when a student completes all mandatory content in a course */

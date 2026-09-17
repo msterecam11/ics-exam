@@ -1,5 +1,7 @@
 import { db } from "@/lib/db"
 import { sendEmail, buildCompletionEmail } from "@/lib/email"
+import { sendRuleEmail, programEmailOverrides } from "@/lib/lms-email-settings"
+import { buildCourseCompletedEmail, buildCertificateEmail } from "@/lib/lms-email-templates"
 import { getCurrentEnrollment, type EnrollmentContext } from "@/lib/lms-enrollment"
 import crypto from "crypto"
 
@@ -192,6 +194,10 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
 
     if (!course) return
 
+    // EM-6 — the student finished the course. Sent whether or not a certificate
+    // follows, so a course without one still congratulates them.
+    await notifyCourseCompleted(studentId, courseId, course.title, enrollment.program_id ?? null)
+
     // A program's certificate settings govern its enrollments (PM-4); outside a
     // program the course settings apply as before.
     const program = enrollment.program
@@ -203,24 +209,7 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
       autoRelease: program ? program.certificate_auto_release : (course as any).certificate_auto_release === true,
     })
 
-    if (certNumber) {
-      const { data: student } = await db
-        .from("lms_students")
-        .select("name, email")
-        .eq("id", studentId)
-        .single()
-
-      if (student?.email) {
-        const completedAt = new Date().toISOString()
-        const { subject, html } = buildCompletionEmail({
-          studentName: student.name,
-          courseTitle:  course.title,
-          courseId,
-          completedAt,
-        })
-        sendEmail({ type: "completion", to: student.email, subject, html, studentId, courseId }).catch(() => {})
-      }
-    }
+    if (certNumber) await notifyCertificateIssued(studentId, courseId, enrollment.id)
   } catch (err) {
     // Non-fatal: must never break exam submission. Logged so a certificate
     // that fails to issue is visible instead of vanishing silently.
@@ -573,5 +562,79 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
     }
   } catch (err) {
     console.error("[completion] syncEnrollmentProgress failed", { studentId, courseId, err })
+  }
+}
+
+
+// ── EM-6 / EM-7 notifications ──────────────────────────────────
+// Both go through sendRuleEmail, so the program's own switches, the master
+// switch, test mode and the log all apply exactly as they do for a reminder.
+
+async function notifyCourseCompleted(studentId: string, courseId: string, courseTitle: string, programId: string | null) {
+  try {
+    const [{ data: student }, { data: program }] = await Promise.all([
+      db.from("lms_students").select("name, email").eq("id", studentId).single(),
+      programId
+        ? db.from("lms_programs").select("name").eq("id", programId).maybeSingle()
+        : Promise.resolve({ data: null } as any),
+    ])
+    if (!student) return
+
+    // Where they are in the program, for the "3 of 5 courses" line.
+    let done: number | null = null, total: number | null = null
+    if (programId) {
+      const { data: rows } = await db.from("lms_enrollments")
+        .select("status").eq("student_id", studentId).eq("program_id", programId).neq("status", "dropped")
+      total = rows?.length ?? null
+      done = (rows ?? []).filter((r: any) => r.status === "completed").length
+    }
+
+    const t = buildCourseCompletedEmail({
+      studentName: student.name, courseTitle,
+      programName: (program as any)?.name ?? null, programId,
+      completedAt: new Date().toISOString(),
+      coursesDone: done, coursesTotal: total,
+    })
+    await sendRuleEmail({
+      rule: "course_completed", to: student.email, studentId, courseId, programId,
+      programSettings: await programEmailOverrides(programId), ...t,
+    })
+  } catch (err) {
+    console.error("[email] course completed notification failed", { studentId, courseId, err })
+  }
+}
+
+/** EM-7 — a certificate became available to the student. */
+export async function notifyCertificateIssued(studentId: string, courseId: string, enrollmentId?: string | null) {
+  try {
+    const { data: cert } = await db
+      .from("lms_certificates")
+      .select("verification_code, issued_at, released_at, source_title, enrollment_id")
+      .eq("student_id", studentId).eq("course_id", courseId)
+      .order("issued_at", { ascending: false })
+      .limit(1).maybeSingle()
+    if (!cert || !(cert as any).released_at) return   // still held — EM-7 waits for release
+
+    const [{ data: student }, { data: enr }] = await Promise.all([
+      db.from("lms_students").select("name, email").eq("id", studentId).single(),
+      db.from("lms_enrollments").select("program_id, lms_programs(name), lms_courses(title)")
+        .eq("id", enrollmentId ?? (cert as any).enrollment_id ?? "").maybeSingle(),
+    ])
+    if (!student) return
+
+    const programId = (enr as any)?.program_id ?? null
+    const t = buildCertificateEmail({
+      studentName: student.name,
+      courseTitle: (enr as any)?.lms_courses?.title ?? (cert as any).source_title ?? "your course",
+      certificateCode: (cert as any).verification_code,
+      issuedAt: (cert as any).issued_at,
+      programName: (enr as any)?.lms_programs?.name ?? null,
+    })
+    await sendRuleEmail({
+      rule: "certificate", to: student.email, studentId, courseId, programId,
+      programSettings: await programEmailOverrides(programId), ...t,
+    })
+  } catch (err) {
+    console.error("[email] certificate notification failed", { studentId, courseId, err })
   }
 }

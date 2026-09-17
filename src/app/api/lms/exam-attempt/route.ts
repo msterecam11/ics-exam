@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
+import { notifyLastAttempt } from "@/lib/lms-email-events"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { recalculateAttemptScore, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
@@ -215,6 +216,13 @@ export async function POST(req: Request) {
         checkLearningPathCompletion(studentId, course_id),
         checkCohortCompletion(studentId, course_id),
       ])
+    } else if (attempt.attempt_no === maxAttempts - 1) {
+      // EM-8 — failed with exactly one attempt left. Never fatal to the
+      // submission, so a mail problem can't cost the student their result.
+      notifyLastAttempt({
+        studentId, courseId: course_id, programId: enrollment.program_id ?? null,
+        scorePct: Math.round(correctedPct), passMark, attemptsUsed: attempt.attempt_no, maxAttempts,
+      }).catch(err => console.error("[email] last-attempt notice failed", err))
     }
     revalidatePath(`/lms/courses/${course_id}/exam/${module_id}`)
     revalidatePath(`/lms/courses/${course_id}`)

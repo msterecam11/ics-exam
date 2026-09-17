@@ -18,7 +18,7 @@ export type ProgramStatus = typeof PROGRAM_STATUSES[number]
 
 export const PROGRAM_COLUMNS = `id, name, company_id, is_individual, reference, description, start_date, end_date,
   capacity, status, structure, after_end_access, certificate_enabled, certificate_auto_release,
-  feedback_enabled, feedback_mandatory, feedback_anonymous, progress_enforcement, duplicated_from, created_at, updated_at`
+  feedback_enabled, feedback_mandatory, feedback_anonymous, progress_enforcement, email_settings, duplicated_from, created_at, updated_at`
 
 // Ordered course ids delivered to a track (lives in lms-program-courses to avoid an import cycle).
 export { coursesForTrack }

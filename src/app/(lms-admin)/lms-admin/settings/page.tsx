@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
+import EmailSettingsPanel from "@/components/lms/emails/EmailSettingsPanel"
+import EmailLogTable from "@/components/lms/emails/EmailLogTable"
 import { useSession } from "next-auth/react"
 import {
   Users, UserPlus, Search, Loader2, MoreVertical,
   Shield, GraduationCap, KeyRound, Ban, CheckCircle2,
   Trash2, Edit2, Eye, EyeOff, Settings, User,
   Lock, Phone, Building2, AlertTriangle, X,
-  Bell, Send, CalendarDays, Mail,
+  Mail,
 } from "lucide-react"
 import { Button }  from "@/components/ui/button"
 import { Badge }   from "@/components/ui/badge"
@@ -64,7 +66,7 @@ function roleStyle(role: string | undefined | null): RoleStyle {
 
 const TAB_NAV = [
   { id: "users",             label: "User Management",   icon: Users,    adminOnly: false },
-  { id: "notifications",     label: "Notifications",     icon: Bell,     adminOnly: false },
+  { id: "notifications",     label: "Emails",            icon: Mail,     adminOnly: true  },
   { id: "student-passwords", label: "Student Passwords", icon: KeyRound, adminOnly: true  },
   { id: "profile",           label: "My Profile",        icon: User,     adminOnly: false },
 ]
@@ -512,160 +514,12 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
   )
 }
 
-// ─── Notifications tab ───────────────────────────────────────────────────────
-interface EmailLogRow {
-  id:         string
-  type:       string
-  to_email:   string
-  subject:    string
-  status:     string
-  sent_at:    string
-  error:      string | null
-}
-
+// ─── Emails tab (EM-16 … EM-20) ──────────────────────────────────────────────
 function NotificationsTab() {
-  const [logs,      setLogs]      = useState<EmailLogRow[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [sending,   setSending]   = useState(false)
-  const [result,    setResult]    = useState<string>("")
-
-  useEffect(() => { loadLogs() }, [])
-
-  async function loadLogs() {
-    setLoading(true)
-    const res = await fetch("/api/lms/email-logs")
-    if (res.ok) setLogs(await res.json())
-    setLoading(false)
-  }
-
-  async function triggerReminders() {
-    setSending(true); setResult("")
-    try {
-      // Authenticated via the admin session cookie — the cron route accepts a
-      // logged-in admin. No client-side secret needed.
-      const res  = await fetch("/api/cron/session-reminders")
-      const data = await res.json()
-      if (!res.ok) { setResult(`Error: ${data.error ?? "Failed"}`); return }
-      setResult(`✓ Sent ${data.sent} reminder${data.sent !== 1 ? "s" : ""} for ${data.sessions} session${data.sessions !== 1 ? "s" : ""} (${data.skipped} skipped)`)
-      loadLogs()
-    } finally { setSending(false) }
-  }
-
-  const typeConfig: Record<string, { label: string; color: string }> = {
-    enrollment:       { label: "Enrollment",        color: "bg-blue-100 text-blue-700"    },
-    session_reminder: { label: "Session Reminder",  color: "bg-amber-100 text-amber-700"  },
-    completion:       { label: "Completion",        color: "bg-emerald-100 text-emerald-700" },
-  }
-
   return (
     <div className="space-y-6">
-      {/* Manual trigger card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-amber-500" />
-              Session Reminders
-            </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              Sends reminder emails to all enrolled students for sessions happening tomorrow.
-            </p>
-            {/* This card used to claim the job "automatically runs daily at 6:00 AM".
-                Nothing schedules it — no Render cron is configured — so admins were
-                told reminders were going out when none ever had. Until the scheduled
-                job exists, say plainly that it is manual. */}
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
-              <strong className="font-semibold">Manual only.</strong> No daily schedule is set up yet —
-              reminders are sent only when someone presses <em>Run Now</em>.
-            </p>
-          </div>
-          <Button onClick={triggerReminders} disabled={sending} variant="outline" className="shrink-0 gap-2">
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sending ? "Sending…" : "Run Now"}
-          </Button>
-        </div>
-        {result && (
-          <p className={cn("text-sm mt-3 font-medium", result.startsWith("✓") ? "text-emerald-600" : "text-red-500")}>
-            {result}
-          </p>
-        )}
-      </div>
-
-      {/* Email types info */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { icon: Mail,         label: "Enrollment",       desc: "Sent when a student is enrolled in a course",      color: "text-blue-600 bg-blue-50" },
-          { icon: CalendarDays, label: "Session Reminder", desc: "Sent the day before each live session",            color: "text-amber-600 bg-amber-50" },
-          { icon: CheckCircle2, label: "Completion",       desc: "Sent when a student finishes all mandatory content", color: "text-emerald-600 bg-emerald-50" },
-        ].map(t => (
-          <div key={t.label} className="bg-white rounded-xl border border-slate-200 p-4 flex gap-3">
-            <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", t.color)}>
-              <t.icon className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-medium text-slate-800 text-sm">{t.label}</p>
-              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Email log table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Recent Email Log</h3>
-          <button onClick={loadLogs} className="text-xs text-slate-400 hover:text-slate-700">Refresh</button>
-        </div>
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">No emails sent yet</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-5 py-2.5 font-medium text-slate-500 text-xs">Type</th>
-                <th className="text-left px-4 py-2.5 font-medium text-slate-500 text-xs">To</th>
-                <th className="text-left px-4 py-2.5 font-medium text-slate-500 text-xs">Subject</th>
-                <th className="text-left px-4 py-2.5 font-medium text-slate-500 text-xs">Status</th>
-                <th className="text-left px-4 py-2.5 font-medium text-slate-500 text-xs">Sent</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {logs.map(log => {
-                const type = typeConfig[log.type] ?? { label: log.type, color: "bg-slate-100 text-slate-600" }
-                return (
-                  <tr key={log.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-3">
-                      <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", type.color)}>
-                        {type.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 max-w-[180px] truncate">{log.to_email}</td>
-                    <td className="px-4 py-3 text-slate-500 max-w-[240px] truncate text-xs">{log.subject}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        "text-xs font-semibold px-2 py-0.5 rounded-full",
-                        log.status === "sent" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
-                      )}>
-                        {log.status === "sent" ? "✓ Sent" : "✗ Failed"}
-                      </span>
-                      {log.error && (
-                        <span className="ml-1.5 text-xs text-red-400" title={log.error}>!</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-400">
-                      {new Date(log.sent_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <EmailSettingsPanel />
+      <EmailLogTable />
     </div>
   )
 }

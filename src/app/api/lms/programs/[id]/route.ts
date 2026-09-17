@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
+import { applyProgramEmailSettings } from "@/lib/lms-email-program"
 import { PROGRAM_COLUMNS, syncMemberEnrollments, coursesForTrack } from "@/lib/lms-programs"
 import { parseProgramInput } from "@/lib/lms-program-input"
 
@@ -117,6 +118,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       activated = from === "draft"
     }
     updates.status = body.status
+  }
+
+  // EM-16 — per-program email overrides. { "<code>": null } clears an override
+  // and puts that email back to whatever LMS Settings says.
+  if (body.email_settings !== undefined) {
+    const { data: row } = await db.from("lms_programs").select("email_settings").eq("id", id).single()
+    const merged = applyProgramEmailSettings((row as any)?.email_settings ?? {}, body.email_settings)
+    if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 })
+    updates.email_settings = merged.value
   }
 
   if (!Object.keys(updates).length) return NextResponse.json({ error: "Nothing to update" }, { status: 400 })

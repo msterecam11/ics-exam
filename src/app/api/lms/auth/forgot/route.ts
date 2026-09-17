@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { sendEmail, buildPasswordResetEmail } from "@/lib/email"
+import { buildPasswordResetEmail } from "@/lib/email"
+import { loadEmailSettings, effectiveRule, sendRuleEmail } from "@/lib/lms-email-settings"
 import { rateLimit } from "@/lib/rateLimit"
 import { getIp, res429 } from "@/lib/apiUtils"
 import crypto from "crypto"
@@ -57,7 +58,10 @@ export async function POST(req: Request) {
     .is("used_at", null)
 
   const token     = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + EXPIRES_MIN * 60 * 1000)
+  // EM-12 — the link's lifetime is a setting; EXPIRES_MIN is only the fallback.
+  const settings = await loadEmailSettings()
+  const expiresMin = Number(effectiveRule(settings, "password_reset").config.expiry_minutes ?? EXPIRES_MIN)
+  const expiresAt = new Date(Date.now() + expiresMin * 60 * 1000)
 
   const { error } = await db.from("lms_password_resets").insert({
     student_id: student.id,
@@ -70,9 +74,9 @@ export async function POST(req: Request) {
   const { subject, html } = buildPasswordResetEmail({
     studentName: student.name,
     resetUrl,
-    expiresMin: EXPIRES_MIN,
+    expiresMin,
   })
-  sendEmail({ type: "password_reset", to: student.email, subject, html, studentId: student.id })
+  sendRuleEmail({ rule: "password_reset", to: student.email, subject, html, studentId: student.id })
     .catch(() => {})
 
   return generic

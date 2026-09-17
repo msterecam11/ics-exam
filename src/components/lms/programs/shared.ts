@@ -16,6 +16,7 @@ export type ProgramDetail = {
     after_end_access: "read_only" | "full" | "locked"
     certificate_enabled: boolean; certificate_auto_release: boolean
     feedback_enabled: boolean; feedback_mandatory: boolean; feedback_anonymous: boolean; progress_enforcement: boolean
+    email_settings?: Record<string, Record<string, unknown>> | null
     duplicated_from: string | null; created_at: string
     lms_companies: { id: string; name: string; code: string; logo_url: string | null } | null
   }

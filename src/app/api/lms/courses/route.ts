@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { notifyCertificateIssued } from "@/lib/lms-completion"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
@@ -183,7 +184,10 @@ export async function PATCH(req: Request) {
       .is("revoked_at", null)
     const programIds = (programEnrollments ?? []).map((e: any) => e.id)
     if (programIds.length) release = release.or(`enrollment_id.is.null,enrollment_id.not.in.(${programIds.join(",")})`)
-    await release
+    const { data: released } = await release.select("student_id, course_id, enrollment_id")
+    // EM-7 — tell each student their certificate is now downloadable.
+    for (const c of (released ?? []) as any[])
+      await notifyCertificateIssued(c.student_id, c.course_id, c.enrollment_id)
   }
 
   // Keep the exam module's own pass_mark in sync with the course setting so the
