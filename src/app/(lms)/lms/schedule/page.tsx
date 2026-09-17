@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Clock, MapPin, Video, CheckCircle2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
+import { sessionsForViewers } from "@/lib/lms-sessions"
 
 export default async function SchedulePage() {
   const student = await getStudentSession()
@@ -17,33 +18,31 @@ export default async function SchedulePage() {
     .in("status", ["active", "completed"])
   const enrollments = currentVisible(enrollmentRows as any[])
 
-  const courseIds = (enrollments ?? []).map((e: any) => e.course_id).filter(Boolean)
+  // Sessions of the student's own groups only: each enrollment's program and
+  // track (a course taken by another program has its own sessions).
+  const viewers = enrollments.map((e: any) => ({
+    course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null,
+  }))
 
   const today = new Date().toISOString().slice(0, 10)
 
-  // Upcoming sessions
-  const { data: upcoming } = courseIds.length
-    ? await db
-        .from("lms_sessions")
-        .select("id, title, session_date, start_time, duration_minutes, location, recording_url, course_id, lms_courses(title)")
-        .in("course_id", courseIds)
-        .gte("session_date", today)
-        .is("closed_at", null)
-        .order("session_date", { ascending: true })
-        .order("start_time", { ascending: true })
-    : { data: [] }
+  const [upcoming, pastAll] = await Promise.all([
+    sessionsForViewers<any>(viewers,
+      "id, title, session_date, start_time, duration_minutes, location, meeting_link, lms_courses(title)",
+      q => q.gte("session_date", today).is("closed_at", null).order("session_date", { ascending: true }).order("start_time", { ascending: true }),
+    ).catch(() => []),
+    sessionsForViewers<any>(viewers,
+      "id, title, session_date, start_time, duration_minutes, location, recording_url, lms_courses(title), closed_at",
+      q => q.lt("session_date", today).order("session_date", { ascending: false }),
+    ).catch(() => []),
+  ])
+  const past = pastAll.slice(0, 20)
 
-  // Past sessions
-  const { data: past } = courseIds.length
-    ? await db
-        .from("lms_sessions")
-        .select("id, title, session_date, start_time, duration_minutes, location, course_id, lms_courses(title), closed_at")
-        .in("course_id", courseIds)
-        .lt("session_date", today)
-        .not("closed_at", "is", null)
-        .order("session_date", { ascending: false })
-        .limit(20)
+  // The student's own attendance for past sessions (unmarked = not recorded).
+  const { data: myAttendance } = past.length
+    ? await db.from("lms_attendance").select("session_id, status").eq("student_id", student.id).in("session_id", past.map((s: any) => s.id))
     : { data: [] }
+  const attBySession = new Map(((myAttendance ?? []) as any[]).map(a => [a.session_id, a.status as string]))
 
   function fmtDate(d: string) {
     const dt = new Date(d)
@@ -115,9 +114,9 @@ export default async function SchedulePage() {
                             {(s.lms_courses as any)?.title}
                           </p>
                         </div>
-                        {s.recording_url && (
+                        {s.meeting_link && (
                           <a
-                            href={s.recording_url}
+                            href={s.meeting_link}
                             target="_blank"
                             rel="noreferrer"
                             className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4F8A] hover:bg-[#163f6e] px-3 py-2 rounded-lg transition-colors"
@@ -155,7 +154,22 @@ export default async function SchedulePage() {
                       {s.start_time ? ` · ${s.start_time.slice(0, 5)}` : ""}
                     </p>
                   </div>
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0" />
+                  {s.recording_url && (
+                    <a href={s.recording_url} target="_blank" rel="noreferrer" className="text-xs text-[#1B4F8A] hover:underline flex items-center gap-1 flex-shrink-0">
+                      <Video className="h-3.5 w-3.5" /> Recording
+                    </a>
+                  )}
+                  {(() => {
+                    const st = attBySession.get(s.id)
+                    if (!st) return <span className="text-xs text-slate-400 flex-shrink-0">Not recorded</span>
+                    return (
+                      <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0",
+                        st === "present" ? "bg-emerald-100 text-emerald-700" : st === "late" ? "bg-amber-100 text-amber-700" :
+                        st === "excused" ? "bg-blue-100 text-blue-700" : "bg-red-50 text-red-500")}>
+                        {st === "present" ? "Present" : st === "late" ? "Late" : st === "excused" ? "Excused" : "Absent"}
+                      </span>
+                    )
+                  })()}
                 </div>
               )
             })}

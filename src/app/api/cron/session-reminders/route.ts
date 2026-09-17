@@ -17,6 +17,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { sendEmail, buildSessionReminderEmail } from "@/lib/email"
+import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
 
 export const maxDuration = 60
 
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   // Sessions scheduled for tomorrow that are still open
   const { data: sessions, error } = await db
     .from("lms_sessions")
-    .select("id, title, session_date, start_time, duration_minutes, location, course_id, lms_courses(id, title)")
+    .select("id, title, session_date, start_time, duration_minutes, location, meeting_link, course_id, program_id, track_id, lms_courses(id, title), lms_programs(status)")
     .eq("session_date", tomorrowStr)
     .is("closed_at", null)
 
@@ -52,25 +53,18 @@ export async function GET(req: Request) {
   for (const session of sessions) {
     const course = (session as any).lms_courses
     if (!course) continue
+    // Only live programs get reminders (not drafts, completed or archived ones).
+    if ((session as any).program_id && (session as any).lms_programs?.status !== "active") continue
 
-    // Compute end time from start_time + duration_minutes
-    let endTime: string | undefined
-    if (session.start_time && session.duration_minutes) {
-      const [h, m] = session.start_time.split(":").map(Number)
-      const endMin = h * 60 + m + session.duration_minutes
-      endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`
-    }
+    const endTime = sessionEndTime(session.start_time, session.duration_minutes)
 
-    // All active enrollments for this course
-    const { data: enrollments } = await db
-      .from("lms_enrollments")
-      .select("student_id, lms_students(id, name, email)")
-      .eq("course_id", session.course_id)
-      .eq("status", "active")
+    // The session's own group: its program/track students still taking the course.
+    let roster
+    try { roster = await sessionRoster(session as any, { activeOnly: true }) } catch { continue }
 
-    for (const enr of enrollments ?? []) {
-      const student = (enr as any).lms_students
-      if (!student?.email) { totalSkipped++; continue }
+    for (const entry of roster) {
+      const student = { id: entry.student_id, name: entry.name, email: entry.email }
+      if (!student.email) { totalSkipped++; continue }
 
       // Skip if already sent for this session + student
       const { count: alreadySent } = await db
@@ -90,6 +84,7 @@ export async function GET(req: Request) {
         startTime:    session.start_time?.slice(0, 5) ?? "",
         endTime,
         location:     session.location ?? undefined,
+        meetingLink:  (session as any).meeting_link ?? undefined,
         sessionId:    session.id,
       })
 

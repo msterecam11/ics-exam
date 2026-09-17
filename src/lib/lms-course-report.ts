@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { scoreObjectiveQuestion, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
+import { enrollmentAttendance } from "@/lib/lms-sessions"
 
 // ── Types ──────────────────────────────────────────────────────────
 export interface ReportItem {
@@ -102,7 +103,7 @@ export async function buildCourseReport(
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
     db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id")
+    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id, lms_program_members(track_id)")
       .eq("id", enrollmentId).eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
   ])
   if (!studentRes.data || !courseRes.data || !enrollRes.data) return null
@@ -115,7 +116,12 @@ export async function buildCourseReport(
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("enrollment_id", enrollmentId),
     db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s, paper").eq("enrollment_id", enrollmentId),
     db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("enrollment_id", enrollmentId),
-    db.from("lms_sessions").select("id, lms_attendance(student_id, status)").eq("course_id", courseId),
+    // Attendance over the sessions of THIS enrollment's program (and track) only.
+    enrollmentAttendance({
+      student_id: studentId, course_id: courseId,
+      program_id: (enrollRes.data as any).program_id ?? null,
+      track_id: (enrollRes.data as any).lms_program_members?.track_id ?? null,
+    }).catch(() => ({ sessionTotal: 0, presentCount: 0, excusedCount: 0, attendancePct: null })),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("enrollment_id", enrollmentId).maybeSingle(),
   ])
 
@@ -304,11 +310,8 @@ export async function buildCourseReport(
     }))
 
   // ── Attendance ──
-  const sessions = sessionsRes.data ?? []
-  const presentCount = sessions.filter((s: any) =>
-    (s.lms_attendance ?? []).some((at: any) => at.student_id === studentId && ["present", "late"].includes(at.status))
-  ).length
-  const attendancePct = sessions.length ? Math.round((presentCount / sessions.length) * 100) : null
+  // Excused sessions don't count against the learner.
+  const { presentCount, attendancePct, sessionTotal } = sessionsRes
 
   // ── Topic mastery (exam-weighted module mastery → its topics, averaged) ──
   const topicAgg = new Map<string, { sum: number; n: number }>()
@@ -451,7 +454,7 @@ export async function buildCourseReport(
     overall: {
       score: overallScore,
       completionPct: Math.round(num(enrollRes.data.progress_pct) ?? 0),
-      timeSpent, attendancePct, presentCount, sessionTotal: sessions.length,
+      timeSpent, attendancePct, presentCount, sessionTotal,
     },
     modules: reportModules,
     exam,

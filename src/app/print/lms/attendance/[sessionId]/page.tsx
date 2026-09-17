@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Image from "next/image"
 import { Users, Clock, MapPin, CalendarDays } from "lucide-react"
+import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
 
 interface Props {
   params: Promise<{ sessionId: string }>
@@ -89,8 +90,8 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   const sessionRes = await db.from("lms_sessions")
     .select(`
       id, title, session_date, start_time, location, closed_at,
-      late_threshold, duration_minutes, course_id,
-      lms_courses(title)
+      late_threshold, duration_minutes, course_id, program_id, track_id,
+      lms_courses(title), lms_programs(name), lms_program_tracks(name)
     `)
     .eq("id", sessionId)
     .single()
@@ -98,13 +99,7 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   if (!sessionRes.data) notFound()
   const sess = sessionRes.data as any
   // No end_time column: derive it from start_time + duration for the header.
-  if (sess.start_time && sess.duration_minutes) {
-    const [h, m] = String(sess.start_time).split(":").map(Number)
-    if (Number.isFinite(h) && Number.isFinite(m)) {
-      const total = h * 60 + m + Number(sess.duration_minutes)
-      sess.end_time = `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`
-    }
-  }
+  sess.end_time = sessionEndTime(sess.start_time, sess.duration_minutes)
 
   // Build the roster the same way the admin attendance view does (see
   // /api/lms/attendance): enrolled students plus anyone with a record, and a
@@ -112,34 +107,28 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   // had a record — and absence is never written as a record (closing a session
   // doesn't create any) — so no-shows were missing entirely and the attendance
   // rate was computed over attendees only, which would read 100%.
-  const [enrollRes, attendanceRes] = await Promise.all([
-    db.from("lms_enrollments")
-      .select("student_id, lms_students(id, name, email, company)")
-      .eq("course_id", sess.course_id)
-      .in("status", ["active", "completed"]),
+  // The session's roster (its program/track's students taking the course) plus
+  // anyone with a record. A student with no record is shown as not marked.
+  const [roster, attendanceRes] = await Promise.all([
+    sessionRoster(sess),
     db.from("lms_attendance")
-      .select("id, student_id, status, scanned_at, manual_override, lms_students(id, name, email, company)")
+      .select("id, student_id, status, scanned_at")
       .eq("session_id", sessionId),
   ])
-
   const attByStudent = new Map(((attendanceRes.data ?? []) as any[]).map(a => [a.student_id, a]))
-  const roster = new Map<string, any>()
-  for (const e of (enrollRes.data ?? []) as any[])     if (e.lms_students) roster.set(e.lms_students.id, e.lms_students)
-  for (const a of (attendanceRes.data ?? []) as any[]) if (a.lms_students && !roster.has(a.student_id)) roster.set(a.student_id, a.lms_students)
 
-  const attendance = [...roster.values()]
-    .map((s: any) => {
-      const a = attByStudent.get(s.id)
+  const attendance = roster
+    .map(r => {
+      const a = attByStudent.get(r.student_id)
       return {
-        id:            a?.id ?? `absent-${s.id}`,
+        id:            a?.id ?? `absent-${r.student_id}`,
         status:        a?.status ?? "absent",
         checked_in_at: a?.scanned_at ?? null,
-        scan_method:   a ? (a.manual_override ? "manual" : "QR scan") : null,
-        lms_students:  s,
+        scan_method:   a ? "marked" : "not marked",
+        lms_students:  { id: r.student_id, name: r.name, email: r.email, company: r.company },
       }
     })
-    .sort((x, y) => (x.checked_in_at ?? "\uffff").localeCompare(y.checked_in_at ?? "\uffff")
-                    || String(x.lms_students?.name ?? "").localeCompare(String(y.lms_students?.name ?? "")))
+    .sort((x, y) => String(x.lms_students.name).localeCompare(String(y.lms_students.name)))
 
   // Count by status
   const counts = { present: 0, late: 0, absent: 0, excused: 0 }
@@ -199,6 +188,9 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
 
             <div>
               <h1 className="text-3xl font-extrabold text-white tracking-tight leading-tight max-w-lg">{sess.title}</h1>
+              {sess.lms_programs?.name && (
+                <p className="text-white/70 text-sm mt-2">{sess.lms_programs.name}{sess.lms_program_tracks?.name ? ` · ${sess.lms_program_tracks.name}` : ""}</p>
+              )}
               {sess.lms_courses?.title && (
                 <p className="text-white/50 text-sm mt-2">{sess.lms_courses.title}</p>
               )}
@@ -297,7 +289,7 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
                     <span className="w-6 shrink-0">#</span>
                     <span className="flex-1">Student</span>
                     <span className="w-20 text-center">Status</span>
-                    <span className="w-28 text-center">Check-in Time</span>
+                    <span className="w-28 text-center">Marked At</span>
                     <span className="w-16 text-center">Method</span>
                   </div>
 

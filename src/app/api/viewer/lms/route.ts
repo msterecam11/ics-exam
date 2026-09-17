@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { sessionIsFor, sessionToday } from "@/lib/lms-sessions"
 
 export async function GET() {
   const session = await auth()
@@ -41,7 +42,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   // syncEnrollmentProgress), so the viewer sees identical numbers.
   const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("id, student_id, status, enrolled_at, completed_at, progress_pct, lms_students(id, name, email, company, job_title, last_login)")
+    .select("id, student_id, status, enrolled_at, completed_at, progress_pct, program_id, lms_program_members(track_id), lms_students(id, name, email, company, job_title, last_login)")
     .eq("course_id", courseId)
     .neq("status", "dropped")
 
@@ -79,26 +80,35 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   // Attendance % per student
   const attendanceByStudent: Record<string, { present: number; total: number }> = {}
   if (p.attendance) {
+    // Each learner is measured against the sessions of THEIR program/track for
+    // this course; excused sessions don't count against them.
     const { data: sessions } = await db
       .from("lms_sessions")
-      .select("id")
+      .select("id, course_id, program_id, track_id")
       .eq("course_id", courseId)
+      .lte("session_date", sessionToday())   // future sessions aren't absences
 
     const sessionIds = (sessions ?? []).map((s: any) => s.id)
     if (sessionIds.length > 0) {
       const { data: attendance } = await db
         .from("lms_attendance")
-        .select("student_id, status")
+        .select("session_id, student_id, status")
         .in("session_id", sessionIds)
         .in("student_id", studentIds)
+      const statusOf = new Map(((attendance ?? []) as any[]).map(a => [`${a.session_id}|${a.student_id}`, a.status as string]))
 
-      ;(attendance ?? []).forEach((a: any) => {
-        if (!attendanceByStudent[a.student_id])
-          attendanceByStudent[a.student_id] = { present: 0, total: 0 }
-        attendanceByStudent[a.student_id].total += 1
-        if (a.status === "present" || a.status === "late")
-          attendanceByStudent[a.student_id].present += 1
-      })
+      for (const e of enrollments as any[]) {
+        const viewer = { course_id: courseId, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null }
+        const mine = ((sessions ?? []) as any[]).filter(s => sessionIsFor(s, viewer))
+        if (!mine.length) continue
+        let present = 0, excused = 0
+        for (const s of mine) {
+          const st = statusOf.get(`${s.id}|${e.student_id}`)
+          if (st === "present" || st === "late") present++
+          else if (st === "excused") excused++
+        }
+        attendanceByStudent[e.student_id] = { present, total: mine.length - excused }
+      }
     }
   }
 

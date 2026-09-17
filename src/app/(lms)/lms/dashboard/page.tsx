@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
+import { sessionsForViewers } from "@/lib/lms-sessions"
 
 export default async function StudentDashboard() {
   const student = await getStudentSession()
@@ -31,6 +32,11 @@ export default async function StudentDashboard() {
   const courseIds = enrollments.map((e: any) => e.lms_courses?.id).filter(Boolean)
   const enrollmentIds = enrollments.map((e: any) => e.id)
   const today     = new Date().toISOString().slice(0, 10)
+  // Sessions of the student's own groups only: each enrollment's program and
+  // track (a course taken by another program has its own sessions).
+  const viewers = enrollments.filter((e: any) => e.access === "full").map((e: any) => ({
+    course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null,
+  }))
 
   // ── Step 2: all queries in parallel ──────────────────────────
   const [
@@ -48,14 +54,10 @@ export default async function StudentDashboard() {
       .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
       .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
 
-    courseIds.length
-      ? db.from("lms_sessions")
-          .select("id, title, session_date, start_time, location, meeting_link, course_id, duration_minutes")
-          .in("course_id", courseIds).gte("session_date", today)
-          .is("closed_at", null)
-          .order("session_date", { ascending: true }).order("start_time", { ascending: true })
-          .limit(6)
-      : Promise.resolve({ data: [] }),
+    sessionsForViewers<any>(viewers,
+      "id, title, session_date, start_time, location, meeting_link, duration_minutes",
+      q => q.gte("session_date", today).is("closed_at", null).order("session_date", { ascending: true }).order("start_time", { ascending: true }),
+    ).then(rows => ({ data: rows.slice(0, 6) })).catch(() => ({ data: [] as any[] })),
 
     // lms_content_items has no course_id column — the course comes via its
     // module. Filtering on a non-existent column made this query error, and the

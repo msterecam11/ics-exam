@@ -22,7 +22,7 @@ type DeliveryMode = "online" | "onsite" | "hybrid"
 
 const DELIVERY_OPTIONS: { value: DeliveryMode; label: string; icon: React.ElementType; desc: string }[] = [
   { value: "online",  icon: Globe,    label: "Online",  desc: "Fully virtual — videos, PDFs, quizzes" },
-  { value: "onsite",  icon: Monitor,  label: "On-site", desc: "Classroom — QR attendance, live sessions" },
+  { value: "onsite",  icon: Monitor,  label: "On-site", desc: "Classroom — live sessions, attendance" },
   { value: "hybrid",  icon: Layers,   label: "Hybrid",  desc: "Mix of online and on-site modules" },
 ]
 

@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import LmsStudentShell from "@/components/lms/LmsStudentShell"
 import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
+import { sessionsForViewers } from "@/lib/lms-sessions"
 
 export default async function LmsLayout({ children }: { children: React.ReactNode }) {
   const student = await getStudentSession()
@@ -23,20 +24,12 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
     .eq("status", "active")
   const enrollments = currentVisible(enrollmentRows as any[]).filter(e => e.access === "full")
 
-  const courseIds = enrollments.map((e: any) => e.course_id)
-
-  // Upcoming sessions in next 7 days
-  let upcomingSessions = 0
-  if (courseIds.length) {
-    const { count } = await db
-      .from("lms_sessions")
-      .select("id", { count: "exact", head: true })
-      .in("course_id", courseIds)
-      .gte("session_date", today)
-      .lte("session_date", in7days)
-      .is("closed_at", null)
-    upcomingSessions = count ?? 0
-  }
+  // Upcoming sessions in the next 7 days — only the student's own program/track sessions.
+  const upcomingSessions = (await sessionsForViewers(
+    enrollments.map((e: any) => ({ course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null })),
+    "id",
+    q => q.gte("session_date", today).lte("session_date", in7days).is("closed_at", null),
+  ).catch(() => [])).length
 
   // Submitted assignments awaiting grading
   const { count: pendingCount } = await db

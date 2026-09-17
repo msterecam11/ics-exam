@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
 import { getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
+import { sessionsForViewers } from "@/lib/lms-sessions"
 
 // ── Icons & labels ────────────────────────────────────────────
 const CONTENT_ICONS: Record<string, React.ElementType> = {
@@ -101,13 +102,13 @@ export default async function StudentCoursePage({
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })
 
-  // Fetch live sessions for this course
-  const { data: liveSessions } = await db
-    .from("lms_sessions")
-    .select("id, title, session_date, start_time, duration_minutes, location, closed_at, meeting_link")
-    .eq("course_id", courseId)
-    .order("session_date", { ascending: false })
-    .order("start_time", { ascending: false })
+  // Live sessions of THIS student's group: their program (and track) for this
+  // course. Another program taking the same course has its own sessions.
+  const liveSessions = await sessionsForViewers<any>(
+    [{ course_id: courseId, program_id: current.program_id, track_id: current.member?.track_id ?? null }],
+    "id, title, session_date, start_time, duration_minutes, location, closed_at, meeting_link, recording_url",
+    q => q.order("session_date", { ascending: false }).order("start_time", { ascending: false }),
+  ).catch(() => [] as any[])
 
   // Fetch this student's attendance records for all sessions
   const sessionIds = (liveSessions ?? []).map((s: any) => s.id)
@@ -677,12 +678,6 @@ export default async function StudentCoursePage({
                               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-[#1B4F8A] text-white hover:bg-[#163f6e] transition-colors">
                               <Video className="h-3.5 w-3.5" /> Join
                             </a>
-                          )}
-                          {!att && (
-                            <Link href={`/lms/attend/${s.id}`}
-                              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#1B4F8A] text-[#1B4F8A] hover:bg-[#1B4F8A]/5 transition-colors">
-                              Check In
-                            </Link>
                           )}
                         </div>
                       </div>

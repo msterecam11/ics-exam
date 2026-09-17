@@ -180,7 +180,6 @@ export function buildSessionReminderEmail(opts: {
   const timeStr = endTime
     ? `${startTime} – ${endTime}`
     : startTime
-  const checkInUrl = `${APP_URL}/lms/attend/${sessionId}`
 
   const body = `
     <div style="background:${BLUE};border-radius:8px;padding:6px 14px;display:inline-block;margin-bottom:20px;">
@@ -197,11 +196,8 @@ export function buildSessionReminderEmail(opts: {
       ${location    ? chip("Location", location)    : ""}
       ${meetingLink ? chip("Online", `<a href="${meetingLink}" style="color:${BLUE};">Join Meeting</a>`) : ""}
     </table>
-    <p style="text-align:center;">
-      ${btn("Self Check-In →", checkInUrl)}
-    </p>
     <p style="margin:24px 0 0;color:#94a3b8;font-size:13px;text-align:center;">
-      You can self check-in using the button above, or present your QR code to the instructor.
+      Your instructor will record your attendance during the session.
     </p>
   `
   return {
