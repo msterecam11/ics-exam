@@ -58,7 +58,7 @@ export interface ActivitySettings {
   show_correct_answers: boolean
 }
 
-const DEFAULT_SETTINGS: ActivitySettings = {
+export const DEFAULT_SETTINGS: ActivitySettings = {
   pass_mark:            70,
   time_limit_minutes:   null,
   max_attempts:         3,
@@ -68,7 +68,7 @@ const DEFAULT_SETTINGS: ActivitySettings = {
   show_correct_answers: false,
 }
 
-const Q_TYPE_META: Record<QType, { label: string; icon: string; color: string; desc: string }> = {
+export const Q_TYPE_META: Record<QType, { label: string; icon: string; color: string; desc: string }> = {
   mcq_single:   { label: "MCQ Single",     icon: "◉", color: "bg-blue-100 text-blue-700",    desc: "One correct answer" },
   mcq_multiple: { label: "MCQ Multiple",   icon: "☑", color: "bg-violet-100 text-violet-700", desc: "Multiple correct answers" },
   ordering:     { label: "Ordering",       icon: "↕", color: "bg-amber-100 text-amber-700",   desc: "Arrange items in correct order" },
@@ -84,7 +84,7 @@ const MODULE_TYPE_META: Record<string, { label: string; icon: string }> = {
 }
 
 // ── Default question creators ─────────────────────────────────────
-function createQuestion(type: QType): Question {
+export function createQuestion(type: QType): Question {
   const base = { id: uid(), type, text: "", points: 1 }
   switch (type) {
     case "mcq_single":
@@ -151,7 +151,7 @@ function Toggle({
   )
 }
 
-function SettingsPanel({
+export function SettingsPanel({
   settings, onChange, passMarkLocked = false,
 }: { settings: ActivitySettings; onChange: (s: ActivitySettings) => void; passMarkLocked?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -488,7 +488,7 @@ function OpenEndedEditor({ q, onChange }: { q: Question; onChange: (q: Question)
 }
 
 // ── Question body (full editor, shown when expanded) ──────────────
-function QuestionBody({ q, onChange }: { q: Question; onChange: (q: Question) => void }) {
+export function QuestionBody({ q, onChange }: { q: Question; onChange: (q: Question) => void }) {
   function setField<K extends keyof Question>(key: K, val: Question[K]) {
     onChange({ ...q, [key]: val })
   }
@@ -648,7 +648,7 @@ function SortableQuestion({
 // TYPE PICKER POPUP
 // ─────────────────────────────────────────────────────────────────
 
-function TypePicker({ onPick, onClose }: { onPick: (t: QType) => void; onClose: () => void }) {
+export function TypePicker({ onPick, onClose }: { onPick: (t: QType) => void; onClose: () => void }) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     window.addEventListener("keydown", handler)

@@ -74,6 +74,17 @@ gone to the client.
 | **Certificate** | Someone who now fails but already holds a certificate. Never revoked automatically: keep it, or revoke with a reason. |
 | **Re-mark** | An open-ended answer marked under a rubric that was corrected. Its mark stays until someone sets a new one; the AI can suggest a mark on request. |
 
+Admins find it at **Question Bank → Reviews** (`/lms-admin/questions/reviews`);
+the button shows how many are waiting.
+
+## Where things are
+
+| Screen | What it does |
+|---|---|
+| Question Bank (`/lms-admin/questions`) | Sets with counts by difficulty and how many exams draw from them. Create, archive, restore — never delete. |
+| A set (`/lms-admin/questions/<set>`) | Its questions; new question (type chosen in the dialog), edit, archive. |
+| A course's final exam | Sections, pass mark and attempts, publish check, Recalculate. An exam not yet moved shows the old editor with a banner. |
+
 ## Moving existing exams into the bank
 
 One click per exam (admin), or all at once on deploy day. It:

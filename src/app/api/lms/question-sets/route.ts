@@ -133,7 +133,12 @@ export async function DELETE(req: Request) {
   if ((count ?? 0) > 0)
     return NextResponse.json({ error: "Remove all questions from this set before deleting it" }, { status: 409 })
 
-  const { error } = await db.from("lms_question_sets").delete().eq("id", id)
+  // Step 11 — sets are the home of exam questions now, and a paper may still
+  // hold a question from one. They are archived, never deleted.
+  const { count: bankCount } = await db.from("lms_bank_questions").select("id", { count: "exact", head: true }).eq("set_id", id)
+  if ((bankCount ?? 0) > 0)
+    return NextResponse.json({ error: "This set holds exam questions — archive it in the Question Bank instead" }, { status: 409 })
+  const { error } = await db.from("lms_question_sets").update({ archived_at: new Date().toISOString() }).eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, archived: true })
 }

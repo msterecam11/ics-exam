@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     const [answered, uses, { data: history }] = await Promise.all([
       isAnswered(q as any),
       examsUsing({ questionIds: [id] }),
-      db.from("lms_bank_question_history").select("version, change, note, affected, created_at, admin_users(name)")
+      db.from("lms_bank_question_history").select("version, change, payload, note, affected, created_at, admin_users(name)")
         .eq("question_id", id).order("created_at", { ascending: false }).limit(50),
     ])
     return NextResponse.json({

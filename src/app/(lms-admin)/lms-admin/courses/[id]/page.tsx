@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/CourseCatalogueSettings"
+import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
 
 // Dynamically import TipTap editor (browser-only)
 const RichTextEditor = dynamic(() => import("@/components/lms/RichTextEditor").then(m => ({ default: m.RichTextEditor })), {
@@ -1282,15 +1283,24 @@ function ModuleContentEditor({ mod, courseId }: { mod: Module; courseId: string 
 
   switch (type) {
     case "final_exam":
+      // Step 11 — the exam builder. An exam already in the question bank is
+      // edited as sections; one that isn't yet keeps the old editor below a
+      // "move into the bank" banner.
       return (
-        <ActivityEditor
+        <ExamSectionsEditor
           moduleId={mod.id}
-          moduleType={type}
-          initialQuestions={
-            (mod.questions as import("@/components/lms/ActivityEditor").Question[] | null) ?? null
-          }
-          initialSettings={
-            (mod.activity_settings as import("@/components/lms/ActivityEditor").ActivitySettings | null) ?? null
+          initialSettings={(mod.activity_settings as import("@/components/lms/ActivityEditor").ActivitySettings | null) ?? null}
+          legacyEditor={
+            <ActivityEditor
+              moduleId={mod.id}
+              moduleType={type}
+              initialQuestions={
+                (mod.questions as import("@/components/lms/ActivityEditor").Question[] | null) ?? null
+              }
+              initialSettings={
+                (mod.activity_settings as import("@/components/lms/ActivityEditor").ActivitySettings | null) ?? null
+              }
+            />
           }
         />
       )

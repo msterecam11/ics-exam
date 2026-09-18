@@ -44,9 +44,10 @@ export async function GET() {
     })
   }
 
-  const result = sets.map(s => ({
+  // Sets holding exam-bank questions have none here; listing them would show empty sets.
+  const result = sets.filter(s => qBySet[s.id]?.length).map(s => ({
     ...s,
-    questions: qBySet[s.id] ?? [],
+    questions: qBySet[s.id],
   }))
 
   return NextResponse.json(result)

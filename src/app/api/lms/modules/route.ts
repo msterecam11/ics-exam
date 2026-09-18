@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { guardStaff } from "@/lib/staff-access"
+import { moveExamIntoBank } from "@/lib/lms-exam-bank"
 
 // GET /api/lms/modules?course_id=xxx
 export async function GET(req: Request) {
@@ -90,6 +91,13 @@ export async function POST(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Step 11 — a new final exam starts in the question bank: its own set, and
+  // an empty fixed section to fill. There is nothing inline to carry over.
+  if ((data as any).module_type === "final_exam") {
+    const moved = await moveExamIntoBank((data as any).id, g.session.id)
+    if (moved.ok) (data as any).exam_sections = (await db.from("lms_modules").select("exam_sections").eq("id", (data as any).id).single()).data?.exam_sections
+  }
   return NextResponse.json(data, { status: 201 })
 }
 

@@ -51,8 +51,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ moduleI
     ? await db.from("lms_bank_questions").select("set_id, difficulty").in("set_id", setIds).is("archived_at", null)
     : { data: [] as any[] }
 
+  // The exam's own set: where a question typed in the builder is saved.
+  const { data: own } = await db.from("lms_question_sets").select("id").eq("source_exam_id", moduleId).is("archived_at", null)
+    .order("created_at").limit(1).maybeSingle()
+
   return NextResponse.json({
     exam: { id: m.id, title: m.title, course: { id: m.course_id, title: m.lms_courses?.title, status: m.lms_courses?.status } },
+    own_set_id: (own as any)?.id ?? null,
     moved: !!sections,
     inline_count: Array.isArray(m.questions) ? m.questions.length : 0,
     sections: sections ?? [],

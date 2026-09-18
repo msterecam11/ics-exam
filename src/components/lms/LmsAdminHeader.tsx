@@ -28,7 +28,9 @@ interface Props {
 
 export default function LmsAdminHeader({ user, permissions }: Props) {
   const pathname = usePathname()
-  const title = Object.entries(pageTitles).find(([p]) => pathname === p || pathname.startsWith(p + "/"))?.[1] ?? "LMS Admin"
+  const title = Object.entries(pageTitles)
+    .filter(([p]) => pathname === p || pathname.startsWith(p + "/"))
+    .sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? "LMS Admin"
 
   return (
     <header className="h-14 border-b bg-white flex items-center justify-between px-4 md:px-6 shrink-0">
