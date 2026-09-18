@@ -220,6 +220,13 @@ export default function ProgramPage({ params, searchParams }: {
 
       {tab === "reports" && (
         <div className="space-y-3 max-w-2xl">
+          {isAdmin && p.lms_companies && (
+            <Link href={`/lms-admin/reports/clients/${p.lms_companies.id}`}
+              className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:border-[#1B4F8A]/30">
+              <span className="text-sm text-slate-800"><span className="font-semibold">Company report:</span> {p.lms_companies.name} — all its programs, PDF &amp; Excel</span>
+              <Building2 className="h-4 w-4 text-slate-400" />
+            </Link>
+          )}
           <Link href={`/lms-admin/reports/programs/${id}`}
             className="flex items-center justify-between bg-[#1B4F8A] text-white rounded-xl px-5 py-3.5 hover:bg-[#163f6e]">
             <span className="text-sm font-semibold">Program report: students, course results, tracks, feedback, PDF &amp; Excel</span>
