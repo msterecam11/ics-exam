@@ -3,8 +3,8 @@ import { redirect, notFound } from "next/navigation"
 import StudentProgramReportView from "@/components/lms/reports/StudentProgramReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadStudentProgramReport } from "@/lib/lms-report-scope"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 export const dynamic = "force-dynamic"
 
 // Student in a program (RL-6).

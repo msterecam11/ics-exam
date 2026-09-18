@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET   = "lms-library"
 const MAX_MB   = 10

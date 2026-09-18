@@ -3,8 +3,8 @@ import { redirect, notFound } from "next/navigation"
 import ClientReportView from "@/components/lms/reports/ClientReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadClientReport } from "@/lib/lms-report-scope"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 export const dynamic = "force-dynamic"
 
 // Client report (RL-7).

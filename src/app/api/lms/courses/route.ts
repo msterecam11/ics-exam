@@ -3,10 +3,7 @@ import { notifyCertificateIssued } from "@/lib/lms-completion"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // GET — list courses
 export async function GET(req: Request) {

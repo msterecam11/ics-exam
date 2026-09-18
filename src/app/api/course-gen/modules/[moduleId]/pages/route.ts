@@ -3,8 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
 import { stampMaster } from "@/lib/course-gen/stampMaster"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // POST — add a slide from a master ("Add slide" in the editor), or duplicate
 // an existing one. New slides start as the master's stamped placeholders;

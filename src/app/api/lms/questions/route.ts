@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 const VALID_TYPES = ["mcq_single", "mcq_multi", "ordering", "matching", "open_ended"]
 

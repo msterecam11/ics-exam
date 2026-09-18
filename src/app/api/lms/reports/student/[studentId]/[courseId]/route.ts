@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildCourseReport } from "@/lib/lms-course-report"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/reports/student/[studentId]/[courseId] — full report JSON for the on-screen view
 // ?enrollment=<id> opens a specific run (e.g. an earlier program); default = current.

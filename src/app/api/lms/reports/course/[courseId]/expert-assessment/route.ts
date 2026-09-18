@@ -4,10 +4,9 @@ import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { loadGroupReport, loadCourseAssessment, parseCourseScope, courseAssessmentKey } from "@/lib/lms-report-scope"
 import Groq from "groq-sdk"
+import { isMgr } from "@/lib/staff-roles"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
 type Params = { params: Promise<{ courseId: string }> }
 

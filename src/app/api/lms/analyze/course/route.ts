@@ -5,10 +5,7 @@ import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { runModuleAnalysis } from "../_module"
 import { runExamAnalysis } from "../_exam"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // ── POST /api/lms/analyze/course ──────────────────────────────────
 // Orchestrates full AI analysis for a course.

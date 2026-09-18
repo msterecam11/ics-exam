@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // PATCH — autosave one slide. Optimistic concurrency on updated_at: if the
 // page changed since the editor loaded it, return 409 with the current row

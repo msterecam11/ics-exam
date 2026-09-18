@@ -3,8 +3,7 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET = "lms-submissions"
 const SIGNED_URL_SECONDS = 60 * 60

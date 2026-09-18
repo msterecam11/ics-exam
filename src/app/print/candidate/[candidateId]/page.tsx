@@ -139,7 +139,7 @@ export default async function PrintCandidatePage({ params, searchParams }: Props
     const session = await auth()
     if (!session) redirect("/auth/login")
     const role = session.user?.role ?? ""
-    const isStaff = role === "admin" || role === "instructor"
+    const isStaff = role === "admin"   // Step 9: instructors get scoped access separately
     if (!isStaff && !(await canViewExamCandidate(session.user.id, candidateId))) notFound()
   }
   const { entity = "Group", content = "Course", security, mode } = await searchParams

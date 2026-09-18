@@ -4,8 +4,8 @@ import Link from "next/link"
 import { db } from "@/lib/db"
 import { ArrowLeft, FolderKanban, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 export const dynamic = "force-dynamic"
 
 const STATUS: Record<string, string> = { active: "bg-emerald-50 text-emerald-700", completed: "bg-blue-50 text-blue-700", archived: "bg-slate-100 text-slate-500" }

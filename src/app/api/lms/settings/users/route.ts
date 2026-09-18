@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { auditLog } from "@/lib/audit"
+import { isMgr } from "@/lib/staff-roles"
 
 // Escapes PostgREST `.or()` filter metacharacters so a search string can't
 // break out of the intended ilike clause (comma/paren are clause/grouping
@@ -26,7 +27,6 @@ function escapeFilterValue(v: string) {
 }
 
 function isAdmin(role?: string) { return role === "admin" }
-function isMgr(role?: string)   { return role === "admin" || role === "instructor" }
 
 const CreateSchema = z.object({
   name:       z.string().trim().min(1).max(100),

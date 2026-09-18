@@ -2,8 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Building2, FolderKanban, BookOpen, MessageSquare, ChevronRight } from "lucide-react"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // Reports home (RP-1): by client, by program, by course; plus feedback.
 export default async function LmsReportsPage() {

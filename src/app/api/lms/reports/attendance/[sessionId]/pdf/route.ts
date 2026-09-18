@@ -5,8 +5,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 export async function GET(
   req: Request,

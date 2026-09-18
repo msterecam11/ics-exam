@@ -5,6 +5,7 @@ import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 import { rateLimit } from "@/lib/rateLimit"
 import { buildCourseReport } from "@/lib/lms-course-report"
 import Groq from "groq-sdk"
+import { isMgr } from "@/lib/staff-roles"
 
 export const maxDuration = 60 // Long-running (AI generation). NOTE: this is a
 // serverless-host hint and is a NO-OP on Render, which is what this app runs on —
@@ -12,8 +13,6 @@ export const maxDuration = 60 // Long-running (AI generation). NOTE: this is a
 // cause there is the AI provider returning 429 (quota), which surfaces as a toast.
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 
 type Params = { params: Promise<{ studentId: string; courseId: string }> }
 

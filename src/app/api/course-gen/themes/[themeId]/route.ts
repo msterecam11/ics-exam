@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 export async function GET(_: Request, { params }: { params: Promise<{ themeId: string }> }) {
   const session = await auth()

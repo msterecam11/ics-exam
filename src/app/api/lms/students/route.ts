@@ -4,10 +4,7 @@ import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { sendStudentCredentialsEmail } from "@/lib/email"
 import { loadEmailSettings, effectiveRule } from "@/lib/lms-email-settings"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // Makes a free-text search term safe to place inside a PostgREST .or() filter.
 //

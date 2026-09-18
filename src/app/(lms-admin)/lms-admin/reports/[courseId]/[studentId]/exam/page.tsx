@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
 import ExamAttemptsView from "./ExamAttemptsView"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // Points earned for one question — mirrors FinalExamPlayer.score() exactly,
 // covering every LMS exam type (incl. partial credit for ordering & match_pair).

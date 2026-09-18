@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/packages?module_id=xxx  OR  ?course_id=xxx
 export async function GET(req: Request) {

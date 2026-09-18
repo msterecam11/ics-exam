@@ -23,7 +23,7 @@ export default async function PrintStudentLmsReport({ params, searchParams }: Pr
     const session = await auth()
     if (!session) redirect("/auth/login")
     const role = session.user?.role ?? ""
-    const isStaff = role === "admin" || role === "instructor"
+    const isStaff = role === "admin"   // Step 9: instructors get scoped access separately
     if (!isStaff && !(await canViewLmsReport(session.user.id, studentId, courseId))) notFound()
   }
   const report = await buildCourseReport(studentId, courseId, enrollment && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enrollment) ? { enrollmentId: enrollment } : undefined)

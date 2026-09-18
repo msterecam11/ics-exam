@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
 import type { AgentOp } from "@/lib/course-gen/jobs/chatEdit"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // POST — commit an approved set of agent ops. Element-level ops are applied
 // to the stored elements; slide-level ops use the elements the chat route

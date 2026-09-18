@@ -38,8 +38,7 @@ export async function GET(req: Request) {
   const validSecret = !!process.env.CRON_SECRET && secret === process.env.CRON_SECRET
   if (!validSecret) {
     const session = await auth().catch(() => null)
-    const isMgr = !!session && (session.user.role === "admin" || session.user.role === "instructor")
-    if (!isMgr) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (session?.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const now    = Date.now()

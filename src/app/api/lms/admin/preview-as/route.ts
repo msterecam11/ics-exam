@@ -15,8 +15,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import crypto from "crypto"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 const COOKIE_NAME  = "lms_session"
 const SESSION_SECS = 2 * 60 * 60 // 2 hours

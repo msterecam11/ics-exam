@@ -27,7 +27,7 @@ export default async function PrintGroupReport({ params, searchParams }: Props) 
     const session = await auth()
     if (!session) redirect("/auth/login")
     const role = session.user?.role ?? ""
-    const isStaff = role === "admin" || role === "instructor"
+    const isStaff = role === "admin"   // Step 9: instructors get scoped access separately
     if (!isStaff && (scope.programId || scope.allRuns || !(await canViewLmsCourseReport(session.user.id, courseId)))) notFound()
   }
 

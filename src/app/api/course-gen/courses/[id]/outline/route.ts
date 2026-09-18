@@ -3,8 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody, res429 } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // GET — latest outline result (for the review UI)
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

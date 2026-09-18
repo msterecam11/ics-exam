@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { isMgr } from "@/lib/staff-roles"
 import {
   EnrollmentTrendChart,
   ProgressDonutChart,
@@ -19,10 +20,6 @@ import {
 } from "@/components/lms/DashboardCharts"
 
 export const metadata = { title: "LMS Dashboard – ICS Admin" }
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
 
 export default async function LmsAdminDashboard() {
   const session = await auth()

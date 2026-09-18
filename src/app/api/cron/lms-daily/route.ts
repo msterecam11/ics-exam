@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   let byAdmin = false
   if (!validSecret) {
     const session = await auth().catch(() => null)
-    byAdmin = !!session && (session.user.role === "admin" || session.user.role === "instructor")
+    byAdmin = session?.user.role === "admin"
     if (!byAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

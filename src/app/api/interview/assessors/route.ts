@@ -5,11 +5,9 @@ import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { sendAssessorCredentialsEmail } from "@/lib/ms-graph"
 import { auditLog } from "@/lib/audit"
+import { isMgr } from "@/lib/staff-roles"
 
 // Only admin + instructor can manage assessors
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
 
 // Brought up to the same validation bar as /api/lms/settings/users — this
 // route is a second, independent write path into admin_users and previously

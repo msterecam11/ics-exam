@@ -89,4 +89,6 @@ export function exportQuery(o: ExportOptions) {
 }
 
 /** Staff session check shared by report APIs. */
-export const isStaffRole = (role?: string | null) => role === "admin" || role === "instructor"
+// Step 9: admin only for now. Instructors reach reports through the scoped
+// checks in staff-access.ts, which limit them to their own programs.
+export const isStaffRole = (role?: string | null) => role === "admin"

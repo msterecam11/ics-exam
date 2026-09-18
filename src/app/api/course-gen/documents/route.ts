@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import { isOcrConfigured } from "@/lib/course-gen/ocr"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET = "lms-library"
 const MAX_MB = 80

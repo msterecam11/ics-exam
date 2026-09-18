@@ -5,8 +5,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { renderReportPdf } from "@/lib/lms-report-pdf"
 import { parseCourseScope, courseScopeQuery } from "@/lib/lms-report-scope"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/reports/course/[courseId]/pdf[?program=&track= | ?scope=all]
 export async function GET(req: Request, { params }: { params: Promise<{ courseId: string }> }) {

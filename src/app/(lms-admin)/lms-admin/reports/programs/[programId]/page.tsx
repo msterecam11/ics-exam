@@ -5,8 +5,8 @@ import ProgramReportView from "@/components/lms/reports/ProgramReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadProgramReport, scopedAssessment } from "@/lib/lms-report-scope"
 import { cn } from "@/lib/utils"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 export const dynamic = "force-dynamic"
 
 // Program report (RL-5), or one track of it (RL-4).

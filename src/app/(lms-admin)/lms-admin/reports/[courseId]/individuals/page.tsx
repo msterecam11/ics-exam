@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft, User, FileText } from "lucide-react"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 function fmtTime(s: number) {
   if (!s || s < 60) return s >= 1 ? `${s}s` : "—"

@@ -6,8 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, BookOpen, BarChart3, ChevronRight, Users, CheckCircle2, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 export default async function LmsProgressReportsPage() {
   const session = await auth()

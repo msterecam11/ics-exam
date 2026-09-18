@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { db } from "@/lib/db"
 import { ArrowLeft, Building2, ChevronRight } from "lucide-react"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 export const dynamic = "force-dynamic"
 
 export default async function ClientReportsListPage() {

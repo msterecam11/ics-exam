@@ -5,14 +5,11 @@ import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { extractPdfPageTexts } from "@/lib/pdf-extract"
 import Groq from "groq-sdk"
+import { isMgr } from "@/lib/staff-roles"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
 })
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
 
 // POST /api/lms/grade-assignment-ai
 // Body: { attempt_id, module_id }

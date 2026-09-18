@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
 import { getCurrentEnrollment } from "@/lib/lms-enrollment"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/enrollments?course_id=xxx  — list students enrolled in a course
 // GET /api/lms/enrollments?student_id=xxx — list courses a student is enrolled in

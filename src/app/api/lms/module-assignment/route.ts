@@ -7,8 +7,7 @@ import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET = "lms-submissions"
 const SIGNED_URL_SECONDS = 60 * 60

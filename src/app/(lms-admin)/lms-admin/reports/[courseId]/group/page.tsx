@@ -2,8 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import GroupReportView from "@/components/lms/GroupReportView"
 import { parseCourseScope, loadGroupReport, loadCourseComparison, loadCourseAssessment, courseScopeOptions } from "@/lib/lms-report-scope"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 interface Props {
   params: Promise<{ courseId: string }>

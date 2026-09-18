@@ -5,14 +5,11 @@ import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import Groq from "groq-sdk"
 import { extractPdfPageTexts } from "@/lib/pdf-extract"
+import { isMgr } from "@/lib/staff-roles"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
 })
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
 
 const TYPE_LABELS: Record<string, string> = {
   mcq:           "Multiple Choice Question",

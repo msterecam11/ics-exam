@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { ArrowLeft, MessageSquare, Star, ChevronRight, BookOpen, FolderKanban } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 function ratingColor(avg: number | null) {
   if (avg === null) return "text-muted-foreground"

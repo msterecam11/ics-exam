@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft, Users, User, ChevronRight, BookOpen } from "lucide-react"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 interface Props { params: Promise<{ courseId: string }> }
 

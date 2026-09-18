@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { canUseQuiz } from "@/lib/lms-enrollment"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/quizzes              — list all quizzes (admin)
 // GET /api/lms/quizzes?quiz_id=xxx  — fetch one quiz with questions + choices

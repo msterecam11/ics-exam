@@ -3,8 +3,8 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody, res429 } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
+import { isMgr } from "@/lib/staff-roles"
 
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
 const BUCKET = "lms-library"
 
 export async function GET(_: Request, { params }: { params: Promise<{ documentId: string }> }) {

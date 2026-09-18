@@ -5,14 +5,11 @@ import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import Groq from "groq-sdk"
 import { extractPdfPages } from "@/lib/pdf-extract"
+import { isMgr } from "@/lib/staff-roles"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
 })
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
 
 // ── Filename cleaner (no AI needed) ──────────────────────────────
 function cleanFilename(name: string): string {
@@ -36,7 +33,6 @@ function wordCount(text: string): number {
 function titleCaseVerbatim(text: string): string {
   return text.replace(/\s+/g, " ").trim().replace(/\b\w/g, c => c.toUpperCase())
 }
-
 
 // ── Groq: generate titles for all pages of one PDF (single call) ──
 async function titlesForPdfPages(

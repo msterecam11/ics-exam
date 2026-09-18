@@ -5,8 +5,7 @@ import { auditLog } from "@/lib/audit"
 import { applyProgramEmailSettings } from "@/lib/lms-email-program"
 import { PROGRAM_COLUMNS, syncMemberEnrollments, coursesForTrack } from "@/lib/lms-programs"
 import { parseProgramInput } from "@/lib/lms-program-input"
-
-const isMgr = (role?: string) => role === "admin" || role === "instructor"
+import { isMgr } from "@/lib/staff-roles"
 
 // Allowed status changes (PM-6).
 const TRANSITIONS: Record<string, string[]> = {

@@ -3,8 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { COMPANY_COLUMNS, parseCompanyInput, companyConflictMessage } from "@/lib/lms-companies"
-
-const isMgr = (role?: string) => role === "admin" || role === "instructor"
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/companies/[id] — company + its students
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

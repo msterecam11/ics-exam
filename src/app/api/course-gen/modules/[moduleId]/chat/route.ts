@@ -7,8 +7,7 @@ import { parseBody } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { runChatEdit } from "@/lib/course-gen/jobs/chatEdit"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // POST — one chat turn. Returns either an applied result (small, safe edits)
 // or a proposal for the user to preview and approve (anything structural or

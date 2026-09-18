@@ -4,8 +4,7 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { PROGRAM_COLUMNS } from "@/lib/lms-programs"
 import { parseProgramInput } from "@/lib/lms-program-input"
-
-const isMgr = (role?: string) => role === "admin" || role === "instructor"
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/programs?status=&company_id=
 export async function GET(req: Request) {

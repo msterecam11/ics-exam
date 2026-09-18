@@ -3,8 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // GET /api/lms/progress/[studentId]/course/[courseId]
 // Full detail: quizzes, assignments, exams (with answers + security), packages

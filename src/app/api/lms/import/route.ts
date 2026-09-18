@@ -5,10 +5,7 @@ import bcrypt from "bcryptjs"
 import { randomString } from "@/lib/utils"
 import { sendEmail, buildEnrollmentEmail, sendStudentCredentialsEmail } from "@/lib/email"
 import { syncMemberEnrollments } from "@/lib/lms-programs"
-
-function isMgr(role?: string) {
-  return role === "admin" || role === "instructor"
-}
+import { isMgr } from "@/lib/staff-roles"
 
 // POST /api/lms/import
 // multipart/form-data:

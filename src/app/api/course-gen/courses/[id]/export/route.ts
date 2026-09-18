@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
-
-function isMgr(role?: string) { return role === "admin" || role === "instructor" }
+import { isMgr } from "@/lib/staff-roles"
 
 // POST — queue a PDF export (whole course, or one module). Returns
 // immediately; the worker does the rendering so a 400-slide deck never
