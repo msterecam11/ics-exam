@@ -25,6 +25,9 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
     feedback_enabled: p.feedback_enabled, feedback_mandatory: p.feedback_mandatory, feedback_anonymous: p.feedback_anonymous, progress_enforcement: p.progress_enforcement,
   })
   const [instructorIds, setInstructorIds] = useState<Set<string>>(new Set(detail.instructors.map(i => i.id)))
+  // IR-2 — which tracks each instructor covers. An empty list means the whole program.
+  const [instructorTracks, setInstructorTracks] = useState<Record<string, string[]>>(
+    Object.fromEntries(detail.instructors.map(i => [i.id, i.track_ids ?? []])))
   const [saving, setSaving] = useState(false)
   const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }))
   const locked = p.status === "archived"
@@ -45,7 +48,10 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
       ...(form.client === "individual" ? { is_individual: true } : { company_id: form.client }),
     })
     if (ok) {
-      const inst = await postJson(`/api/lms/programs/${p.id}/instructors`, "PUT", { user_ids: [...instructorIds] })
+      const inst = await postJson(`/api/lms/programs/${p.id}/instructors`, "PUT", {
+        user_ids: [...instructorIds],
+        tracks: Object.fromEntries([...instructorIds].map(id => [id, instructorTracks[id] ?? []])),
+      })
       if (!inst.ok) toast.error(inst.data.error ?? "Could not save instructors")
     }
     setSaving(false)
@@ -136,17 +142,49 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
         <p className="text-sm font-semibold text-slate-800">Instructors</p>
         {staff.length === 0 ? <p className="text-sm text-slate-400">No instructor accounts yet.</p> : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {staff.map(s => (
-              <label key={s.id} className="flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" disabled={locked} checked={instructorIds.has(s.id)}
-                  onChange={e => setInstructorIds(prev => { const n = new Set(prev); e.target.checked ? n.add(s.id) : n.delete(s.id); return n })} />
-                {s.name} <span className="text-xs text-slate-400">({s.role})</span>
-              </label>
-            ))}
+          <div className="space-y-2">
+            {staff.map(s => {
+              const on = instructorIds.has(s.id)
+              const mine = instructorTracks[s.id] ?? []
+              return (
+                <div key={s.id} className={`rounded-lg border p-3 ${on ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50/60"}`}>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input type="checkbox" disabled={locked} checked={on}
+                      onChange={e => setInstructorIds(prev => { const n = new Set(prev); e.target.checked ? n.add(s.id) : n.delete(s.id); return n })} />
+                    {s.name} <span className="text-xs text-slate-400">({s.role})</span>
+                  </label>
+                  {on && s.role === "instructor" && detail.tracks.length > 0 && (
+                    <div className="mt-2 ml-6">
+                      <p className="text-[11px] text-slate-500 mb-1">
+                        Tracks they cover — none ticked means the whole program
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detail.tracks.map(t => {
+                          const picked = mine.includes(t.id)
+                          return (
+                            <button key={t.id} type="button" disabled={locked}
+                              onClick={() => setInstructorTracks(prev => {
+                                const cur = prev[s.id] ?? []
+                                return { ...prev, [s.id]: picked ? cur.filter(x => x !== t.id) : [...cur, t.id] }
+                              })}
+                              className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                                picked ? "border-[#1B4F8A] bg-[#1B4F8A]/5 text-[#1B4F8A] font-medium" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                              {t.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
-        <p className="text-xs text-slate-400">What instructors can do is decided when instructor accounts are set up.</p>
+        <p className="text-xs text-slate-400">
+          An instructor sees only the programs listed here, and only the students and courses inside them.
+          What else they may do is set on their account in LMS Settings → User Management.
+        </p>
       </section>
 
       {!locked && (

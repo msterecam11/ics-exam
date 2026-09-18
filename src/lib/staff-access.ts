@@ -10,27 +10,15 @@
 // instructor as an admin across the whole LMS.
 
 import { db } from "@/lib/db"
+import { STAFF_PERMISSIONS, type StaffPermission } from "@/lib/staff-roles"
 import { auth } from "@/lib/auth"
 
 export type StaffRole = "admin" | "instructor"
 
-/** IR-9 … IR-14: the extras an admin can tick on an instructor's account. */
-export const STAFF_PERMISSIONS = [
-  { key: "release_certificates", ir: "IR-9",  label: "Release certificates",
-    hint: "Release held certificates for students in their programs" },
-  { key: "manage_students",      ir: "IR-10", label: "Manage students",
-    hint: "Add and edit students, and enrol them in their own programs" },
-  { key: "export_reports",       ir: "IR-11", label: "Export reports",
-    hint: "Download report PDFs and Excel files. Without it they can read reports on screen only" },
-  { key: "author_courses",       ir: "IR-12", label: "Author courses",
-    hint: "Create and edit courses, packages, exams and question banks they own. Publishing and deleting stay with admins" },
-  { key: "set_pass_marks",       ir: "IR-13", label: "Pass mark & attempts",
-    hint: "Change the pass mark and number of attempts on their own programs" },
-  { key: "reset_attempts",       ir: "IR-14", label: "Reset attempts",
-    hint: "Give a student another go at an exam in their programs" },
-] as const
-
-export type StaffPermission = typeof STAFF_PERMISSIONS[number]["key"]
+// The list of extras lives in staff-roles.ts so the settings screen (a client
+// component) can read the labels without pulling in the database client.
+export { STAFF_PERMISSIONS } from "@/lib/staff-roles"
+export type { StaffPermission } from "@/lib/staff-roles"
 
 export interface StaffSession {
   id: string
@@ -221,3 +209,40 @@ export function permissionError(permission: StaffPermission) {
   const def = STAFF_PERMISSIONS.find(p => p.key === permission)
   return { error: `Your account doesn't have "${def?.label ?? permission}"` }
 }
+
+// ── Route guard ──────────────────────────────────────────────────────────────
+// One call at the top of a route handler:
+//
+//   const g = await guardStaff()                       // any staff, scope it yourself
+//   const g = await guardStaff({ admin: true })        // IR-15, admins only
+//   const g = await guardStaff({ permission: "..." })  // an instructor extra
+//   if (!g.ok) return g.res
+//
+// Then use g.scope with canSeeProgram / canSeeStudent / visibleCourseIds etc.
+
+import { NextResponse } from "next/server"
+
+export type GuardResult =
+  | { ok: true; session: StaffSession; scope: StaffScope }
+  | { ok: false; res: NextResponse }
+
+export async function guardStaff(opts: { admin?: boolean; permission?: StaffPermission } = {}): Promise<GuardResult> {
+  const session = await staffSession()
+  if (!session) return { ok: false, res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+
+  const scope = await staffScope(session)
+  if (opts.admin && !scope.isAdmin)
+    return { ok: false, res: NextResponse.json(ADMIN_ONLY, { status: 403 }) }
+  if (opts.permission && !can(scope, opts.permission))
+    return { ok: false, res: NextResponse.json(permissionError(opts.permission), { status: 403 }) }
+
+  // An instructor with no programs and no extras can't do anything useful, and
+  // letting them through would mean every list quietly returns everything.
+  if (!scope.isAdmin && !scope.programIds.length && !opts.permission)
+    return { ok: false, res: NextResponse.json({ error: "You are not assigned to any program yet" }, { status: 403 }) }
+
+  return { ok: true, session, scope }
+}
+
+/** 403 for a specific thing the account may not reach. */
+export const forbidden = () => NextResponse.json(FORBIDDEN, { status: 403 })

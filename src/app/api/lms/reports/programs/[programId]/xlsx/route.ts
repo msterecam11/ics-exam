@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { contentDisposition } from "@/lib/lms-report-pdf"
 import { programWorkbook, XLSX_TYPE } from "@/lib/lms-report-excel"
-import { isUuid, isStaffRole, loadProgramReport } from "@/lib/lms-report-scope"
+import { isUuid, loadProgramReport } from "@/lib/lms-report-scope"
 import { programForClient } from "@/lib/lms-report-shared"
+import { guardStaff, canSeeProgram } from "@/lib/staff-access"
 
 // GET /api/lms/reports/programs/[programId]/xlsx?track=&audience=client|internal
 export async function GET(req: Request, { params }: { params: Promise<{ programId: string }> }) {
-  const session = await auth()
-  if (!session || !isStaffRole(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({permission: "export_reports"})
+  if (!g.ok) return g.res
   const { programId } = await params
+  if (!canSeeProgram(g.scope, programId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (!isUuid(programId)) return NextResponse.json({ error: "Program not found" }, { status: 404 })
   const sp = new URL(req.url).searchParams
   const track = isUuid(sp.get("track")) ? sp.get("track") : null

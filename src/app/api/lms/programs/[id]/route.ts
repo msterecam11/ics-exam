@@ -5,7 +5,7 @@ import { auditLog } from "@/lib/audit"
 import { applyProgramEmailSettings } from "@/lib/lms-email-program"
 import { PROGRAM_COLUMNS, syncMemberEnrollments, coursesForTrack } from "@/lib/lms-programs"
 import { parseProgramInput } from "@/lib/lms-program-input"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeProgram } from "@/lib/staff-access"
 
 // Allowed status changes (PM-6).
 const TRANSITIONS: Record<string, string[]> = {
@@ -19,10 +19,13 @@ const TRANSITIONS: Record<string, string[]> = {
 
 // GET /api/lms/programs/[id] — everything the program page needs
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-1 / IR-4 — one program, and only if it is one of theirs.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
   const { id } = await params
+  // Same answer whether it doesn't exist or isn't theirs, so the response can't
+  // be used to find out which programs the LMS holds.
+  if (!canSeeProgram(g.scope, id)) return NextResponse.json({ error: "Program not found" }, { status: 404 })
 
   const { data: program } = await db
     .from("lms_programs")
@@ -37,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .select("id, track_id, course_id, path_id, order_index, lms_courses(id, title, status), lms_learning_paths(id, title)")
       .eq("program_id", id).order("order_index"),
     db.from("lms_program_course_rules").select("course_id, pass_mark, max_attempts, lms_courses(id, title)").eq("program_id", id),
-    db.from("lms_program_instructors").select("user_id, admin_users(id, name, email, role)").eq("program_id", id),
+    db.from("lms_program_instructors").select("user_id, track_ids, admin_users(id, name, email, role)").eq("program_id", id),
     db.from("lms_program_members")
       .select("id, student_id, track_id, status, end_date_override, added_at, withdrawn_at, lms_students(id, name, email, company, job_title, employee_number)")
       .eq("program_id", id).order("added_at", { ascending: true }),
@@ -66,7 +69,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     items: items.data ?? [],
     path_courses: pathCourses ?? [],
     rules: rules.data ?? [],
-    instructors: ((instructors.data ?? []) as any[]).map(i => i.admin_users).filter(Boolean),
+    // track_ids travels with each instructor so the settings screen can show
+    // whether they cover the whole program or only some tracks (IR-2).
+    instructors: ((instructors.data ?? []) as any[])
+      .filter(i => i.admin_users)
+      .map(i => ({ ...i.admin_users, track_ids: Array.isArray(i.track_ids) ? i.track_ids : [] })),
     members: ((members.data ?? []) as any[]).map(m => {
       const enr = (enrByMember.get(m.id) ?? []).filter((e: any) => e.status !== "dropped")
       return {

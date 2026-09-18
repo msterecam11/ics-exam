@@ -4,19 +4,20 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { PROGRAM_COLUMNS } from "@/lib/lms-programs"
 import { parseProgramInput } from "@/lib/lms-program-input"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // GET /api/lms/programs?status=&company_id=
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-1 — an instructor sees only the programs they are assigned to.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const sp = new URL(req.url).searchParams
   let query = db
     .from("lms_programs")
     .select(`${PROGRAM_COLUMNS}, lms_companies(id, name, code)`)
     .order("created_at", { ascending: false })
+  if (!g.scope.isAdmin) query = query.in("id", g.scope.programIds)
   const status = sp.get("status")
   if (status && status !== "all") query = query.eq("status", status)
   const companyId = sp.get("company_id")

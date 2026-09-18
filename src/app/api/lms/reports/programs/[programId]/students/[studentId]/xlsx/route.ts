@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { contentDisposition } from "@/lib/lms-report-pdf"
 import { studentWorkbook, XLSX_TYPE } from "@/lib/lms-report-excel"
-import { isUuid, isStaffRole, loadStudentProgramReport } from "@/lib/lms-report-scope"
+import { isUuid, loadStudentProgramReport } from "@/lib/lms-report-scope"
 import { studentForClient } from "@/lib/lms-report-shared"
+import { guardStaff, canSeeProgram, canSeeStudent } from "@/lib/staff-access"
 
 export async function GET(req: Request, { params }: { params: Promise<{ programId: string; studentId: string }> }) {
-  const session = await auth()
-  if (!session || !isStaffRole(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({permission: "export_reports"})
+  if (!g.ok) return g.res
   const { programId, studentId } = await params
+  if (!canSeeProgram(g.scope, programId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  if (!(await canSeeStudent(g.scope, studentId))) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (!isUuid(programId) || !isUuid(studentId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
   const cached = await loadStudentProgramReport(programId, studentId)
   if (!cached) return NextResponse.json({ error: "Student is not in this program" }, { status: 404 })

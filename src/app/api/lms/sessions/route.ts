@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { coursesForTrack } from "@/lib/lms-programs"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeProgram, canSeeTrack, forbidden } from "@/lib/staff-access"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -19,9 +19,9 @@ const SESSION_COLUMNS = `
 // GET /api/lms/sessions
 //   ?program_id=  ?course_id=  ?module_id=  ?id=
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-7 — an instructor sees the classes of their own programs only.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { searchParams } = new URL(req.url)
   let query = db
@@ -29,6 +29,8 @@ export async function GET(req: Request) {
     .select(SESSION_COLUMNS)
     .order("session_date", { ascending: false })
     .order("start_time",   { ascending: false })
+
+  if (!g.scope.isAdmin) query = query.in("program_id", g.scope.programIds)
 
   for (const key of ["id", "program_id", "course_id", "module_id"] as const) {
     const v = searchParams.get(key)
@@ -148,9 +150,9 @@ async function validateScope(programId: string, trackId: string | null, courseId
 // POST — schedule a session for a program
 // Body: { program_id, track_id?, course_id, module_id?, title, session_date, start_time, duration_minutes?, ... }
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const programId = typeof body.program_id === "string" && UUID_RE.test(body.program_id) ? body.program_id : null
@@ -160,6 +162,8 @@ export async function POST(req: Request) {
   // Sessions are scheduled for a program's group; the course is a template.
   if (!programId) return NextResponse.json({ error: "Choose the program this session is for" }, { status: 400 })
   if (!courseId)  return NextResponse.json({ error: "Choose the course" }, { status: 400 })
+  // IR-7 — only on their own programs, and only on tracks they cover.
+  if (!canSeeProgram(g.scope, programId) || !canSeeTrack(g.scope, programId, trackId)) return forbidden()
 
   const parsed = parseFields(body, false)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
@@ -187,9 +191,9 @@ export async function POST(req: Request) {
 // PATCH — update a session, or close / reopen it
 // Body: { id, action?: "open" | "close", ...fields }
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { id, action } = body
@@ -197,6 +201,8 @@ export async function PATCH(req: Request) {
 
   const { data: current } = await db.from("lms_sessions").select("id, title, program_id, track_id, course_id, module_id").eq("id", id).maybeSingle()
   if (!current) return NextResponse.json({ error: "Session not found" }, { status: 404 })
+  if (!canSeeProgram(g.scope, (current as any).program_id)
+      || !canSeeTrack(g.scope, (current as any).program_id, (current as any).track_id)) return forbidden()
 
   const parsed = parseFields(body, true)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })

@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast }   from "sonner"
 import { cn }      from "@/lib/utils"
 import StudentPasswordsTab from "@/components/lms/StudentPasswordsTab"
+import { STAFF_PERMISSIONS } from "@/lib/staff-roles"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Role = "admin" | "instructor" | "assessor" | "viewer"
@@ -33,6 +34,7 @@ interface AdminUser {
   created_at:      string
   last_login_at:   string | null
   locked_until:    string | null
+  permissions?:    Record<string, boolean> | null
   failed_attempts: number
 }
 
@@ -107,8 +109,9 @@ function PasswordInput({ value, onChange, placeholder = "Password" }: {
 interface UserFormData {
   name: string; email: string; role: Role
   password: string; department: string; phone: string
+  permissions: Record<string, boolean>
 }
-const EMPTY_FORM: UserFormData = { name: "", email: "", role: "instructor", password: "", department: "", phone: "" }
+const EMPTY_FORM: UserFormData = { name: "", email: "", role: "instructor", password: "", department: "", phone: "", permissions: {} }
 
 function UserModal({
   open, onClose, user, onSaved,
@@ -130,6 +133,7 @@ function UserModal({
         password:   "",
         department: user.department ?? "",
         phone:      user.phone ?? "",
+        permissions: (user.permissions ?? {}) as Record<string, boolean>,
       } : EMPTY_FORM)
     }
   }, [open, user])
@@ -153,6 +157,8 @@ function UserModal({
         role:       form.role,
         department: form.department.trim() || undefined,
         phone:      form.phone.trim() || undefined,
+        // Only an instructor is limited by these; an admin already has everything.
+        ...(form.role === "instructor" ? { permissions: form.permissions } : {}),
       }
       if (user) body.id = user.id
       if (form.password) body.password = form.password
@@ -245,6 +251,33 @@ function UserModal({
               <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="+971 xx xxx xxxx" />
             </div>
           </div>
+
+          {/* IR-9 … IR-14 — what this instructor may do beyond seeing their own
+              programs. Admins are not limited by any of it. */}
+          {form.role === "instructor" && (
+            <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+              <div>
+                <p className="text-sm font-medium text-slate-700">What they can do</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  An instructor always sees the programs they are assigned to, and the students and courses
+                  inside them. Tick anything extra.
+                </p>
+              </div>
+              {STAFF_PERMISSIONS.map(perm => (
+                <label key={perm.key} className="flex items-start gap-2.5 cursor-pointer bg-slate-50 rounded-lg p-2.5">
+                  <input type="checkbox" className="mt-0.5"
+                    checked={form.permissions[perm.key] === true}
+                    onChange={e => set("permissions", { ...form.permissions, [perm.key]: e.target.checked })} />
+                  <span>
+                    <span className="text-sm text-slate-800">
+                      <span className="text-slate-400 font-mono text-[11px] mr-1.5">{perm.ir}</span>{perm.label}
+                    </span>
+                    <span className="block text-xs text-slate-500 mt-0.5">{perm.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

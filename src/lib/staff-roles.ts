@@ -24,3 +24,21 @@ export function isMgr(role?: string | null): boolean {
 export function isStaff(role?: string | null): boolean {
   return role === "admin" || role === "instructor"
 }
+
+/** IR-9 … IR-14: the extras an admin can tick on an instructor's account. */
+export const STAFF_PERMISSIONS = [
+  { key: "release_certificates", ir: "IR-9",  label: "Release certificates",
+    hint: "Release held certificates for students in their programs" },
+  { key: "manage_students",      ir: "IR-10", label: "Manage students",
+    hint: "Add and edit students, and enrol them in their own programs" },
+  { key: "export_reports",       ir: "IR-11", label: "Export reports",
+    hint: "Download report PDFs and Excel files. Without it they can read reports on screen only" },
+  { key: "author_courses",       ir: "IR-12", label: "Author courses",
+    hint: "Create and edit courses, packages, exams and question banks they own. Publishing and deleting stay with admins" },
+  { key: "set_pass_marks",       ir: "IR-13", label: "Pass mark & attempts",
+    hint: "Change the pass mark and number of attempts on their own programs" },
+  { key: "reset_attempts",       ir: "IR-14", label: "Reset attempts",
+    hint: "Give a student another go at an exam in their programs" },
+] as const
+
+export type StaffPermission = typeof STAFF_PERMISSIONS[number]["key"]

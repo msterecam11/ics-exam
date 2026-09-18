@@ -28,7 +28,7 @@ export type ProgramDetail = {
   }[]
   path_courses: { path_id: string; order_index: number; lms_courses: { id: string; title: string } | null }[]
   rules: { course_id: string; pass_mark: number; max_attempts: number; lms_courses: { id: string; title: string } | null }[]
-  instructors: { id: string; name: string; email: string; role: string }[]
+  instructors: { id: string; name: string; email: string; role: string; track_ids?: string[] }[]
   members: {
     id: string; student_id: string; track_id: string | null; status: "active" | "withdrawn" | "completed"
     end_date_override: string | null; added_at: string; withdrawn_at: string | null

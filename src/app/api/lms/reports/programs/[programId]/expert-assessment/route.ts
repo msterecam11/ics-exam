@@ -1,12 +1,12 @@
 export const maxDuration = 60
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import Groq from "groq-sdk"
-import { isUuid, isStaffRole, loadProgramReport, scopedAssessment } from "@/lib/lms-report-scope"
+import { isUuid, loadProgramReport, scopedAssessment } from "@/lib/lms-report-scope"
+import { guardStaff, canSeeProgram } from "@/lib/staff-access"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
 const keyOf = (programId: string, trackId: string | null) => `program:${programId}:${trackId ?? "-"}`
@@ -15,21 +15,25 @@ type Params = { params: Promise<{ programId: string }> }
 const trackOf = (req: Request) => { const t = new URL(req.url).searchParams.get("track"); return isUuid(t) ? t : null }
 
 export async function GET(req: Request, { params }: Params) {
-  const session = await auth()
-  if (!session || !isStaffRole(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({})
+  if (!g.ok) return g.res
   const { programId } = await params
+  if (!canSeeProgram(g.scope, programId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (!isUuid(programId)) return NextResponse.json(null)
   return NextResponse.json(await scopedAssessment(keyOf(programId, trackOf(req))))
 }
 
 // POST — AI expert summary of a whole program (or one track), from the report's numbers only.
 export async function POST(req: Request, { params }: Params) {
-  const session = await auth()
-  if (!session || !isStaffRole(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({})
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, role: g.session.role } } as any
   const { allowed, retryAfterSeconds } = await rateLimit(`ai:${session.user.id}`, 10, 3600)
   if (!allowed) return res429(retryAfterSeconds)
 
   const { programId } = await params
+
+  if (!canSeeProgram(g.scope, programId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (!isUuid(programId)) return NextResponse.json({ error: "Program not found" }, { status: 404 })
   const trackId = trackOf(req)
   const cached = await loadProgramReport(programId, trackId)

@@ -1,15 +1,16 @@
 export const maxDuration = 90
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { renderReportPdf } from "@/lib/lms-report-pdf"
-import { isUuid, isStaffRole, parseExportOptions, exportQuery, loadProgramReport } from "@/lib/lms-report-scope"
+import { isUuid, parseExportOptions, exportQuery, loadProgramReport } from "@/lib/lms-report-scope"
+import { guardStaff, canSeeProgram } from "@/lib/staff-access"
 
 // GET /api/lms/reports/programs/[programId]/pdf?track=&audience=client|internal&comments=1&internal=1
 export async function GET(req: Request, { params }: { params: Promise<{ programId: string }> }) {
-  const session = await auth()
-  if (!session || !isStaffRole(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({permission: "export_reports"})
+  if (!g.ok) return g.res
   const { programId } = await params
+  if (!canSeeProgram(g.scope, programId)) return NextResponse.json({ error: "Not found" }, { status: 404 })
   if (!isUuid(programId)) return NextResponse.json({ error: "Program not found" }, { status: 404 })
   const sp = new URL(req.url).searchParams
   const track = isUuid(sp.get("track")) ? sp.get("track") : null

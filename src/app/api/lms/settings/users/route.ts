@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { auditLog } from "@/lib/audit"
 import { isMgr } from "@/lib/staff-roles"
+import { STAFF_PERMISSIONS } from "@/lib/staff-access"
 
 // Escapes PostgREST `.or()` filter metacharacters so a search string can't
 // break out of the intended ilike clause (comma/paren are clause/grouping
@@ -28,6 +29,13 @@ function escapeFilterValue(v: string) {
 
 function isAdmin(role?: string) { return role === "admin" }
 
+// IR-9 … IR-14 — the extras an admin may tick on an instructor. Anything not
+// listed here is rejected, so a stray key can't grant something unnamed.
+const PermissionsSchema = z.object(
+  Object.fromEntries(STAFF_PERMISSIONS.map(p => [p.key, z.boolean().optional()])) as
+    Record<string, z.ZodOptional<z.ZodBoolean>>
+).strict()
+
 const CreateSchema = z.object({
   name:       z.string().trim().min(1).max(100),
   email:      z.string().trim().email().max(255),
@@ -35,6 +43,7 @@ const CreateSchema = z.object({
   password:   z.string().min(8).max(128),
   department: z.string().max(100).optional(),
   phone:      z.string().max(50).optional(),
+  permissions: PermissionsSchema.optional(),
 })
 
 const UpdateSchema = z.object({
@@ -46,6 +55,7 @@ const UpdateSchema = z.object({
   department: z.string().max(100).optional(),
   phone:      z.string().max(50).optional(),
   password:   z.string().min(8).max(128).optional(),
+  permissions: PermissionsSchema.optional(),
 })
 
 // ── GET — list all users ───────────────────────────────────────────────────
@@ -60,7 +70,7 @@ export async function GET(req: Request) {
 
   let query = db
     .from("admin_users")
-    .select("id, name, email, role, is_active, department, phone, created_at, last_login_at, locked_until, failed_attempts")
+    .select("id, name, email, role, is_active, department, phone, permissions, created_at, last_login_at, locked_until, failed_attempts")
     .order("created_at", { ascending: false })
 
   if (search) {
@@ -93,7 +103,7 @@ export async function POST(req: Request) {
   if (!parsed.success)
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 })
 
-  const { name, email, role, password, department, phone } = parsed.data
+  const { name, email, role, password, department, phone, permissions } = parsed.data
 
   // Check email uniqueness
   const { data: existing } = await db.from("admin_users").select("id").eq("email", email).single()
@@ -103,11 +113,13 @@ export async function POST(req: Request) {
 
   const { data, error } = await db.from("admin_users").insert({
     name, email, role, password_hash,
+    // Only an instructor is limited by these; an admin already has everything.
+    permissions: role === "instructor" ? (permissions ?? {}) : {},
     department: department ?? null,
     phone: phone ?? null,
     is_active: true,
     failed_attempts: 0,
-  }).select("id, name, email, role, is_active, department, phone, created_at").single()
+  }).select("id, name, email, role, is_active, department, phone, permissions, created_at").single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   await auditLog(session, "user.create", "admin_user", data.id, data.name, { role: data.role })
@@ -138,6 +150,9 @@ export async function PATCH(req: Request) {
   }
 
   const updates: Record<string, unknown> = { ...rest }
+  // Changing someone to admin or away from instructor clears the extras, so a
+  // demoted account can't keep permissions nobody can see on screen any more.
+  if (rest.role && rest.role !== "instructor") updates.permissions = {}
   if (password) {
     updates.password_hash = await bcrypt.hash(password, 12)
     // reset lockout on forced password reset
@@ -149,7 +164,7 @@ export async function PATCH(req: Request) {
     .from("admin_users")
     .update(updates)
     .eq("id", id)
-    .select("id, name, email, role, is_active, department, phone, created_at, last_login_at")
+    .select("id, name, email, role, is_active, department, phone, permissions, created_at, last_login_at")
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

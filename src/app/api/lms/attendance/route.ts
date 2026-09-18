@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { sessionRoster, ATTEND_STATUSES, type AttendStatus } from "@/lib/lms-sessions"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeProgram, canSeeTrack, forbidden } from "@/lib/staff-access"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -20,15 +19,16 @@ async function loadSession(id: string) {
 
 // GET /api/lms/attendance?session_id=xxx — the session and its roster with each student's status
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const sessionId = new URL(req.url).searchParams.get("session_id")
   if (!sessionId || !UUID_RE.test(sessionId)) return NextResponse.json({ error: "session_id required" }, { status: 400 })
 
   const sess = await loadSession(sessionId)
   if (!sess) return NextResponse.json({ error: "Session not found" }, { status: 404 })
+  if (!canSeeProgram(g.scope, (sess as any).program_id)
+      || !canSeeTrack(g.scope, (sess as any).program_id, (sess as any).track_id)) return forbidden()
 
   let roster
   try { roster = await sessionRoster(sess) } catch { return NextResponse.json({ error: "Could not load the roster" }, { status: 500 }) }
@@ -73,9 +73,9 @@ export async function GET(req: Request) {
 // Body: { session_id, student_id, status: 'present'|'late'|'absent'|'excused', excuse_note? }
 //   or  { session_id, student_ids: string[], status }   — mark several at once
 export async function POST(req: Request) {
-  const staff = await auth()
-  if (!staff || !isMgr(staff.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const staff = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { session_id, status, excuse_note } = body
@@ -88,6 +88,8 @@ export async function POST(req: Request) {
 
   const sess = await loadSession(session_id)
   if (!sess) return NextResponse.json({ error: "Session not found" }, { status: 404 })
+  if (!canSeeProgram(g.scope, (sess as any).program_id)
+      || !canSeeTrack(g.scope, (sess as any).program_id, (sess as any).track_id)) return forbidden()
 
   // Only students who belong to this session can be marked. Nothing checked
   // this before: any student id could be written into any session's attendance.
@@ -119,14 +121,19 @@ export async function POST(req: Request) {
 
 // DELETE /api/lms/attendance?session_id=&student_id= — clear a mark (back to "not marked")
 export async function DELETE(req: Request) {
-  const staff = await auth()
-  if (!staff || !isMgr(staff.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const staff = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const sp = new URL(req.url).searchParams
   const sessionId = sp.get("session_id"), studentId = sp.get("student_id")
   if (!sessionId || !studentId || !UUID_RE.test(sessionId) || !UUID_RE.test(studentId))
     return NextResponse.json({ error: "session_id and student_id required" }, { status: 400 })
+
+  const sess = await loadSession(sessionId)
+  if (!sess) return NextResponse.json({ error: "Session not found" }, { status: 404 })
+  if (!canSeeProgram(g.scope, (sess as any).program_id)
+      || !canSeeTrack(g.scope, (sess as any).program_id, (sess as any).track_id)) return forbidden()
 
   const { error } = await db.from("lms_attendance").delete().eq("session_id", sessionId).eq("student_id", studentId)
   if (error) return NextResponse.json({ error: "Could not clear the mark" }, { status: 500 })
