@@ -4,6 +4,9 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
 import { guardStaff, canEditCourse } from "@/lib/staff-access"
+import { VISIBILITY, LEVELS } from "@/lib/lms-catalogue"
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // GET — list courses
 export async function GET(req: Request) {
@@ -18,10 +21,12 @@ export async function GET(req: Request) {
   let query = db
     .from("lms_courses")
     .select(`
-      id, title, description, overview_html, course_code, category, tags,
+      id, title, description, overview_html, course_code, category, category_id, tags,
       thumbnail_url, language, delivery_mode,
       status, progress_enforcement, certificate_enabled, feedback_enabled,
       start_date, end_date, capacity, final_exam_pass_mark, created_at, updated_at, created_by,
+      catalogue_visibility, catalogue_companies, short_description, level, duration_hours, learning_outcomes,
+      lms_course_categories(id, name, colour),
       lms_course_instructors(instructor_id, admin_users(id, name, email))
     `)
     .order("created_at", { ascending: false })
@@ -148,8 +153,10 @@ export async function PATCH(req: Request) {
   }
 
   const allowed = [
-    "title","description","overview_html","course_code","category","tags",
+    "title","description","overview_html","course_code","category","category_id","tags",
     "thumbnail_url","language","delivery_mode","status",
+    // Step 10 — the catalogue card and who may see it.
+    "catalogue_visibility","catalogue_companies","short_description","level","duration_hours","learning_outcomes",
     "progress_enforcement","progress_test_every_x","min_attendance_pct",
     "certificate_enabled","certificate_auto_release",
     "feedback_enabled","feedback_mandatory","feedback_anonymous",
@@ -159,6 +166,10 @@ export async function PATCH(req: Request) {
   for (const key of allowed) {
     if (key in fields) updates[key] = fields[key]
   }
+
+  // Step 10 — the catalogue fields, checked before they are written.
+  const cat = await validateCatalogueFields(fields, updates)
+  if (cat) return NextResponse.json({ error: cat }, { status: 400 })
 
   const passMarkSent = "final_exam_pass_mark" in fields
   if (passMarkSent) {
@@ -268,4 +279,66 @@ export async function DELETE(req: Request) {
   const { error } = await db.from("lms_courses").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, deleted: true })
+}
+
+
+/**
+ * Validates the Step 10 fields and writes the cleaned values into `updates`.
+ * Returns an error message, or null when everything is fine.
+ *
+ * `category` (the old free-text column) is kept in step with `category_id` so
+ * the currently deployed code, which still reads the text, keeps showing the
+ * right thing until the next redeploy.
+ */
+async function validateCatalogueFields(fields: Record<string, any>, updates: Record<string, unknown>): Promise<string | null> {
+  if ("catalogue_visibility" in fields) {
+    const v = fields.catalogue_visibility
+    if (!VISIBILITY.some(o => o.value === v)) return "That isn't a catalogue visibility option"
+    updates.catalogue_visibility = v
+    if (v !== "specific") updates.catalogue_companies = null
+  }
+  if ("catalogue_companies" in fields) {
+    const raw = Array.isArray(fields.catalogue_companies) ? fields.catalogue_companies : []
+    const ids = [...new Set(raw.filter((x: unknown) => typeof x === "string" && UUID_RE.test(x)))] as string[]
+    const visibility = (updates.catalogue_visibility ?? fields.catalogue_visibility) as string | undefined
+    if (visibility === "specific" && !ids.length) return "Choose at least one company, or pick a different visibility"
+    updates.catalogue_companies = ids.length ? ids : null
+  }
+  if ("level" in fields) {
+    const v = fields.level
+    if (v !== null && v !== "" && !LEVELS.some(o => o.value === v)) return "That isn't a level"
+    updates.level = v || null
+  }
+  if ("duration_hours" in fields) {
+    const v = fields.duration_hours
+    if (v === null || v === "") updates.duration_hours = null
+    else {
+      const n = Number(v)
+      if (!Number.isFinite(n) || n < 0 || n > 1000) return "Duration must be between 0 and 1000 hours"
+      updates.duration_hours = n
+    }
+  }
+  if ("learning_outcomes" in fields) {
+    const raw = Array.isArray(fields.learning_outcomes) ? fields.learning_outcomes : []
+    const list = raw.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 20)
+    updates.learning_outcomes = list.length ? list : null
+  }
+  if ("short_description" in fields) {
+    const v = typeof fields.short_description === "string" ? fields.short_description.trim() : ""
+    updates.short_description = v ? v.slice(0, 300) : null
+  }
+  if ("category_id" in fields) {
+    const v = fields.category_id
+    if (v === null || v === "") {
+      updates.category_id = null
+      updates.category = null
+    } else {
+      if (typeof v !== "string" || !UUID_RE.test(v)) return "That isn't a category"
+      const { data: found } = await db.from("lms_course_categories").select("id, name").eq("id", v).maybeSingle()
+      if (!found) return "That category no longer exists"
+      updates.category_id = v
+      updates.category = (found as any).name
+    }
+  }
+  return null
 }

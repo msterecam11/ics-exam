@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/CourseCatalogueSettings"
 
 // Dynamically import TipTap editor (browser-only)
 const RichTextEditor = dynamic(() => import("@/components/lms/RichTextEditor").then(m => ({ default: m.RichTextEditor })), {
@@ -106,8 +107,11 @@ const PackageReports = dynamic(() => import("@/components/lms/PackageReports"), 
 interface Course {
   id: string; title: string; description: string | null
   overview_html: string | null; course_code: string | null
-  category: string | null; thumbnail_url: string | null
+  category: string | null; category_id: string | null; thumbnail_url: string | null
   status: string; delivery_mode: string; language: string
+  catalogue_visibility?: string | null; catalogue_companies?: string[] | null
+  short_description?: string | null; level?: string | null
+  duration_hours?: number | null; learning_outcomes?: string[] | null
   progress_enforcement: boolean; certificate_enabled: boolean
   final_exam_pass_mark: number | null
   start_date: string | null; end_date: string | null
@@ -1152,7 +1156,13 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     setSaving(true)
     const res = await fetch("/api/lms/courses", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: course.id, title: form.title, description: form.description, course_code: form.course_code, category: form.category, delivery_mode: form.delivery_mode, progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
+      body: JSON.stringify({ id: course.id, title: form.title, description: form.description, course_code: form.course_code, category_id: form.category_id || null, delivery_mode: form.delivery_mode,
+        catalogue_visibility: form.catalogue_visibility ?? "hidden",
+        catalogue_companies: form.catalogue_companies ?? [],
+        short_description: form.short_description ?? null,
+        level: form.level || null,
+        duration_hours: form.duration_hours ?? null,
+        learning_outcomes: form.learning_outcomes ?? [], progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
     })
     const data = await res.json(); setSaving(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
@@ -1177,7 +1187,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         <div className="space-y-1"><Label>Course Title</Label><Input value={form.title ?? ""} onChange={e => set("title", e.target.value)} /></div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1"><Label>Course Code</Label><Input value={form.course_code ?? ""} onChange={e => set("course_code", e.target.value)} placeholder="RFFS-01" /></div>
-          <div className="space-y-1"><Label>Category</Label><Input value={form.category ?? ""} onChange={e => set("category", e.target.value)} placeholder="Aviation Safety" /></div>
+          <div className="space-y-1">
+            <Label>Category</Label>
+            <CategorySelect value={form.category_id ?? null} onChange={v => set("category_id", v)} />
+          </div>
         </div>
         <div className="space-y-1"><Label>Short Description</Label><textarea value={form.description ?? ""} onChange={e => set("description", e.target.value)} rows={3} className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none" /></div>
         <div className="space-y-1"><Label>Thumbnail URL</Label><Input value={form.thumbnail_url ?? ""} onChange={e => set("thumbnail_url", e.target.value)} placeholder="Or upload via cover photo on Overview tab" /></div>
@@ -1191,6 +1204,8 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
           <div className="space-y-1"><Label>End Date</Label><Input type="date" value={form.end_date ?? ""} onChange={e => set("end_date", e.target.value || null)} /></div>
         </div>
       </div>
+      <CourseCatalogueSettings form={form as any} set={set as any} />
+
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><GraduationCap className="h-4 w-4 text-[#1B4F8A]" /> Learning & Completion</h3>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.progress_enforcement} onChange={e => set("progress_enforcement", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Sequential progress enforcement</p><p className="text-xs text-slate-500 mt-0.5">Students must complete each item before the next</p></div></label>

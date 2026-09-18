@@ -7,13 +7,14 @@ import {
   Plus, Search, BookOpen, Users, Globe, Monitor, Layers,
   Loader2, Eye, Edit, Trash2, Copy, BarChart2,
   Smartphone, ChevronDown, X, Filter, ArrowUpDown,
-  CheckCircle2, Archive, FileText, Send,
+  CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { CategoryTiles, CategoryManager, useCategories, UNCATEGORISED_ID } from "@/components/lms/CourseCategories"
 
 type DeliveryMode = "online" | "onsite" | "hybrid"
 type CourseStatus  = "draft" | "published" | "archived"
@@ -24,6 +25,7 @@ interface Course {
   description:      string | null
   course_code:      string | null
   category:         string | null
+  category_id:      string | null
   thumbnail_url:    string | null
   language:         string
   delivery_mode:    DeliveryMode
@@ -100,6 +102,10 @@ export default function CoursesPage() {
   const [deletingId,    setDeletingId]    = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Course | null>(null)
   const [duplicating,   setDuplicating]   = useState<string | null>(null)
+  // Step 10 — Courses opens on the categories; null means "show the tiles".
+  const [openCategory, setOpenCategory] = useState<string | null>(null)
+  const [manageOpen,   setManageOpen]   = useState(false)
+  const { categories, uncategorised, loading: catsLoading, reload: reloadCategories } = useCategories()
   const [sortBy,        setSortBy]        = useState<"title" | "updated_at" | "enrollment_count">("updated_at")
   const [sortDir,       setSortDir]       = useState<"asc" | "desc">("desc")
 
@@ -115,6 +121,11 @@ export default function CoursesPage() {
   // Filter + sort
   const filtered = courses
     .filter(c => {
+      // Inside a category, only its courses. A search looks across all of them,
+      // so a course can still be found without knowing where it was filed.
+      if (openCategory && !search) {
+        if (openCategory === UNCATEGORISED_ID ? !!c.category_id : c.category_id !== openCategory) return false
+      }
       if (search && !c.title.toLowerCase().includes(search.toLowerCase()) &&
           !(c.course_code?.toLowerCase().includes(search.toLowerCase())) &&
           !(c.category?.toLowerCase().includes(search.toLowerCase()))) return false
@@ -127,6 +138,12 @@ export default function CoursesPage() {
       if (typeof bv === "string") bv = bv.toLowerCase()
       return sortDir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
+
+  const openCat = categories.find(c => c.id === openCategory)
+  const openCategoryName =
+    openCategory === UNCATEGORISED_ID ? "Uncategorised" : openCat?.name ?? "Courses"
+  const openCategoryDescription =
+    openCategory === UNCATEGORISED_ID ? "Courses that haven't been filed yet" : openCat?.description ?? null
 
   function toggleSort(col: typeof sortBy) {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -167,11 +184,16 @@ export default function CoursesPage() {
   }
 
   // Counts for tab badges
+  // Inside a category the tab counts follow that category, so they can't
+  // disagree with the list underneath them.
+  const inScope = openCategory && !search
+    ? courses.filter(c => openCategory === UNCATEGORISED_ID ? !c.category_id : c.category_id === openCategory)
+    : courses
   const counts = {
-    all:       courses.length,
-    published: courses.filter(c => c.status === "published").length,
-    draft:     courses.filter(c => c.status === "draft").length,
-    archived:  courses.filter(c => c.status === "archived").length,
+    all:       inScope.length,
+    published: inScope.filter(c => c.status === "published").length,
+    draft:     inScope.filter(c => c.status === "draft").length,
+    archived:  inScope.filter(c => c.status === "archived").length,
   }
 
   return (
@@ -179,16 +201,55 @@ export default function CoursesPage() {
 
       {/* ── Header ───────────────────────────────────────────── */}
       <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage your LMS course catalogue</p>
+        <div className="min-w-0">
+          {openCategory ? (
+            <>
+              <button onClick={() => { setOpenCategory(null); setSearch("") }}
+                className="text-xs text-slate-500 hover:text-[#1B4F8A] flex items-center gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" /> All categories
+              </button>
+              <h1 className="text-2xl font-bold text-slate-900 mt-1">{openCategoryName}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{openCategoryDescription ?? "Courses in this category"}</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
+              <p className="text-sm text-slate-500 mt-0.5">Grouped by category — open one to see its courses</p>
+            </>
+          )}
         </div>
-        <Link href="/lms-admin/courses/new" className="shrink-0">
-          <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
-            <Plus className="h-4 w-4" /> New Course
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setManageOpen(true)} className="gap-2">
+            <FolderCog className="h-4 w-4" /> Categories
           </Button>
-        </Link>
+          <Link href="/lms-admin/courses/new">
+            <Button className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
+              <Plus className="h-4 w-4" /> New Course
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* ── Categories, until one is opened ──────────────────── */}
+      {!openCategory && !search && (
+        catsLoading
+          ? <div className="flex items-center justify-center py-20"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
+          : <CategoryTiles categories={categories} uncategorised={uncategorised} onOpen={setOpenCategory} />
+      )}
+
+      <CategoryManager open={manageOpen} onClose={() => setManageOpen(false)}
+        categories={categories} onChanged={() => { reloadCategories(); load() }} />
+
+      {/* Searching from the top level looks across every category. */}
+      {!openCategory && !search && (
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Input placeholder="Search every category…" value={search}
+            onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+        </div>
+      )}
+
+      {(openCategory || search) && <>
 
       {/* ── Status tabs ──────────────────────────────────────── */}
       <div className="flex gap-0 border-b border-slate-200 overflow-x-auto scrollbar-none">
@@ -408,7 +469,7 @@ export default function CoursesPage() {
           <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
             <p className="text-xs text-slate-400">
               Showing <span className="font-medium text-slate-600">{filtered.length}</span> of{" "}
-              <span className="font-medium text-slate-600">{courses.length}</span> courses
+              <span className="font-medium text-slate-600">{inScope.length}</span> courses
             </p>
             <Link href="/lms-admin/courses/new">
               <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
@@ -418,6 +479,8 @@ export default function CoursesPage() {
           </div>
         </div>
       )}
+
+      </>}
 
       {/* ── Confirm Delete Modal ──────────────────────────────── */}
       {confirmDelete && (
