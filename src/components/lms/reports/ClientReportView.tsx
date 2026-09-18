@@ -6,20 +6,24 @@ import { BrainCircuit } from "lucide-react"
 import type { ClientReport } from "@/lib/lms-program-report"
 import { clientSafeFeedback } from "@/lib/lms-report-shared"
 import {
-  Page, PageHeader, PageFooter, Metric, Bar, FeedbackBlock, SECTION, METRIC_NOTE, PRINT_CSS, SCREEN_PRINT_CSS,
+  Page, PageHeader, PageFooter, Metric, FeedbackBlock, SECTION, METRIC_NOTE, PRINT_CSS, SCREEN_PRINT_CSS,
   sc, fmtPct, fmtDay,
 } from "@/components/lms/reports/ReportChrome"
 import type { Audience } from "@/components/lms/reports/ProgramReportView"
+import ExpertSummaryBody from "@/components/lms/reports/ExpertSummaryBody"
+import { GroupedBars, ScoreBandsChart, CHART_COLORS, SCORE_BANDS } from "@/components/lms/reports/ReportCharts"
 
 const STATUS: Record<string, string> = { active: "Running", completed: "Completed", archived: "Archived", draft: "Draft" }
 
 // Client report (RL-7): every program delivered to one company.
-export default function ClientReportView({ data, audience = "internal", includeComments = false, forPrint = false, linkMode = "admin" }: {
-  data: ClientReport; audience?: Audience; includeComments?: boolean; forPrint?: boolean
+export default function ClientReportView({ data, audience = "internal", includeComments = false, includeInternal = false, assessment = null, forPrint = false, linkMode = "admin" }: {
+  data: ClientReport; audience?: Audience; includeComments?: boolean; includeInternal?: boolean
+  assessment?: any | null; forPrint?: boolean
   linkMode?: "admin" | "viewer" | "none"
 }) {
   const { company, totals, programs } = data
   const client = audience === "client"
+  const hasExpert = (!client || includeInternal) && !!assessment?.executive_summary
   const mode = forPrint ? "none" : linkMode
   const links = mode !== "none"
   const programHref = (id: string) => mode === "viewer" ? `/viewer/lms/program/${id}` : `/lms-admin/reports/programs/${id}`
@@ -29,7 +33,7 @@ export default function ClientReportView({ data, audience = "internal", includeC
   const surveyFb = client ? clientSafeFeedback(data.survey, includeComments) : { ...data.survey, suppressed: false }
   const hasFeedback = data.feedback.responses > 0 || data.survey.responses > 0
   const hasCompare = programs.length > 1
-  const order = ["cover", "overview", ...(hasCompare ? ["compare"] : []), ...(hasFeedback ? ["feedback"] : []), "programs"]
+  const order = ["cover", "overview", ...(hasCompare ? ["compare"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "programs"]
   const pageNo = (k: string) => order.indexOf(k) + 1
   const total = order.length
 
@@ -88,6 +92,18 @@ export default function ClientReportView({ data, audience = "internal", includeC
                 <Metric label="Certificates" value={String(totals.certificates)} />
               </div>
             </div>
+            {(data.scoreBands ?? []).some(n => n > 0) && (
+              <div className="avoid-break">
+                <p className={`${SECTION} mb-2`}>Final exam scores <span className="normal-case tracking-normal font-normal text-slate-400">· best attempt, all programs</span></p>
+                <ScoreBandsChart bands={data.scoreBands} labels={SCORE_BANDS} height={150} />
+              </div>
+            )}
+            {hasExpert && (
+              <div className="avoid-break bg-[#1B4F8A]/5 border border-[#1B4F8A]/10 rounded-xl p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#1B4F8A] mb-2">Expert Executive Summary</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{assessment.executive_summary}</p>
+              </div>
+            )}
             <p className="text-[10px] text-slate-400">{METRIC_NOTE}</p>
           </div>
           <PageFooter page={pageNo("overview")} total={total} confidential={!client} />
@@ -95,26 +111,17 @@ export default function ClientReportView({ data, audience = "internal", includeC
 
         {hasCompare && (
           <Page>
-            <PageHeader title="Comparison Between Programs" subtitle={company.name} today={today} logoUrl={logo} />
+            <PageHeader title="Programs Over Time" subtitle={company.name} today={today} logoUrl={logo} />
             <div className="px-12 py-7 space-y-5">
-              {[
-                { label: "Completion rate", get: (p: ClientReport["programs"][number]) => p.completionRate },
-                { label: "Pass rate", get: (p: ClientReport["programs"][number]) => p.passRate },
-                { label: "Average score", get: (p: ClientReport["programs"][number]) => p.avgScore },
-              ].map(m => (
-                <div key={m.label} className="avoid-break">
-                  <p className={`${SECTION} mb-2`}>{m.label}</p>
-                  <div className="space-y-2">
-                    {programs.map(p => (
-                      <div key={p.id} className="flex items-center gap-3">
-                        <span className="w-56 text-xs text-slate-700 truncate">{p.name}</span>
-                        <div className="flex-1"><Bar pct={m.get(p)} /></div>
-                        <span className="w-10 text-right text-xs font-semibold" style={{ color: sc(m.get(p)).t }}>{fmtPct(m.get(p))}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <p className="text-xs text-slate-500">Oldest first, so the trend across engagements reads top to bottom.</p>
+              <GroupedBars
+                series={[{ name: "Completion", color: CHART_COLORS.brand }, { name: "Pass rate", color: CHART_COLORS.teal }, { name: "Average score", color: CHART_COLORS.amber }]}
+                rows={[...programs].sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? "")).map(p => ({
+                  label: `${p.name}${p.start_date ? ` · ${new Date(p.start_date + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })}` : ""}`,
+                  values: [p.completionRate, p.passRate, p.avgScore],
+                }))}
+              />
+              <p className="text-[10px] text-slate-400">{METRIC_NOTE}</p>
             </div>
             <PageFooter page={pageNo("compare")} total={total} confidential={!client} />
           </Page>
@@ -128,6 +135,14 @@ export default function ClientReportView({ data, audience = "internal", includeC
               {data.survey.responses > 0 && <FeedbackBlock title="End-of-program surveys" summary={surveyFb} suppressed={surveyFb.suppressed} />}
             </div>
             <PageFooter page={pageNo("feedback")} total={total} confidential={!client} />
+          </Page>
+        )}
+
+        {hasExpert && (
+          <Page>
+            <PageHeader title="Expert Summary" subtitle={company.name} today={today} logoUrl={logo} />
+            <ExpertSummaryBody assessment={assessment} />
+            <PageFooter page={pageNo("expert")} total={total} confidential={!client} />
           </Page>
         )}
 

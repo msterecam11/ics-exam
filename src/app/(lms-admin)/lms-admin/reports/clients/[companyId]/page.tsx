@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import ClientReportView from "@/components/lms/reports/ClientReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
-import { isUuid, loadClientReport } from "@/lib/lms-report-scope"
+import { isUuid, loadClientReport, scopedAssessment } from "@/lib/lms-report-scope"
 import { isMgr } from "@/lib/staff-roles"
 import LevelNav, { levelPct } from "@/components/lms/reports/LevelNav"
 
@@ -19,7 +19,10 @@ export default async function ClientReportPage({ params, searchParams }: {
   const { companyId } = await params
   const { refresh } = await searchParams
   if (!isUuid(companyId)) notFound()
-  const cached = await loadClientReport(companyId, { refresh: refresh === "1" })
+  const [cached, ai] = await Promise.all([
+    loadClientReport(companyId, { refresh: refresh === "1" }),
+    scopedAssessment(`client:${companyId}`),
+  ])
   if (!cached) notFound()
   const d = cached.data
   return (
@@ -29,6 +32,7 @@ export default async function ClientReportPage({ params, searchParams }: {
         builtAt={cached.builtAt} refreshHref="?refresh=1"
         pdfHref={`/api/lms/reports/clients/${companyId}/pdf`} pdfName={`${d.company.name} - Client Report.pdf`}
         excelHref={`/api/lms/reports/clients/${companyId}/xlsx`}
+        aiEndpoint={`/api/lms/reports/clients/${companyId}/expert-assessment`} hasAi={!!ai}
       />
       <LevelNav
         title={`Programs of ${d.company.name}`} hint="Open a program for its tracks, groups and students"
@@ -40,7 +44,7 @@ export default async function ClientReportPage({ params, searchParams }: {
           pdfHref: `/api/lms/reports/programs/${p.id}/pdf?audience=client`,
         }))}
       />
-      <ClientReportView data={d} />
+      <ClientReportView data={d} assessment={ai?.assessment ?? null} />
     </>
   )
 }

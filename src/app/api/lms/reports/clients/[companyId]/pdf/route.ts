@@ -11,7 +11,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ companyI
   const { companyId } = await params
   if (!isUuid(companyId)) return NextResponse.json({ error: "Client not found" }, { status: 404 })
   const sp = new URL(req.url).searchParams
-  const opts = parseExportOptions({ audience: sp.get("audience"), comments: sp.get("comments") })
+  const opts = parseExportOptions({ audience: sp.get("audience"), comments: sp.get("comments"), internal: sp.get("internal") })
   const cached = await loadClientReport(companyId)
   if (!cached) return NextResponse.json({ error: "Client not found" }, { status: 404 })
   return renderReportPdf(`/print/lms/client/${companyId}?${exportQuery(opts)}`, `${cached.data.company.name} - Client Report.pdf`)

@@ -43,6 +43,8 @@ export async function POST(req: Request, { params }: Params) {
   const report = cached?.data
   if (!report) return NextResponse.json({ error: "Course not found" }, { status: 404 })
   if (report.stats.enrolled === 0) return NextResponse.json({ error: "No students enrolled" }, { status: 400 })
+  // Below 3 a "group" analysis is really about one or two people — use their individual reports.
+  if (report.stats.enrolled < 3) return NextResponse.json({ error: "A group analysis needs at least 3 students — open the individual reports instead" }, { status: 400 })
 
   const s = report.stats
   const dist = report.distribution.map(d => `${d.label}: ${d.count}`).join(", ")

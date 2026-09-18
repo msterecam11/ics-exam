@@ -244,6 +244,40 @@ export type ProgramReport = {
   feedback: FeedbackSummary
   survey: FeedbackSummary
   roster: ProgramRosterRow[]
+  /** Charts (v4). Cumulative completed course enrollments per week. */
+  timeline: ProgressTimeline
+  /** Best exam score per enrollment that sat it, in SCORE_BANDS. */
+  scoreBands: number[]
+  byJobTitle: { title: string; students: number; avgProgress: number | null; avgScore: number | null }[]
+}
+
+export type ProgressTimeline = { start: string | null; end: string | null; total: number; points: { date: string; completed: number }[] }
+/** Bands: below 50, 50–59, 60–69, 70–79, 80–89, 90–100 (labels live in ReportCharts). */
+export function scoreBandsOf(pcts: (number | null)[]): number[] {
+  const bands = [0, 0, 0, 0, 0, 0]
+  for (const p of pcts) {
+    if (typeof p !== "number" || !Number.isFinite(p)) continue
+    bands[p < 50 ? 0 : p >= 90 ? 5 : Math.floor(p / 10) - 4]++
+  }
+  return bands
+}
+
+/** Weekly cumulative completions from the start date to today (or the end, if earlier). */
+function progressTimeline(facts: EnrollmentFacts[], start: string | null, end: string | null): ProgressTimeline {
+  const total = facts.length
+  const done = facts.filter(f => f.status === "completed" && f.completedAt).map(f => f.completedAt!.slice(0, 10)).sort()
+  const first = start ?? facts.map(f => f.enrolledAt.slice(0, 10)).sort()[0] ?? null
+  if (!first || !total) return { start, end, total, points: [] }
+  const today = todayISO()
+  const last = [end && end < today ? end : today, done[done.length - 1] ?? first].sort().pop()!
+  const points: { date: string; completed: number }[] = []
+  const DAY = 86_400_000
+  for (let t = Date.parse(first + "T00:00:00Z"); ; t += 7 * DAY) {
+    const date = new Date(Math.min(t, Date.parse(last + "T00:00:00Z"))).toISOString().slice(0, 10)
+    points.push({ date, completed: done.filter(d => d <= date).length })
+    if (date >= last || points.length > 260) break
+  }
+  return { start: first, end, total, points }
 }
 
 function courseRows(facts: EnrollmentFacts[], titles: Map<string, string>, order: string[], fb: Map<string, FeedbackSummary>): CourseRow[] {
@@ -388,6 +422,19 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
     feedback: mergeFeedback([...courseFeedback.values()]),
     survey,
     roster,
+    timeline: progressTimeline(live, program.start_date, program.end_date),
+    scoreBands: scoreBandsOf(live.filter(f => f.exam.sat).map(f => f.exam.bestPct)),
+    byJobTitle: (() => {
+      const groups = new Map<string, ProgramRosterRow[]>()
+      for (const r of notWithdrawn) {
+        const k = (r.job_title ?? "").trim() || "Not specified"
+        if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(r)
+      }
+      return [...groups].map(([title, rs]) => {
+        const s = averageScore(rs.map(r => r.avgScore))
+        return { title, students: rs.length, avgProgress: round(rs.reduce((a, r) => a + r.progress, 0) / rs.length), avgScore: s.avg }
+      }).sort((a, b) => b.students - a.students || a.title.localeCompare(b.title))
+    })(),
   }
 }
 
@@ -487,6 +534,7 @@ export type ClientReport = {
   }[]
   feedback: FeedbackSummary
   survey: FeedbackSummary
+  scoreBands: number[]
 }
 
 export async function buildClientReport(companyId: string, buildProgram: (id: string) => Promise<ProgramReport | null> = buildProgramReport): Promise<ClientReport | null> {
@@ -526,6 +574,7 @@ export async function buildClientReport(companyId: string, buildProgram: (id: st
     })),
     feedback: mergeFeedback(reports.map(r => r.feedback)),
     survey: mergeFeedback(reports.map(r => r.survey)),
+    scoreBands: reports.reduce((acc, r) => acc.map((v, i) => v + (r.scoreBands?.[i] ?? 0)), [0, 0, 0, 0, 0, 0]),
   }
 }
 

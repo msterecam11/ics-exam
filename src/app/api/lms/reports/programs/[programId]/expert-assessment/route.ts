@@ -40,16 +40,21 @@ export async function POST(req: Request, { params }: Params) {
   if (!cached) return NextResponse.json({ error: "Program not found" }, { status: 404 })
   const r = cached.data
   if (r.stats.members === 0) return NextResponse.json({ error: "No students in this program yet" }, { status: 400 })
+  if (r.stats.members - r.stats.withdrawn < 3) return NextResponse.json({ error: "A group analysis needs at least 3 students — open the individual reports instead" }, { status: 400 })
 
   const s = r.stats
   const pct = (v: number | null) => (v === null ? "n/a" : `${v}%`)
-  const courseLines = r.courses.map(c => `  - ${c.title}: ${c.enrolled} enrolled, completion ${pct(c.completionRate)}, pass rate ${pct(c.passRate)} (${c.passed}/${c.sat} sat), avg best score ${pct(c.avgScore)}, avg progress ${pct(c.avgProgress)}, avg time ${Math.round(c.avgTimeS / 60)} min${c.feedbackAvg !== null ? `, feedback ${c.feedbackAvg}/5 (${c.feedbackResponses})` : ""}`).join("\n")
+  const courseLines = r.courses.map(c => `  - ${c.title}: ${c.enrolled} enrolled, completion ${pct(c.completionRate)}, pass rate ${pct(c.passRate)} (${c.passed}/${c.sat} sat), avg best score ${pct(c.avgScore)}, avg progress ${pct(c.avgProgress)}, avg time ${Math.round(c.avgTimeS / 60)} min${c.feedbackAvg !== null && c.feedbackResponses >= 3 ? `, feedback ${c.feedbackAvg}/5 (${c.feedbackResponses})` : ""}`).join("\n")
   const trackLines = r.trackComparison.map(t => `  - ${t.name}: ${t.students} students, avg progress ${pct(t.avgProgress)}, completion ${pct(t.completionRate)}, pass rate ${pct(t.passRate)}, avg score ${pct(t.avgScore)}`).join("\n")
   const riskCounts = new Map<string, number>()
   for (const a of r.atRisk) for (const x of a.reasons) { const k = x.reason.replace(/\d+/g, "N"); riskCounts.set(k, (riskCounts.get(k) ?? 0) + 1) }
   const fb = r.feedback
-  const fbLine = fb.responses ? `${fb.responses} responses (${pct(fb.responseRate)} response rate); ${fb.ratings.map(x => `${x.label} ${x.avg}/5`).join(", ")}${fb.recommend ? `; would recommend ${fb.recommend.yesPct}%` : ""}` : "no feedback yet"
-  const improve = fb.comments.filter(c => c.kind === "improve").slice(0, 8).map(c => `  - ${c.text.replace(/\s+/g, " ").slice(0, 160)}`).join("\n")
+  // Same rule as the report: fewer than 3 answers are never summarised.
+  const fbOk = fb.responses >= 3
+  const fbLine = !fb.responses ? "no feedback yet"
+    : !fbOk ? "fewer than 3 responses — not reported"
+    : `${fb.responses} responses (${pct(fb.responseRate)} response rate); ${fb.ratings.map(x => `${x.label} ${x.avg}/5`).join(", ")}${fb.recommend ? `; would recommend ${fb.recommend.yesPct}%` : ""}`
+  const improve = !fbOk ? "" : fb.comments.filter(c => c.kind === "improve").slice(0, 8).map(c => `  - ${c.text.replace(/\s+/g, " ").slice(0, 160)}`).join("\n")
 
   const prompt = `You are an expert aviation training analyst at ICS Aviation writing a PROGRAM-LEVEL summary for the training manager. Base every statement strictly on the data below. Focus on group patterns, never name individuals.
 

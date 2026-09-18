@@ -4,6 +4,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { AlertTriangle, BrainCircuit } from "lucide-react"
 import type { ProgramReport } from "@/lib/lms-program-report"
+import { ProgressTimelineChart, ScoreBandsChart, GroupedBars, CHART_COLORS, SCORE_BANDS } from "@/components/lms/reports/ReportCharts"
 import { clientSafeFeedback } from "@/lib/lms-report-shared"
 import {
   Page, PageHeader, PageFooter, Metric, Bar, FeedbackBlock, SECTION, METRIC_NOTE, PRINT_CSS, SCREEN_PRINT_CSS,
@@ -38,7 +39,16 @@ export default function ProgramReportView({ data, audience = "internal", include
   const hasAtRisk = showInternal && atRisk.length > 0
   const hasExpert = showInternal && !!assessment?.executive_summary
 
-  const order = ["cover", "overview", ...(hasTracks ? ["tracks"] : []), "courses", ...(hasAtRisk ? ["atrisk"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "roster"]
+  const timeline = data.timeline ?? null
+  const bands = data.scoreBands ?? []
+  // Only job titles shared by 2+ people: a group of one is an individual's score.
+  const jobs = (data.byJobTitle ?? []).filter(j => j.title !== "Not specified" && j.students >= 2)
+  const hasTimeline = !!timeline && timeline.points.length > 1
+  const hasBands = bands.some(n => n > 0)
+  const hasJobs = jobs.length >= 2
+  const hasCharts = hasTimeline || hasBands || hasJobs
+
+  const order = ["cover", "overview", ...(hasCharts ? ["charts"] : []), ...(hasTracks ? ["tracks"] : []), "courses", ...(hasAtRisk ? ["atrisk"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "roster"]
   const pageNo = (k: string) => order.indexOf(k) + 1
   const total = order.length
   const studentHref = (id: string) => viewer
@@ -134,11 +144,48 @@ export default function ProgramReportView({ data, audience = "internal", include
           <PageFooter page={pageNo("overview")} total={total} confidential={!client} />
         </Page>
 
+        {/* PROGRESS & RESULTS (charts) */}
+        {hasCharts && (
+          <Page>
+            <PageHeader title="Progress & Results" subtitle={subtitle} today={today} logoUrl={logo} />
+            <div className="px-12 py-7 space-y-7">
+              {hasTimeline && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-2`}>Completion over time</p>
+                  <ProgressTimelineChart {...timeline!} />
+                </div>
+              )}
+              {hasBands && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-2`}>Final exam scores <span className="normal-case tracking-normal font-normal text-slate-400">· best attempt, {bands.reduce((a, b) => a + b, 0)} results</span></p>
+                  <ScoreBandsChart bands={bands} labels={SCORE_BANDS} />
+                </div>
+              )}
+              {hasJobs && (
+                <div className="avoid-break">
+                  <p className={`${SECTION} mb-3`}>By job title</p>
+                  <GroupedBars
+                    series={[{ name: "Avg progress", color: CHART_COLORS.brand }, { name: "Avg score", color: CHART_COLORS.teal }]}
+                    rows={jobs.slice(0, 10).map(j => ({ label: `${j.title} (${j.students})`, values: [j.avgProgress, j.avgScore] }))}
+                  />
+                </div>
+              )}
+            </div>
+            <PageFooter page={pageNo("charts")} total={total} confidential={!client} />
+          </Page>
+        )}
+
         {/* TRACK COMPARISON */}
         {hasTracks && (
           <Page>
             <PageHeader title="Track Comparison" subtitle={subtitle} today={today} logoUrl={logo} />
             <div className="px-12 py-7 space-y-5">
+              <div className="avoid-break">
+                <GroupedBars
+                  series={[{ name: "Completion", color: CHART_COLORS.brand }, { name: "Pass rate", color: CHART_COLORS.teal }]}
+                  rows={trackComparison.map(t => ({ label: `${t.name} (${t.students})`, values: [t.completionRate, t.passRate] }))}
+                />
+              </div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
