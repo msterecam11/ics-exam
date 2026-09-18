@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
 import { stampMaster } from "@/lib/course-gen/stampMaster"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // POST — add a slide from a master ("Add slide" in the editor), or duplicate
 // an existing one. New slides start as the master's stamped placeholders;
 // the AI chat can fill them in afterwards.
 export async function POST(req: Request, { params }: { params: Promise<{ moduleId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { moduleId } = await params
   const body = await parseBody(req, 2_000_000).catch(() => ({})) as any
@@ -54,9 +54,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ moduleI
 
 // PUT — persist a reorder (the editor sends the full ordered id list).
 export async function PUT(req: Request, { params }: { params: Promise<{ moduleId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { moduleId } = await params
   const body = await parseBody(req).catch(() => ({})) as any

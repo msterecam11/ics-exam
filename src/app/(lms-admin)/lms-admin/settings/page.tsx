@@ -67,7 +67,7 @@ function roleStyle(role: string | undefined | null): RoleStyle {
 }
 
 const TAB_NAV = [
-  { id: "users",             label: "User Management",   icon: Users,    adminOnly: false },
+  { id: "users",             label: "User Management",   icon: Users,    adminOnly: true  },   // IR-15
   { id: "notifications",     label: "Emails",            icon: Mail,     adminOnly: true  },
   { id: "student-passwords", label: "Student Passwords", icon: KeyRound, adminOnly: true  },
   { id: "profile",           label: "My Profile",        icon: User,     adminOnly: false },
@@ -682,6 +682,11 @@ export default function LmsSettingsPage() {
   const { data: session } = useSession()
   const [tab, setTab] = useState<"users" | "notifications" | "student-passwords" | "profile">("users")
 
+  // An instructor only has My Profile here (IR-15), so don't leave them on a
+  // tab that would be empty.
+  const startTab = session?.user.role === "admin" ? "users" : "profile"
+  const current = TAB_NAV.some(t => t.id === tab && (!t.adminOnly || session?.user.role === "admin")) ? tab : startTab
+
   const isAdmin  = session?.user.role === "admin"
   const user     = session?.user
 
@@ -703,7 +708,7 @@ export default function LmsSettingsPage() {
               onClick={() => setTab(t.id as typeof tab)}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                tab === t.id
+                current === t.id
                   ? "border-[#1B4F8A] text-[#1B4F8A]"
                   : "border-transparent text-slate-500 hover:text-slate-700"
               )}
@@ -716,10 +721,10 @@ export default function LmsSettingsPage() {
       </div>
 
       {/* Tab content */}
-      {tab === "users"         && <UsersTab currentUserId={user?.id ?? ""} isAdmin={isAdmin} />}
-      {tab === "notifications" && <NotificationsTab />}
-      {tab === "student-passwords" && isAdmin && <StudentPasswordsTab />}
-      {tab === "profile"       && <ProfileTab currentUser={{ id: user?.id ?? "", name: user?.name, email: user?.email, role: user?.role }} />}
+      {current === "users"         && <UsersTab currentUserId={user?.id ?? ""} isAdmin={isAdmin} />}
+      {current === "notifications" && <NotificationsTab />}
+      {current === "student-passwords" && isAdmin && <StudentPasswordsTab />}
+      {current === "profile"       && <ProfileTab currentUser={{ id: user?.id ?? "", name: user?.name, email: user?.email, role: user?.role }} />}
     </div>
   )
 }

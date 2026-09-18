@@ -1,22 +1,22 @@
 export const maxDuration = 180
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { runChatEdit } from "@/lib/course-gen/jobs/chatEdit"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // POST — one chat turn. Returns either an applied result (small, safe edits)
 // or a proposal for the user to preview and approve (anything structural or
 // destructive). Runs in-request because the user is waiting; the queue is
 // for long work that must survive restarts, which a chat turn is not.
 export async function POST(req: Request, { params }: { params: Promise<{ moduleId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   if (!process.env.ANTHROPIC_API_KEY)
     return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured on the server yet" }, { status: 503 })

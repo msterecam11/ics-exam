@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 export async function GET() {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { data, error } = await db
     .from("cg_themes")
@@ -31,9 +31,10 @@ export async function GET() {
 // scratch means supplying new backgrounds and zone maps, which is done by
 // duplicating and then replacing backgrounds per master.
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await parseBody(req, 1_000_000).catch(() => ({})) as any
   const name = String(body.name ?? "").trim()

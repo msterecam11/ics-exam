@@ -2,12 +2,12 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Building2, FolderKanban, BookOpen, MessageSquare, ChevronRight } from "lucide-react"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope } from "@/lib/staff-access"
 
 // Reports home (RP-1): by client, by program, by course; plus feedback.
 export default async function LmsReportsPage() {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
   const cards = [
     { href: "/lms-admin/reports/clients", icon: Building2, tint: "bg-indigo-50 text-indigo-600", title: "By client", text: "Everything delivered to one company: programs, people trained, results, certificates and feedback.", cta: "Choose a client" },

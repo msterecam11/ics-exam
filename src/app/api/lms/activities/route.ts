@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // GET /api/lms/activities?module_id=xxx
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { searchParams } = new URL(req.url)
   const module_id = searchParams.get("module_id")
@@ -25,9 +25,10 @@ export async function GET(req: Request) {
 
 // POST /api/lms/activities — bulk save (replace all for module)
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { module_id, course_id, activities } = body

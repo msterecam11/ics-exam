@@ -22,9 +22,11 @@ const pageTitles: Record<string, string> = {
 
 interface Props {
   user: { name?: string | null; email?: string | null; role?: string }
+  /** Passed through to the mobile sidebar so it shows the same menu (IR-3). */
+  permissions?: Record<string, boolean> | null
 }
 
-export default function LmsAdminHeader({ user }: Props) {
+export default function LmsAdminHeader({ user, permissions }: Props) {
   const pathname = usePathname()
   const title = Object.entries(pageTitles).find(([p]) => pathname === p || pathname.startsWith(p + "/"))?.[1] ?? "LMS Admin"
 
@@ -38,7 +40,7 @@ export default function LmsAdminHeader({ user }: Props) {
             <Menu className="h-5 w-5" />
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-64 bg-[#1B4F8A] border-0">
-            <LmsAdminSidebar user={user} inSheet />
+            <LmsAdminSidebar user={user} permissions={permissions} inSheet />
           </SheetContent>
         </Sheet>
         <h1 className="text-base font-semibold text-[#1B4F8A]">{title}</h1>

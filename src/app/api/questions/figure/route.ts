@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 const BUCKET = "lms-library"
 const MAX_MB = 10
@@ -12,9 +11,9 @@ const MAX_MB = 10
 // it on the in-memory draft and it's saved along with the rest of the
 // question on submit, same as every other field in that form.
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
 
   let formData: FormData
   try { formData = await req.formData() }

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { syncMemberEnrollments, activeMemberCount } from "@/lib/lms-programs"
+import { guardStaff, canSeeProgram, forbidden } from "@/lib/staff-access"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -22,10 +23,14 @@ async function validTrack(programId: string, structure: string, trackId: unknown
 // POST /api/lms/programs/[id]/members — add students (admin only)
 // Body: { student_ids: string[], track_id? }
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || session.user.role !== "admin")
-    return NextResponse.json({ error: "Admin only" }, { status: 403 })
+  // IR-10 — an instructor with "Manage students" may add people to a program
+  // they teach. Moving someone between programs stays with admins (IR-15) and
+  // lives in PATCH below.
+  const g = await guardStaff({ permission: "manage_students" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
   const { id } = await params
+  if (!canSeeProgram(g.scope, id)) return forbidden()
 
   const program = await loadProgram(id)
   if (!program) return NextResponse.json({ error: "Program not found" }, { status: 404 })

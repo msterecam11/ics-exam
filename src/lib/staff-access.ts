@@ -246,3 +246,14 @@ export async function guardStaff(opts: { admin?: boolean; permission?: StaffPerm
 
 /** 403 for a specific thing the account may not reach. */
 export const forbidden = () => NextResponse.json(FORBIDDEN, { status: 403 })
+
+// ── Page guards ──────────────────────────────────────────────────────────────
+// Server components can't return a NextResponse, so they use this and redirect
+// or notFound() themselves.
+
+/** The scope for a page, or null when the visitor isn't staff. */
+export async function pageScope(): Promise<StaffScope | null> {
+  const session = await staffSession()
+  if (!session) return null
+  return staffScope(session)
+}

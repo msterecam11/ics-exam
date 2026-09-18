@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 import { sendStudentCredentialsEmail } from "@/lib/email"
 import { loadEmailSettings, effectiveRule } from "@/lib/lms-email-settings"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, visibleStudentIds, canSeeStudent, forbidden } from "@/lib/staff-access"
 
 // Makes a free-text search term safe to place inside a PostgREST .or() filter.
 //
@@ -46,9 +46,10 @@ function escapeFilterValue(v: string) {
 
 // GET — list all students (with optional search + pagination)
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-10 — an instructor sees the students of their own programs. Reading the
+  // list needs no extra tick; adding and editing does.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { searchParams } = new URL(req.url)
   const search    = searchParams.get("q") ?? ""
@@ -65,6 +66,11 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
 
+  const mine = await visibleStudentIds(g.scope)
+  if (mine !== "all") {
+    if (!mine.length) return NextResponse.json({ students: [], total: 0, page, limit })
+    query = query.in("id", mine)
+  }
   if (companyId && UUID_RE.test(companyId)) query = query.eq("company_id", companyId)
   if (type === "company")    query = query.not("company_id", "is", null)
   if (type === "individual") query = query.is("company_id", null)
@@ -86,9 +92,9 @@ export async function GET(req: Request) {
 
 // POST — create a student
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({ permission: "manage_students" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { name, email, password, job_title, department, language, sendEmail } = body
@@ -159,13 +165,15 @@ export async function POST(req: Request) {
 
 // PATCH — update student
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff({ permission: "manage_students" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { id, name, email, password, job_title, department, language } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+  // Editing is limited to students in their own programs, tick or no tick.
+  if (!(await canSeeStudent(g.scope, id))) return forbidden()
 
   const updates: Record<string, unknown> = {}
   if (name?.trim())       updates.name       = name.trim()

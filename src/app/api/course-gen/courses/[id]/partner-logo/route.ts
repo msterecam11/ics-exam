@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 const BUCKET = "lms-library"
 const MAX_MB = 10
@@ -11,9 +10,9 @@ const MAX_MB = 10
 // (colored/dark version, shown on light slides). If a client only supplies
 // one, the renderer falls back to a CSS recolor for the missing side.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
 
   const { id: courseId } = await params
   const { data: course } = await db.from("cg_courses").select("id").eq("id", courseId).single()

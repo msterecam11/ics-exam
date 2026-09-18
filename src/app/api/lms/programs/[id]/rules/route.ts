@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { reapplyExamPassMark } from "@/lib/lms-exam-regrade"
+import { guardStaff, canSeeProgram, forbidden } from "@/lib/staff-access"
 
 // PATCH /api/lms/programs/[id]/rules — admin only
 // Body: { course_id, pass_mark?, max_attempts?, apply_to_existing?: boolean }
@@ -11,10 +11,13 @@ import { reapplyExamPassMark } from "@/lib/lms-exam-regrade"
 // mark asks the admin whether existing results follow it (apply_to_existing)
 // or only new attempts use it. Only this program's results are ever affected.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || session.user.role !== "admin")
-    return NextResponse.json({ error: "Admin only" }, { status: 403 })
+  // IR-13 — an instructor with "Pass mark & attempts" may set these on a
+  // program they teach. It only ever affects that program's results.
+  const g = await guardStaff({ permission: "set_pass_marks" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
   const { id } = await params
+  if (!canSeeProgram(g.scope, id)) return forbidden()
 
   const body = await req.json().catch(() => ({}))
   const courseId = body?.course_id

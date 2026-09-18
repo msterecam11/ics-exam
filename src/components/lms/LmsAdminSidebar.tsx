@@ -22,30 +22,35 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { navVisible, type NavNeeds } from "@/lib/staff-roles"
 
-const navItems = [
-  { href: "/lms-admin",          label: "Dashboard",  icon: LayoutDashboard, exact: true },
-  { href: "/lms-admin/courses",  label: "Courses",    icon: BookOpen },
-  { href: "/lms-admin/programs", label: "Program Manager", icon: Briefcase },
-  { href: "/lms-admin/students",  label: "Students",        icon: Users },
+// `needs` decides who sees each entry (IR-3). See navVisible in staff-roles.
+const navItems: { href: string; label: string; icon: any; exact?: boolean; needs?: NavNeeds }[] = [
+  { href: "/lms-admin",          label: "Dashboard",  icon: LayoutDashboard, exact: true, needs: "staff" },
+  { href: "/lms-admin/courses",  label: "Courses",    icon: BookOpen, needs: "author_courses" },
+  { href: "/lms-admin/programs", label: "Program Manager", icon: Briefcase, needs: "staff" },
+  { href: "/lms-admin/students",  label: "Students",        icon: Users, needs: "manage_students" },
   { href: "/lms-admin/companies", label: "Companies",       icon: Building2 },
   { href: "/lms-admin/progress",  label: "Student Progress", icon: TrendingUp },
   { href: "/lms-admin/cohorts",        label: "Cohorts",        icon: GraduationCap },
   { href: "/lms-admin/learning-paths", label: "Learning Paths", icon: Route },
-  { href: "/lms-admin/sessions",       label: "Live Sessions",  icon: CalendarDays },
-  { href: "/lms-admin/questions", label: "Question Bank",   icon: HelpCircle     },
-  { href: "/lms-admin/reports",   label: "Reports",         icon: BarChart3  },
-  { href: "/lms-admin/library",   label: "Library",         icon: FolderOpen },
+  { href: "/lms-admin/sessions",       label: "Live Sessions",  icon: CalendarDays, needs: "staff" },
+  { href: "/lms-admin/questions", label: "Question Bank",   icon: HelpCircle, needs: "author_courses" },
+  { href: "/lms-admin/reports",   label: "Reports",         icon: BarChart3, needs: "staff" },
+  { href: "/lms-admin/library",   label: "Library",         icon: FolderOpen, needs: "author_courses" },
   { href: "/lms-admin/settings",  label: "Settings",        icon: Settings   },
 ]
 
 interface Props {
   user: { name?: string | null; email?: string | null; role?: string }
+  /** The instructor's extra permissions, read server-side in the layout. */
+  permissions?: Record<string, boolean> | null
   inSheet?: boolean
 }
 
-export default function LmsAdminSidebar({ user, inSheet = false }: Props) {
+export default function LmsAdminSidebar({ user, permissions, inSheet = false }: Props) {
   const pathname = usePathname()
+  const items = navItems.filter(i => navVisible(i.needs, user.role, permissions))
 
   return (
     <aside className={`${inSheet ? "flex h-full" : "hidden md:flex"} flex-col w-64 bg-[#1B4F8A] text-white shrink-0`}>
@@ -68,7 +73,7 @@ export default function LmsAdminSidebar({ user, inSheet = false }: Props) {
 
       {/* Navigation */}
       <nav className={`${inSheet ? "" : "flex-1"} px-3 py-4 space-y-0.5 overflow-y-auto`}>
-        {navItems.map(({ href, label, icon: Icon, exact }) => {
+        {items.map(({ href, label, icon: Icon, exact }) => {
           const active = exact ? pathname === href : (pathname === href || pathname.startsWith(href + "/"))
           return (
             <Link

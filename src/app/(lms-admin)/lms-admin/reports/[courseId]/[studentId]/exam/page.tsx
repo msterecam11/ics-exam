@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
 import ExamAttemptsView from "./ExamAttemptsView"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, canSeeStudent, canSeeCourse } from "@/lib/staff-access"
 
 // Points earned for one question — mirrors FinalExamPlayer.score() exactly,
 // covering every LMS exam type (incl. partial credit for ordering & match_pair).
@@ -53,10 +53,12 @@ function buildItems(questions: any[], answers: any, aiScores: any) {
 interface Props { params: Promise<{ courseId: string; studentId: string }>; searchParams: Promise<{ enrollment?: string }> }
 
 export default async function StudentExamResultsPage({ params, searchParams }: Props) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
   const { courseId, studentId } = await params
+
+  if (!(await canSeeStudent(scope, studentId)) || !(await canSeeCourse(scope, courseId))) notFound()
 
   const [studentRes, courseRes, examRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, company, job_title").eq("id", studentId).single(),

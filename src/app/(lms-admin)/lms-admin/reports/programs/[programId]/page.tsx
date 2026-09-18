@@ -5,7 +5,7 @@ import ProgramReportView from "@/components/lms/reports/ProgramReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadProgramReport, scopedAssessment } from "@/lib/lms-report-scope"
 import { cn } from "@/lib/utils"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, canSeeProgram } from "@/lib/staff-access"
 
 export const dynamic = "force-dynamic"
 
@@ -13,9 +13,10 @@ export const dynamic = "force-dynamic"
 export default async function ProgramReportPage({ params, searchParams }: {
   params: Promise<{ programId: string }>; searchParams: Promise<{ track?: string; refresh?: string }>
 }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
   const { programId } = await params
+  if (!canSeeProgram(scope, programId)) notFound()
   const sp = await searchParams
   if (!isUuid(programId)) notFound()
   const track = isUuid(sp.track) ? sp.track : null

@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation"
 import StudentProgramReportView from "@/components/lms/reports/StudentProgramReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadStudentProgramReport } from "@/lib/lms-report-scope"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, canSeeProgram, canSeeStudent } from "@/lib/staff-access"
 
 export const dynamic = "force-dynamic"
 
@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic"
 export default async function StudentProgramReportPage({ params, searchParams }: {
   params: Promise<{ programId: string; studentId: string }>; searchParams: Promise<{ refresh?: string }>
 }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
   const { programId, studentId } = await params
+  if (!canSeeProgram(scope, programId) || !(await canSeeStudent(scope, studentId))) notFound()
   const { refresh } = await searchParams
   if (!isUuid(programId) || !isUuid(studentId)) notFound()
   const cached = await loadStudentProgramReport(programId, studentId, { refresh: refresh === "1" })

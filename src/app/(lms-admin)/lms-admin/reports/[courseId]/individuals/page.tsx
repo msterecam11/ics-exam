@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft, User, FileText } from "lucide-react"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, canSeeProgram } from "@/lib/staff-access"
 
 function fmtTime(s: number) {
   if (!s || s < 60) return s >= 1 ? `${s}s` : "—"
@@ -16,12 +16,13 @@ interface Props { params: Promise<{ courseId: string }>; searchParams: Promise<{
 
 // Individual reports — a roster table; each row opens that student's report.
 export default async function LmsIndividualReportsPage({ params, searchParams }: Props) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
   const { courseId } = await params
   const { program } = await searchParams
   const programId = program && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(program) ? program : null
+  if (!scope.isAdmin && !canSeeProgram(scope, programId)) notFound()
 
   const [courseRes, enrollRes, examModRes] = await Promise.all([
     db.from("lms_courses").select("id, title").eq("id", courseId).single(),

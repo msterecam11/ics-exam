@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody, res429 } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 const BUCKET = "lms-library"
 
 export async function GET(_: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { documentId } = await params
   const [{ data: doc }, { data: sections }] = await Promise.all([
@@ -29,9 +29,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ documentId
 
 // PATCH — edit catalogue fields, or re-queue a scan ({ rescan: true }).
 export async function PATCH(req: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { documentId } = await params
   const body = await parseBody(req).catch(() => ({})) as any
@@ -64,9 +65,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ docume
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { documentId } = await params
   const { data: doc } = await db

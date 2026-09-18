@@ -10,6 +10,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { isMgr } from "@/lib/staff-roles"
+import { pageScope } from "@/lib/staff-access"
+import InstructorDashboard from "@/components/lms/InstructorDashboard"
 import {
   EnrollmentTrendChart,
   ProgressDonutChart,
@@ -23,7 +25,15 @@ export const metadata = { title: "LMS Dashboard – ICS Admin" }
 
 export default async function LmsAdminDashboard() {
   const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  if (!session) redirect("/auth/login")
+
+  // IR-3 — this dashboard counts every student, course and enrollment in the
+  // LMS, which is exactly what an instructor must not see. They get their own.
+  if (!isMgr(session.user.role)) {
+    const scope = await pageScope()
+    if (!scope) redirect("/auth/login")
+    return <InstructorDashboard scope={scope} name={session.user.name} />
+  }
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const now = new Date()

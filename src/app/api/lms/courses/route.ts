@@ -3,13 +3,14 @@ import { notifyCertificateIssued } from "@/lib/lms-completion"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canEditCourse } from "@/lib/staff-access"
 
 // GET — list courses
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { searchParams } = new URL(req.url)
   const status = searchParams.get("status") // draft | published | archived | all
@@ -69,9 +70,10 @@ export async function GET(req: Request) {
 
 // POST — create course
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const {
@@ -128,13 +130,22 @@ export async function POST(req: Request) {
 
 // PATCH — update course
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { id, instructor_ids, ...fields } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+  // IR-12 — an instructor may build a course, but publishing it (or taking it
+  // down) is a decision for an admin, and it has to be a course of theirs.
+  if (!g.scope.isAdmin) {
+    if (Object.prototype.hasOwnProperty.call(fields, "status"))
+      return NextResponse.json({ error: "Only an admin can publish or archive a course" }, { status: 403 })
+    if (!(await canEditCourse(g.scope, id)))
+      return NextResponse.json({ error: "That course isn't one of yours" }, { status: 403 })
+  }
 
   const allowed = [
     "title","description","overview_html","course_code","category","tags",

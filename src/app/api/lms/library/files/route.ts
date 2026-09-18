@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 const BUCKET = "lms-library"
 // Was 500. The upload is buffered whole into memory (file.arrayBuffer below
@@ -25,9 +24,10 @@ function mimeToFileType(mime: string): string {
 
 // GET — list files in a folder (or all if no folder_id)
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { searchParams } = new URL(req.url)
   const folderId = searchParams.get("folder_id")
@@ -53,9 +53,10 @@ export async function GET(req: Request) {
 // Multipart: file upload
 // JSON: { is_external: true, public_url, name, folder_id?, description? }
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const contentType = req.headers.get("content-type") ?? ""
 
@@ -162,9 +163,10 @@ export async function POST(req: Request) {
 
 // PATCH — rename / move / update description
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }) }
@@ -190,9 +192,10 @@ export async function PATCH(req: Request) {
 
 // DELETE — remove file from storage + DB
 export async function DELETE(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")

@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody } from "@/lib/apiUtils"
 import type { AgentOp } from "@/lib/course-gen/jobs/chatEdit"
 import type { CanvasElement } from "@/lib/course-gen/primitives"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // POST — commit an approved set of agent ops. Element-level ops are applied
 // to the stored elements; slide-level ops use the elements the chat route
@@ -12,9 +11,9 @@ import { isMgr } from "@/lib/staff-roles"
 // Every target is re-validated against THIS module server-side — the client
 // never gets to widen the agent's scope.
 export async function POST(req: Request, { params }: { params: Promise<{ moduleId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
 
   const { moduleId } = await params
   const body = await parseBody(req, 4_000_000).catch(() => ({})) as any

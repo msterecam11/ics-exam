@@ -6,13 +6,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, BookOpen, BarChart3, ChevronRight, Users, CheckCircle2, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, visibleCourseIds } from "@/lib/staff-access"
 
 export default async function LmsProgressReportsPage() {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
-  const { data: courses } = await db
+  const mine = await visibleCourseIds(scope)
+  let q = db
     .from("lms_courses")
     .select(`
       id, title, delivery_mode, status, created_at,
@@ -21,6 +22,8 @@ export default async function LmsProgressReportsPage() {
     `)
     .neq("status", "archived")
     .order("created_at", { ascending: false })
+  if (mine !== "all") q = q.in("id", mine)
+  const { data: courses } = await q
 
   const enriched = (courses ?? []).map((c: any) => {
     const enrollments = c.lms_enrollments ?? []

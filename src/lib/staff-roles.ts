@@ -42,3 +42,23 @@ export const STAFF_PERMISSIONS = [
 ] as const
 
 export type StaffPermission = typeof STAFF_PERMISSIONS[number]["key"]
+
+/**
+ * IR-3 — the LMS sidebar per role.
+ *
+ * An instructor gets Dashboard, Program Manager, Live Sessions and Reports.
+ * The screens behind the extra permissions appear only once that permission is
+ * ticked, so nobody is shown a menu entry that then refuses them.
+ *
+ * `needs` is read as: undefined = admins only, "staff" = any staff account,
+ * anything else = that permission.
+ */
+export type NavNeeds = "staff" | StaffPermission | undefined
+
+export function navVisible(needs: NavNeeds, role?: string | null, permissions?: Record<string, boolean> | null): boolean {
+  if (role === "admin") return true
+  if (role !== "instructor") return false
+  if (needs === undefined) return false
+  if (needs === "staff") return true
+  return permissions?.[needs] === true
+}

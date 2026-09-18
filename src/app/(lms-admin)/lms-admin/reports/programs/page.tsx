@@ -4,7 +4,7 @@ import Link from "next/link"
 import { db } from "@/lib/db"
 import { ArrowLeft, FolderKanban, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope } from "@/lib/staff-access"
 
 export const dynamic = "force-dynamic"
 
@@ -12,12 +12,13 @@ const STATUS: Record<string, string> = { active: "bg-emerald-50 text-emerald-700
 const fmt = (d: string | null) => d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—"
 
 export default async function ProgramReportsListPage({ searchParams }: { searchParams: Promise<{ client?: string; status?: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
   const { client, status } = await searchParams
 
   let q = db.from("lms_programs").select("id, name, reference, status, start_date, end_date, company_id, lms_companies(name), lms_program_tracks(id)")
     .neq("status", "draft").eq("is_individual", false).order("start_date", { ascending: false, nullsFirst: false })
+  if (!scope.isAdmin) q = q.in("id", scope.programIds)
   if (client) q = q.eq("company_id", client)
   if (status && ["active", "completed", "archived"].includes(status)) q = q.eq("status", status)
   const [{ data: programs }, { data: members }, { data: companies }] = await Promise.all([

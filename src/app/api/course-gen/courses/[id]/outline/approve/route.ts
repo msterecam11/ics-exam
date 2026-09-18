@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // POST — approve the reviewed outline: materialize cg_modules rows and
 // enqueue the full-generation orchestrator. This is the human gate —
 // nothing slide-level exists until this endpoint runs.
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
 
   const { id } = await params
   const { data: course } = await db.from("cg_courses").select("id, status").eq("id", id).single()

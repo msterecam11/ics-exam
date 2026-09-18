@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { canUseQuiz } from "@/lib/lms-enrollment"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, requireStaff, can } from "@/lib/staff-access"
 
 // GET /api/lms/quizzes              — list all quizzes (admin)
 // GET /api/lms/quizzes?quiz_id=xxx  — fetch one quiz with questions + choices
@@ -16,14 +16,18 @@ export async function GET(req: Request) {
   // Managers and students only. Any staff session used to be accepted, and
   // staff always received the answer key (is_correct) — so viewer and assessor
   // accounts could read every quiz's answers.
-  const staff          = await auth()
-  const adminSession   = staff && isMgr(staff.user.role) ? staff : null
+  // An instructor counts as staff here only with course authoring (IR-12);
+  // otherwise they are treated like any other caller and never see the key.
+  const staff        = await auth()
+  const staffScoped  = staff ? await requireStaff() : null
+  const mayAuthor    = !!staffScoped && (staffScoped.scope.isAdmin || can(staffScoped.scope, "author_courses"))
+  const adminSession = mayAuthor ? staff : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   // ── List mode (admin only, no quiz_id or content_item_id) ─────────────────
-  if (!quizId && !contentItemId && adminSession && isMgr(adminSession.user.role)) {
+  if (!quizId && !contentItemId && adminSession) {
     const search = searchParams.get("search")?.trim() ?? ""
     let q = db
       .from("lms_quizzes")
@@ -119,9 +123,10 @@ export async function GET(req: Request) {
 
 // POST — create quiz (admin/instructor)
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const {
@@ -166,9 +171,10 @@ export async function POST(req: Request) {
 
 // PATCH — update quiz or add/remove questions
 export async function PATCH(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { id, question_ids, add_question_ids, remove_question_ids, ...fields } = body

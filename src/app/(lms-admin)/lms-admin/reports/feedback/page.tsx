@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { ArrowLeft, MessageSquare, Star, ChevronRight, BookOpen, FolderKanban } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, visibleCourseIds } from "@/lib/staff-access"
 
 function ratingColor(avg: number | null) {
   if (avg === null) return "text-muted-foreground"
@@ -17,13 +17,19 @@ const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { 
 const avg1 = (sum: number, n: number) => n ? Math.round((sum / n) * 10) / 10 : null
 
 export default async function FeedbackCoursesPage() {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
+  // An instructor sees feedback for their own programs and courses only.
+  const mineCourses = await visibleCourseIds(scope)
   const [{ data: courses }, { data: stats }, { data: programs }, { data: surveys }, { data: members }] = await Promise.all([
-    db.from("lms_courses").select("id, title, feedback_enabled, feedback_anonymous").neq("status", "archived").order("title"),
+    mineCourses === "all"
+      ? db.from("lms_courses").select("id, title, feedback_enabled, feedback_anonymous").neq("status", "archived").order("title")
+      : db.from("lms_courses").select("id, title, feedback_enabled, feedback_anonymous").neq("status", "archived").in("id", mineCourses).order("title"),
     db.from("lms_feedback").select("course_id, program_id, rating_overall, recommend, submitted_at"),
-    db.from("lms_programs").select("id, name, status, feedback_enabled, feedback_mandatory, feedback_anonymous, is_individual").neq("status", "draft").eq("is_individual", false).order("name"),
+    scope.isAdmin
+      ? db.from("lms_programs").select("id, name, status, feedback_enabled, feedback_mandatory, feedback_anonymous, is_individual").neq("status", "draft").eq("is_individual", false).order("name")
+      : db.from("lms_programs").select("id, name, status, feedback_enabled, feedback_mandatory, feedback_anonymous, is_individual").neq("status", "draft").eq("is_individual", false).in("id", scope.programIds).order("name"),
     db.from("lms_program_feedback").select("program_id, rating_overall, recommend"),
     db.from("lms_program_members").select("program_id").neq("status", "withdrawn"),
   ])

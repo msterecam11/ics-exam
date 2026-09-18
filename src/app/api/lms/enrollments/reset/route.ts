@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getCurrentEnrollment } from "@/lib/lms-enrollment"
+import { guardStaff, canSeeStudent, forbidden } from "@/lib/staff-access"
 
 // POST /api/lms/enrollments/reset
 // Body: { course_id, student_id }
@@ -9,13 +9,16 @@ import { getCurrentEnrollment } from "@/lib/lms-enrollment"
 // later re-enrollment starts from scratch. Certificates are intentionally
 // kept (past achievement stays on record). Other courses are untouched.
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== "admin")
-    return NextResponse.json({ error: "Admin only" }, { status: 403 })
+  // IR-14 — an instructor with "Reset attempts" may give one of their own
+  // students another go.
+  const g = await guardStaff({ permission: "reset_attempts" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { course_id, student_id } = await req.json().catch(() => ({}))
   if (!course_id || !student_id)
     return NextResponse.json({ error: "course_id and student_id required" }, { status: 400 })
+  if (!(await canSeeStudent(g.scope, student_id))) return forbidden()
 
   // Resets the student's CURRENT enrollment in the course. Earlier program runs
   // (a course taken again later) are history and are never touched.

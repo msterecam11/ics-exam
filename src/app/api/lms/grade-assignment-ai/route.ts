@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { extractPdfPageTexts } from "@/lib/pdf-extract"
 import Groq from "groq-sdk"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudent, forbidden } from "@/lib/staff-access"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -14,9 +13,10 @@ const groq = new Groq({
 // POST /api/lms/grade-assignment-ai
 // Body: { attempt_id, module_id }
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-6 — same rule as marking by hand.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { attempt_id, module_id } = body
@@ -40,6 +40,7 @@ export async function POST(req: Request) {
 
   if (attErr || !attempt)
     return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
+  if (!(await canSeeStudent(g.scope, (attempt as any).student_id))) return forbidden()
 
   if (attempt.status !== "submitted")
     return NextResponse.json({ error: "Attempt is not in submitted state" }, { status: 409 })

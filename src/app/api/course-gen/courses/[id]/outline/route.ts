@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { parseBody, res429 } from "@/lib/apiUtils"
 import { rateLimit } from "@/lib/rateLimit"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // GET — latest outline result (for the review UI)
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { id } = await params
   const { data: job } = await db
@@ -28,9 +28,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 // adjustments while in outline_review). Returns immediately; the worker
 // loop does the actual Sonnet call.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   // Outline regeneration had no cooldown — a looped POST here could run up
   // real Anthropic spend indefinitely (a course sitting in outline_review

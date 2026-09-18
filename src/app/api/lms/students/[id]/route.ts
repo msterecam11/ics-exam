@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudent } from "@/lib/staff-access"
 
 // GET /api/lms/students/[id]
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { id } = await params
+  if (!(await canSeeStudent(g.scope, id))) return NextResponse.json({ error: "Student not found" }, { status: 404 })
 
   const [{ data: student, error: sErr }, { data: enrollments }, { data: paths }] = await Promise.all([
     db.from("lms_students")

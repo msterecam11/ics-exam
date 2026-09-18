@@ -4,16 +4,18 @@ import { db } from "@/lib/db"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft, Users, User, ChevronRight, BookOpen } from "lucide-react"
-import { isMgr } from "@/lib/staff-roles"
+import { pageScope, canSeeCourse } from "@/lib/staff-access"
 
 interface Props { params: Promise<{ courseId: string }> }
 
 // Course report hub — pick Group report or the Individual reports list.
 export default async function LmsCourseReportHubPage({ params }: Props) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role)) redirect("/auth/login")
+  const scope = await pageScope()
+  if (!scope) redirect("/auth/login")
 
   const { courseId } = await params
+
+  if (!(await canSeeCourse(scope, courseId))) notFound()
 
   const { data: course } = await db
     .from("lms_courses")

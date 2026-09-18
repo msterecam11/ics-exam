@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff } from "@/lib/staff-access"
 
 // GET — everything the canvas editor needs for one module in a single call:
 // the module's pages, the course's branding, and the theme (masters+tokens)
 // the renderer draws chrome from.
 export async function GET(_: Request, { params }: { params: Promise<{ moduleId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-12 — course authoring.
+  const g = await guardStaff({ permission: "author_courses" })
+  if (!g.ok) return g.res
 
   const { moduleId } = await params
 

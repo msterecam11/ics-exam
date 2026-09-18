@@ -7,6 +7,7 @@ import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
+import { guardStaff, canSeeStudent, forbidden } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET = "lms-submissions"
@@ -207,9 +208,10 @@ export async function POST(req: Request) {
 // Grade:   { attempt_id, score, max_score, passed, feedback }
 // Release: { attempt_id, release: true }
 export async function PATCH(req: Request) {
-  const adminSession = await auth()
-  if (!adminSession || !isMgr(adminSession.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-6 — any staff account may mark work; the student has to be theirs.
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const adminSession = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
   const { attempt_id, release, score, max_score, passed, feedback } = body
@@ -220,10 +222,11 @@ export async function PATCH(req: Request) {
   // of any attempt — including a Final Exam attempt — by id.
   const { data: target } = await db
     .from("lms_module_attempts")
-    .select("id, ai_feedback, lms_modules!inner(module_type)")
+    .select("id, student_id, ai_feedback, lms_modules!inner(module_type)")
     .eq("id", attempt_id)
     .maybeSingle()
   if (!target) return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
+  if (!(await canSeeStudent(g.scope, (target as any).student_id))) return forbidden()
   if ((target as any).lms_modules?.module_type !== "assignment")
     return NextResponse.json({ error: "Only assignment submissions can be graded here" }, { status: 400 })
 
