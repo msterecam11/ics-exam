@@ -89,7 +89,14 @@ export const EMAIL_RULES: EmailRuleDef[] = [
   {
     code: "class_reminder", em: "EM-10", label: "Class reminder", audience: "student", scope: "program", scheduled: true,
     description: "Reminds the students booked on a live session, with the time, room or meeting link.",
-    knobs: [{ key: "hours", label: "Hours before the session", kind: "number", unit: "hours", min: 1, max: 168, default: 24 }],
+    knobs: [{
+      key: "hours", label: "Hours before the session",
+      // The job runs once a day, so this is really "how far ahead each daily run
+      // looks". 36 hours means a morning run catches tomorrow's classes; 24
+      // would only catch them on the day itself.
+      hint: "The job runs daily, so 36 reminds the day before",
+      kind: "number", unit: "hours", min: 1, max: 168, default: 36,
+    }],
   },
   {
     code: "catalogue_ack", em: "EM-11", label: "Catalogue request received", audience: "student", scope: "global", scheduled: false,

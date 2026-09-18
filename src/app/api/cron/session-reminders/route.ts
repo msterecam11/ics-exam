@@ -1,30 +1,29 @@
 /**
- * GET /api/cron/session-reminders
+ * GET /api/cron/session-reminders  — kept for any existing schedule.
  *
- * Sends email reminders for sessions happening tomorrow.
- * Secured by CRON_SECRET env var sent as x-cron-secret header.
+ * This used to hold its own copy of the reminder logic and looked for sessions
+ * whose date equalled "tomorrow" in UTC. A session_date is a plain date with no
+ * timezone, so on a server running behind or ahead of the institute's clock it
+ * asked for the wrong day and sent nothing — which is one reason no reminder
+ * ever went out.
  *
- * NOT SCHEDULED YET. No cron job exists, so this only ever runs when an admin
- * presses "Run Now" in LMS Settings — meaning no session reminder has ever been
- * sent automatically. To wire it up:
+ * It now delegates to the EM-10 rule inside the daily job, which decides from
+ * each session's actual start time and each program's own "hours before"
+ * setting. That makes this endpoint and /api/cron/lms-daily agree, and puts the
+ * program switches and the email log behind both.
  *
- * Render cron job setup (Render dashboard → Cron Jobs → New Cron Job):
- *   Command : curl -H "x-cron-secret: $CRON_SECRET" https://your-app.onrender.com/api/cron/session-reminders
- *   Schedule: 0 6 * * *   (runs daily at 06:00 UTC)
+ * Prefer the single daily job for new schedules:
+ *   curl -H "x-cron-secret: $CRON_SECRET" https://<app>.onrender.com/api/cron/lms-daily
  */
 
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { sendEmail, buildSessionReminderEmail } from "@/lib/email"
-import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
+import { runDailyEmails } from "@/lib/lms-email-jobs"
 
-export const maxDuration = 60
+export const maxDuration = 120
+export const dynamic = "force-dynamic"
 
 export async function GET(req: Request) {
-  // Allow EITHER the scheduled cron job (x-cron-secret header) OR a logged-in
-  // admin/instructor (the manual "trigger" button). Requiring one of the two
-  // also closes the gap where the endpoint was open if CRON_SECRET was unset.
   const secret = req.headers.get("x-cron-secret")
   const validSecret = !!process.env.CRON_SECRET && secret === process.env.CRON_SECRET
   if (!validSecret) {
@@ -33,74 +32,18 @@ export async function GET(req: Request) {
     if (!isMgr) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Tomorrow's date
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+  const dryRun = new URL(req.url).searchParams.get("dry") === "1"
 
-  // Sessions scheduled for tomorrow that are still open
-  const { data: sessions, error } = await db
-    .from("lms_sessions")
-    .select("id, title, session_date, start_time, duration_minutes, location, meeting_link, course_id, program_id, track_id, lms_courses(id, title), lms_programs(status)")
-    .eq("session_date", tomorrowStr)
-    .is("closed_at", null)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!sessions?.length) return NextResponse.json({ ok: true, sent: 0, reason: "No sessions tomorrow" })
-
-  let totalSent = 0, totalSkipped = 0
-
-  for (const session of sessions) {
-    const course = (session as any).lms_courses
-    if (!course) continue
-    // Only live programs get reminders (not drafts, completed or archived ones).
-    if ((session as any).program_id && (session as any).lms_programs?.status !== "active") continue
-
-    const endTime = sessionEndTime(session.start_time, session.duration_minutes)
-
-    // The session's own group: its program/track students still taking the course.
-    let roster
-    try { roster = await sessionRoster(session as any, { activeOnly: true }) } catch { continue }
-
-    for (const entry of roster) {
-      const student = { id: entry.student_id, name: entry.name, email: entry.email }
-      if (!student.email) { totalSkipped++; continue }
-
-      // Skip if already sent for this session + student
-      const { count: alreadySent } = await db
-        .from("lms_email_log")
-        .select("*", { count: "exact", head: true })
-        .eq("type", "session_reminder")
-        .eq("student_id", student.id)
-        .eq("session_id", session.id)
-
-      if ((alreadySent ?? 0) > 0) { totalSkipped++; continue }
-
-      const { subject, html } = buildSessionReminderEmail({
-        studentName:  student.name,
-        sessionTitle: session.title,
-        courseTitle:  course.title,
-        sessionDate:  session.session_date,
-        startTime:    session.start_time?.slice(0, 5) ?? "",
-        endTime,
-        location:     session.location ?? undefined,
-        meetingLink:  (session as any).meeting_link ?? undefined,
-        sessionId:    session.id,
-      })
-
-      await sendEmail({
-        type:      "session_reminder",
-        to:        student.email,
-        subject,
-        html,
-        studentId: student.id,
-        courseId:  session.course_id,
-        sessionId: session.id,
-      })
-
-      totalSent++
-    }
+  try {
+    const report = await runDailyEmails({ only: "class_reminder", dryRun })
+    const c = report.counts.class_reminder ?? { sent: 0, skipped: 0, failed: 0 }
+    const sessions = new Set(report.results.map(r => r.subject)).size
+    return NextResponse.json({
+      ok: true, sent: c.sent, skipped: c.skipped, failed: c.failed, sessions,
+      dryRun, testMode: report.testMode,
+      ...(report.results.length === 0 ? { reason: "No sessions due for a reminder" } : {}),
+    })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Run failed" }, { status: 500 })
   }
-
-  return NextResponse.json({ ok: true, date: tomorrowStr, sent: totalSent, skipped: totalSkipped, sessions: sessions.length })
 }

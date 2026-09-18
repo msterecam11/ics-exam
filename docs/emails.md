@@ -22,7 +22,7 @@ follows the global setting ("Inherit") or overrides it.
 | EM-7 | `certificate` | Certificate released | A certificate is released to the student | — |
 | EM-8 | `last_attempt` | Last exam attempt left | They fail an exam with exactly one attempt remaining | — |
 | EM-9 | `feedback_reminder` | Feedback reminder | N days after feedback was asked and still not given (FB-9) | `days` (3), once only |
-| EM-10 | `class_reminder` | Class reminder | N hours before a live session | `hours` (24) |
+| EM-10 | `class_reminder` | Class reminder | N hours before a live session | `hours` (36) |
 | EM-11 | `catalogue_ack` | Catalogue request received | Confirmation to whoever asked (Step 10) | — |
 | EM-12 | `password_reset` | Password reset | The student asks to reset their password | `expiry_minutes` (60) |
 
@@ -72,3 +72,9 @@ affecting other programs.
 - A reminder is never sent for a draft, completed or archived program.
 - Reminders respect each student's own end date, including personal extensions.
 - Students with no e-mail address on file are skipped and logged as such.
+- The class reminder measures from the session's actual start time, not its
+  date. Because the job runs once a day, `hours` is really "how far ahead each
+  daily run looks": 36 hours means a morning run catches tomorrow's classes,
+  while 24 would only catch them on the day itself.
+- `/api/cron/session-reminders` still answers, but now just runs the EM-10 rule,
+  so it and the daily job always agree.
