@@ -1328,31 +1328,47 @@ export default function ActivityEditor({
   // no way to fix it after the key was corrected. This re-grades every
   // stored attempt against the CURRENT key.
   async function handleRecalculate() {
-    if (!confirm(
-      "Re-grade every student's existing attempt on this exam against the current answer key?\n\n" +
-      "Each student is re-marked only on the questions they actually had — questions added since are not added to their paper. " +
-      "This updates their stored score, pass/fail and answer review if they change. Open-ended question scores are kept as-is.\n\n" +
-      "Editing the exam without pressing this never changes existing results."
-    )) return
-
     setRecalculating(true)
     try {
-      const res = await fetch(`/api/lms/modules/${moduleId}/recalculate-attempts`, { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Recalculation failed")
+      // Always look first: nothing changes until the admin has seen the effect.
+      const call = (body: Record<string, unknown>) => fetch(`/api/lms/modules/${moduleId}/recalculate-attempts`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? "Recalculation failed"); return d })
 
-      if (data.recalculated === 0) {
-        toast.info("No attempts to recalculate yet")
-      } else if (data.changed === 0) {
-        toast.success(`Checked ${data.recalculated} attempt${data.recalculated !== 1 ? "s" : ""} — no scores changed`)
+      const pv = await call({ preview: true })
+      if (pv.checked === 0 && pv.finished.attempts === 0) { toast.info("No attempts to recalculate yet"); return }
+
+      const newlyPassed = pv.flips.filter((f: any) => !f.before.passed && f.after.passed).length
+      const newlyFailed = pv.flips.filter((f: any) => f.before.passed && !f.after.passed).length
+      let includeFinished = false
+      const lines = [
+        `Re-mark ${pv.checked} attempt${pv.checked === 1 ? "" : "s"} against the corrected answer key?`,
+        "",
+        pv.changed === 0
+          ? "No scores would change."
+          : `${pv.changed} score${pv.changed === 1 ? "" : "s"} would change` +
+            (newlyPassed ? ` — ${newlyPassed} would now pass` : "") +
+            (newlyFailed ? ` — ${newlyFailed} would now fail` : "") + ".",
+      ]
+      if (newlyFailed) lines.push("Anyone who now fails keeps their certificate until you review it.")
+      if (pv.openPapers) lines.push(`${pv.openPapers} exam${pv.openPapers === 1 ? "" : "s"} in progress will be marked with the corrected key.`)
+      lines.push("", "Students are only ever re-marked on the questions they actually had.")
+      if (!confirm(lines.join("\n"))) return
+
+      if (pv.finished.attempts > 0) {
+        const names = pv.finished.programs.map((p: any) => p.name).join(", ")
+        includeFinished = confirm(
+          `${pv.finished.attempts} attempt${pv.finished.attempts === 1 ? " is" : "s are"} in finished programs (${names}), ` +
+          "whose reports and certificates have already gone to the client.\n\n" +
+          "OK = correct those too.  Cancel = leave them as they are.")
+      }
+
+      const data = await call({ include_finished: includeFinished })
+      if (data.changed === 0) {
+        toast.success(`Checked ${data.checked} attempt${data.checked !== 1 ? "s" : ""} — no scores changed`)
       } else {
-        const newlyPassed = data.flips.filter((f: any) => !f.before.passed && f.after.passed).length
-        const newlyFailed = data.flips.filter((f: any) => f.before.passed && !f.after.passed).length
-        toast.success(
-          `${data.changed} of ${data.recalculated} attempt${data.recalculated !== 1 ? "s" : ""} updated` +
-          (newlyPassed ? ` — ${newlyPassed} now passing` : "") +
-          (newlyFailed ? ` — ${newlyFailed} now failing` : "")
-        )
+        toast.success(`${data.changed} of ${data.checked} attempt${data.checked !== 1 ? "s" : ""} updated` +
+          (data.certificateReviews ? ` — ${data.certificateReviews} certificate${data.certificateReviews === 1 ? "" : "s"} to review` : ""))
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Recalculation failed")

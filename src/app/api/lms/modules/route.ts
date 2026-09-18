@@ -104,6 +104,19 @@ export async function PATCH(req: Request) {
   const { id, ...fields } = body
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 
+  // Step 11 — once an exam's questions live in the bank, the bank is the only
+  // place they change. A direct write here would let the exam and the bank
+  // disagree, so it is refused (settings like the time limit still save).
+  if (fields.questions !== undefined) {
+    const { data: cur } = await db.from("lms_modules").select("exam_sections").eq("id", id).maybeSingle()
+    if (cur && Array.isArray((cur as any).exam_sections))
+      return NextResponse.json({
+        error: "This exam's questions are in the question bank now — edit them in the exam builder.",
+      }, { status: 409 })
+  }
+  // exam_sections has its own route, with its own checks.
+  delete (fields as any).exam_sections
+
   // Changing the TYPE of a module students have already worked on would strand
   // that data — e.g. a Final Exam with attempts turned into a package keeps its
   // attempts but no longer grades, reports or completes as an exam.

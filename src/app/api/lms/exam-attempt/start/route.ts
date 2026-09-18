@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { examTimeLimitS, elapsedSince, isSessionExpired } from "@/lib/lms-exam-session"
 import { getWritableEnrollment, getExamRules } from "@/lib/lms-enrollment"
 import { sanitizeQuestionsForClient, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { examSections, buildPaper } from "@/lib/lms-exam-bank"
 
 // POST /api/lms/exam-attempt/start
 // Body: { module_id, course_id }
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
 
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, module_type, activity_settings, questions")
+    .select("id, module_type, activity_settings, questions, exam_sections")
     .eq("id", module_id)
     .eq("course_id", course_id)
     .single()
@@ -57,7 +58,17 @@ export async function POST(req: Request) {
   // key) as they are right now. The browser gets them sanitised, and the
   // submission is graded against the session's copy — so editing the exam while
   // a student is mid-exam, or afterwards, never changes what they are marked on.
-  const currentQuestions = Array.isArray((module as any).questions) ? (module as any).questions as ExamQuestion[] : []
+  // An exam built from the question bank draws its paper here — fixed sections
+  // as they are, draw sections at random — and it is frozen from this moment.
+  // An exam that still keeps its questions inline is frozen as it is, as before.
+  let currentQuestions: ExamQuestion[]
+  if (examSections(module as any)) {
+    const built = await buildPaper(module as any, student.id)
+    if (!built.ok) return NextResponse.json({ error: built.error }, { status: 409 })
+    currentQuestions = built.paper
+  } else {
+    currentQuestions = Array.isArray((module as any).questions) ? (module as any).questions as ExamQuestion[] : []
+  }
   if (currentQuestions.length === 0)
     return NextResponse.json({ error: "This exam has no questions yet" }, { status: 409 })
 

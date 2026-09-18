@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { reapplyExamPassMark, type PassMarkRegradeResult } from "@/lib/lms-exam-regrade"
 import { guardStaff, canEditCourse } from "@/lib/staff-access"
 import { VISIBILITY, LEVELS } from "@/lib/lms-catalogue"
+import { checkExam } from "@/lib/lms-exam-bank"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -165,6 +166,19 @@ export async function PATCH(req: Request) {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in fields) updates[key] = fields[key]
+  }
+
+  // Step 11 — a course can't go live while its final exam can't build a paper
+  // (a draw asking for more questions than its set holds, an archived
+  // question in a fixed section, …).
+  if (fields.status === "published") {
+    const { data: exam } = await db.from("lms_modules").select("id, exam_sections")
+      .eq("course_id", id).eq("module_type", "final_exam").maybeSingle()
+    if (exam && Array.isArray((exam as any).exam_sections)) {
+      const check = await checkExam(exam as any)
+      if (!check.ok)
+        return NextResponse.json({ error: "The final exam isn't ready: " + check.problems.join(". "), check }, { status: 409 })
+    }
   }
 
   // Step 10 — the catalogue fields, checked before they are written.

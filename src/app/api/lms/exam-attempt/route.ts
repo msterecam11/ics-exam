@@ -6,9 +6,10 @@ import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 import { notifyLastAttempt } from "@/lib/lms-email-events"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
-import { recalculateAttemptScore, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
+import { paperFor } from "@/lib/lms-exam-scoring"
 import { examTimeLimitS, elapsedSince, EXAM_GRACE_S, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
 import { getWritableEnrollment, getCurrentEnrollment, getExamRules } from "@/lib/lms-enrollment"
+import { scorePaper, type PaperQuestion } from "@/lib/lms-exam-bank"
 
 // POST /api/lms/exam-attempt
 // Body: { module_id, course_id, answers, security_events }
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
   const questions: any[] = paperFor(claimed as any, module.questions)
 
   // AI-score any open_ended questions
-  const openEndedQs = questions.filter((q: any) => q.type === "open_ended")
+  const openEndedQs = questions.filter((q: any) => q.type === "open_ended" && !q.voided)
   const aiScores: Record<string, { score: number; justification: string }> = {}
 
   await Promise.all(openEndedQs.map(async (q: any) => {
@@ -154,11 +155,12 @@ export async function POST(req: Request) {
   // Grade every objective question (mcq/ordering/matching) server-side against
   // the module's current answer key, then add the AI-graded open_ended sum —
   // this function is never given a client-supplied score to start from.
-  const openEndedEarned = openEndedQs.reduce((sum: number, q: any) => sum + (aiScores[q.id]?.score ?? 0), 0)
-  const { score: correctedScore, maxScore: correctedMaxScore, pct: correctedPct } = recalculateAttemptScore(
-    questions as ExamQuestion[],
+  // The same scorer Recalculate uses, so a submission and a later re-mark of
+  // the same paper can never disagree. Voided questions count for nobody.
+  const { score: correctedScore, maxScore: correctedMaxScore, pct: correctedPct } = scorePaper(
+    questions as PaperQuestion[],
     (answers as Record<string, any>) ?? {},
-    openEndedEarned
+    aiScores
   )
 
   const correctedPassed = !overTime && correctedPct >= passMark
