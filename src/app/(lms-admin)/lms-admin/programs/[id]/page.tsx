@@ -15,6 +15,7 @@ import ProgramStructureTab from "@/components/lms/programs/ProgramStructureTab"
 import ProgramStudentsTab from "@/components/lms/programs/ProgramStudentsTab"
 import ProgramSettingsTab from "@/components/lms/programs/ProgramSettingsTab"
 import ProgramSessionsTab from "@/components/lms/programs/ProgramSessionsTab"
+import ProgramReportTree from "@/components/lms/programs/ProgramReportTree"
 
 const TABS = [
   { key: "overview",  label: "Overview",  icon: LayoutDashboard },
@@ -224,14 +225,9 @@ export default function ProgramPage({ params, searchParams }: {
             <span className="text-sm font-semibold">Program report: students, course results, tracks, feedback, PDF &amp; Excel</span>
             <BarChart3 className="h-4 w-4" />
           </Link>
-          <p className="text-sm text-slate-600">Each course&apos;s cohort report within this program:</p>
-          {detail.rules.length === 0 ? <p className="text-sm text-slate-400">No courses yet.</p> : detail.rules.map(r => (
-            <Link key={r.course_id} href={`/lms-admin/reports/${r.course_id}/group?program=${id}`}
-              className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:border-[#1B4F8A]/30">
-              <span className="text-sm text-slate-800">{r.lms_courses?.title}</span>
-              <BarChart3 className="h-4 w-4 text-slate-400" />
-            </Link>
-          ))}
+          {detail.items.length === 0 ? <p className="text-sm text-slate-400">No courses yet.</p> : (
+            <ProgramReportTree programId={id} detail={detail} />
+          )}
           <Link href={`/lms-admin/reports/feedback/program/${id}`}
             className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3 hover:border-[#1B4F8A]/30">
             <span className="text-sm text-slate-800">Feedback: program survey and course feedback</span>

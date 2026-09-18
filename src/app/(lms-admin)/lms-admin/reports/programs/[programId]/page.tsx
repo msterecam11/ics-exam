@@ -5,7 +5,8 @@ import ProgramReportView from "@/components/lms/reports/ProgramReportView"
 import ReportToolbar from "@/components/lms/reports/ReportToolbar"
 import { isUuid, loadProgramReport, scopedAssessment } from "@/lib/lms-report-scope"
 import { cn } from "@/lib/utils"
-import { pageScope, canSeeProgram } from "@/lib/staff-access"
+import { pageScope, canSeeProgram, can } from "@/lib/staff-access"
+import LevelNav, { levelPct } from "@/components/lms/reports/LevelNav"
 
 export const dynamic = "force-dynamic"
 
@@ -27,13 +28,14 @@ export default async function ProgramReportPage({ params, searchParams }: {
   if (!cached) notFound()
   const d = cached.data
   const q = track ? `?track=${track}` : ""
+  const canPdf = can(scope, "export_reports")
 
   return (
     <>
       <ReportToolbar
         crumbs={[
           { label: "Reports", href: "/lms-admin/reports" },
-          ...(d.program.company ? [{ label: d.program.company.name, href: `/lms-admin/reports/clients/${d.program.company.id}` }] : [{ label: "Programs", href: "/lms-admin/reports/programs" }]),
+          ...(d.program.company && scope.isAdmin ? [{ label: d.program.company.name, href: `/lms-admin/reports/clients/${d.program.company.id}` }] : []),
           { label: d.program.name, href: track ? `/lms-admin/reports/programs/${programId}` : undefined },
           ...(d.scope.trackName ? [{ label: d.scope.trackName }] : []),
         ]}
@@ -52,6 +54,31 @@ export default async function ProgramReportPage({ params, searchParams }: {
           </div>
         )}
       </ReportToolbar>
+      {d.tracks.length > 0 && !track ? (
+        <LevelNav
+          title="Tracks" hint="Open a track for its course groups and students"
+          columns={["Learners", "Progress", "Completion", "Pass rate"]}
+          rows={d.trackComparison.filter(t => t.trackId).map(t => ({
+            id: t.trackId!, label: t.name, href: `/lms-admin/reports/programs/${programId}?track=${t.trackId}`,
+            cells: [t.students, levelPct(t.avgProgress), levelPct(t.completionRate), levelPct(t.passRate)],
+            pdfHref: canPdf ? `/api/lms/reports/programs/${programId}/pdf?track=${t.trackId}&audience=client` : null,
+          }))}
+        />
+      ) : (
+        <LevelNav
+          title={d.scope.trackName ? `Course groups in ${d.scope.trackName}` : "Course groups"}
+          hint="Each group is this program's students in one course"
+          columns={["Learners", "Progress", "Completion", "Pass rate"]}
+          rows={d.courses.map(c => {
+            const q = `program=${programId}${track ? `&track=${track}` : ""}`
+            return {
+              id: c.course_id, label: c.title, href: `/lms-admin/reports/${c.course_id}/group?${q}`,
+              cells: [c.enrolled, levelPct(c.avgProgress), levelPct(c.completionRate), levelPct(c.passRate)],
+              pdfHref: scope.isAdmin ? `/api/lms/reports/course/${c.course_id}/pdf?${q}` : null,
+            }
+          })}
+        />
+      )}
       <ProgramReportView data={d} assessment={ai?.assessment ?? null} />
     </>
   )

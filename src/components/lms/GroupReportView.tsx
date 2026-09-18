@@ -118,10 +118,11 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
 }) {
   const { course, stats, distribution, passFail, moduleStats, topicHeatmap, itemAnalysis, ranking, atRisk, attendance, feedback, roster } = data
   const scope = data.scope ?? { programId: null, programName: null, trackId: null, trackName: null, allRuns: false }
+  const monthLabel = scope.month ? new Date(scope.month + "-01T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }) : null
   const scopeLabel = scope.programName
     ? `${scope.programName}${scope.trackName ? ` · ${scope.trackName}` : ""}`
-    : scope.allRuns ? "All runs across programs" : "Current enrollments"
-  const scopeQuery = [scope.programId && `program=${scope.programId}`, scope.trackId && `track=${scope.trackId}`, scope.allRuns && "scope=all"].filter(Boolean).join("&")
+    : monthLabel ? `Individual learners · ${monthLabel}` : scope.allRuns ? "All groups combined" : "Current enrollments"
+  const scopeQuery = [scope.programId && `program=${scope.programId}`, scope.trackId && `track=${scope.trackId}`, scope.allRuns && "scope=all", scope.month && `month=${scope.month}`].filter(Boolean).join("&")
   const studentHref = (r: { id: string; enrollmentId?: string }) =>
     `/lms-admin/reports/${course.id}/${r.id}${r.enrollmentId ? `?enrollment=${r.enrollmentId}` : ""}`
   const [ai, setAi] = useState<any | null>(assessment)
@@ -224,7 +225,9 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
       {!forPrint && (
         <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Link href={`/lms-admin/reports/${course.id}`} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
+            <Link href={scope.programId ? `/lms-admin/reports/programs/${scope.programId}${scope.trackId ? `?track=${scope.trackId}` : ""}` : `/lms-admin/reports/${course.id}`}
+              aria-label={scope.programId ? `Back to ${scope.programName ?? "the program"}` : "Back to the course"}
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" /></Link>
             <Users className="h-4 w-4 text-slate-400" />
             <span className="truncate max-w-[280px] font-medium text-slate-800">{course.title}</span>
             <span className="text-slate-400 truncate max-w-[220px]">· {scopeLabel}</span>
@@ -235,7 +238,7 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
               </span>
             )}
           </div>
-          {scopeOptions && <CourseScopePicker courseId={course.id} options={scopeOptions} programId={scope.programId} trackId={scope.trackId} allRuns={scope.allRuns} />}
+          {scopeOptions && <CourseScopePicker courseId={course.id} options={scopeOptions} programId={scope.programId} trackId={scope.trackId} allRuns={scope.allRuns} month={scope.month ?? null} monthLabel={monthLabel} />}
           <div className="flex items-center gap-2">
             {ai ? (
               <Button size="sm" variant="outline" onClick={generate} disabled={generating} className="gap-1.5 text-xs">

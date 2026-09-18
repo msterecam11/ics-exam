@@ -14,7 +14,7 @@ export const maxDuration = 60
 
 const scopeOf = (req: Request) => {
   const sp = new URL(req.url).searchParams
-  return parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope") })
+  return parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope"), month: sp.get("month") })
 }
 
 // GET — stored cohort expert assessment (?program=&track= for a program's cohort)
@@ -121,7 +121,7 @@ Return ONLY valid JSON (no markdown):
     at_risk_patterns:  String(parsed.at_risk_patterns ?? ""),
   }
 
-  if (scope.programId) {
+  if (scope.programId || scope.month) {
     await db.from("lms_scoped_assessments").upsert({
       scope_key: courseAssessmentKey(courseId, scope), kind: "course_in_program",
       course_id: courseId, program_id: scope.programId, track_id: scope.trackId,

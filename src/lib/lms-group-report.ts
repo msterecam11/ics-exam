@@ -7,7 +7,7 @@ export interface GroupReport {
   course: { id: string; title: string; delivery_mode: string | null }
   // Which enrollments this report covers (RP-3): one program (optionally one
   // track), or every run of the course across programs (course analytics).
-  scope: { programId: string | null; programName: string | null; trackId: string | null; trackName: string | null; allRuns: boolean }
+  scope: { programId: string | null; programName: string | null; trackId: string | null; trackName: string | null; allRuns: boolean; month?: string | null }
   generatedAt: string
   stats: {
     enrolled: number; completed: number; completionRate: number
@@ -50,12 +50,13 @@ const round = (n: number) => Math.round(n)
 //   allRuns               → every run across all programs (course analytics, RL-8)
 //   neither               → each learner's current enrollment in the course (a
 //                            learner who retook the course counts once).
-export async function buildGroupReport(courseId: string, opts?: { programId?: string | null; trackId?: string | null; allRuns?: boolean }): Promise<GroupReport | null> {
+export async function buildGroupReport(courseId: string, opts?: { programId?: string | null; trackId?: string | null; allRuns?: boolean; month?: string | null }): Promise<GroupReport | null> {
   const programId = opts?.programId ?? null
   const trackId = programId ? (opts?.trackId ?? null) : null
-  const allRuns = !programId && !!opts?.allRuns
+  const month = programId ? null : (opts?.month ?? null)
+  const allRuns = !programId && !month && !!opts?.allRuns
   let enrollQuery = db.from("lms_enrollments")
-    .select("id, student_id, status, enrolled_at, program_id, lms_programs(name), lms_program_members(track_id)")
+    .select("id, student_id, status, enrolled_at, program_id, lms_programs(name, is_individual), lms_program_members(track_id)")
     .eq("course_id", courseId).neq("status", "dropped")
   if (programId) enrollQuery = enrollQuery.eq("program_id", programId)
   const [courseRes, enrollRes, modulesRes, programRes, trackRes] = await Promise.all([
@@ -71,6 +72,8 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   const course  = courseRes.data as any
   let candidates = (enrollRes.data ?? []) as any[]
   if (trackId) candidates = candidates.filter(e => e.lms_program_members?.track_id === trackId)
+  // Individual learners of one month: enrollments outside group programs.
+  if (month) candidates = candidates.filter(e => (!e.program_id || e.lms_programs?.is_individual) && String(e.enrolled_at).slice(0, 7) === month)
   const rank = (s: string) => (s === "active" ? 0 : 1)
   let enr: any[]
   if (allRuns) enr = candidates
@@ -291,7 +294,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
 
   return {
     course: { id: course.id, title: course.title, delivery_mode: course.delivery_mode ?? "online" },
-    scope: { programId, programName: (programRes.data as any)?.name ?? null, trackId, trackName: (trackRes.data as any)?.name ?? null, allRuns },
+    scope: { programId, programName: (programRes.data as any)?.name ?? null, trackId, trackName: (trackRes.data as any)?.name ?? null, allRuns, month },
     generatedAt: new Date().toISOString(),
     stats: {
       enrolled, completed, completionRate: enrolled ? round((completed / enrolled) * 100) : 0,

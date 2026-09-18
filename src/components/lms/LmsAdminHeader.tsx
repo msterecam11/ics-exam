@@ -9,6 +9,8 @@ import LmsAdminSidebar from "./LmsAdminSidebar"
 const pageTitles: Record<string, string> = {
   "/lms-admin":               "Dashboard",
   "/lms-admin/courses":       "Courses",
+  "/lms-admin/programs":      "Program Manager",
+  "/lms-admin/companies":     "Companies",
   "/lms-admin/students":      "Students",
   "/lms-admin/progress":      "Student Progress",
   "/lms-admin/cohorts":       "Cohorts",

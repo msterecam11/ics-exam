@@ -331,13 +331,17 @@ async function feedbackCandidates(programs: ProgramFact[], today: string, histor
   if (!live.length) return []
   const ids = live.map(p => p.id)
 
-  const [enrRes, fbRes] = await Promise.all([
-    db.from("lms_enrollments")
-      .select("id, student_id, program_id, course_id, completed_at, lms_courses(id, title, feedback_enabled), lms_students(id, name, email)")
-      .in("program_id", ids).eq("status", "completed").not("completed_at", "is", null),
-    db.from("lms_feedback").select("student_id, course_id, enrollment_id").in("program_id", ids),
-  ])
-  const given = new Set((fbRes.data ?? []).map((f: any) => `${f.student_id}|${f.course_id}`))
+  const enrRes = await db.from("lms_enrollments")
+    .select("id, student_id, program_id, course_id, completed_at, lms_courses(id, title, feedback_enabled), lms_students(id, name, email)")
+    .in("program_id", ids).eq("status", "completed").not("completed_at", "is", null)
+  // Matched by enrollment too: feedback given before an enrollment joined or
+  // moved program still carries its old (or no) program_id.
+  const enrollmentIds = ((enrRes.data ?? []) as any[]).map(e => e.id)
+  const fbRows: any[] = []
+  for (const [col, list] of [["program_id", ids], ["enrollment_id", enrollmentIds]] as const)
+    for (let i = 0; i < list.length; i += 200)
+      fbRows.push(...((await db.from("lms_feedback").select("student_id, course_id").in(col, list.slice(i, i + 200))).data ?? []))
+  const given = new Set(fbRows.map((f: any) => `${f.student_id}|${f.course_id}`))
 
   const out: FeedbackCandidate[] = []
   for (const e of (enrRes.data ?? []) as any[]) {

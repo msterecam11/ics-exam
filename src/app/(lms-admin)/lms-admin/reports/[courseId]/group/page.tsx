@@ -6,7 +6,7 @@ import { pageScope, canSeeProgram } from "@/lib/staff-access"
 
 interface Props {
   params: Promise<{ courseId: string }>
-  searchParams: Promise<{ program?: string; track?: string; scope?: string; refresh?: string }>
+  searchParams: Promise<{ program?: string; track?: string; scope?: string; month?: string; refresh?: string }>
 }
 
 export const dynamic = "force-dynamic"

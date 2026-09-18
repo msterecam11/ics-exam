@@ -7,19 +7,21 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v)
 
 // ── Course report scope (RP-3) ─────────────────────────────────────────────
-export type CourseScope = { programId: string | null; trackId: string | null; allRuns: boolean }
+/** month: individual learners (outside group programs) who enrolled that month, "YYYY-MM". */
+export type CourseScope = { programId: string | null; trackId: string | null; allRuns: boolean; month: string | null }
 
-export function parseCourseScope(p: { program?: string | null; track?: string | null; scope?: string | null }): CourseScope {
+export function parseCourseScope(p: { program?: string | null; track?: string | null; scope?: string | null; month?: string | null }): CourseScope {
   const programId = isUuid(p.program) ? p.program : null
-  return { programId, trackId: programId && isUuid(p.track) ? p.track : null, allRuns: !programId && p.scope === "all" }
+  const month = !programId && typeof p.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(p.month) ? p.month : null
+  return { programId, trackId: programId && isUuid(p.track) ? p.track : null, allRuns: !programId && !month && p.scope === "all", month }
 }
 
 export function courseScopeQuery(s: CourseScope) {
-  return [s.programId && `program=${s.programId}`, s.trackId && `track=${s.trackId}`, s.allRuns && "scope=all"].filter(Boolean).join("&")
+  return [s.programId && `program=${s.programId}`, s.trackId && `track=${s.trackId}`, s.allRuns && "scope=all", s.month && `month=${s.month}`].filter(Boolean).join("&")
 }
 
 export function loadGroupReport(courseId: string, scope: CourseScope, opts: { refresh?: boolean } = {}): Promise<Cached<GroupReport> | null> {
-  const key = `group:${courseId}:${scope.programId ?? "-"}:${scope.trackId ?? "-"}:${scope.allRuns ? "all" : "current"}`
+  const key = `group:${courseId}:${scope.programId ?? "-"}:${scope.trackId ?? "-"}:${scope.allRuns ? "all" : scope.month ? `month-${scope.month}` : "current"}`
   return cachedReport(key, "course_group", { courseId, programId: scope.programId }, () => buildGroupReport(courseId, scope), opts)
 }
 
@@ -29,7 +31,7 @@ export function loadCourseComparison(courseId: string, opts: { refresh?: boolean
 
 /** AI expert report for a course group: per program (+track) when scoped, else the course-wide one. */
 export async function loadCourseAssessment(courseId: string, scope: CourseScope): Promise<{ assessment: any; generated_at: string } | null> {
-  if (scope.programId) {
+  if (scope.programId || scope.month) {
     const { data } = await db.from("lms_scoped_assessments").select("assessment, generated_at")
       .eq("scope_key", courseAssessmentKey(courseId, scope)).maybeSingle()
     return (data as any) ?? null
@@ -37,7 +39,8 @@ export async function loadCourseAssessment(courseId: string, scope: CourseScope)
   const { data } = await db.from("lms_course_assessments").select("assessment, generated_at").eq("course_id", courseId).maybeSingle()
   return (data as any) ?? null
 }
-export const courseAssessmentKey = (courseId: string, s: CourseScope) => `course_in_program:${courseId}:${s.programId}:${s.trackId ?? "-"}`
+export const courseAssessmentKey = (courseId: string, s: CourseScope) =>
+  s.month ? `course_individuals:${courseId}:${s.month}` : `course_in_program:${courseId}:${s.programId}:${s.trackId ?? "-"}`
 
 /** Programs (and their tracks) that deliver a course — for the scope picker. */
 export async function courseScopeOptions(courseId: string) {
