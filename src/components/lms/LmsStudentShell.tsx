@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import {
   LayoutDashboard, BookOpen, Calendar, FolderKanban,
-  Award, UserCircle, LogOut, Bell, Menu,
+  Award, UserCircle, LogOut, Bell, Menu, Store,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/lms/dashboard",    label: "Home",           icon: LayoutDashboard, badge: null },
   { href: "/lms/programs",     label: "My Programs",    icon: FolderKanban,    badge: null },
   { href: "/lms/courses",      label: "My Courses",     icon: BookOpen,        badge: null },
+  { href: "/lms/catalogue",    label: "Catalogue",      icon: Store,           badge: null },
   { href: "/lms/schedule",     label: "My Schedule",    icon: Calendar,        badge: "sessions" },
   { href: "/lms/certificates", label: "Certificates",   icon: Award,           badge: null },
   { href: "/lms/profile",      label: "My Profile",     icon: UserCircle,      badge: null },

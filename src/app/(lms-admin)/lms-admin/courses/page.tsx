@@ -7,7 +7,7 @@ import {
   Plus, Search, BookOpen, Users, Globe, Monitor, Layers,
   Loader2, Eye, Edit, Trash2, Copy, BarChart2,
   Smartphone, ChevronDown, X, Filter, ArrowUpDown,
-  CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog,
+  CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog, Store,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,11 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { CategoryTiles, CategoryManager, useCategories, UNCATEGORISED_ID } from "@/components/lms/CourseCategories"
+
+const CATALOGUE_LABEL: Record<string, string> = {
+  all: "In the catalogue for all students", individuals: "In the catalogue for individual learners",
+  company: "In the catalogue for company participants", specific: "In the catalogue for chosen companies",
+}
 
 type DeliveryMode = "online" | "onsite" | "hybrid"
 type CourseStatus  = "draft" | "published" | "archived"
@@ -26,6 +31,7 @@ interface Course {
   course_code:      string | null
   category:         string | null
   category_id:      string | null
+  catalogue_visibility?: string | null
   thumbnail_url:    string | null
   language:         string
   delivery_mode:    DeliveryMode
@@ -367,6 +373,13 @@ export default function CoursesPage() {
                         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0", STATUS_STYLES[course.status])}>
                           {course.status}
                         </span>
+                        {/* Step 10 — whether students can find it themselves. */}
+                        {course.catalogue_visibility && course.catalogue_visibility !== "hidden" && (
+                          <span title={CATALOGUE_LABEL[course.catalogue_visibility] ?? "In the catalogue"}
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 bg-sky-50 text-sky-700 border-sky-200 flex items-center gap-1">
+                            <Store className="h-2.5 w-2.5" /> catalogue
+                          </span>
+                        )}
                       </div>
                       {course.description && (
                         <p className="text-xs text-slate-400 truncate max-w-[220px] mt-0.5">{course.description}</p>

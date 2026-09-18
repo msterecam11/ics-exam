@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { PROGRAM_STATUS_STYLE } from "@/components/lms/programs/shared"
+import CourseRequestsPanel from "@/components/lms/CourseRequestsPanel"
 
 type Program = {
   id: string; name: string; status: "draft" | "active" | "completed" | "archived"
@@ -137,6 +138,14 @@ export default function ProgramsPage() {
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<"live" | Program["status"] | "all">("live")
   const [modal, setModal] = useState(false)
+  // CV-7 — admins also answer catalogue requests from here.
+  const [view, setView] = useState<"programs" | "requests">("programs")
+  const [pendingRequests, setPendingRequests] = useState(0)
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch("/api/lms/course-requests?status=pending").then(r => r.ok ? r.json() : null)
+      .then(d => d && setPendingRequests(d.pending ?? 0))
+  }, [isAdmin])
 
   useEffect(() => {
     fetch("/api/lms/programs")
@@ -166,6 +175,23 @@ export default function ProgramsPage() {
           </Button>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="flex gap-0 border-b border-slate-200">
+          {([["programs", "Programs"], ["requests", "Requests"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setView(k)}
+              className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px flex items-center gap-2",
+                view === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>
+              {label}
+              {k === "requests" && pendingRequests > 0 && (
+                <span className="text-[11px] font-semibold bg-amber-500 text-white px-1.5 py-0.5 rounded-full">{pendingRequests}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === "requests" && isAdmin ? <CourseRequestsPanel onCount={setPendingRequests} /> : <>
 
       <div className="flex flex-wrap gap-2">
         <div className="relative w-full max-w-sm">
@@ -224,6 +250,8 @@ export default function ProgramsPage() {
           })}
         </div>
       )}
+
+      </>}
 
       <NewProgramDialog open={modal} onClose={() => setModal(false)} />
     </div>
