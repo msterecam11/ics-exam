@@ -583,74 +583,6 @@ function ContentModal({ open, onClose, moduleId, editing, onSaved, defaultType }
   )
 }
 
-// ──────────────────────────────────────────────────────────────
-// ENROLL MODAL
-// ──────────────────────────────────────────────────────────────
-function EnrollModal({ open, onClose, courseId, onEnrolled }: {
-  open: boolean; onClose: () => void; courseId: string; onEnrolled: () => void
-}) {
-  const [students, setStudents] = useState<any[]>([]); const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [search, setSearch] = useState(""); const [loading, setLoading] = useState(true)
-  const [enrolling, setEnrolling] = useState(false); const [enrolled, setEnrolled] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!open) return
-    Promise.all([
-      fetch(`/api/lms/students?limit=200`).then(r => r.json()),
-      fetch(`/api/lms/enrollments?course_id=${courseId}`).then(r => r.json()),
-    ]).then(([s, e]) => {
-      setStudents(s.students ?? [])
-      // Only currently-active/completed students are locked as "Enrolled".
-      // Unenrolled (dropped) students stay selectable so they can be re-enrolled.
-      setEnrolled(new Set((e ?? []).filter((en: any) => en.status !== "dropped").map((en: any) => en.lms_students?.id).filter(Boolean)))
-      setLoading(false)
-    })
-  }, [open, courseId])
-
-  const filtered = students.filter(s => !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase()))
-  const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-
-  async function enroll() {
-    if (!selected.size) return; setEnrolling(true)
-    const res = await fetch("/api/lms/enrollments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ course_id: courseId, student_ids: [...selected] }) })
-    const data = await res.json(); setEnrolling(false)
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success(`${data.enrolled} student(s) enrolled`); onEnrolled(); onClose()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Enroll Students</DialogTitle></DialogHeader>
-        <div className="space-y-3 py-2">
-          <Input placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)} />
-          {loading ? <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
-          : <div className="max-h-72 overflow-y-auto space-y-1 border rounded-lg p-2">
-              {filtered.map(s => {
-                const isEnrolled = enrolled.has(s.id)
-                return (
-                  <label key={s.id} className={cn("flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer", isEnrolled ? "opacity-40 cursor-not-allowed" : "hover:bg-slate-50", selected.has(s.id) && "bg-blue-50")}>
-                    <input type="checkbox" checked={selected.has(s.id) || isEnrolled} disabled={isEnrolled} onChange={() => !isEnrolled && toggle(s.id)} />
-                    <div className="w-7 h-7 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] text-xs font-bold flex items-center justify-center shrink-0">{s.name[0]?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{s.name}{isEnrolled && <span className="ml-2 text-xs text-emerald-600">Enrolled</span>}</p>
-                      <p className="text-xs text-slate-400 truncate">{s.email}</p>
-                    </div>
-                  </label>
-                )
-              })}
-            </div>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!selected.size || enrolling} onClick={enroll} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-            {enrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : `Enroll ${selected.size || ""}`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 // ──────────────────────────────────────────────────────────────
 // TEST AS STUDENT MODAL
@@ -2532,13 +2464,11 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
   const [loading,     setLoading]     = useState(true)
   const [activeView,  setActiveView]  = useState<ActiveView>("overview")
   const [saveStatus,  setSaveStatus]  = useState<SaveStatus>("saved")
-  const [enrollKey,   setEnrollKey]   = useState(0)
   const [toggling,    setToggling]    = useState(false)
 
   // Modals
   const [moduleModal,     setModuleModal]     = useState(false)
   const [editingModule,   setEditingModule]   = useState<Module | null>(null)
-  const [enrollModal,     setEnrollModal]     = useState(false)
   const [contentModal,    setContentModal]    = useState<string | null>(null)
   const [addingType,      setAddingType]      = useState<string | undefined>(undefined)
   const [editingContent,  setEditingContent]  = useState<{ item: ContentItem; moduleId: string } | null>(null)
@@ -2719,9 +2649,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               window.open(`/lms-admin/courses/${courseId}/preview${moduleParam}`, "_blank")
             }}>
             <Smartphone className="h-3.5 w-3.5" /> Preview
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs hidden sm:flex" onClick={() => setEnrollModal(true)}>
-            <UserPlus className="h-3.5 w-3.5" /> Enroll
           </Button>
           <Button size="sm" variant="outline"
             className="gap-1.5 h-8 text-xs hidden sm:flex border-purple-200 text-purple-700 hover:bg-purple-50"
@@ -2910,7 +2837,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
           }))
         }}
       />
-      <EnrollModal open={enrollModal} onClose={() => setEnrollModal(false)} courseId={courseId} onEnrolled={() => setEnrollKey(k => k + 1)} />
       <TestAsStudentModal open={testAsStudent} onClose={() => setTestAsStudent(false)} courseId={courseId} />
       <AssignmentSubmissionsModal open={!!submissionsItem} onClose={() => setSubmissionsItem(null)} item={submissionsItem} courseId={courseId} />
     </div>
