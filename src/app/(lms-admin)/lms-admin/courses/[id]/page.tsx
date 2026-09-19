@@ -1003,130 +1003,6 @@ function ModuleContentView({ mod, onAddContent, onEditContent, onDeleteContent }
 }
 
 // ──────────────────────────────────────────────────────────────
-// USERS TAB
-// ──────────────────────────────────────────────────────────────
-function UsersTab({ courseId, onEnroll, refreshKey }: { courseId: string; onEnroll: () => void; refreshKey: number }) {
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [dropping, setDropping] = useState<string | null>(null)
-
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/lms/enrollments?course_id=${courseId}`).then(r => r.json())
-      .then(data => { setEnrollments(Array.isArray(data) ? data : []); setLoading(false) })
-  }, [courseId, refreshKey])
-
-  async function unenrollStudent(enrollmentId: string) {
-    if (!confirm("Unenroll this student from the course? Their progress is kept and they can be re-enrolled anytime.")) return; setDropping(enrollmentId)
-    const res = await fetch("/api/lms/enrollments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: enrollmentId, status: "dropped" }) })
-    setDropping(null)
-    if (!res.ok) { toast.error("Failed"); return }
-    setEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, status: "dropped" } : e))
-    toast.success("Student unenrolled")
-  }
-
-  async function reEnrollStudent(enrollmentId: string) {
-    setDropping(enrollmentId)
-    const res = await fetch("/api/lms/enrollments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: enrollmentId, status: "active" }) })
-    setDropping(null)
-    if (!res.ok) { toast.error("Failed"); return }
-    setEnrollments(prev => prev.map(e => e.id === enrollmentId ? { ...e, status: "active" } : e))
-    toast.success("Student re-enrolled")
-  }
-
-  async function resetStudent(enrollmentId: string, studentId: string, name: string) {
-    if (!confirm(`Remove ${name} from this course and DELETE all their progress (packages, exams, assignments)? Their certificate is kept. This cannot be undone. If you enroll them again, they start from scratch.`)) return
-    setDropping(enrollmentId)
-    const res = await fetch("/api/lms/enrollments/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ course_id: courseId, student_id: studentId }) })
-    setDropping(null)
-    if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error(d.error ?? "Failed"); return }
-    setEnrollments(prev => prev.filter(e => e.id !== enrollmentId))
-    toast.success(`${name} removed and progress reset`)
-  }
-
-  const filtered = enrollments.filter(e => !search || e.lms_students?.name?.toLowerCase().includes(search.toLowerCase()) || e.lms_students?.email?.toLowerCase().includes(search.toLowerCase()))
-  const stats = { total: enrollments.length, active: enrollments.filter(e => e.status === "active").length, completed: enrollments.filter(e => e.status === "completed").length, avg: enrollments.length > 0 ? Math.round(enrollments.reduce((a, e) => a + e.progress_pct, 0) / enrollments.length) : 0 }
-
-  return (
-    <div className="max-w-4xl pb-16 space-y-5">
-      <div className="grid grid-cols-4 gap-3">
-        {[["Total", stats.total, "text-slate-800"], ["Active", stats.active, "text-blue-700"], ["Completed", stats.completed, "text-emerald-700"], ["Avg. Progress", `${stats.avg}%`, "text-amber-700"]].map(([l, v, c]) => (
-          <div key={l as string} className="bg-white rounded-xl border p-4"><p className={cn("text-2xl font-bold", c as string)}>{v}</p><p className="text-xs text-slate-500 mt-0.5">{l}</p></div>
-        ))}
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <Input placeholder="Search students…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9" />
-        </div>
-        <Button onClick={onEnroll} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2 h-9 shrink-0">
-          <UserPlus className="h-4 w-4" /> Enroll Students
-        </Button>
-      </div>
-      {loading ? <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
-      : filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed py-16 text-center">
-          <Users className="h-10 w-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">{enrollments.length === 0 ? "No students enrolled" : "No match"}</p>
-          {enrollments.length === 0 && <Button onClick={onEnroll} className="mt-4 bg-[#1B4F8A] text-white gap-2"><UserPlus className="h-4 w-4" /> Enroll First Student</Button>}
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="grid grid-cols-[1fr_140px_70px_90px_100px_100px_72px] gap-0 border-b bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            <span>Student</span><span>Progress</span><span>Time</span><span>Status</span><span>Enrolled</span><span>Completed</span><span />
-          </div>
-          <div className="divide-y divide-slate-50">
-            {filtered.map(enr => {
-              const s = enr.lms_students
-              return (
-                <div key={enr.id} className="grid grid-cols-[1fr_140px_70px_90px_100px_100px_72px] gap-0 px-4 py-3 items-center hover:bg-slate-50/50">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] font-bold text-xs flex items-center justify-center shrink-0">{s?.name?.[0]?.toUpperCase() ?? "?"}</div>
-                    <div className="min-w-0"><p className="text-sm font-medium truncate">{s?.name}</p><p className="text-xs text-slate-400 truncate">{s?.email}</p></div>
-                  </div>
-                  <div className="flex items-center gap-2 pr-3">
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={cn("h-full rounded-full", enr.progress_pct >= 100 ? "bg-emerald-500" : "bg-[#1B4F8A]")} style={{ width: `${enr.progress_pct}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold text-slate-600 w-8 text-right">{enr.progress_pct}%</span>
-                  </div>
-                  <span className="text-xs text-slate-500 tabular-nums" title="Total active time on this course">{fmtTime(enr.time_spent_s)}</span>
-                  <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full inline-block", { "bg-emerald-100 text-emerald-700": enr.status === "completed", "bg-blue-100 text-blue-700": enr.status === "active", "bg-slate-100 text-slate-500": enr.status === "dropped" || !["completed","active","dropped"].includes(enr.status) })}>{enr.status === "dropped" ? "unenrolled" : enr.status}</span>
-                  <p className="text-xs text-slate-500">{new Date(enr.enrolled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })}</p>
-                  <p className="text-xs text-slate-500">{enr.completed_at ? new Date(enr.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" }) : "—"}</p>
-                  <div className="flex justify-end gap-1">
-                    {s?.id && (
-                      <Link href={`/lms-admin/students/${s.id}`} className="p-1.5 rounded text-slate-300 hover:text-[#1B4F8A] hover:bg-[#1B4F8A]/10 transition-colors" title="View Progress">
-                        <Eye className="h-3.5 w-3.5" />
-                      </Link>
-                    )}
-                    {enr.status === "dropped" ? (
-                      <button onClick={() => reEnrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors" title="Re-enroll (keeps progress)">
-                        {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-                      </button>
-                    ) : (
-                      <button onClick={() => unenrollStudent(enr.id)} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Unenroll (keeps progress, can resume)">
-                        {dropping === enr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
-                      </button>
-                    )}
-                    {s?.id && (
-                      <button onClick={() => resetStudent(enr.id, s.id, s.name ?? "this student")} disabled={dropping === enr.id} className="p-1.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors" title="Remove & reset progress (start from scratch)">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────
 // SETTINGS TAB
 // ──────────────────────────────────────────────────────────────
 function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course) => void }) {
@@ -2934,7 +2810,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
             {/* Users + Settings */}
             {[
-              { key: "users",     icon: Users,     label: "Students" },
               { key: "settings",  icon: Settings,  label: "Settings" },
               { key: "ai-report", icon: Sparkles,  label: "Expert Report" },
             ].map(({ key, icon: Icon, label }) => (
@@ -2987,11 +2862,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
                   onCourseChange={updates => setCourse(prev => prev ? { ...prev, ...updates } : prev)}
                   onSaveStatus={setSaveStatus}
                 />
-              )}
-
-              {/* Users */}
-              {activeView === "users" && (
-                <UsersTab courseId={courseId} onEnroll={() => setEnrollModal(true)} refreshKey={enrollKey} />
               )}
 
               {/* Settings */}

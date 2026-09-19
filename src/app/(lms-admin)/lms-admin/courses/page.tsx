@@ -324,7 +324,7 @@ export default function CoursesPage() {
           {/* Scrollable table area — scrolls horizontally on mobile */}
           <div className="overflow-x-auto">
           {/* Table header */}
-          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] min-w-[820px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
+          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_210px] min-w-[745px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
             <span className="text-center">#</span>
             <button className="flex items-center gap-1 text-left hover:text-slate-800 transition-colors" onClick={() => toggleSort("title")}>
               Course <ArrowUpDown className="h-3 w-3 opacity-50" />
@@ -332,9 +332,6 @@ export default function CoursesPage() {
             <span>Code</span>
             <span>Path</span>
             <span>Mode</span>
-            <button className="flex items-center gap-1 text-left hover:text-slate-800 transition-colors" onClick={() => toggleSort("enrollment_count")}>
-              <Users className="h-3 w-3" /> <ArrowUpDown className="h-3 w-3 opacity-50" />
-            </button>
             <button className="flex items-center gap-1 text-left hover:text-slate-800 transition-colors" onClick={() => toggleSort("updated_at")}>
               Updated <ArrowUpDown className="h-3 w-3 opacity-50" />
             </button>
@@ -350,7 +347,7 @@ export default function CoursesPage() {
 
               return (
                 <div key={course.id}
-                  className="grid grid-cols-[36px_1fr_110px_140px_85px_75px_100px_210px] min-w-[820px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
+                  className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_210px] min-w-[745px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
 
                   {/* # */}
                   <span className="text-xs text-slate-400 font-medium text-center">{idx + 1}</span>
@@ -405,12 +402,6 @@ export default function CoursesPage() {
                   <div className="flex items-center gap-1 text-xs text-slate-500">
                     <DeliveryIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                     <span className="capitalize truncate">{course.delivery_mode}</span>
-                  </div>
-
-                  {/* Students */}
-                  <div className="flex items-center gap-1 text-xs text-slate-600">
-                    <span className="font-medium">{course.enrollment_count}</span>
-                    {course.capacity && <span className="text-slate-400">/{course.capacity}</span>}
                   </div>
 
                   {/* Last Update */}

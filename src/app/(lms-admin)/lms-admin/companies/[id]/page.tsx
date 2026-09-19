@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
   Building2, ArrowLeft, Loader2, Users, GraduationCap, BarChart3, Settings,
-  LayoutDashboard, Mail, Phone, MapPin, Edit, Power, Trash2, BarChart2,
+  LayoutDashboard, Mail, Phone, MapPin, Edit, Power, Trash2, BarChart2, FileDown, ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -46,7 +46,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   const [programs, setPrograms] = useState<{ id: string; name: string; status: string; start_date: string | null; end_date: string | null; member_counts: { active: number; completed: number } }[] | null>(null)
 
   useEffect(() => {
-    if (tab !== "programs" || programs) return
+    if ((tab !== "programs" && tab !== "reports") || programs) return
     fetch(`/api/lms/programs?company_id=${id}`).then(r => r.ok ? r.json() : []).then(d => setPrograms(Array.isArray(d) ? d : []))
   }, [tab, programs, id])
 
@@ -232,10 +232,47 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {tab === "reports" && (
-        <div className="py-16 text-center bg-white rounded-xl border border-dashed border-slate-200">
-          <BarChart3 className="h-10 w-10 text-slate-200 mx-auto mb-2" />
-          <p className="text-slate-600 font-medium text-sm">Company reports come with the Reports step</p>
-          <p className="text-xs text-slate-400 mt-1">Everything this company has done across its programs.</p>
+        <div className="space-y-4 max-w-3xl">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-semibold text-slate-900 text-sm">Company report</p>
+              <p className="text-xs text-slate-500 mt-0.5">Everything delivered to {company.name}: programs, people trained, results, certificates, feedback.</p>
+            </div>
+            <div className="flex gap-2">
+              <a href={`/api/lms/reports/clients/${company.id}/pdf?audience=client`} className="h-9 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5"><FileDown className="h-4 w-4" /> PDF</a>
+              <Link href={`/lms-admin/reports/clients/${company.id}`} className="h-9 px-3 rounded-lg bg-[#1B4F8A] text-white text-sm hover:bg-[#163f6f] inline-flex items-center">Open</Link>
+            </div>
+          </div>
+
+          {programs === null ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
+          ) : (() => {
+            const live = programs.filter(p => p.status !== "draft")
+            if (!live.length) return <p className="text-sm text-slate-400 text-center py-8">No program reports yet — they appear once a program is running.</p>
+            const row = (p: typeof live[number]) => (
+              <div key={p.id} className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 first:border-t-0 hover:bg-slate-50">
+                <Link href={`/lms-admin/reports/programs/${p.id}`} className="flex-1 min-w-0 group">
+                  <p className="text-sm font-medium text-slate-800 group-hover:text-[#1B4F8A] truncate">{p.name}</p>
+                  <p className="text-xs text-slate-400">{p.member_counts.active + p.member_counts.completed} students · {fmtDate(p.start_date)} → {fmtDate(p.end_date)}</p>
+                </Link>
+                <a href={`/api/lms/reports/programs/${p.id}/pdf?audience=client`} title="Download the program PDF" className="p-1.5 rounded-lg text-[#1B4F8A] hover:bg-[#1B4F8A]/10"><FileDown className="h-4 w-4" /></a>
+                <Link href={`/lms-admin/reports/programs/${p.id}`} aria-label={`Open ${p.name}`} className="text-slate-300 hover:text-[#1B4F8A]"><ChevronRight className="h-4 w-4" /></Link>
+              </div>
+            )
+            const running = live.filter(p => p.status === "active"), past = live.filter(p => p.status !== "active")
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <p className="px-4 py-3 text-sm font-semibold text-slate-800 bg-slate-50 border-b border-slate-100">Program reports <span className="font-normal text-slate-400">({live.length})</span></p>
+                {running.map(row)}
+                {past.length > 0 && (
+                  <details open={running.length === 0} className="border-t border-slate-100">
+                    <summary className="px-4 py-2.5 text-xs font-medium text-slate-500 cursor-pointer hover:bg-slate-50">Finished programs ({past.length})</summary>
+                    {past.map(row)}
+                  </details>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
 

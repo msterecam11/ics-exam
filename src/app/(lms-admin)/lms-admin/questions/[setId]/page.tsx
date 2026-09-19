@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState, use } from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Loader2, Plus, ChevronLeft, Search, Archive, ArchiveRestore, Pencil } from "lucide-react"
+import { Loader2, Plus, ChevronLeft, Search, Archive, ArchiveRestore, Pencil, Upload } from "lucide-react"
+import BankCsvImport from "@/components/lms/bank/BankCsvImport"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
@@ -31,6 +32,7 @@ export default function QuestionSetPage({ params }: { params: Promise<{ setId: s
   const [showArchived, setShowArchived] = useState(false)
   // undefined = closed, null = creating, string = editing that question
   const [editing, setEditing] = useState<string | null | undefined>(undefined)
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -75,10 +77,15 @@ export default function QuestionSetPage({ params }: { params: Promise<{ setId: s
           </h1>
           {set?.description && <p className="text-sm text-slate-500 mt-0.5">{set.description}</p>}
         </div>
-        {!set?.archived_at && (
-          <Button onClick={() => setEditing(null)} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
-            <Plus className="h-4 w-4" /> New question
-          </Button>
+        {set && !set.archived_at && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImporting(true)} className="gap-2">
+              <Upload className="h-4 w-4" /> Import CSV
+            </Button>
+            <Button onClick={() => setEditing(null)} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
+              <Plus className="h-4 w-4" /> New question
+            </Button>
+          </div>
         )}
       </div>
 
@@ -134,6 +141,9 @@ export default function QuestionSetPage({ params }: { params: Promise<{ setId: s
         </div>
       )}
 
+      {importing && set && (
+        <BankCsvImport setId={setId} setName={set.name} onClose={() => setImporting(false)} onDone={() => { setImporting(false); load() }} />
+      )}
       {editing !== undefined && (
         <QuestionEditorDialog
           questionId={editing}

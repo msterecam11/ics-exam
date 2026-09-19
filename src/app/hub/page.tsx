@@ -11,6 +11,7 @@ export default async function HubPage() {
   if (!session) redirect("/auth/login")
 
   const user = session.user
+  if (user?.role === "instructor") redirect("/lms-admin")   // instructors only work in the LMS
   const name = user?.name ?? "Admin"
   const email = user?.email ?? ""
   const initial = name[0]?.toUpperCase() ?? "A"

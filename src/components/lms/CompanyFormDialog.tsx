@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import ImageUploadField from "@/components/lms/ImageUploadField"
 
 export interface CompanyRow {
   id: string
@@ -94,7 +95,7 @@ export default function CompanyFormDialog({ open, editing, onClose, onSaved }: {
             {field("country", "Country", "Saudi Arabia")}
             {field("city", "City", "Riyadh")}
           </div>
-          {field("logo_url", "Logo URL", "https://…")}
+          <ImageUploadField kind="company" label="Logo" contain value={form.logo_url} onChange={url => set("logo_url", url)} />
 
           <div className="rounded-lg border border-slate-200 p-3 space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Main contact</p>

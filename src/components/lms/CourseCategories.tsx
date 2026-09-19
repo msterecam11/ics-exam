@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import ImageUploadField from "@/components/lms/ImageUploadField"
 
 // Step 10 — Courses opens on categories, and the courses live inside them.
 // The same categories drive the student catalogue, so this is where the shape
@@ -193,10 +194,8 @@ export function CategoryManager({ open, onClose, categories, onChanged }: {
                 <div className="space-y-2">
                   <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" />
                   <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short description (optional)" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="#1B4F8A" />
-                    <Input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="Image URL (optional)" />
-                  </div>
+                  <Input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="Colour, e.g. #1B4F8A (optional)" />
+                  <ImageUploadField kind="category" label="Image (optional)" value={form.image_url} onChange={url => setForm(f => ({ ...f, image_url: url }))} />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={save} disabled={busy} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white">Save</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>

@@ -3,7 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
+import { signOut } from "next-auth/react"
 import {
+  LogOut,
   LayoutDashboard,
   BookOpen,
   Users,
@@ -94,8 +96,8 @@ export default function LmsAdminSidebar({ user, permissions, inSheet = false }: 
         })}
       </nav>
 
-      {/* Back to Hub */}
-      <div className="px-3 pb-2">
+      {/* Back to Hub — instructors only have the LMS */}
+      {user.role !== "instructor" && <div className="px-3 pb-2">
         <Link
           href="/hub"
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors"
@@ -103,7 +105,7 @@ export default function LmsAdminSidebar({ user, permissions, inSheet = false }: 
           <LayoutGrid className="h-4 w-4 shrink-0" />
           <span>Back to Hub</span>
         </Link>
-      </div>
+      </div>}
 
       {/* User info */}
       <div className="px-4 py-4 border-t border-white/10">
@@ -120,6 +122,10 @@ export default function LmsAdminSidebar({ user, permissions, inSheet = false }: 
               {user.role ?? "instructor"}
             </Badge>
           </div>
+          <button onClick={() => signOut({ callbackUrl: "/auth/login" })} title="Sign out" aria-label="Sign out"
+            className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors">
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>
