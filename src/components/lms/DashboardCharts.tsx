@@ -29,7 +29,7 @@ function ChartTooltip({ active, payload, label }: any) {
 }
 
 // ── Enrollment Trend ───────────────────────────────────────────────
-export function EnrollmentTrendChart({ data }: { data: TrendPoint[] }) {
+export function EnrollmentTrendChart({ data, periodLabel = "last 30 days" }: { data: TrendPoint[]; periodLabel?: string }) {
   const total   = data.reduce((s, d) => s + d.count, 0)
   const half    = Math.floor(data.length / 2)
   const firstH  = data.slice(0, half).reduce((s, d) => s + d.count, 0)
@@ -42,7 +42,7 @@ export function EnrollmentTrendChart({ data }: { data: TrendPoint[] }) {
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Enrollment Trend</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">{total}</p>
-          <p className="text-xs text-slate-400 mt-0.5">new enrollments · last 30 days</p>
+          <p className="text-xs text-slate-400 mt-0.5">new enrollments · {periodLabel}</p>
         </div>
         <div className={cn(
           "flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full",

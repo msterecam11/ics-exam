@@ -7,7 +7,7 @@ import {
   Plus, Search, BookOpen, Users, Globe, Monitor, Layers,
   Loader2, Eye, Edit, Trash2, Copy, BarChart2,
   Smartphone, ChevronDown, X, Filter, ArrowUpDown,
-  CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog, Store,
+  CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog, Store, FolderInput,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -114,6 +114,27 @@ export default function CoursesPage() {
   const { categories, uncategorised, loading: catsLoading, reload: reloadCategories } = useCategories()
   const [sortBy,        setSortBy]        = useState<"title" | "updated_at" | "enrollment_count">("updated_at")
   const [sortDir,       setSortDir]       = useState<"asc" | "desc">("desc")
+  const [selected,      setSelected]      = useState<Set<string>>(new Set())
+  const [moving,        setMoving]        = useState<string[] | null>(null)
+  const [moveTo,        setMoveTo]        = useState("")
+  const [movingBusy,    setMovingBusy]    = useState(false)
+
+  async function moveCourses(ids: string[], categoryId: string) {
+    setMovingBusy(true)
+    let ok = 0
+    for (const id of ids) {
+      const res = await fetch("/api/lms/courses", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, category_id: categoryId === UNCATEGORISED_ID ? null : categoryId }),
+      })
+      if (res.ok) ok++
+    }
+    setMovingBusy(false); setMoving(null); setMoveTo(""); setSelected(new Set())
+    const name = categoryId === UNCATEGORISED_ID ? "Uncategorised" : categories.find(c => c.id === categoryId)?.name ?? "the category"
+    if (ok === ids.length) toast.success(`${ok} course${ok === 1 ? "" : "s"} moved to ${name}`)
+    else toast.error(`${ok} of ${ids.length} moved — some could not be changed`)
+    reloadCategories(); load()
+  }
 
   async function load() {
     setLoading(true)
@@ -145,6 +166,7 @@ export default function CoursesPage() {
       return sortDir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
 
+  const visibleSelected = filtered.filter(c => selected.has(c.id)).map(c => c.id)
   const openCat = categories.find(c => c.id === openCategory)
   const openCategoryName =
     openCategory === UNCATEGORISED_ID ? "Uncategorised" : openCat?.name ?? "Courses"
@@ -246,6 +268,33 @@ export default function CoursesPage() {
       <CategoryManager open={manageOpen} onClose={() => setManageOpen(false)}
         categories={categories} onChanged={() => { reloadCategories(); load() }} />
 
+      {moving && (() => {
+        const names = moving.map(id => courses.find(c => c.id === id)?.title).filter(Boolean) as string[]
+        const current = moving.length === 1 ? (courses.find(c => c.id === moving[0])?.category_id ?? UNCATEGORISED_ID) : null
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !movingBusy && setMoving(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
+              <div>
+                <h2 className="font-semibold text-slate-900">Move to category</h2>
+                <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{names.length === 1 ? names[0] : `${names.length} courses`}</p>
+              </div>
+              <select aria-label="Category" value={moveTo} onChange={e => setMoveTo(e.target.value)} className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white">
+                <option value="">Choose a category…</option>
+                {categories.filter(c => c.is_active).map(c => <option key={c.id} value={c.id} disabled={c.id === current}>{c.name}{c.id === current ? " (current)" : ""}</option>)}
+                <option value={UNCATEGORISED_ID} disabled={current === UNCATEGORISED_ID}>Uncategorised{current === UNCATEGORISED_ID ? " (current)" : ""}</option>
+              </select>
+              <p className="text-xs text-slate-400">Only where the course is filed changes — its content, students, programs and reports stay the same.</p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setMoving(null)} disabled={movingBusy}>Cancel</Button>
+                <Button onClick={() => moveCourses(moving, moveTo)} disabled={!moveTo || movingBusy} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
+                  {movingBusy && <Loader2 className="h-4 w-4 animate-spin" />} Move
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Searching from the top level looks across every category. */}
       {!openCategory && !search && (
         <div className="relative max-w-sm">
@@ -300,6 +349,16 @@ export default function CoursesPage() {
         </div>
       </div>
 
+      {visibleSelected.length > 0 && (
+        <div className="flex items-center gap-3 bg-[#1B4F8A]/5 border border-[#1B4F8A]/20 rounded-xl px-4 py-2.5">
+          <span className="text-sm font-medium text-[#1B4F8A]">{visibleSelected.length} selected</span>
+          <Button size="sm" onClick={() => setMoving(visibleSelected)} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-1.5 h-8">
+            <FolderInput className="h-3.5 w-3.5" /> Move to category
+          </Button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-slate-500 hover:text-slate-800 ml-auto">Clear selection</button>
+        </div>
+      )}
+
       {/* ── Table ────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -324,8 +383,12 @@ export default function CoursesPage() {
           {/* Scrollable table area — scrolls horizontally on mobile */}
           <div className="overflow-x-auto">
           {/* Table header */}
-          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_210px] min-w-[745px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
-            <span className="text-center">#</span>
+          <div className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_244px] min-w-[780px] border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider gap-x-2">
+            <span className="flex justify-center">
+              <input type="checkbox" aria-label="Select all courses shown" className="accent-[#1B4F8A]"
+                checked={filtered.length > 0 && filtered.every(c => selected.has(c.id))}
+                onChange={e => setSelected(e.target.checked ? new Set(filtered.map(c => c.id)) : new Set())} />
+            </span>
             <button className="flex items-center gap-1 text-left hover:text-slate-800 transition-colors" onClick={() => toggleSort("title")}>
               Course <ArrowUpDown className="h-3 w-3 opacity-50" />
             </button>
@@ -347,10 +410,13 @@ export default function CoursesPage() {
 
               return (
                 <div key={course.id}
-                  className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_210px] min-w-[745px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
+                  className="grid grid-cols-[36px_1fr_110px_140px_85px_100px_244px] min-w-[780px] items-center px-4 py-3 hover:bg-slate-50/60 transition-colors gap-x-2">
 
-                  {/* # */}
-                  <span className="text-xs text-slate-400 font-medium text-center">{idx + 1}</span>
+                  {/* Select */}
+                  <span className="flex justify-center">
+                    <input type="checkbox" aria-label={`Select ${course.title}`} className="accent-[#1B4F8A]" checked={selected.has(course.id)}
+                      onChange={() => setSelected(prev => { const n = new Set(prev); if (n.has(course.id)) n.delete(course.id); else n.add(course.id); return n })} />
+                  </span>
 
                   {/* Course */}
                   <div className="flex items-center gap-3 min-w-0">
@@ -426,7 +492,7 @@ export default function CoursesPage() {
                     </a>
 
                     {/* Report */}
-                    <Link href={`/lms-admin/reports?course_id=${course.id}`} title="Course report">
+                    <Link href={`/lms-admin/reports/${course.id}`} title="Course report">
                       <span className="flex p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
                         <BarChart2 className="h-4 w-4" />
                       </span>
@@ -446,6 +512,12 @@ export default function CoursesPage() {
                           : <Send className="h-4 w-4" />}
                       </button>
                     )}
+
+                    {/* Move to another category */}
+                    <button title="Move to category" onClick={() => setMoving([course.id])}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
+                      <FolderInput className="h-4 w-4" />
+                    </button>
 
                     {/* Duplicate */}
                     <button title="Duplicate" onClick={() => duplicate(course)} disabled={!!isDuplicating}
