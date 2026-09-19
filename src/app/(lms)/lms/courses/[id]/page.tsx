@@ -83,7 +83,7 @@ export default async function StudentCoursePage({
   // Fetch course
   const { data: course } = await db
     .from("lms_courses")
-    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date")
+    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites")
     .eq("id", courseId)
     .single()
 
@@ -404,9 +404,6 @@ export default async function StudentCoursePage({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-xl font-bold text-slate-900">{course.title}</h1>
-                {course.description && (
-                  <p className="text-slate-500 text-sm mt-1">{course.description}</p>
-                )}
                 <div className="flex gap-2 mt-3 flex-wrap">
                   <Badge variant="outline" className="text-xs gap-1">
                     <DeliveryIcon className="h-3 w-3" /> {course.delivery_mode}
@@ -447,6 +444,57 @@ export default async function StudentCoursePage({
             </div>
           </div>
         </div>
+
+        {/* About this course — open until the student starts, then folded away */}
+        {(() => {
+          const objectives = ((course as any).learning_outcomes ?? []) as string[]
+          const prereqs = ((course as any).prerequisites ?? []) as string[]
+          const modList = modsWithLock as any[]
+          if (!course.description && !objectives.length && !prereqs.length && !modList.length) return null
+          const H = ({ children }: { children: React.ReactNode }) => <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{children}</h3>
+          return (
+            <details open={overallPct === 0} className="bg-white rounded-2xl border border-slate-200 group">
+              <summary className="px-6 py-4 cursor-pointer select-none flex items-center justify-between list-none">
+                <span className="text-base font-bold text-slate-800">About this course</span>
+                <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="px-6 pb-6 space-y-6 border-t border-slate-100 pt-5">
+                {course.description && (
+                  <section><H>Course overview</H><p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{course.description}</p></section>
+                )}
+                {objectives.length > 0 && (
+                  <section>
+                    <H>Learning objectives</H>
+                    <ul className="space-y-1.5">
+                      {objectives.map((o, i) => <li key={i} className="flex items-start gap-2 text-sm text-slate-600"><CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />{o}</li>)}
+                    </ul>
+                  </section>
+                )}
+                {modList.length > 0 && (
+                  <section>
+                    <H>Course modules</H>
+                    <ol className="space-y-1.5">
+                      {modList.map((m, i) => (
+                        <li key={m.id} className="flex items-center gap-2.5 text-sm text-slate-600">
+                          <span className="w-5 h-5 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                          {m.title}
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
+                {prereqs.length > 0 && (
+                  <section>
+                    <H>Prerequisites</H>
+                    <ul className="space-y-1.5">
+                      {prereqs.map((p, i) => <li key={i} className="flex items-start gap-2 text-sm text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0 mt-2" />{p}</li>)}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            </details>
+          )
+        })()}
 
         {/* Modules */}
         <div className="space-y-3">

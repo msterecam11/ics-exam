@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       thumbnail_url, language, delivery_mode,
       status, progress_enforcement, certificate_enabled, feedback_enabled,
       start_date, end_date, capacity, final_exam_pass_mark, created_at, updated_at, created_by,
-      catalogue_visibility, catalogue_companies, short_description, level, duration_hours, learning_outcomes,
+      catalogue_visibility, catalogue_companies, short_description, level, duration_hours, learning_outcomes, prerequisites,
       lms_course_categories(id, name, colour),
       lms_course_instructors(instructor_id, admin_users(id, name, email))
     `)
@@ -157,7 +157,7 @@ export async function PATCH(req: Request) {
     "title","description","overview_html","course_code","category","category_id","tags",
     "thumbnail_url","language","delivery_mode","status",
     // Step 10 — the catalogue card and who may see it.
-    "catalogue_visibility","catalogue_companies","short_description","level","duration_hours","learning_outcomes",
+    "catalogue_visibility","catalogue_companies","short_description","level","duration_hours","learning_outcomes","prerequisites",
     "progress_enforcement","progress_test_every_x","min_attendance_pct",
     "certificate_enabled","certificate_auto_release",
     "feedback_enabled","feedback_mandatory","feedback_anonymous",
@@ -332,10 +332,11 @@ async function validateCatalogueFields(fields: Record<string, any>, updates: Rec
       updates.duration_hours = n
     }
   }
-  if ("learning_outcomes" in fields) {
-    const raw = Array.isArray(fields.learning_outcomes) ? fields.learning_outcomes : []
-    const list = raw.map((x: unknown) => String(x ?? "").trim()).filter(Boolean).slice(0, 20)
-    updates.learning_outcomes = list.length ? list : null
+  for (const key of ["learning_outcomes", "prerequisites"] as const) {
+    if (!(key in fields)) continue
+    const raw = Array.isArray(fields[key]) ? fields[key] : []
+    const list = raw.map((x: unknown) => String(x ?? "").trim().slice(0, 300)).filter(Boolean).slice(0, 20)
+    updates[key] = list.length ? list : null
   }
   if ("short_description" in fields) {
     const v = typeof fields.short_description === "string" ? fields.short_description.trim() : ""

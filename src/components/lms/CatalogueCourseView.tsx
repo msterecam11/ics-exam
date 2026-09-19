@@ -19,6 +19,7 @@ interface Detail {
   thumbnail_url: string | null; language: string | null; delivery_mode: string
   level: string | null; duration_hours: number | null
   learning_outcomes: string[]
+  prerequisites?: string[]
   category: { id: string; name: string } | null
   modules: { id: string; title: string; type: string }[]
   enrolled: boolean
@@ -156,6 +157,17 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
         <section className="bg-white rounded-2xl border border-slate-200 p-6">
           <h2 className="text-sm font-semibold text-slate-900">About this course</h2>
           <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{c.description}</p>
+        </section>
+      )}
+
+      {(c.prerequisites ?? []).length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-900">Prerequisites</h2>
+          <ul className="mt-3 space-y-2">
+            {(c.prerequisites ?? []).map((p, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-700"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0 mt-2" />{p}</li>
+            ))}
+          </ul>
         </section>
       )}
 

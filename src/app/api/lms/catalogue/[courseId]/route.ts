@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
   const { data: course } = await db
     .from("lms_courses")
     .select(`id, title, description, short_description, overview_html, thumbnail_url, language,
-             delivery_mode, level, duration_hours, learning_outcomes, course_code, status,
+             delivery_mode, level, duration_hours, learning_outcomes, prerequisites, course_code, status,
              catalogue_visibility, catalogue_companies,
              lms_course_categories(id, name)`)
     .eq("id", courseId).maybeSingle()
@@ -47,6 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
     thumbnail_url: c.thumbnail_url, language: c.language, delivery_mode: c.delivery_mode,
     level: c.level, duration_hours: c.duration_hours,
     learning_outcomes: c.learning_outcomes ?? [],
+    prerequisites: c.prerequisites ?? [],
     category: c.lms_course_categories ? { id: c.lms_course_categories.id, name: c.lms_course_categories.name } : null,
     modules: (modules ?? []).map((m: any) => ({ id: m.id, title: m.title, type: m.module_type })),
     enrolled: !!enrolment,

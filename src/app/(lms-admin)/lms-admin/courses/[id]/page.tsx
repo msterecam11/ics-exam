@@ -112,7 +112,7 @@ interface Course {
   status: string; delivery_mode: string; language: string
   catalogue_visibility?: string | null; catalogue_companies?: string[] | null
   short_description?: string | null; level?: string | null
-  duration_hours?: number | null; learning_outcomes?: string[] | null
+  duration_hours?: number | null; learning_outcomes?: string[] | null; prerequisites?: string[] | null
   progress_enforcement: boolean; certificate_enabled: boolean
   final_exam_pass_mark: number | null
   start_date: string | null; end_date: string | null
@@ -713,8 +713,9 @@ function AssignmentSubmissionsModal({ open, onClose, item, courseId }: {
 // ──────────────────────────────────────────────────────────────
 // COURSE OVERVIEW EDITOR  (Phase 1 — main deliverable)
 // ──────────────────────────────────────────────────────────────
-function CourseOverviewEditor({ course, onCourseChange, onSaveStatus }: {
+function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }: {
   course: Course
+  modules: Module[]
   onCourseChange: (updates: Partial<Course>) => void
   onSaveStatus: (s: SaveStatus) => void
 }) {
@@ -723,15 +724,20 @@ function CourseOverviewEditor({ course, onCourseChange, onSaveStatus }: {
   const [uploading, setUploading] = useState(false)
 
   // Debounced auto-save
+  // Changes made within the debounce window are merged, so none is lost.
+  const pending = useRef<Partial<Course>>({})
   const scheduleAutoSave = useCallback((patch: Partial<Course>) => {
     onSaveStatus("unsaved")
+    pending.current = { ...pending.current, ...patch }
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       onSaveStatus("saving")
+      const body = pending.current
+      pending.current = {}
       const res = await fetch("/api/lms/courses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: course.id, ...patch }),
+        body: JSON.stringify({ id: course.id, ...body }),
       })
       onSaveStatus(res.ok ? "saved" : "unsaved")
     }, 1500)
@@ -814,13 +820,10 @@ function CourseOverviewEditor({ course, onCourseChange, onSaveStatus }: {
           placeholder="Course Code (e.g. RFFS-01)"
           className="text-sm font-mono bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 placeholder:text-slate-400 w-44"
         />
-        <input
-          type="text"
-          value={course.category ?? ""}
-          onChange={e => handleFieldChange("category", e.target.value)}
-          placeholder="Category / Path"
-          className="text-sm bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5 text-slate-600 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 placeholder:text-slate-400 w-44"
-        />
+        <div className="w-52 [&_select]:h-8 [&_select]:rounded-full [&_select]:bg-blue-50 [&_select]:border-blue-100 [&_select]:text-sm">
+          <CategorySelect value={course.category_id ?? null}
+            onChange={v => { onCourseChange({ category_id: v }); scheduleAutoSave({ category_id: v }) }} />
+        </div>
         <div className="flex items-center gap-1.5 text-sm text-slate-500 bg-slate-100 rounded-full px-3 py-1.5">
           {(() => { const Icon = DELIVERY_ICONS[course.delivery_mode] ?? Globe; return <Icon className="h-3.5 w-3.5" /> })()}
           <span className="capitalize">{course.delivery_mode}</span>
@@ -832,34 +835,73 @@ function CourseOverviewEditor({ course, onCourseChange, onSaveStatus }: {
         )}
       </div>
 
-      {/* ── Short description ─────────────────────────────────── */}
-      <div className="mb-6">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Short Description</label>
+      {/* ── Course overview ───────────────────────────────────── */}
+      <div className="mb-7">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Course Overview</label>
         <textarea
           value={course.description ?? ""}
           onChange={e => handleFieldChange("description", e.target.value)}
-          rows={2}
-          placeholder="A brief summary shown on the course card (plain text)…"
-          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 resize-none"
+          rows={5}
+          placeholder="What this course is about and who it is for — shown to students on the course page and in the catalogue."
+          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 leading-relaxed placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 resize-y"
         />
       </div>
 
-      {/* ── Overview body (Rich Text) ─────────────────────────── */}
-      <div className="mb-2">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Course Overview</label>
-        <RichTextEditor
-          content={course.overview_html ?? ""}
-          onChange={html => {
-            onCourseChange({ overview_html: html })
-            scheduleAutoSave({ overview_html: html })
-          }}
-          placeholder="Write a detailed overview of this course — objectives, what students will learn, structure…"
-          minHeight={360}
-        />
+      <OverviewList label="Learning Objectives" hint="What students will be able to do after the course"
+        placeholder="e.g. Apply GACAR Part 139 requirements to aerodrome inspections"
+        items={course.learning_outcomes ?? []}
+        onChange={items => { onCourseChange({ learning_outcomes: items }); scheduleAutoSave({ learning_outcomes: items }) }} />
+
+      <div className="mb-7">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Course Modules</label>
+        <p className="text-xs text-slate-400 mb-2">Listed automatically from the course — edit them in the sidebar.</p>
+        {modules.length === 0 ? <p className="text-sm text-slate-400 bg-white border border-dashed border-slate-200 rounded-xl px-4 py-3">No modules yet.</p> : (
+          <ol className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+            {[...modules].sort((a, b) => a.order_index - b.order_index).map((m, i) => (
+              <li key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                <span className="w-6 h-6 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                <span className="flex-1 text-slate-700">{m.title}</span>
+                <span className="text-[11px] text-slate-400 capitalize">{m.module_type === "final_exam" ? "Final exam" : m.module_type.replace("_", " ")}</span>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
-      <p className="text-xs text-slate-400 mt-2 ml-1">
-        Supports headings, bullet points, bold/italic, links and more. Changes auto-save.
-      </p>
+
+      <OverviewList label="Prerequisites" hint="What students should know or have done before starting"
+        placeholder="e.g. At least one year in airside operations"
+        items={course.prerequisites ?? []}
+        onChange={items => { onCourseChange({ prerequisites: items }); scheduleAutoSave({ prerequisites: items }) }} />
+
+      <p className="text-xs text-slate-400 mt-2 ml-1">Changes auto-save.</p>
+    </div>
+  )
+}
+
+function OverviewList({ label, hint, placeholder, items, onChange }: {
+  label: string; hint: string; placeholder: string; items: string[]; onChange: (items: string[]) => void
+}) {
+  const list = items.length ? items : [""]
+  return (
+    <div className="mb-7">
+      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
+      <p className="text-xs text-slate-400 mb-2">{hint}</p>
+      <div className="space-y-2">
+        {list.map((v, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#1B4F8A]/50 shrink-0" />
+            <input value={v} placeholder={placeholder}
+              onChange={e => onChange(list.map((x, j) => j === i ? e.target.value : x))}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); onChange([...list.slice(0, i + 1), "", ...list.slice(i + 1)]) } }}
+              className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20" />
+            <button type="button" aria-label="Remove" onClick={() => onChange(list.filter((_, j) => j !== i))}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"><X className="h-3.5 w-3.5" /></button>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => onChange([...list, ""])} className="mt-2 text-xs font-medium text-[#1B4F8A] hover:underline flex items-center gap-1">
+        <Plus className="h-3.5 w-3.5" /> Add
+      </button>
     </div>
   )
 }
@@ -2786,6 +2828,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               {activeView === "overview" && course && (
                 <CourseOverviewEditor
                   course={course}
+                  modules={modules}
                   onCourseChange={updates => setCourse(prev => prev ? { ...prev, ...updates } : prev)}
                   onSaveStatus={setSaveStatus}
                 />
