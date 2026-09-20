@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import {
   ArrowLeft, Loader2, LayoutDashboard, Layers, Users, CalendarDays, TrendingUp, BarChart3, Settings,
-  Play, CheckCircle2, Archive, RotateCcw, Building2, Calendar, MessageSquare,
+  Play, CheckCircle2, Archive, RotateCcw, Building2, Calendar, MessageSquare, GraduationCap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -16,6 +16,7 @@ import ProgramStudentsTab from "@/components/lms/programs/ProgramStudentsTab"
 import ProgramSettingsTab from "@/components/lms/programs/ProgramSettingsTab"
 import ProgramSessionsTab from "@/components/lms/programs/ProgramSessionsTab"
 import ProgramReportTree from "@/components/lms/programs/ProgramReportTree"
+import ProgramExamsTab from "@/components/lms/programs/ProgramExamsTab"
 
 const TABS = [
   { key: "overview",  label: "Overview",  icon: LayoutDashboard },
@@ -23,6 +24,7 @@ const TABS = [
   { key: "students",  label: "Students",  icon: Users },
   { key: "sessions",  label: "Sessions",  icon: CalendarDays },
   { key: "progress",  label: "Progress",  icon: TrendingUp },
+  { key: "exams",     label: "Exams",     icon: GraduationCap },
   { key: "reports",   label: "Reports",   icon: BarChart3 },
   { key: "settings",  label: "Settings",  icon: Settings },
 ] as const
@@ -182,6 +184,8 @@ export default function ProgramPage({ params, searchParams }: {
 
       {tab === "sessions" && <ProgramSessionsTab detail={detail} isAdmin={isAdmin} />}
 
+      {tab === "exams" && <ProgramExamsTab detail={detail} />}
+
       {tab === "progress" && (
         current.length === 0 ? <p className="text-sm text-slate-400 py-12 text-center">No students yet.</p> : (
           <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
@@ -191,9 +195,9 @@ export default function ProgramPage({ params, searchParams }: {
                   <th className="text-left px-4 py-3 font-medium sticky left-0 bg-slate-50">Student</th>
                   {detail.rules.map(r => (
                     <th key={r.course_id} className="text-left px-3 py-3 font-medium whitespace-nowrap">
-                      <Link href={`/lms-admin/programs/${id}/exams/${r.course_id}`} className="hover:text-[#1B4F8A] hover:underline">
+                      <button onClick={() => setTab("exams")} className="hover:text-[#1B4F8A] hover:underline">
                         {r.lms_courses?.title}
-                      </Link>
+                      </button>
                     </th>
                   ))}
                 </tr>
