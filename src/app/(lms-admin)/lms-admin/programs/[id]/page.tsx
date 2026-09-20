@@ -189,7 +189,13 @@ export default function ProgramPage({ params, searchParams }: {
               <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium sticky left-0 bg-slate-50">Student</th>
-                  {detail.rules.map(r => <th key={r.course_id} className="text-left px-3 py-3 font-medium whitespace-nowrap">{r.lms_courses?.title}</th>)}
+                  {detail.rules.map(r => (
+                    <th key={r.course_id} className="text-left px-3 py-3 font-medium whitespace-nowrap">
+                      <Link href={`/lms-admin/programs/${id}/exams/${r.course_id}`} className="hover:text-[#1B4F8A] hover:underline">
+                        {r.lms_courses?.title}
+                      </Link>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -204,9 +210,17 @@ export default function ProgramPage({ params, searchParams }: {
                       const pct = Math.round(Number(e.progress_pct ?? 0))
                       return (
                         <td key={r.course_id} className="px-3 py-2.5">
-                          {e.status === "completed"
-                            ? <span className="text-emerald-600 text-xs font-medium flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Completed</span>
-                            : <Link href={`/lms-admin/progress/${m.student_id}/course/${r.course_id}?enrollment_id=${e.id}`} className="text-xs text-slate-600 hover:text-[#1B4F8A]">{pct}%</Link>}
+                          <Link href={`/lms-admin/progress/${m.student_id}/course/${r.course_id}?enrollment_id=${e.id}`} className="group/cell block">
+                            {e.status === "completed"
+                              ? <span className="text-emerald-600 text-xs font-medium flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Completed</span>
+                              : <span className="text-xs text-slate-600 group-hover/cell:text-[#1B4F8A]">{pct}%</span>}
+                            {e.exam && (
+                              <span className="block text-[11px] mt-0.5">
+                                <span className={e.exam.passed ? "text-emerald-600" : "text-red-500"}>exam {e.exam.pct}%</span>
+                                {e.exam.attempts > 1 && <span className="text-amber-600"> · {e.exam.attempts} tries</span>}
+                              </span>
+                            )}
+                          </Link>
                         </td>
                       )
                     })}

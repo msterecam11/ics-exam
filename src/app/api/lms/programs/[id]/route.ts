@@ -57,10 +57,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ? await db.from("lms_learning_path_courses").select("path_id, order_index, lms_courses(id, title)").in("path_id", pathIds).order("order_index")
     : { data: [] }
 
+  // Best final-exam result per enrollment, so the progress matrix can show the
+  // outcome next to the progress bar rather than progress alone.
+  const enrIds = ((enrollments.data ?? []) as any[]).map(e => e.id)
+  const bestExam = new Map<string, { pct: number; passed: boolean; attempts: number }>()
+  if (enrIds.length) {
+    const { data: attempts } = await db.from("lms_module_attempts")
+      .select("enrollment_id, score, max_score, passed, lms_modules!inner(module_type)")
+      .in("enrollment_id", enrIds).eq("lms_modules.module_type", "final_exam")
+    for (const a of (attempts ?? []) as any[]) {
+      if (a.score == null || !a.max_score) continue
+      const pct = Math.round((a.score / a.max_score) * 100)
+      const prev = bestExam.get(a.enrollment_id)
+      bestExam.set(a.enrollment_id, {
+        pct: Math.max(pct, prev?.pct ?? 0),
+        passed: !!a.passed || !!prev?.passed,
+        attempts: (prev?.attempts ?? 0) + 1,
+      })
+    }
+  }
+
   const enrByMember = new Map<string, any[]>()
   for (const e of (enrollments.data ?? []) as any[]) {
     if (!enrByMember.has(e.member_id)) enrByMember.set(e.member_id, [])
-    enrByMember.get(e.member_id)!.push(e)
+    enrByMember.get(e.member_id)!.push({ ...e, exam: bestExam.get(e.id) ?? null })
   }
 
   return NextResponse.json({

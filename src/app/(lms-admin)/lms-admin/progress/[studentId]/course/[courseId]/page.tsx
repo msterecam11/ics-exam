@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   ArrowLeft, Loader2, AlertCircle, BookOpen, FileText, GraduationCap,
   Package, Shield, ChevronDown, ChevronUp, CheckCircle2, XCircle,
-  Calendar, AlertTriangle, Monitor, Download, MousePointer, Clipboard, Eye,
+  Calendar, AlertTriangle, Monitor, Download, MousePointer, Clipboard, Eye, FileSearch,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -231,19 +231,16 @@ function QuestionReview({
 
 // ── Expandable exam attempt row ───────────────────────────────────────────────
 
-function ExamAttemptRow({ attempt }: { attempt: any }) {
-  const [open, setOpen] = useState(false)
-  const pct      = attempt.max_score > 0 ? Math.round((attempt.score / attempt.max_score) * 100) : 0
-  const questions = (attempt.questions ?? []) as any[]
-  const answers   = (attempt.answers ?? {}) as Record<string, any>
-  const aiScores  = (attempt.ai_feedback?.open_ended_scores ?? {}) as Record<string, { score: number; justification: string }>
+// One attempt, summarised. The per-question review lives in ONE place —
+// /lms-admin/reports/<course>/<student>/exam — which also carries the attempt
+// switcher, the integrity tab and the PDF. Two screens rendering the same
+// answers is how "where do I look?" happens.
+function ExamAttemptRow({ attempt, href }: { attempt: any; href: string }) {
+  const pct = attempt.max_score > 0 ? Math.round((attempt.score / attempt.max_score) * 100) : 0
 
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
-      >
+      <Link href={href} className="w-full flex items-center gap-4 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
         <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
           {attempt.attempt_no}
         </div>
@@ -270,37 +267,11 @@ function ExamAttemptRow({ attempt }: { attempt: any }) {
           {attempt.fullscreen_exits > 0 && <ViolationBadge count={attempt.fullscreen_exits} label="fs" />}
           {attempt.right_clicks > 0     && <ViolationBadge count={attempt.right_clicks}     label="rc" />}
           {attempt.copy_attempts > 0    && <ViolationBadge count={attempt.copy_attempts}    label="cp" />}
-          {open ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          <span className="text-xs font-medium text-[#1B4F8A] flex items-center gap-1 whitespace-nowrap">
+            <FileSearch className="h-3.5 w-3.5" /> Answers
+          </span>
         </div>
-      </button>
-
-      {open && (
-        <div className="border-t border-slate-100 bg-slate-50 px-4 py-4 space-y-4">
-          {/* Security snapshot */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm pb-3 border-b border-slate-200">
-            <div><p className="text-xs text-slate-400">Started</p><p className="text-xs font-medium">{fmtDateTime(attempt.started_at)}</p></div>
-            <div><p className="text-xs text-slate-400">Tab switches</p><p className={cn("font-semibold text-sm", attempt.tab_switches > 0 ? "text-red-600" : "text-slate-500")}>{attempt.tab_switches}</p></div>
-            <div><p className="text-xs text-slate-400">FS exits</p><p className={cn("font-semibold text-sm", attempt.fullscreen_exits > 0 ? "text-red-600" : "text-slate-500")}>{attempt.fullscreen_exits}</p></div>
-            <div><p className="text-xs text-slate-400">Right clicks / Copy</p><p className={cn("font-semibold text-sm", (attempt.right_clicks + attempt.copy_attempts) > 0 ? "text-red-600" : "text-slate-500")}>{attempt.right_clicks} / {attempt.copy_attempts}</p></div>
-          </div>
-
-          {/* Q&A review */}
-          {questions.length > 0 ? (
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                Answer Review · {questions.length} question{questions.length !== 1 ? "s" : ""}
-              </p>
-              <div className="space-y-2">
-                {questions.map((q: any, i: number) => (
-                  <QuestionReview key={q.id} num={i + 1} q={q} answers={answers} aiScores={aiScores} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400 text-center py-2 italic">No answer data available for this attempt</p>
-          )}
-        </div>
-      )}
+      </Link>
     </div>
   )
 }
@@ -557,7 +528,10 @@ export default function CourseProgressDetail({
                   </div>
                 </div>
                 <div className="p-4 space-y-2">
-                  {ex.attempts.map((a: any) => <ExamAttemptRow key={a.id} attempt={a} />)}
+                  {ex.attempts.map((a: any) => (
+                    <ExamAttemptRow key={a.id} attempt={a}
+                      href={`/lms-admin/reports/${courseId}/${studentId}/exam${enrollmentId ? `?enrollment=${encodeURIComponent(enrollmentId)}` : ""}`} />
+                  ))}
                 </div>
               </div>
             ))}

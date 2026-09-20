@@ -33,7 +33,11 @@ export type ProgramDetail = {
     id: string; student_id: string; track_id: string | null; status: "active" | "withdrawn" | "completed"
     end_date_override: string | null; added_at: string; withdrawn_at: string | null
     lms_students: { id: string; name: string; email: string; company: string | null; job_title: string | null; employee_number: string | null } | null
-    enrollments: { id: string; course_id: string; status: string; progress_pct: number | null; completed_at: string | null }[]
+    enrollments: {
+      id: string; course_id: string; status: string; progress_pct: number | null; completed_at: string | null
+      /** Best final-exam attempt on this enrollment, when they have sat it. */
+      exam?: { pct: number; passed: boolean; attempts: number } | null
+    }[]
     course_count: number; completed_count: number; progress_pct: number
   }[]
 }
