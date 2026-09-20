@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   Search, Loader2, Clock, BarChart3, Globe, Monitor, Layers, FolderOpen,
-  ChevronLeft, CheckCircle2, Hourglass, X,
+  ChevronLeft, ChevronRight, CheckCircle2, Hourglass, X,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import CourseCover from "@/components/lms/CourseCover"
 
-// SP-14 — the student catalogue: categories first, then the courses inside,
-// with a filter for how the course is delivered. Mirrors the admin Courses
-// screen on purpose, so the two feel like the same place.
+// SP-14 — the student catalogue. The courses themselves are on the first
+// screen, grouped under their category, so nobody has to click a tile to find
+// out what is inside. Opening a category is still there for the long ones.
 
 interface Category { id: string; name: string; description: string | null; image_url: string | null; colour: string | null; count: number }
 interface CourseCard {
@@ -83,7 +84,18 @@ export default function CatalogueBrowser() {
   })
 
   const openCat = data.categories.find(c => c.id === category)
-  const showTiles = !category && !searching
+  // Home view: every category with its courses underneath, longest first.
+  const grouped = !category && !searching
+  const PREVIEW = 6
+  const sections = grouped
+    ? [
+        ...data.categories.map(k => ({
+          id: k.id, name: k.name, description: k.description, colour: k.colour,
+          courses: visible.filter(c => c.category_id === k.id),
+        })),
+        { id: NONE, name: "Other courses", description: null, colour: null, courses: visible.filter(c => !c.category_id) },
+      ].filter(s => s.courses.length > 0)
+    : []
 
   return (
     <div className="space-y-5">
@@ -117,100 +129,81 @@ export default function CatalogueBrowser() {
         )}
       </div>
 
-      {showTiles ? (
-        data.categories.length === 0 && !data.uncategorised ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
-            <FolderOpen className="h-8 w-8 text-slate-300 mx-auto" />
-            <p className="text-sm font-medium text-slate-700 mt-3">Nothing here yet</p>
-            <p className="text-sm text-slate-500 mt-1">New courses will appear as they open.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.categories.map(c => (
-              <button key={c.id} onClick={() => setCategory(c.id)}
-                className="group text-left bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#1B4F8A]/40 hover:shadow-sm transition-all">
-                <div className="h-24 relative" style={{ background: c.colour || "#1B4F8A" }}>
-                  {c.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.image_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="text-sm font-semibold text-slate-800 group-hover:text-[#1B4F8A]">{c.name}</p>
-                  {c.description && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.description}</p>}
-                  <p className="text-xs text-slate-400 mt-2">{c.count} course{c.count === 1 ? "" : "s"}</p>
-                </div>
-              </button>
-            ))}
-            {data.uncategorised > 0 && (
-              <button onClick={() => setCategory(NONE)}
-                className="group text-left bg-white rounded-xl border border-dashed border-slate-300 overflow-hidden hover:border-slate-400">
-                <div className="h-24 bg-slate-100 flex items-center justify-center"><FolderOpen className="h-7 w-7 text-slate-300" /></div>
-                <div className="p-4">
-                  <p className="text-sm font-semibold text-slate-600">Other courses</p>
-                  <p className="text-xs text-slate-400 mt-2">{data.uncategorised} course{data.uncategorised === 1 ? "" : "s"}</p>
-                </div>
-              </button>
-            )}
-          </div>
-        )
-      ) : (
-        <>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {MODES.map(m => (
-              <button key={m.key} onClick={() => setMode(m.key)}
-                className={cn("px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors",
-                  mode === m.key ? "bg-[#1B4F8A] text-white border-[#1B4F8A]" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300")}>
-                {m.label}
-              </button>
-            ))}
-            <span className="text-xs text-slate-400 ml-auto">{visible.length} course{visible.length === 1 ? "" : "s"}</span>
-          </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {MODES.map(m => (
+          <button key={m.key} onClick={() => setMode(m.key)}
+            className={cn("px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors",
+              mode === m.key ? "bg-[#1B4F8A] text-white border-[#1B4F8A]" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300")}>
+            {m.label}
+          </button>
+        ))}
+        <span className="text-xs text-slate-400 ml-auto">{visible.length} course{visible.length === 1 ? "" : "s"}</span>
+      </div>
 
-          {visible.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 py-16 text-center">
-              <p className="text-sm text-slate-500">No courses match.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {visible.map(c => {
-                const state = statusOf.get(c.id)
-                const Icon = MODE_ICON[c.delivery_mode] ?? Globe
-                return (
-                  <Link key={c.id} href={`/lms/catalogue/${c.id}`}
-                    className="group bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#1B4F8A]/40 hover:shadow-sm transition-all flex flex-col">
-                    <div className="h-28 bg-slate-100 relative shrink-0">
-                      {c.thumbnail_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                      )}
-                      {state === "enrolled" && (
-                        <span className="absolute top-2 right-2 text-[10px] font-semibold bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" /> Enrolled
-                        </span>
-                      )}
-                      {state === "pending" && (
-                        <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-500 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Hourglass className="h-3 w-3" /> Requested
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-4 flex-1 flex flex-col">
-                      <p className="text-sm font-semibold text-slate-800 group-hover:text-[#1B4F8A] line-clamp-2">{c.title}</p>
-                      {c.blurb && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.blurb}</p>}
-                      <div className="flex items-center gap-3 mt-auto pt-3 text-[11px] text-slate-400">
-                        <span className="flex items-center gap-1 capitalize"><Icon className="h-3 w-3" />{c.delivery_mode}</span>
-                        {c.duration_hours ? <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{c.duration_hours}h</span> : null}
-                        {c.level ? <span className="flex items-center gap-1 capitalize"><BarChart3 className="h-3 w-3" />{c.level}</span> : null}
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </>
+      {visible.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-slate-300 py-16 text-center">
+          <FolderOpen className="h-8 w-8 text-slate-300 mx-auto" />
+          <p className="text-sm text-slate-500 mt-3">{searching || mode ? "No courses match." : "New courses will appear as they open."}</p>
+        </div>
+      ) : grouped ? (
+        <div className="space-y-7">
+          {sections.map(s => (
+            <section key={s.id}>
+              <div className="flex items-end justify-between gap-3 mb-2.5">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.colour || "#1B4F8A" }} />
+                    {s.name}
+                    <span className="text-xs font-normal text-slate-400">{s.courses.length}</span>
+                  </h2>
+                  {s.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{s.description}</p>}
+                </div>
+                {s.courses.length > PREVIEW && (
+                  <button onClick={() => setCategory(s.id)} className="text-xs text-[#1B4F8A] hover:underline shrink-0 flex items-center gap-0.5">
+                    See all {s.courses.length} <ChevronRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {s.courses.slice(0, PREVIEW).map(c => <Card key={c.id} c={c} state={statusOf.get(c.id)} colour={s.colour} />)}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {visible.map(c => <Card key={c.id} c={c} state={statusOf.get(c.id)} colour={openCat?.colour ?? null} />)}
+        </div>
       )}
     </div>
+  )
+}
+
+// One course card. The cover is never an empty grey box (CourseCover).
+function Card({ c, state, colour }: { c: CourseCard; state?: string; colour: string | null }) {
+  const Icon = MODE_ICON[c.delivery_mode] ?? Globe
+  return (
+    <Link href={`/lms/catalogue/${c.id}`}
+      className="group bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-[#1B4F8A]/40 hover:shadow-sm transition-all flex flex-col">
+      <CourseCover title={c.title} code={c.course_code} imageUrl={c.thumbnail_url} colour={colour} className="h-28"
+        badge={state === "enrolled" ? (
+          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-emerald-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3" /> Enrolled
+          </span>
+        ) : state === "pending" ? (
+          <span className="absolute top-2 right-2 text-[10px] font-semibold bg-amber-500 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Hourglass className="h-3 w-3" /> Requested
+          </span>
+        ) : null} />
+      <div className="p-4 flex-1 flex flex-col">
+        <p className="text-sm font-semibold text-slate-800 group-hover:text-[#1B4F8A] line-clamp-2">{c.title}</p>
+        {c.blurb && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.blurb}</p>}
+        <div className="flex items-center gap-3 mt-auto pt-3 text-[11px] text-slate-400">
+          <span className="flex items-center gap-1 capitalize"><Icon className="h-3 w-3" />{c.delivery_mode}</span>
+          {c.duration_hours ? <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{c.duration_hours}h</span> : null}
+          {c.level ? <span className="flex items-center gap-1 capitalize"><BarChart3 className="h-3 w-3" />{c.level}</span> : null}
+        </div>
+      </div>
+    </Link>
   )
 }

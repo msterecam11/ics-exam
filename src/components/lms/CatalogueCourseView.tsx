@@ -5,10 +5,11 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, Clock, BarChart3, Globe, Monitor, Layers, CheckCircle2, Hourglass,
-  Loader2, Check, BookOpen, Send, X,
+  Loader2, Check, BookOpen, Send, X, Users, Award, Languages, ListChecks,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import CourseCover from "@/components/lms/CourseCover"
 
 // SP-15 — one course as a prospective student sees it. Module titles only:
 // this is the shop window, not the course.
@@ -18,6 +19,8 @@ interface Detail {
   blurb: string | null; description: string | null; overview_html: string | null
   thumbnail_url: string | null; language: string | null; delivery_mode: string
   level: string | null; duration_hours: number | null
+  audience?: string | null
+  certificate?: boolean
   learning_outcomes: string[]
   prerequisites?: string[]
   category: { id: string; name: string } | null
@@ -27,6 +30,7 @@ interface Detail {
 }
 
 const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers }
+const MODE_LABEL: Record<string, string> = { online: "Online", onsite: "Onsite", hybrid: "Online + onsite" }
 
 export default function CatalogueCourseView({ courseId }: { courseId: string }) {
   const router = useRouter()
@@ -69,122 +73,168 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
   const Icon = MODE_ICON[c.delivery_mode] ?? Globe
   const pending = c.request?.status === "pending"
 
+  // The facts a student wants before reading anything else.
+  const facts = [
+    { icon: Icon, label: "Delivery", value: MODE_LABEL[c.delivery_mode] ?? c.delivery_mode },
+    c.duration_hours ? { icon: Clock, label: "Duration", value: `${c.duration_hours} hours` } : null,
+    c.modules.length ? { icon: ListChecks, label: "Modules", value: `${c.modules.length}` } : null,
+    c.level ? { icon: BarChart3, label: "Level", value: c.level } : null,
+    c.language ? { icon: Languages, label: "Language", value: c.language.toUpperCase() } : null,
+    c.certificate !== false ? { icon: Award, label: "On completion", value: "Certificate" } : null,
+  ].filter(Boolean) as { icon: any; label: string; value: string }[]
+
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5">
       <button onClick={() => router.push("/lms/catalogue")} className="text-xs text-slate-500 hover:text-[#1B4F8A] flex items-center gap-1">
         <ArrowLeft className="h-3.5 w-3.5" /> Catalogue
       </button>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="h-40 bg-slate-100 relative">
-          {c.thumbnail_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={c.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+        {/* ── Left: the course itself ───────────────────────────────── */}
+        <div className="space-y-5 min-w-0">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <CourseCover title={c.title} code={c.course_code} imageUrl={c.thumbnail_url} className="h-44" />
+            <div className="p-6">
+              {c.category && <p className="text-xs text-[#1B4F8A] font-medium">{c.category.name}</p>}
+              <h1 className="text-2xl font-bold text-slate-900 mt-1">{c.title}</h1>
+              {c.blurb && <p className="text-sm text-slate-600 mt-2 leading-relaxed">{c.blurb}</p>}
+
+              {c.audience && (
+                <p className="mt-4 flex items-start gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+                  <Users className="h-4 w-4 text-[#1B4F8A] shrink-0 mt-0.5" />
+                  <span><span className="font-medium text-slate-800">Who this course is for: </span>{c.audience}</span>
+                </p>
+              )}
+
+              {/* Key facts — the questions everyone asks first. */}
+              <dl className="mt-5 flex flex-wrap border border-slate-100 rounded-xl overflow-hidden divide-x divide-slate-100">
+                {facts.map(f => (
+                  <div key={f.label} className="bg-white px-4 py-3 grow basis-40">
+                    <dt className="text-[11px] uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+                      <f.icon className="h-3 w-3" />{f.label}
+                    </dt>
+                    <dd className="text-sm font-medium text-slate-800 capitalize mt-0.5">{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+
+          {c.learning_outcomes.length > 0 && (
+            <section className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-sm font-semibold text-slate-900">What you&apos;ll learn</h2>
+              <ul className="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-2">
+                {c.learning_outcomes.map((o, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />{o}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {c.description && c.description !== c.blurb && (
+            <section className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-sm font-semibold text-slate-900">About this course</h2>
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{c.description}</p>
+            </section>
+          )}
+
+          {c.modules.length > 0 && (
+            <section className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-sm font-semibold text-slate-900">What&apos;s inside</h2>
+              <ol className="mt-3 space-y-1.5">
+                {c.modules.map((m, i) => (
+                  <li key={m.id} className="flex items-start gap-2.5 text-sm text-slate-700">
+                    <span className="text-xs text-slate-400 w-5 shrink-0 mt-0.5">{i + 1}.</span>
+                    <BookOpen className="h-4 w-4 text-slate-300 shrink-0 mt-0.5" />
+                    {m.title}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          {(c.prerequisites ?? []).length > 0 && (
+            <section className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-sm font-semibold text-slate-900">Prerequisites</h2>
+              <ul className="mt-3 space-y-2">
+                {(c.prerequisites ?? []).map((p, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0 mt-2" />{p}</li>
+                ))}
+              </ul>
+            </section>
           )}
         </div>
-        <div className="p-6">
-          {c.category && <p className="text-xs text-[#1B4F8A] font-medium">{c.category.name}</p>}
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">{c.title}</h1>
-          {c.blurb && <p className="text-sm text-slate-600 mt-2 leading-relaxed">{c.blurb}</p>}
 
-          <div className="flex items-center gap-4 mt-4 text-xs text-slate-500 flex-wrap">
-            <span className="flex items-center gap-1.5 capitalize"><Icon className="h-3.5 w-3.5" />{c.delivery_mode}</span>
-            {c.duration_hours ? <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{c.duration_hours} hours</span> : null}
-            {c.level ? <span className="flex items-center gap-1.5 capitalize"><BarChart3 className="h-3.5 w-3.5" />{c.level}</span> : null}
-            {c.language ? <span className="uppercase">{c.language}</span> : null}
-            {c.course_code ? <span className="text-slate-400">{c.course_code}</span> : null}
-          </div>
-
+        {/* ── Right: how to get on it, and what happens after ───────── */}
+        <aside className="lg:sticky lg:top-4 bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
           {/* CV-5 — already on it, already asked, or free to ask */}
-          <div className="mt-5">
-            {c.enrolled ? (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {c.enrolled ? (
+            <>
+              <div className="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                 You&apos;re already enrolled in this course.
-                <Link href="/lms/courses" className="ml-auto text-[#1B4F8A] hover:underline shrink-0">Open it</Link>
               </div>
-            ) : pending ? (
-              <div className="flex items-center gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                <Hourglass className="h-4 w-4 shrink-0" />
+              <Link href="/lms/courses" className="block text-center text-sm text-[#1B4F8A] hover:underline">Open it</Link>
+            </>
+          ) : pending ? (
+            <>
+              <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <Hourglass className="h-4 w-4 shrink-0 mt-0.5" />
                 You&apos;ve asked to join. We&apos;ll let you know.
-                <Link href="/lms/catalogue/requests" className="ml-auto text-[#1B4F8A] hover:underline shrink-0">My requests</Link>
               </div>
-            ) : asking ? (
-              <div className="border border-slate-200 rounded-xl p-4 space-y-2">
-                <p className="text-sm font-medium text-slate-800">Ask to join this course</p>
-                <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} maxLength={1000}
-                  placeholder="Anything you'd like us to know? (optional)"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none" />
-                <div className="flex gap-2">
-                  <Button onClick={send} disabled={sending} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
-                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send request
-                  </Button>
-                  <Button variant="outline" onClick={() => setAsking(false)} disabled={sending} className="gap-1.5">
-                    <X className="h-4 w-4" /> Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <Button onClick={() => setAsking(true)} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
-                  <Send className="h-4 w-4" /> Request this course
+              <Link href="/lms/catalogue/requests" className="block text-center text-sm text-[#1B4F8A] hover:underline">My requests</Link>
+            </>
+          ) : asking ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-800">Ask to join this course</p>
+              <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} maxLength={1000}
+                placeholder="Anything you'd like us to know? (optional)"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none" />
+              <div className="flex gap-2">
+                <Button onClick={send} disabled={sending} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2 flex-1">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send request
                 </Button>
-                {c.request?.status === "rejected" && c.request.reason && (
-                  <p className="text-xs text-slate-500 mt-2">
-                    A previous request wasn&apos;t approved: {c.request.reason}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+                <Button variant="outline" onClick={() => setAsking(false)} disabled={sending} className="gap-1.5">
+                  <X className="h-4 w-4" /> Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Button onClick={() => setAsking(true)} className="w-full bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
+                <Send className="h-4 w-4" /> Request this course
+              </Button>
+              {c.request?.status === "rejected" && c.request.reason && (
+                <p className="text-xs text-slate-500">A previous request wasn&apos;t approved: {c.request.reason}</p>
+              )}
+            </>
+          )}
+
+          {/* Nobody should have to guess what a request sets off. */}
+          {!c.enrolled && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">What happens next</p>
+              <ol className="mt-2.5 space-y-2.5">
+                {[
+                  "You send the request — nothing is charged and nothing starts yet.",
+                  "Our training team reviews it, usually within two working days.",
+                  "If it's approved we enrol you and email you; the course then appears under My Courses.",
+                ].map((t, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-xs text-slate-600 leading-relaxed">
+                    <span className="w-4 h-4 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                    {t}
+                  </li>
+                ))}
+              </ol>
+              <p className="text-[11px] text-slate-400 mt-3">
+                If your company arranges your training, your request goes to them first.
+              </p>
+            </div>
+          )}
+        </aside>
       </div>
-
-      {c.learning_outcomes.length > 0 && (
-        <section className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900">What you&apos;ll learn</h2>
-          <ul className="mt-3 space-y-2">
-            {c.learning_outcomes.map((o, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />{o}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {c.description && c.description !== c.blurb && (
-        <section className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900">About this course</h2>
-          <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{c.description}</p>
-        </section>
-      )}
-
-      {(c.prerequisites ?? []).length > 0 && (
-        <section className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900">Prerequisites</h2>
-          <ul className="mt-3 space-y-2">
-            {(c.prerequisites ?? []).map((p, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-700"><span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0 mt-2" />{p}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {c.modules.length > 0 && (
-        <section className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900">What&apos;s inside</h2>
-          <ol className="mt-3 space-y-1.5">
-            {c.modules.map((m, i) => (
-              <li key={m.id} className="flex items-start gap-2.5 text-sm text-slate-700">
-                <span className="text-xs text-slate-400 w-5 shrink-0 mt-0.5">{i + 1}.</span>
-                <BookOpen className="h-4 w-4 text-slate-300 shrink-0 mt-0.5" />
-                {m.title}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
     </div>
   )
 }

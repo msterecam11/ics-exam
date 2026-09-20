@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { sessionIsFor, sessionToday } from "@/lib/lms-sessions"
 import { loadProgramReport, loadClientReport } from "@/lib/lms-report-scope"
+import { viewerProgramIds } from "@/lib/viewer-access"
 
 export async function GET() {
   const session = await auth()
@@ -27,7 +28,7 @@ export async function GET() {
     const p: Record<string, boolean> = row.permissions ?? {}
 
     if (row.resource_type === "course") {
-      items.push(await resolveCourse(row.resource_id, row, p))
+      items.push(await resolveCourse(row.resource_id, row, p, session.user.id))
     } else if (row.resource_type === "cohort") {
       items.push(await resolveCohort(row.resource_id, row, p))
     } else if (row.resource_type === "program") {
@@ -100,7 +101,15 @@ async function resolveCompany(companyId: string, row: any, p: Record<string, boo
 }
 
 // ── Course scope ──────────────────────────────────────────────────────────────
-async function resolveCourse(courseId: string, row: any, p: Record<string, boolean>) {
+async function resolveCourse(courseId: string, row: any, p: Record<string, boolean>, userId: string) {
+  // A course is shared: the same course runs for several clients at once, so a
+  // course grant on its own must never list every learner on it. Only learners
+  // inside a program this viewer is granted (directly, or through their
+  // company) are shown, plus individual learners who sit in no program at all.
+  // A client whose grant is course-only therefore sees nothing until a program
+  // or company grant is added — deliberately fail-closed.
+  const allowedPrograms = new Set(await viewerProgramIds(userId))
+
   // Enrollments with student data — progress_pct and last_login are the same
   // source-of-truth columns the admin dashboard/reports read (kept in sync by
   // syncEnrollmentProgress), so the viewer sees identical numbers.
@@ -114,6 +123,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   const rankStatus = (s: string) => (s === "active" ? 0 : 1)
   const seen = new Set<string>()
   const enrollments = [...((enrollmentRows ?? []) as any[])]
+    .filter(e => !e.program_id || allowedPrograms.has(e.program_id))
     .sort((a, b) => rankStatus(a.status) - rankStatus(b.status) || String(b.enrolled_at).localeCompare(String(a.enrolled_at)))
     .filter(e => (seen.has(e.student_id) ? false : (seen.add(e.student_id), true)))
   const enrollmentIds = enrollments.map((e: any) => e.id)

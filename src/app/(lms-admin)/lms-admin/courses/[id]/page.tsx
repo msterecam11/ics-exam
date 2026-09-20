@@ -113,6 +113,7 @@ interface Course {
   catalogue_visibility?: string | null; catalogue_companies?: string[] | null
   short_description?: string | null; level?: string | null
   duration_hours?: number | null; learning_outcomes?: string[] | null; prerequisites?: string[] | null
+  audience?: string | null
   progress_enforcement: boolean; certificate_enabled: boolean
   final_exam_pass_mark: number | null
   start_date: string | null; end_date: string | null
@@ -844,6 +845,19 @@ function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }:
           rows={5}
           placeholder="What this course is about and who it is for — shown to students on the course page and in the catalogue."
           className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 leading-relaxed placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20 resize-y"
+        />
+      </div>
+
+      {/* ── Who it is for — one line at the top of the catalogue page ── */}
+      <div className="mb-7">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Who This Course Is For</label>
+        <p className="text-xs text-slate-400 mb-2">One line, shown first in the catalogue.</p>
+        <input
+          value={course.audience ?? ""}
+          onChange={e => handleFieldChange("audience", e.target.value)}
+          maxLength={300}
+          placeholder="e.g. Airside operations supervisors and safety officers at certified aerodromes"
+          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 placeholder:text-slate-300 outline-none focus:ring-2 focus:ring-[#1B4F8A]/20"
         />
       </div>
 

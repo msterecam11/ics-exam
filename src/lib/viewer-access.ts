@@ -60,12 +60,20 @@ export async function canViewLmsReport(userId: string, studentId: string, course
   const grants = await lmsGrants(userId)
   if (grants.length === 0) return false
 
-  const courseGrant = grants.find((r: any) => r.resource_type === "course" && r.resource_id === courseId)
-  if (courseGrant) return true
-
   // Program / company grant: the student takes this course inside a program the
   // viewer may see.
   const programIds = await viewerProgramIds(userId)
+
+  // A course grant covers the course, not everyone on it: the same course runs
+  // for several clients. It opens a learner's report only when that learner is
+  // an individual (no program) or sits in a program this viewer may see.
+  const courseGrant = grants.find((r: any) => r.resource_type === "course" && r.resource_id === courseId)
+  if (courseGrant) {
+    const { data: rows } = await db.from("lms_enrollments").select("program_id")
+      .eq("student_id", studentId).eq("course_id", courseId)
+    if ((rows ?? []).some((e: any) => !e.program_id || programIds.includes(e.program_id))) return true
+  }
+
   if (programIds.length) {
     const { data: inProgram } = await db.from("lms_enrollments").select("id")
       .eq("student_id", studentId).eq("course_id", courseId).in("program_id", programIds).limit(1)
