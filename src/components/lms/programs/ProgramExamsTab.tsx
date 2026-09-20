@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { ChevronDown, ChevronUp, FileSearch, GraduationCap } from "lucide-react"
 import type { ProgramDetail } from "./shared"
 
@@ -15,10 +16,42 @@ type Row = {
 }
 
 export default function ProgramExamsTab({ detail }: { detail: ProgramDetail }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({})
+  // ?course= opens that course, ?track= filters to one track — so a link can
+  // point at exactly what you want someone to look at.
+  const sp = useSearchParams()
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    const c = sp.get("course")
+    return c ? { [c]: true } : {}
+  })
+  const [track, setTrack] = useState<string | null>(() => {
+    const t = sp.get("track")
+    return t && detail.tracks.some(x => x.id === t) ? t : null
+  })
+
+  // Keep the address bar in step, without a navigation.
+  function syncUrl(next: { course?: string | null; track?: string | null }) {
+    if (typeof window === "undefined") return
+    const u = new URL(window.location.href)
+    u.searchParams.set("tab", "exams")
+    for (const [k, v] of Object.entries(next)) {
+      if (v) u.searchParams.set(k, v)
+      else u.searchParams.delete(k)
+    }
+    window.history.replaceState(null, "", u.toString())
+  }
+
+  function toggle(courseId: string) {
+    setOpen(o => {
+      const isOpen = !o[courseId]
+      syncUrl({ course: isOpen ? courseId : null })
+      return { ...o, [courseId]: isOpen }
+    })
+  }
 
   const tracks = new Map(detail.tracks.map(t => [t.id, t.name]))
-  const members = detail.members.filter(m => m.status !== "withdrawn")
+  const members = detail.members
+    .filter(m => m.status !== "withdrawn")
+    .filter(m => !track || m.track_id === track)
 
   // Courses the program actually delivers, in structure order, plus anything a
   // rule mentions (a course can carry a pass mark without sitting in a track).
@@ -64,6 +97,19 @@ export default function ProgramExamsTab({ detail }: { detail: ProgramDetail }) {
 
   return (
     <div className="space-y-2.5">
+      {detail.tracks.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap pb-1">
+          {[{ id: null as string | null, name: "Whole program" }, ...detail.tracks].map(t => (
+            <button key={t.id ?? "all"} onClick={() => { setTrack(t.id); syncUrl({ track: t.id }) }}
+              className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                track === t.id
+                  ? "border-[#1B4F8A] bg-[#1B4F8A]/5 text-[#1B4F8A] font-medium"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
       {courses.map(c => {
         const isOpen = !!open[c.courseId]
         const summary = [
@@ -76,7 +122,7 @@ export default function ProgramExamsTab({ detail }: { detail: ProgramDetail }) {
 
         return (
           <div key={c.courseId} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button onClick={() => setOpen(o => ({ ...o, [c.courseId]: !isOpen }))}
+            <button onClick={() => toggle(c.courseId)}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left">
               <GraduationCap className="h-4 w-4 text-slate-300 shrink-0" />
               <span className="min-w-0 flex-1">
