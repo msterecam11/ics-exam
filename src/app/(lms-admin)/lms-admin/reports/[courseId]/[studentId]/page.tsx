@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft, Printer, Download, BrainCircuit, RefreshCw, Loader2,
-  CheckCircle2, ShieldAlert,
+  CheckCircle2, ShieldAlert, FileSearch,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -143,6 +143,15 @@ export default function StudentCourseReportView({ params, searchParams }: {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* The per-question exam review. It was reachable only by typing the
+              URL, which is why nobody found it. */}
+          {report.exam && (
+            <Link href={`/lms-admin/reports/${courseId}/${studentId}/exam${enrollment ? `?enrollment=${encodeURIComponent(enrollment)}` : ""}`}>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                <FileSearch className="h-3.5 w-3.5" /> Exam answers
+              </Button>
+            </Link>
+          )}
           {assessment ? (
             <Button size="sm" variant="outline" onClick={generateAssessment} disabled={generating} className="gap-1.5 text-xs">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Regenerate
