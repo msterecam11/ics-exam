@@ -116,6 +116,8 @@ async function courseBreakdown(programId: string, p: Record<string, boolean>) {
       const att = f.attendance
       return {
         id: f.student_id,
+        // The report link opens THIS run of the course, not the whole program.
+        enrollment_id: f.enrollment_id,
         name: m?.lms_students?.name ?? "Unknown",
         job_title: m?.lms_students?.job_title ?? null,
         track: m?.track_id ? tracks.find(t => t.id === m.track_id)?.name ?? null : null,

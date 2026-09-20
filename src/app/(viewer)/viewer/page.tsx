@@ -419,7 +419,7 @@ interface LmsCourseGroup {
   course_id: string; title: string; track_name: string | null
   students_count: number; completion_rate: number | null
   certificates: number | null; avg_score: number | null
-  students: (LmsStudent & { track?: string | null; completed_at?: string | null })[]
+  students: (LmsStudent & { track?: string | null; completed_at?: string | null; enrollment_id?: string })[]
 }
 interface LmsItem {
   access_id: string; resource_type: string; resource_id: string
@@ -445,8 +445,8 @@ function allows(p: Record<string, boolean>, key: string) {
 
 // One course inside a program: a summary line that answers most questions, and
 // its own participants once opened.
-function CourseGroup({ g, p, programId, open, onToggle }: {
-  g: LmsCourseGroup; p: Record<string, boolean>; programId: string; open: boolean; onToggle: () => void
+function CourseGroup({ g, p, open, onToggle }: {
+  g: LmsCourseGroup; p: Record<string, boolean>; open: boolean; onToggle: () => void
 }) {
   const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v}%`)
   const summary = [
@@ -490,7 +490,8 @@ function CourseGroup({ g, p, programId, open, onToggle }: {
               {p.certificates && <span className="w-16 text-center text-xs">{s.certificate?.released ? "✓" : s.certificate?.issued ? "held" : "—"}</span>}
               {p.last_login   && <span className="w-24 text-center text-xs text-slate-500">{s.last_login ? new Date(s.last_login).toLocaleDateString() : "—"}</span>}
               {allows(p, "report_individual") && (
-                <a href={`/viewer/lms/program/${programId}/student/${s.id}`} target="_blank" rel="noopener noreferrer"
+                <a href={`/viewer/lms/report/${s.id}/${g.course_id}${s.enrollment_id ? `?enrollment=${s.enrollment_id}` : ""}`}
+                  target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg shrink-0">
                   <Eye className="h-3.5 w-3.5" />Report
                 </a>
@@ -603,7 +604,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                           {g.track_name ?? "All tracks"}
                         </p>
                       )}
-                    <CourseGroup g={g} p={p} programId={item.resource_id}
+                    <CourseGroup g={g} p={p}
                       open={!!openCourse[`${item.access_id}:${g.course_id}`]}
                       onToggle={() => setOpenCourse(o => ({ ...o, [`${item.access_id}:${g.course_id}`]: !o[`${item.access_id}:${g.course_id}`] }))} />
                     </div>
