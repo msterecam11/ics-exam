@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { sessionIsFor, sessionToday } from "@/lib/lms-sessions"
 import { loadProgramReport, loadClientReport } from "@/lib/lms-report-scope"
 import { viewerProgramIds } from "@/lib/viewer-access"
+import { loadEnrollmentFacts } from "@/lib/lms-program-report"
 
 export async function GET() {
   const session = await auth()
@@ -51,6 +52,7 @@ async function resolveProgram(programId: string, row: any, p: Record<string, boo
   if (!cached) return null
   const r = cached.data
   return {
+    ...(await courseBreakdown(programId, p)),
     access_id: row.id, resource_type: "program", resource_id: programId,
     label: row.label || r.program.name, permissions: p,
     program: {
@@ -77,6 +79,76 @@ async function resolveProgram(programId: string, row: any, p: Record<string, boo
       last_login: null,
     })),
   }
+}
+
+// ── The same program, course by course ────────────────────────────────────────
+// "How is the Safety course going?" rather than "how is Ahmed doing?". Each
+// course carries its own participants, under the track it belongs to — a course
+// every track takes is filed under "All tracks" once, not repeated per track.
+async function courseBreakdown(programId: string, p: Record<string, boolean>) {
+  const [facts, { data: memberRows }, { data: trackRows }] = await Promise.all([
+    loadEnrollmentFacts({ programId }),
+    db.from("lms_program_members")
+      .select("id, student_id, track_id, status, lms_students(id, name, job_title, last_login)")
+      .eq("program_id", programId),
+    db.from("lms_program_tracks").select("id, name, order_index").eq("program_id", programId).order("order_index"),
+  ])
+
+  const tracks = (trackRows ?? []) as any[]
+  const trackOrder = new Map(tracks.map((t, i) => [t.id as string, i]))
+  const members = new Map(((memberRows ?? []) as any[])
+    .filter(m => m.status !== "withdrawn")
+    .map(m => [m.id as string, m]))
+
+  const live = facts.filter(f => f.status !== "dropped" && f.member_id && members.has(f.member_id))
+  const courseIds = [...new Set(live.map(f => f.course_id))]
+  if (!courseIds.length) return { courseGroups: [] }
+
+  const { data: courseRows } = await db.from("lms_courses").select("id, title").in("id", courseIds)
+  const titles = new Map(((courseRows ?? []) as any[]).map(c => [c.id as string, c.title as string]))
+
+  const groups = courseIds.map(courseId => {
+    const mine = live.filter(f => f.course_id === courseId)
+    const trackIds = new Set(mine.map(f => members.get(f.member_id!)?.track_id ?? null))
+
+    const students = mine.map(f => {
+      const m = members.get(f.member_id!)
+      const att = f.attendance
+      return {
+        id: f.student_id,
+        name: m?.lms_students?.name ?? "Unknown",
+        job_title: m?.lms_students?.job_title ?? null,
+        track: m?.track_id ? tracks.find(t => t.id === m.track_id)?.name ?? null : null,
+        status: f.status,
+        completed_at: f.completedAt,
+        progress_pct: p.progress ? Math.round(f.progress) : null,
+        quiz_avg_score: p.scores ? f.exam.bestPct : null,
+        attendance_pct: p.attendance && att.counted > 0 ? Math.round((att.present / att.counted) * 100) : null,
+        certificate: p.certificates ? (f.certificate ? { issued: true, released: f.certificate.status === "released" } : { issued: false, released: false }) : null,
+        last_login: p.last_login ? (m?.lms_students?.last_login ?? null) : null,
+      }
+    }).sort((a, b) => a.name.localeCompare(b.name))
+
+    const done = mine.filter(f => f.status === "completed").length
+    const scored = mine.map(f => f.exam.bestPct).filter((n): n is number => typeof n === "number")
+    return {
+      course_id: courseId,
+      title: titles.get(courseId) ?? "Untitled course",
+      // Shared by every track (or by members with no track at all) reads as one group.
+      track: trackIds.size === 1 ? [...trackIds][0] : null,
+      track_name: trackIds.size === 1 && [...trackIds][0]
+        ? tracks.find(t => t.id === [...trackIds][0])?.name ?? null
+        : null,
+      order: trackIds.size === 1 && [...trackIds][0] ? (trackOrder.get([...trackIds][0] as string) ?? 99) : -1,
+      students_count: mine.length,
+      completion_rate: mine.length ? Math.round((done / mine.length) * 100) : null,
+      certificates: p.certificates ? mine.filter(f => f.certificate).length : null,
+      avg_score: p.scores && scored.length ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : null,
+      students,
+    }
+  }).sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+
+  return { courseGroups: groups }
 }
 
 // ── Client (company) scope ────────────────────────────────────────────────────

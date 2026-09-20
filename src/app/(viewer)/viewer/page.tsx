@@ -415,10 +415,17 @@ interface LmsCompanyInfo {
   name: string; programs: number; trained: number
   completion_rate: number | null; pass_rate: number | null; certificates: number
 }
+interface LmsCourseGroup {
+  course_id: string; title: string; track_name: string | null
+  students_count: number; completion_rate: number | null
+  certificates: number | null; avg_score: number | null
+  students: (LmsStudent & { track?: string | null; completed_at?: string | null })[]
+}
 interface LmsItem {
   access_id: string; resource_type: string; resource_id: string
   label: string; permissions: Record<string, boolean>
   students: LmsStudent[]
+  courseGroups?: LmsCourseGroup[]
   program?: LmsProgramInfo
   company?: LmsCompanyInfo
   programs?: { id: string; name: string; status: string; students: number; completion_rate: number | null; pass_rate: number | null }[]
@@ -436,10 +443,72 @@ function allows(p: Record<string, boolean>, key: string) {
   return REPORT_LEVELS.includes(key) && p[key] === undefined && p.reports === true
 }
 
+// One course inside a program: a summary line that answers most questions, and
+// its own participants once opened.
+function CourseGroup({ g, p, programId, open, onToggle }: {
+  g: LmsCourseGroup; p: Record<string, boolean>; programId: string; open: boolean; onToggle: () => void
+}) {
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v}%`)
+  const summary = [
+    `${g.students_count} participant${g.students_count === 1 ? "" : "s"}`,
+    g.completion_rate !== null ? `${g.completion_rate}% complete` : null,
+    p.scores && g.avg_score !== null ? `avg ${g.avg_score}%` : null,
+    p.certificates && g.certificates !== null ? `${g.certificates} certificate${g.certificates === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" · ")
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left">
+        <BookOpen className="h-4 w-4 text-slate-300 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-slate-800 truncate">{g.title}</span>
+          <span className="block text-xs text-slate-400">{summary}</span>
+        </span>
+        {open ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100">
+          <div className="flex items-center gap-3 px-4 py-2 bg-slate-50/60 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <span className="min-w-0 flex-1">Participant</span>
+            {p.progress     && <span className="w-16 text-center">Progress</span>}
+            {p.scores       && <span className="w-16 text-center">Score</span>}
+            {p.attendance   && <span className="w-16 text-center">Attend.</span>}
+            {p.certificates && <span className="w-16 text-center">Cert.</span>}
+            {p.last_login   && <span className="w-24 text-center">Last login</span>}
+            {allows(p, "report_individual") && <span className="w-[72px] text-center">Report</span>}
+          </div>
+          {g.students.map(s => (
+            <div key={s.id} className="flex items-center gap-3 px-4 py-2 border-b border-slate-50 last:border-0 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block text-slate-700 truncate">{s.name}</span>
+                {s.job_title && <span className="block text-xs text-slate-400 truncate">{s.job_title}</span>}
+              </span>
+              {p.progress     && <span className="w-16 text-center text-xs text-slate-600">{pct(s.progress_pct)}</span>}
+              {p.scores       && <span className="w-16 text-center text-xs text-slate-600">{pct(s.quiz_avg_score)}</span>}
+              {p.attendance   && <span className="w-16 text-center text-xs text-slate-600">{pct(s.attendance_pct)}</span>}
+              {p.certificates && <span className="w-16 text-center text-xs">{s.certificate?.released ? "✓" : s.certificate?.issued ? "held" : "—"}</span>}
+              {p.last_login   && <span className="w-24 text-center text-xs text-slate-500">{s.last_login ? new Date(s.last_login).toLocaleDateString() : "—"}</span>}
+              {allows(p, "report_individual") && (
+                <a href={`/viewer/lms/program/${programId}/student/${s.id}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg shrink-0">
+                  <Eye className="h-3.5 w-3.5" />Report
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── LMS section ─────────────────────────────────────────────────────────────
 function LmsSection({ items }: { items: LmsItem[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [detail, setDetail]     = useState<{ s: LmsStudent; p: Record<string, boolean> } | null>(null)
+  const [view, setView]         = useState<Record<string, "courses" | "people">>({})
+  const [openCourse, setOpenCourse] = useState<Record<string, boolean>>({})
 
   if (items.length === 0) return <EmptyAccess label="LMS" />
 
@@ -453,6 +522,8 @@ function LmsSection({ items }: { items: LmsItem[] }) {
           const isProgram = item.resource_type === "program"
           const isCompany = item.resource_type === "company"
           const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v}%`)
+          const groups = item.courseGroups ?? []
+          const byCourse = (view[item.access_id] ?? "courses") === "courses" && groups.length > 0
 
           return (
             <div key={item.access_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -508,8 +579,40 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 </div>
               )}
 
+              {/* Two ways to read the same program: course by course, or person by person */}
+              {isOpen && groups.length > 0 && (
+                <div className="px-5 pt-3 flex items-center gap-1.5 border-t border-slate-100">
+                  {([["courses", "By course"], ["people", "By participant"]] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setView(v => ({ ...v, [item.access_id]: key }))}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
+                        byCourse === (key === "courses")
+                          ? "bg-[#1B4F8A] text-white border-[#1B4F8A]"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {isOpen && byCourse && groups.length > 0 && (
+                <div className="px-5 py-3 space-y-2">
+                  {groups.map((g, i) => (
+                    <div key={g.course_id}>
+                      {(i === 0 || groups[i - 1].track_name !== g.track_name) && (
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-3 first:mt-0 mb-1.5">
+                          {g.track_name ?? "All tracks"}
+                        </p>
+                      )}
+                    <CourseGroup g={g} p={p} programId={item.resource_id}
+                      open={!!openCourse[`${item.access_id}:${g.course_id}`]}
+                      onToggle={() => setOpenCourse(o => ({ ...o, [`${item.access_id}:${g.course_id}`]: !o[`${item.access_id}:${g.course_id}`] }))} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Student list */}
-              {isOpen && !isCompany && (
+              {isOpen && !isCompany && !byCourse && (
                 item.students.length === 0 ? (
                   <p className="px-5 pb-5 text-sm text-slate-400">No students enrolled yet.</p>
                 ) : (
