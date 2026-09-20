@@ -3,19 +3,26 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { auditLog } from "@/lib/audit"
+import { REPORT_LEVELS } from "@/lib/viewer-access"
 
 function isAdmin(role?: string) { return role === "admin" }
 function isViewer(role?: string) { return role === "viewer" }
 
 const EXAM_PERMISSIONS      = ["scores", "results", "reports", "manual_reports"] as const
 const INTERVIEW_PERMISSIONS = ["progress", "scores", "verdicts", "reports"] as const
-const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates", "reports", "last_login"] as const
+const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates",
+                               "reports", "report_client", "report_program", "report_individual", "last_login"] as const
 
 function allowedKeysFor(system: string) {
   return system === "exam" ? EXAM_PERMISSIONS : system === "lms" ? LMS_PERMISSIONS : INTERVIEW_PERMISSIONS
 }
 function cleanPermissions(system: string, permissions: Record<string, boolean>) {
-  return Object.fromEntries(allowedKeysFor(system).map((k) => [k, permissions[k] === true]))
+  const clean = Object.fromEntries(allowedKeysFor(system).map((k) => [k, permissions[k] === true]))
+  // `reports` stays as the master switch the older report paths still read, so
+  // it is derived rather than set by hand: on when any level is on.
+  if (system === "lms")
+    clean.reports = REPORT_LEVELS.some(k => clean[k] === true)
+  return clean
 }
 
 const AssignSchema = z.object({

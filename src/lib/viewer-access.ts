@@ -8,37 +8,63 @@ import { db } from "@/lib/db"
 
 export type LmsGrant = { resource_type: string; resource_id: string; permissions: Record<string, boolean>; label?: string | null }
 
+// Which report a client may open is chosen per grant: the company summary, the
+// program report, or an individual learner's. Grants written before these keys
+// existed carry a single `reports` flag, and a level they don't mention falls
+// back to it — so nobody loses access the day this ships.
+export const REPORT_LEVELS = ["report_client", "report_program", "report_individual"] as const
+export type ReportLevel = (typeof REPORT_LEVELS)[number]
+const LEVELS = new Set<string>(REPORT_LEVELS)
+
+export function grantAllows(permissions: Record<string, boolean> | null | undefined, key: string): boolean {
+  const p = permissions ?? {}
+  if (p[key] === true) return true
+  return LEVELS.has(key) && p[key] === undefined && p.reports === true
+}
+
 export async function lmsGrants(userId: string, permission = "reports"): Promise<LmsGrant[]> {
   const { data } = await db
     .from("viewer_access")
     .select("resource_type, resource_id, permissions, label")
     .eq("user_id", userId)
     .eq("system", "lms")
-  return ((data ?? []) as any[]).filter(r => (r.permissions ?? {})[permission] === true)
+  return ((data ?? []) as any[]).filter(r => grantAllows(r.permissions, permission))
 }
 
-/** Programs the viewer may see: granted directly, or through their company. */
-export async function viewerProgramIds(userId: string): Promise<string[]> {
-  const grants = await lmsGrants(userId)
+/**
+ * Programs the viewer may see at this level: granted directly, or through their
+ * company. A draft program is never visible — it isn't a program the client has
+ * been told about yet, whichever way the grant reaches it.
+ */
+export async function viewerProgramIds(userId: string, level: ReportLevel = "report_program"): Promise<string[]> {
+  const grants = await lmsGrants(userId, level)
   const direct = grants.filter(g => g.resource_type === "program").map(g => g.resource_id)
   const companies = grants.filter(g => g.resource_type === "company").map(g => g.resource_id)
-  if (!companies.length) return [...new Set(direct)]
-  const { data } = await db.from("lms_programs").select("id").in("company_id", companies).neq("status", "draft")
-  return [...new Set([...direct, ...((data ?? []) as any[]).map(p => p.id)])]
+
+  const ids = new Set<string>()
+  if (direct.length) {
+    const { data } = await db.from("lms_programs").select("id").in("id", direct).neq("status", "draft")
+    for (const p of (data ?? []) as any[]) ids.add(p.id)
+  }
+  if (companies.length) {
+    const { data } = await db.from("lms_programs").select("id").in("company_id", companies).neq("status", "draft")
+    for (const p of (data ?? []) as any[]) ids.add(p.id)
+  }
+  return [...ids]
 }
 
 export async function canViewProgramReport(userId: string, programId: string): Promise<boolean> {
-  return (await viewerProgramIds(userId)).includes(programId)
+  return (await viewerProgramIds(userId, "report_program")).includes(programId)
 }
 
 export async function canViewClientReport(userId: string, companyId: string): Promise<boolean> {
-  const grants = await lmsGrants(userId)
+  const grants = await lmsGrants(userId, "report_client")
   return grants.some(g => g.resource_type === "company" && g.resource_id === companyId)
 }
 
 /** The student must also be in that program (not withdrawn) to open their report. */
 export async function canViewStudentInProgram(userId: string, programId: string, studentId: string): Promise<boolean> {
-  if (!(await canViewProgramReport(userId, programId))) return false
+  if (!(await viewerProgramIds(userId, "report_individual")).includes(programId)) return false
   const { data } = await db.from("lms_program_members").select("id")
     .eq("program_id", programId).eq("student_id", studentId).neq("status", "withdrawn").maybeSingle()
   return !!data
@@ -49,7 +75,7 @@ export async function canViewEnrollmentReport(userId: string, enrollmentId: stri
   const { data } = await db.from("lms_enrollments").select("student_id, course_id, program_id").eq("id", enrollmentId).maybeSingle()
   const e = data as any
   if (!e?.program_id) return null
-  if (!(await canViewProgramReport(userId, e.program_id))) return null
+  if (!(await viewerProgramIds(userId, "report_individual")).includes(e.program_id)) return null
   return { studentId: e.student_id, courseId: e.course_id }
 }
 
@@ -57,12 +83,13 @@ export async function canViewEnrollmentReport(userId: string, enrollmentId: stri
 // course — either a direct course-scope grant, or a cohort-scope grant where
 // the student is a member of that cohort?
 export async function canViewLmsReport(userId: string, studentId: string, courseId: string): Promise<boolean> {
-  const grants = await lmsGrants(userId)
+  // One learner's results — the individual level.
+  const grants = await lmsGrants(userId, "report_individual")
   if (grants.length === 0) return false
 
   // Program / company grant: the student takes this course inside a program the
   // viewer may see.
-  const programIds = await viewerProgramIds(userId)
+  const programIds = await viewerProgramIds(userId, "report_individual")
 
   // A course grant covers the course, not everyone on it: the same course runs
   // for several clients. It opens a learner's report only when that learner is
@@ -174,7 +201,7 @@ export async function canViewExamCandidate(userId: string, candidateId: string):
  * directly; a cohort-scope grant covers it when that cohort includes the course.
  */
 export async function canViewLmsCourseReport(userId: string, courseId: string): Promise<boolean> {
-  const grants = await lmsGrants(userId)
+  const grants = await lmsGrants(userId, "report_individual")
   if (grants.length === 0) return false
 
   if (grants.some((r: any) => r.resource_type === "course" && r.resource_id === courseId)) return true

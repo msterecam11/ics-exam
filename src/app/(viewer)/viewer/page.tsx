@@ -424,6 +424,18 @@ interface LmsItem {
   programs?: { id: string; name: string; status: string; students: number; completion_rate: number | null; pass_rate: number | null }[]
 }
 
+// Each report level is granted on its own. Grants written before the levels
+// existed carry one `reports` flag, and a level they don't mention inherits it.
+const REPORT_LEVELS = ["report_client", "report_program", "report_individual"]
+const BADGE: Record<string, string> = {
+  last_login: "last login",
+  report_client: "client report", report_program: "program report", report_individual: "individual report",
+}
+function allows(p: Record<string, boolean>, key: string) {
+  if (p[key] === true) return true
+  return REPORT_LEVELS.includes(key) && p[key] === undefined && p.reports === true
+}
+
 // ─── LMS section ─────────────────────────────────────────────────────────────
 function LmsSection({ items }: { items: LmsItem[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -465,25 +477,29 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="hidden sm:flex gap-1">
-                    {["progress","scores","attendance","assignments","certificates","last_login","reports"].filter(k => !((isProgram || isCompany) && (k === "assignments" || k === "last_login"))).map(k => p[k] && (
-                      <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">
-                        {k === "last_login" ? "last login" : k}
-                      </span>
-                    ))}
+                    {["progress","scores","attendance","assignments","certificates","last_login","report_client","report_program","report_individual"]
+                      .filter(k => !((isProgram || isCompany) && (k === "assignments" || k === "last_login")))
+                      .map(k => allows(p, k) && (
+                        <span key={k} className="text-[10px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">
+                          {BADGE[k] ?? k}
+                        </span>
+                      ))}
                   </div>
                   {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                 </div>
               </button>
 
-              {/* Report links (program / client scopes) */}
-              {isOpen && p.reports && (isProgram || isCompany) && (
+              {/* Report links — each level is granted separately */}
+              {isOpen && (isProgram || isCompany) && (allows(p, isCompany ? "report_client" : "report_program") || (isCompany && allows(p, "report_program"))) && (
                 <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-2">
-                  <a href={isCompany ? `/viewer/lms/client/${item.resource_id}` : `/viewer/lms/program/${item.resource_id}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
-                    <Eye className="h-3.5 w-3.5" /> {isCompany ? "Client report" : "Program report"}
-                  </a>
-                  {isCompany && (item.programs ?? []).map(pr => (
+                  {allows(p, isCompany ? "report_client" : "report_program") && (
+                    <a href={isCompany ? `/viewer/lms/client/${item.resource_id}` : `/viewer/lms/program/${item.resource_id}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
+                      <Eye className="h-3.5 w-3.5" /> {isCompany ? "Client report" : "Program report"}
+                    </a>
+                  )}
+                  {isCompany && allows(p, "report_program") && (item.programs ?? []).map(pr => (
                     <a key={pr.id} href={`/viewer/lms/program/${pr.id}`} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 border border-emerald-200 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors">
                       {pr.name} <span className="text-slate-400">· {pr.students} · {pct(pr.completion_rate)}</span>
@@ -596,7 +612,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                           )}
                           {/* Report — course grant: that course's report; program grant: the
                               student's report for the whole program */}
-                          {p.reports && !isCohort && (
+                          {allows(p, "report_individual") && !isCohort && (
                             <a href={isProgram ? `/viewer/lms/program/${item.resource_id}/student/${s.id}` : `/viewer/lms/report/${s.id}/${item.resource_id}`}
                               target="_blank" rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors">
