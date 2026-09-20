@@ -12,7 +12,7 @@ export type LmsGrant = { resource_type: string; resource_id: string; permissions
 // program report, or an individual learner's. Grants written before these keys
 // existed carry a single `reports` flag, and a level they don't mention falls
 // back to it — so nobody loses access the day this ships.
-export const REPORT_LEVELS = ["report_client", "report_program", "report_individual"] as const
+export const REPORT_LEVELS = ["report_client", "report_program", "report_group", "report_individual"] as const
 export type ReportLevel = (typeof REPORT_LEVELS)[number]
 const LEVELS = new Set<string>(REPORT_LEVELS)
 
@@ -55,6 +55,11 @@ export async function viewerProgramIds(userId: string, level: ReportLevel = "rep
 
 export async function canViewProgramReport(userId: string, programId: string): Promise<boolean> {
   return (await viewerProgramIds(userId, "report_program")).includes(programId)
+}
+
+/** One course of one program — granted at the group level. */
+export async function canViewGroupReport(userId: string, programId: string): Promise<boolean> {
+  return (await viewerProgramIds(userId, "report_group")).includes(programId)
 }
 
 export async function canViewClientReport(userId: string, companyId: string): Promise<boolean> {

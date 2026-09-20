@@ -83,6 +83,7 @@ const LMS_PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "certificates", label: "Certificates", desc: "Certificate issuance status" },
   { key: "report_client",     label: "Client Report",     desc: "The company-wide summary across all of their programs" },
   { key: "report_program",    label: "Program Report",    desc: "The program report, and each track inside it" },
+  { key: "report_group",      label: "Group Report",      desc: "One course of the program: how that group did, topic by topic" },
   { key: "report_individual", label: "Individual Report", desc: "One participant's own results — the most sensitive level" },
   { key: "last_login",   label: "Last Login",   desc: "When the student last logged in to the LMS" },
 ]

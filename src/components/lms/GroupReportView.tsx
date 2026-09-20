@@ -107,8 +107,12 @@ function ComparisonTable({ rows, courseId, links }: { rows: CourseComparisonRow[
 }
 
 // ── Main ────────────────────────────────────────────────────────────
-export default function GroupReportView({ data, assessment, generatedAt, forPrint = false, comparison = null, builtAt = null, scopeOptions = null }: {
+export default function GroupReportView({ data, assessment, generatedAt, forPrint = false, comparison = null, builtAt = null, scopeOptions = null, audience = "internal" }: {
   data: GroupReport; assessment: any | null; generatedAt: string | null; forPrint?: boolean
+  /** "client" is the copy a company sees: no admin toolbar, no students needing
+   *  support, no expert assessment, no other programs, and names link to the
+   *  viewer's own course report rather than the admin one. */
+  audience?: "internal" | "client"
   /** RL-8: results per program, shown on the all-runs course analytics view. */
   comparison?: CourseComparisonRow[] | null
   /** RP-18: when the cached copy was built. */
@@ -123,8 +127,9 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
     ? `${scope.programName}${scope.trackName ? ` · ${scope.trackName}` : ""}`
     : monthLabel ? `Individual learners · ${monthLabel}` : scope.allRuns ? "All groups combined" : "Current enrollments"
   const scopeQuery = [scope.programId && `program=${scope.programId}`, scope.trackId && `track=${scope.trackId}`, scope.allRuns && "scope=all", scope.month && `month=${scope.month}`].filter(Boolean).join("&")
+  const client = audience === "client"
   const studentHref = (r: { id: string; enrollmentId?: string }) =>
-    `/lms-admin/reports/${course.id}/${r.id}${r.enrollmentId ? `?enrollment=${r.enrollmentId}` : ""}`
+    `${client ? "/viewer/lms/report" : `/lms-admin/reports/${course.id}`}${client ? `/${r.id}/${course.id}` : `/${r.id}`}${r.enrollmentId ? `?enrollment=${r.enrollmentId}` : ""}`
   const [ai, setAi] = useState<any | null>(assessment)
 
   // Defined here (not at module scope) so it can see `forPrint`. Pages size
@@ -146,11 +151,11 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
   const hasHeatmap = topicHeatmap.length > 0
   const hasItems   = stats.examExists && itemAnalysis.hardest.length > 0
   const hasRanking = ranking.length > 0
-  const hasAtRisk  = atRisk.length > 0
+  const hasAtRisk  = !client && atRisk.length > 0
   const hasAttendance = !!attendance
   const hasFeedback   = !!feedback && feedback.ratings.length > 0
-  const hasExpert     = !!ai && !!ai.executive_summary
-  const hasComparison = !!comparison && comparison.length > 1
+  const hasExpert     = !client && !!ai && !!ai.executive_summary
+  const hasComparison = !client && !!comparison && comparison.length > 1
   const pageOrder = [
     "cover", "overview",
     ...(hasComparison ? ["comparison"] : []),
@@ -221,8 +226,9 @@ export default function GroupReportView({ data, assessment, generatedAt, forPrin
         `}</style>
       )}
 
-      {/* Toolbar — PDF-only rendering never shows this (see note above) */}
-      {!forPrint && (
+      {/* Toolbar — PDF-only rendering never shows this (see note above). The
+          client copy has none of it: the viewer portal supplies its own. */}
+      {!forPrint && !client && (
         <div className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 flex-wrap bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2.5 mb-4">
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Link href={scope.programId ? `/lms-admin/reports/programs/${scope.programId}${scope.trackId ? `?track=${scope.trackId}` : ""}` : `/lms-admin/reports/${course.id}`}

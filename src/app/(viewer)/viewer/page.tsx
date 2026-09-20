@@ -433,10 +433,11 @@ interface LmsItem {
 
 // Each report level is granted on its own. Grants written before the levels
 // existed carry one `reports` flag, and a level they don't mention inherits it.
-const REPORT_LEVELS = ["report_client", "report_program", "report_individual"]
+const REPORT_LEVELS = ["report_client", "report_program", "report_group", "report_individual"]
 const BADGE: Record<string, string> = {
   last_login: "last login",
-  report_client: "client report", report_program: "program report", report_individual: "individual report",
+  report_client: "client report", report_program: "program report",
+  report_group: "group report", report_individual: "individual report",
 }
 function allows(p: Record<string, boolean>, key: string) {
   if (p[key] === true) return true
@@ -445,8 +446,8 @@ function allows(p: Record<string, boolean>, key: string) {
 
 // One course inside a program: a summary line that answers most questions, and
 // its own participants once opened.
-function CourseGroup({ g, p, open, onToggle }: {
-  g: LmsCourseGroup; p: Record<string, boolean>; open: boolean; onToggle: () => void
+function CourseGroup({ g, p, programId, open, onToggle }: {
+  g: LmsCourseGroup; p: Record<string, boolean>; programId: string; open: boolean; onToggle: () => void
 }) {
   const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v}%`)
   const summary = [
@@ -458,14 +459,24 @@ function CourseGroup({ g, p, open, onToggle }: {
 
   return (
     <div className="border border-slate-200 rounded-xl overflow-hidden">
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left">
-        <BookOpen className="h-4 w-4 text-slate-300 shrink-0" />
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-slate-800 truncate">{g.title}</span>
-          <span className="block text-xs text-slate-400">{summary}</span>
-        </span>
-        {open ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
-      </button>
+      <div className="flex items-center gap-2 pr-3 hover:bg-slate-50">
+        <button onClick={onToggle} className="flex items-center gap-3 px-4 py-2.5 text-left min-w-0 flex-1">
+          <BookOpen className="h-4 w-4 text-slate-300 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-slate-800 truncate">{g.title}</span>
+            <span className="block text-xs text-slate-400">{summary}</span>
+          </span>
+        </button>
+        {allows(p, "report_group") && (
+          <a href={`/viewer/lms/program/${programId}/course/${g.course_id}`} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg shrink-0">
+            <Eye className="h-3.5 w-3.5" /> Group report
+          </a>
+        )}
+        <button onClick={onToggle} aria-label={open ? "Collapse" : "Expand"} className="p-1 shrink-0">
+          {open ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        </button>
+      </div>
 
       {open && (
         <div className="border-t border-slate-100">
@@ -604,7 +615,7 @@ function LmsSection({ items }: { items: LmsItem[] }) {
                           {g.track_name ?? "All tracks"}
                         </p>
                       )}
-                    <CourseGroup g={g} p={p}
+                    <CourseGroup g={g} p={p} programId={item.resource_id}
                       open={!!openCourse[`${item.access_id}:${g.course_id}`]}
                       onToggle={() => setOpenCourse(o => ({ ...o, [`${item.access_id}:${g.course_id}`]: !o[`${item.access_id}:${g.course_id}`] }))} />
                     </div>

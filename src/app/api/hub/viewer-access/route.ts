@@ -11,7 +11,7 @@ function isViewer(role?: string) { return role === "viewer" }
 const EXAM_PERMISSIONS      = ["scores", "results", "reports", "manual_reports"] as const
 const INTERVIEW_PERMISSIONS = ["progress", "scores", "verdicts", "reports"] as const
 const LMS_PERMISSIONS       = ["progress", "scores", "attendance", "assignments", "certificates",
-                               "reports", "report_client", "report_program", "report_individual", "last_login"] as const
+                               "reports", "report_client", "report_program", "report_group", "report_individual", "last_login"] as const
 
 function allowedKeysFor(system: string) {
   return system === "exam" ? EXAM_PERMISSIONS : system === "lms" ? LMS_PERMISSIONS : INTERVIEW_PERMISSIONS

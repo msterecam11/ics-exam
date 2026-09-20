@@ -1,4 +1,5 @@
 import type { ProgramReport, ClientReport, StudentProgramReport } from "@/lib/lms-program-report"
+import type { GroupReport } from "@/lib/lms-group-report"
 
 // Pure helpers shared by report builders (server) and report views (browser).
 // No database imports here — this file is bundled into client components.
@@ -59,6 +60,21 @@ export function clientForClient(r: ClientReport, o: Opts): ClientReport {
     survey: clientSafeFeedback(r.survey, o.includeComments),
     totals: { ...r.totals, atRisk: 0 },
     programs: r.programs.map(p => ({ ...p, atRisk: 0 })),
+  }
+}
+
+/**
+ * One course group as the client sees it. Out: who needs support, questions
+ * flagged as possibly miskeyed (our problem, not theirs), free-text comments,
+ * and feedback from fewer than FEEDBACK_MIN_GROUP people.
+ */
+export function groupForClient(r: GroupReport): GroupReport {
+  return {
+    ...r,
+    atRisk: [],
+    itemAnalysis: { ...r.itemAnalysis, flagged: [] },
+    feedback: r.feedback && r.feedback.count >= FEEDBACK_MIN_GROUP ? { ...r.feedback, comments: [] } : null,
+    roster: r.roster.map(x => ({ ...x, atRisk: false })),
   }
 }
 

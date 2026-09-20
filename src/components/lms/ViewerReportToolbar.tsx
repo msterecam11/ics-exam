@@ -1,11 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, Printer } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ArrowLeft } from "lucide-react"
 
-// Read-only toolbar for the viewer portal: back + print (no admin actions, no
-// server-side PDF).
+// Read-only toolbar for the viewer portal: a Back button, nothing else.
+//
+// No print or PDF button either: PDFs of a client's reports are produced and
+// sent by ICS, not pulled from the portal.
 //
 // Deliberately NOT a breadcrumb. A client opens exactly the report they were
 // given a link to, and nothing in the chrome should invite them one level up —
@@ -31,9 +32,6 @@ export default function ViewerReportToolbar({ studentName, courseTitle, crumbs, 
         </Link>
         {title && <span className="font-medium text-slate-800 truncate">{title}</span>}
       </div>
-      <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5 text-xs">
-        <Printer className="h-3.5 w-3.5" /> Print / Save as PDF
-      </Button>
     </div>
   )
 }
