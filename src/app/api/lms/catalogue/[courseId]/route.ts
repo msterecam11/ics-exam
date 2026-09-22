@@ -25,7 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
              delivery_mode, level, duration_hours, learning_outcomes, prerequisites, audience,
              certificate_enabled, course_code, status,
              catalogue_visibility, catalogue_companies,
-             lms_course_categories(id, name)`)
+             lms_course_categories(id, name),
+             lms_service_providers(id, name, short_code, logo_url, is_self)`)
     .eq("id", courseId).maybeSingle()
 
   if (!viewer || !course || !visibleTo(course as any, viewer))
@@ -52,6 +53,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
     learning_outcomes: c.learning_outcomes ?? [],
     prerequisites: c.prerequisites ?? [],
     category: c.lms_course_categories ? { id: c.lms_course_categories.id, name: c.lms_course_categories.name } : null,
+    // Only a partner is worth naming — "delivered by us" is the assumption.
+    provider: c.lms_service_providers && !c.lms_service_providers.is_self
+      ? { name: c.lms_service_providers.name, logo_url: c.lms_service_providers.logo_url }
+      : null,
     modules: (modules ?? []).map((m: any) => ({ id: m.id, title: m.title, type: m.module_type })),
     enrolled: !!enrolment,
     request: request ? { id: (request as any).id, status: (request as any).status, reason: (request as any).decision_note } : null,

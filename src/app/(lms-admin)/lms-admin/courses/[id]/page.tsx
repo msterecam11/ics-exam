@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/CourseCatalogueSettings"
+import { ProviderSelect } from "@/components/lms/ProviderSelect"
 import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
 
 // Dynamically import TipTap editor (browser-only)
@@ -114,6 +115,7 @@ interface Course {
   short_description?: string | null; level?: string | null
   duration_hours?: number | null; learning_outcomes?: string[] | null; prerequisites?: string[] | null
   audience?: string | null
+  provider_id?: string | null
   progress_enforcement: boolean; certificate_enabled: boolean
   final_exam_pass_mark: number | null
   start_date: string | null; end_date: string | null
@@ -824,6 +826,10 @@ function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }:
         <div className="w-52 [&_select]:h-8 [&_select]:rounded-full [&_select]:bg-blue-50 [&_select]:border-blue-100 [&_select]:text-sm">
           <CategorySelect value={course.category_id ?? null}
             onChange={v => { onCourseChange({ category_id: v }); scheduleAutoSave({ category_id: v }) }} />
+        </div>
+        <div className="w-56 [&_select]:h-8 [&_select]:rounded-full [&_select]:bg-blue-50 [&_select]:border-blue-100 [&_select]:text-sm">
+          <ProviderSelect value={course.provider_id ?? null}
+            onChange={v => { onCourseChange({ provider_id: v }); scheduleAutoSave({ provider_id: v }) }} />
         </div>
         <div className="flex items-center gap-1.5 text-sm text-slate-500 bg-slate-100 rounded-full px-3 py-1.5">
           {(() => { const Icon = DELIVERY_ICONS[course.delivery_mode] ?? Globe; return <Icon className="h-3.5 w-3.5" /> })()}

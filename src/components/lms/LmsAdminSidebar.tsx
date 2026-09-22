@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Building2,
   Briefcase,
+  Handshake,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +34,7 @@ const navItems: { href: string; label: string; icon: any; exact?: boolean; needs
   { href: "/lms-admin/programs", label: "Program Manager", icon: Briefcase, needs: "staff" },
   { href: "/lms-admin/students",  label: "Students",        icon: Users, needs: "manage_students" },
   { href: "/lms-admin/companies", label: "Companies",       icon: Building2 },
+  { href: "/lms-admin/providers", label: "Service Providers", icon: Handshake },
   { href: "/lms-admin/progress",  label: "Student Progress", icon: TrendingUp },
   { href: "/lms-admin/cohorts",        label: "Cohorts",        icon: GraduationCap },
   { href: "/lms-admin/learning-paths", label: "Learning Paths", icon: Route },

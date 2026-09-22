@@ -6,7 +6,7 @@ import { guardStaff } from "@/lib/staff-access"
 const BUCKET = "lms-library"
 const MAX_MB = 5
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]
-const KINDS = ["category", "company"] as const
+const KINDS = ["category", "company", "provider"] as const
 
 // POST — upload a category image or a company logo (admin). Returns { url };
 // the form saves it with the rest of the record.

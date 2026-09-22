@@ -24,6 +24,7 @@ interface Detail {
   learning_outcomes: string[]
   prerequisites?: string[]
   category: { id: string; name: string } | null
+  provider?: { name: string; logo_url: string | null } | null
   modules: { id: string; title: string; type: string }[]
   enrolled: boolean
   request: { id: string; status: string; reason: string | null } | null
@@ -95,7 +96,19 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <CourseCover title={c.title} code={c.course_code} imageUrl={c.thumbnail_url} className="h-44" />
             <div className="p-6">
-              {c.category && <p className="text-xs text-[#1B4F8A] font-medium">{c.category.name}</p>}
+              <div className="flex items-center gap-2 flex-wrap">
+                {c.category && <p className="text-xs text-[#1B4F8A] font-medium">{c.category.name}</p>}
+                {c.provider && (
+                  <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                    <span className="text-slate-300">·</span>
+                    {c.provider.logo_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.provider.logo_url} alt="" className="h-4 w-auto object-contain" />
+                    )}
+                    Delivered by {c.provider.name}
+                  </p>
+                )}
+              </div>
               <h1 className="text-2xl font-bold text-slate-900 mt-1">{c.title}</h1>
               {c.blurb && <p className="text-sm text-slate-600 mt-2 leading-relaxed">{c.blurb}</p>}
 

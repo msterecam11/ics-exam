@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 // Pick an image from the computer; it uploads straight away and the field keeps its URL.
 export default function ImageUploadField({ value, onChange, kind, label = "Image", contain = false }: {
-  value: string; onChange: (url: string) => void; kind: "category" | "company"; label?: string; contain?: boolean
+  value: string; onChange: (url: string) => void; kind: "category" | "company" | "provider"; label?: string; contain?: boolean
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
