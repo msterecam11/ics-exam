@@ -51,6 +51,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if ([tracks, items, rules, instructors, members, enrollments].some(r => r.error))
     return NextResponse.json({ error: "Could not load the program" }, { status: 500 })
 
+  // What each course's own settings say, so the Rules tab can show the default
+  // beside the program's number — these rules are copied on add, then
+  // independent, and without the default nobody can tell what was changed.
+  const ruleCourseIds = ((rules.data ?? []) as any[]).map(r => r.course_id)
+  const courseDefaults = new Map<string, { pass_mark: number; max_attempts: number }>()
+  if (ruleCourseIds.length) {
+    const [{ data: ruleCourses }, { data: ruleExams }] = await Promise.all([
+      db.from("lms_courses").select("id, final_exam_pass_mark").in("id", ruleCourseIds),
+      db.from("lms_modules").select("course_id, activity_settings").in("course_id", ruleCourseIds).eq("module_type", "final_exam"),
+    ])
+    const examOf = new Map(((ruleExams ?? []) as any[]).map(m => [m.course_id, m.activity_settings]))
+    for (const c of (ruleCourses ?? []) as any[]) {
+      const st = examOf.get(c.id) as any
+      // Same fallbacks ensureProgramRules() seeds with, so the two agree.
+      courseDefaults.set(c.id, {
+        pass_mark: Math.min(100, Math.max(0, Math.round(Number(c.final_exam_pass_mark ?? st?.pass_mark ?? 70)))),
+        max_attempts: Math.min(20, Math.max(1, Math.round(Number(st?.max_attempts ?? 3)))),
+      })
+    }
+  }
+
   // Path contents, so the page can show which courses each path brings.
   const pathIds = [...new Set(((items.data ?? []) as any[]).filter(i => i.path_id).map(i => i.path_id))]
   const { data: pathCourses } = pathIds.length
@@ -88,7 +109,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     tracks: tracks.data ?? [],
     items: items.data ?? [],
     path_courses: pathCourses ?? [],
-    rules: rules.data ?? [],
+    rules: ((rules.data ?? []) as any[]).map(r => ({ ...r, course_default: courseDefaults.get(r.course_id) ?? null })),
     // track_ids travels with each instructor so the settings screen can show
     // whether they cover the whole program or only some tracks (IR-2).
     instructors: ((instructors.data ?? []) as any[])

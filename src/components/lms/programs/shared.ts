@@ -27,7 +27,12 @@ export type ProgramDetail = {
     lms_learning_paths: { id: string; title: string } | null
   }[]
   path_courses: { path_id: string; order_index: number; lms_courses: { id: string; title: string } | null }[]
-  rules: { course_id: string; pass_mark: number; max_attempts: number; lms_courses: { id: string; title: string } | null }[]
+  rules: {
+    course_id: string; pass_mark: number; max_attempts: number
+    lms_courses: { id: string; title: string } | null
+    /** What the course itself says — the rule was seeded from this, then went its own way. */
+    course_default?: { pass_mark: number; max_attempts: number } | null
+  }[]
   instructors: { id: string; name: string; email: string; role: string; track_ids?: string[] }[]
   members: {
     id: string; student_id: string; track_id: string | null; status: "active" | "withdrawn" | "completed"

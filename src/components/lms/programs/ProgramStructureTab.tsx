@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BookOpen, Route, Plus, Trash2, Loader2, Layers, Edit, Check, X } from "lucide-react"
+import { BookOpen, Route, Plus, Trash2, Loader2, Layers, Edit, Check, X, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
@@ -113,8 +113,18 @@ function RulesTable({ detail, canEdit, onChanged }: { detail: ProgramDetail; can
   const rules = [...detail.rules].sort((a, b) => (a.lms_courses?.title ?? "").localeCompare(b.lms_courses?.title ?? ""))
   if (!rules.length) return null
 
+  // Put this course back on its own default, the same way an edit would.
+  async function reset(courseId: string, oldPass: number, def: { pass_mark: number; max_attempts: number }) {
+    setPass(String(def.pass_mark)); setAttempts(String(def.max_attempts))
+    await saveValues(courseId, oldPass, def.pass_mark, def.max_attempts)
+  }
+
   async function save(courseId: string, oldPass: number) {
-    const newPass = Number(pass)
+    await saveValues(courseId, oldPass, Number(pass), Number(attempts))
+  }
+
+  async function saveValues(courseId: string, oldPass: number, newPassIn: number, newAttempts: number) {
+    const newPass = newPassIn
     let apply = false
     if (newPass !== oldPass) {
       apply = confirm(
@@ -125,7 +135,7 @@ function RulesTable({ detail, canEdit, onChanged }: { detail: ProgramDetail; can
     }
     setBusy(true)
     const { ok, data } = await postJson(`/api/lms/programs/${detail.program.id}/rules`, "PATCH",
-      { course_id: courseId, pass_mark: newPass, max_attempts: Number(attempts), apply_to_existing: apply })
+      { course_id: courseId, pass_mark: newPass, max_attempts: newAttempts, apply_to_existing: apply })
     setBusy(false)
     if (!ok) { toast.error(data.error ?? "Could not save"); return }
     if (data.regrade_error) toast.warning(data.regrade_error)
@@ -140,7 +150,7 @@ function RulesTable({ detail, canEdit, onChanged }: { detail: ProgramDetail; can
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-100">
         <p className="text-sm font-semibold text-slate-800">Pass mark &amp; attempts in this program</p>
-        <p className="text-xs text-slate-500">Copied from each course when it was added, then independent — changing a course&apos;s default doesn&apos;t change this program.</p>
+        <p className="text-xs text-slate-500">Copied from each course when it was added, then independent — changing a course&apos;s default doesn&apos;t change this program. Where they differ, the course default is shown underneath.</p>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-slate-500 text-xs">
@@ -161,12 +171,30 @@ function RulesTable({ detail, canEdit, onChanged }: { detail: ProgramDetail; can
                 </>
               ) : (
                 <>
-                  <td className="px-3 py-2.5 text-slate-700">{r.pass_mark}%</td>
-                  <td className="px-3 py-2.5 text-slate-700">{r.max_attempts}</td>
                   <td className="px-3 py-2.5">
+                    <span className="text-slate-700">{r.pass_mark}%</span>
+                    {r.course_default && r.course_default.pass_mark !== r.pass_mark && (
+                      <span className="block text-[11px] text-amber-600">course default {r.course_default.pass_mark}%</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-slate-700">{r.max_attempts}</span>
+                    {r.course_default && r.course_default.max_attempts !== r.max_attempts && (
+                      <span className="block text-[11px] text-amber-600">course default {r.course_default.max_attempts}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
                     {canEdit && (
-                      <button onClick={() => { setEditing(r.course_id); setPass(String(r.pass_mark)); setAttempts(String(r.max_attempts)) }}
-                        className="text-slate-400 hover:text-[#1B4F8A]" aria-label="Edit"><Edit className="h-4 w-4" /></button>
+                      <>
+                        <button onClick={() => { setEditing(r.course_id); setPass(String(r.pass_mark)); setAttempts(String(r.max_attempts)) }}
+                          className="text-slate-400 hover:text-[#1B4F8A]" aria-label="Edit"><Edit className="h-4 w-4" /></button>
+                        {r.course_default && (r.course_default.pass_mark !== r.pass_mark || r.course_default.max_attempts !== r.max_attempts) && (
+                          <button onClick={() => reset(r.course_id, r.pass_mark, r.course_default!)} disabled={busy}
+                            className="ml-2 text-slate-400 hover:text-[#1B4F8A]" aria-label="Reset to the course default" title="Reset to the course default">
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </>
