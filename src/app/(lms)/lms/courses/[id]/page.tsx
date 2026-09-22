@@ -83,11 +83,15 @@ export default async function StudentCoursePage({
   // Fetch course
   const { data: course } = await db
     .from("lms_courses")
-    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites")
+    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites, status")
     .eq("id", courseId)
     .single()
 
   if (!course) notFound()
+  // A course pulled back to draft (or archived) after people were enrolled is
+  // not open, whatever their enrolment says. They keep their place and their
+  // results; the door is simply shut.
+  if ((course as any).status !== "published") notFound()
 
   // Dates: inside a program the PROGRAM's dates and rules apply (the course is
   // a template); the course's own dates only matter for enrollments made

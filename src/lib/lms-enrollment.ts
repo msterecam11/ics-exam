@@ -180,6 +180,9 @@ export type CourseLock =
   | { locked: false }
   | { locked: true; kind: "not_started"; reason: string; opensOn: string }
   | { locked: true; kind: "sequential"; reason: string; blockedBy: { course_id: string; title: string } }
+  // A course that went back to draft (or was archived) after people were
+  // enrolled. They keep their place; the course simply isn't open.
+  | { locked: true; kind: "not_published"; reason: string }
 
 type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access">
 

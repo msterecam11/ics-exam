@@ -93,7 +93,7 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
   const memberIds = (members as any[]).map(m => m.id)
   const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, lms_courses(id, title, description, thumbnail_url, delivery_mode)")
+    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, lms_courses(id, title, description, thumbnail_url, delivery_mode, status)")
     .in("member_id", memberIds)
     .neq("status", "dropped")
 
@@ -147,7 +147,9 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
       progress_pct: Math.min(100, Math.round(Number(e.progress_pct ?? 0))),
       completed_at: e.completed_at,
       access,
-      lock: locks.get(e.course_id) ?? { locked: false },
+      lock: e.lms_courses?.status && e.lms_courses.status !== "published"
+        ? { locked: true, kind: "not_published", reason: "This course isn't open yet. We'll let you know when it is." } as CourseLock
+        : locks.get(e.course_id) ?? { locked: false },
       certificate: certByEnrollment.get(e.id) ?? null,
     }))
 
