@@ -48,15 +48,42 @@ interface SendOptions {
 }
 
 // ── Core send + log ────────────────────────────────────────────────────────
+
+// ── Delivery guard (EM-19) ───────────────────────────────────────────────────
+// Test mode used to be applied by the rules pipeline only, so everything that
+// sends directly — enrolment, completion, cohorts, learning paths, CSV import —
+// reached real people while the switch said otherwise. It belongs here instead:
+// every email in the system passes through sendEmail().
+let configCache: { at: number; cfg: { master_enabled: boolean; test_mode: boolean; test_address: string | null } } | null = null
+async function emailConfig() {
+  if (configCache && Date.now() - configCache.at < 30_000) return configCache.cfg
+  const { data } = await db.from("lms_email_config").select("master_enabled, test_mode, test_address").eq("id", 1).maybeSingle()
+  // Unreadable config fails SAFE: test mode on, no address, so nothing is sent.
+  const cfg = (data as any) ?? { master_enabled: true, test_mode: true, test_address: null }
+  configCache = { at: Date.now(), cfg }
+  return cfg
+}
+/** Call this to drop the cache after the settings change. */
+export function forgetEmailConfig() { configCache = null }
+
 export async function sendEmail(opts: SendOptions) {
   const { type, to, subject, html, studentId, courseId, sessionId } = opts
+
+  const cfg = await emailConfig()
+  const off = cfg.master_enabled === false
+  const needsSink = !off && cfg.test_mode && !cfg.test_address
+  // The rules pipeline may have redirected already; comparing avoids logging it twice.
+  const redirected = !off && cfg.test_mode && !!cfg.test_address && cfg.test_address !== to
+  const recipient = redirected ? cfg.test_address! : to
 
   let status   = "sent"
   let errorMsg: string | null = null
 
   try {
-    if (isReservedTestAddress(to)) status = "skipped"   // reserved test domain — never deliverable
-    else await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: to, subject, html })
+    if (off) status = "skipped"                              // sending is switched off
+    else if (needsSink) status = "skipped"                   // test mode with nowhere to send
+    else if (isReservedTestAddress(recipient)) status = "skipped"  // reserved test domain — never deliverable
+    else await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: recipient, subject, html })
   } catch (e: any) {
     status   = "failed"
     errorMsg = e?.message ?? "Unknown error"
@@ -65,17 +92,17 @@ export async function sendEmail(opts: SendOptions) {
   // Log regardless of outcome
   await db.from("lms_email_log").insert({
     type,
-    to_email:   to,
+    to_email:   recipient,
     subject,
     student_id: studentId ?? null,
     course_id:  courseId  ?? null,
     session_id: sessionId ?? null,
-    status:     status === "sent" && opts.statusOverride ? opts.statusOverride : status,
+    status:     status === "sent" && (opts.statusOverride || redirected) ? (opts.statusOverride ?? "redirected") : status,
     error:      errorMsg,
     rule:           opts.rule ?? null,
     program_id:     opts.programId ?? null,
-    intended_email: opts.intendedEmail ?? null,
-    reason:         opts.reason ?? null,
+    intended_email: opts.intendedEmail ?? (redirected ? to : null),
+    reason:         opts.reason ?? (off ? "Email sending is off" : needsSink ? "Test mode is on but no test address is set" : redirected ? "Test mode — redirected" : null),
   })
 
   return { ok: status === "sent", error: errorMsg }
