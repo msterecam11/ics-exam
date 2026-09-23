@@ -5,17 +5,17 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { renderReportPdf } from "@/lib/lms-report-pdf"
 import { parseCourseScope, courseScopeQuery } from "@/lib/lms-report-scope"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeProgramPart, forbidden } from "@/lib/staff-access"
 
 // GET /api/lms/reports/course/[courseId]/pdf[?program=&track= | ?scope=all]
 export async function GET(req: Request, { params }: { params: Promise<{ courseId: string }> }) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { courseId } = await params
   const sp = new URL(req.url).searchParams
   const scope = parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope"), month: sp.get("month") })
+  if (!canSeeProgramPart(g.scope, scope.programId, scope.trackId)) return forbidden()
 
   const courseRes = await db.from("lms_courses").select("title").eq("id", courseId).maybeSingle()
   if (!courseRes.data) return NextResponse.json({ error: "Course not found" }, { status: 404 })

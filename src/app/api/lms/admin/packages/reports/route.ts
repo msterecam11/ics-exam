@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 
 // GET /api/lms/admin/packages/reports?course_id=xxx
 // Returns all packages in a course with per-student progress rows
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { searchParams } = new URL(req.url)
   const courseId = searchParams.get("course_id")
@@ -35,7 +34,7 @@ export async function GET(req: Request) {
   const { data: progressRows, error: progErr } = await db
     .from("lms_package_progress")
     .select(`
-      id, package_id, student_id, status, score,
+      id, package_id, student_id, enrollment_id, status, score,
       completed_items, time_spent,
       started_at, completed_at, updated_at,
       lms_students(id, name, email, company)
@@ -47,8 +46,11 @@ export async function GET(req: Request) {
 
   // A learner who retook the course has a progress row per enrollment; show
   // their most recent run (rows are ordered newest first).
+  // An instructor sees the learners of their own programs (and tracks) only.
+  const visible = await visibleEnrollmentIdsForCourse(g.scope, courseId)
   const seenRun = new Set<string>()
   const latestRows = (progressRows ?? []).filter((r: any) => {
+    if (visible !== "all" && !visible.has(r.enrollment_id)) return false
     const key = `${r.package_id}|${r.student_id}`
     if (seenRun.has(key)) return false
     seenRun.add(key); return true

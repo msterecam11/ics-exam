@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { notifyGradingDue } from "@/lib/lms-email-events"
 import { auth } from "@/lib/auth"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
-import { guardStaff, canSeeStudent, forbidden } from "@/lib/staff-access"
+import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
 
 const BUCKET = "lms-submissions"
@@ -50,10 +50,16 @@ export async function GET(req: Request) {
 
   const adminSession = await auth()
   if (adminSession && isMgr(adminSession.user.role)) {
+    // Assignment submissions only (this is not a way to read exam attempts),
+    // and an instructor sees their own programs' (and tracks') students only.
+    const { data: mod } = await db.from("lms_modules").select("course_id, module_type").eq("id", moduleId).maybeSingle()
+    if (!mod || (mod as any).module_type !== "assignment") return NextResponse.json([])
+    const scope = await staffScope({ id: adminSession.user.id, role: adminSession.user.role })
+    const visible = await visibleEnrollmentIdsForCourse(scope, (mod as any).course_id)
     const { data, error } = await db
       .from("lms_module_attempts")
       .select(`
-        id, attempt_no, status, score, max_score, passed,
+        id, attempt_no, status, score, max_score, passed, enrollment_id,
         answers, ai_feedback, submitted_at,
         lms_students(id, name, email)
       `)
@@ -61,7 +67,8 @@ export async function GET(req: Request) {
       .order("submitted_at", { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(await signAnswerFiles((data ?? []) as any[]))
+    const mine = ((data ?? []) as any[]).filter(a => visible === "all" || visible.has(a.enrollment_id))
+    return NextResponse.json(await signAnswerFiles(mine))
   }
 
   const student = await getStudentSession()
@@ -88,6 +95,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const { allowed, retryAfterSeconds } = await rateLimit(`lms-assignment-submit:${student.id}`, 20, 60)
   if (!allowed) return res429(retryAfterSeconds)

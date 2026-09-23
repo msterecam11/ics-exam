@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rateLimit"
 import { loadGroupReport, loadCourseAssessment, parseCourseScope, courseAssessmentKey } from "@/lib/lms-report-scope"
 import Groq from "groq-sdk"
 import { isMgr } from "@/lib/staff-roles"
+import { staffScope, canSeeProgramPart } from "@/lib/staff-access"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder" })
 
@@ -17,10 +18,18 @@ const scopeOf = (req: Request) => {
   return parseCourseScope({ program: sp.get("program"), track: sp.get("track"), scope: sp.get("scope"), month: sp.get("month") })
 }
 
+// An instructor only for a program (or track) of theirs — never course-wide.
+async function inScope(session: any, req: Request) {
+  if (session.user.role === "admin") return true
+  const s = scopeOf(req)
+  return canSeeProgramPart(await staffScope({ id: session.user.id, role: session.user.role }), s.programId, s.trackId)
+}
+
 // GET — stored cohort expert assessment (?program=&track= for a program's cohort)
 export async function GET(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!(await inScope(session, req))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const { courseId } = await params
   return NextResponse.json(await loadCourseAssessment(courseId, scopeOf(req)))
 }
@@ -29,6 +38,7 @@ export async function GET(req: Request, { params }: Params) {
 export async function POST(req: Request, { params }: Params) {
   const session = await auth()
   if (!session || !isMgr(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!(await inScope(session, req))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { allowed, retryAfterSeconds } = await rateLimit(`ai:${session.user.id}`, 10, 3600)
   if (!allowed) {

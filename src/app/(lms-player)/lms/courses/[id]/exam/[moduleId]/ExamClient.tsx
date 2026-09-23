@@ -27,6 +27,8 @@ export default function ExamClient({ moduleId, courseId, examTitle, questions, s
         toast.error(data.error ?? "Could not start the exam")
         return null
       }
+      if (data.previous_session_expired)
+        toast.warning("Your last exam session ran out of time without being submitted, so it counted as an attempt.")
       return { remainingS: data.remaining_s ?? null, questions: Array.isArray(data.questions) ? data.questions : undefined }
     } catch {
       toast.error("Connection error — the exam could not be started.")

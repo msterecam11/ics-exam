@@ -5,20 +5,19 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeTrack, forbidden } from "@/lib/staff-access"
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { sessionId } = await params
 
   const sessionRes = await db.from("lms_sessions")
-    .select("title, session_date")
+    .select("title, session_date, program_id, track_id")
     .eq("id", sessionId)
     .single()
 
@@ -26,6 +25,8 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
   const sess = sessionRes.data as any
+  // A session belongs to a program (and maybe a track): only its staff may print it.
+  if (!g.scope.isAdmin && !(sess.program_id && canSeeTrack(g.scope, sess.program_id, sess.track_id))) return forbidden()
   const sessionTitle = sess.title ?? "Session"
   const sessionDate  = sess.session_date
     ? new Date(sess.session_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })

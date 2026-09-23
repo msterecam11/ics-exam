@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { paperFor } from "@/lib/lms-exam-scoring"
 import { getCurrentEnrollment, getEnrollmentById, getExamRules } from "@/lib/lms-enrollment"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudentCourse, forbidden } from "@/lib/staff-access"
 
 // GET /api/lms/progress/[studentId]/course/[courseId]
 // Full detail: quizzes, assignments, exams (with answers + security), packages
@@ -11,9 +11,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ studentId: string; courseId: string }> }
 ) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { studentId, courseId } = await params
 
@@ -21,6 +20,9 @@ export async function GET(
   // One enrollment's detail: ?enrollment_id= for a specific (e.g. earlier)
   // program run, otherwise the student's current enrollment in the course.
   const requested = new URL(req.url).searchParams.get("enrollment_id")
+  if (requested && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested))
+    return NextResponse.json({ error: "Invalid enrollment" }, { status: 400 })
+  if (!(await canSeeStudentCourse(g.scope, studentId, courseId, requested))) return forbidden()
   const ctx = requested ? await getEnrollmentById(requested) : await getCurrentEnrollment(studentId, courseId)
   const [{ data: course }, { data: enrollment }, { data: history }] = await Promise.all([
     db.from("lms_courses")

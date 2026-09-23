@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
 import { isMgr } from "@/lib/staff-roles"
@@ -76,6 +76,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const { content_item_id, course_id, text_response, file_path, file_name, file_size } = body

@@ -111,8 +111,11 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
 
   // Certificates held and feedback given.
   const certs = await inChunks(enrollmentIds, async c =>
-    ((await db.from("lms_certificates").select("enrollment_id, released_at, revoked_at").in("enrollment_id", c)).data ?? []) as any[])
-  const heldCert = new Set(certs.filter(c => !c.released_at && !c.revoked_at).map(c => c.enrollment_id))
+    ((await db.from("lms_certificates").select("enrollment_id, released_at, revoked_at, visible_to_student").in("enrollment_id", c)).data ?? []) as any[])
+  // "Held" means waiting to be released to the student. An internal record
+  // (a partner certificate kept on file, a hidden ICS copy) is never released,
+  // so it doesn't belong on this list.
+  const heldCert = new Set(certs.filter(c => !c.released_at && !c.revoked_at && c.visible_to_student !== false).map(c => c.enrollment_id))
   const completedIds = enrollments.filter(e => e.status === "completed").map(e => e.id)
   const fb = await inChunks(completedIds, async c =>
     ((await db.from("lms_feedback").select("enrollment_id").in("enrollment_id", c)).data ?? []) as any[])

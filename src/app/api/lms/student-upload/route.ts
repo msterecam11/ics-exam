@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 
 const BUCKET  = "lms-submissions"   // PRIVATE bucket — see below
@@ -16,6 +16,7 @@ const ALLOWED = new Set(["application/pdf", "application/msword",
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const contentType = req.headers.get("content-type") ?? ""
   if (!contentType.includes("multipart/form-data"))

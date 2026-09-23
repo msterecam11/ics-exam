@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { catalogueViewer, visibleTo } from "@/lib/lms-catalogue"
 import { loadEmailSettings, effectiveRule, sendRuleEmail } from "@/lib/lms-email-settings"
 import { buildCatalogueAckEmail, buildCatalogueAdminEmail } from "@/lib/lms-email-templates"
@@ -36,6 +36,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const courseId = body?.course_id
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const id = new URL(req.url).searchParams.get("id")
   if (!id || !UUID_RE.test(id)) return NextResponse.json({ error: "id required" }, { status: 400 })

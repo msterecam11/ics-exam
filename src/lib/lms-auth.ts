@@ -18,6 +18,9 @@ export type StudentSession = {
   /** Set by an admin (LMS Settings -> Student Passwords). While true, portal
    *  pages redirect to /lms/change-password. */
   mustChangePassword: boolean
+  /** Staff previewing the portal as this student ("Preview as student").
+   *  Everything can be seen; nothing may be recorded in the student's name. */
+  preview: boolean
 }
 
 // ── Hash token for storage ────────────────────────────────────
@@ -65,7 +68,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 
   const { data: session } = await db
     .from("lms_student_sessions")
-    .select("student_id, expires_at")
+    .select("student_id, expires_at, is_preview")
     .eq("token_hash", tokenHash)
     .single()
 
@@ -91,7 +94,9 @@ export async function getStudentSession(): Promise<StudentSession | null> {
   // most one write per student per day.
   const lastLogin = (student as any).last_login as string | null
   const todayUtc = new Date().toISOString().slice(0, 10)
-  if (!lastLogin || lastLogin.slice(0, 10) !== todayUtc) {
+  // A staff preview is not the student logging in.
+  const preview = (session as any).is_preview === true
+  if (!preview && (!lastLogin || lastLogin.slice(0, 10) !== todayUtc)) {
     await db
       .from("lms_students")
       .update({ last_login: new Date().toISOString() })
@@ -105,6 +110,7 @@ export async function getStudentSession(): Promise<StudentSession | null> {
     language:   student.language,
     avatar_url: student.avatar_url,
     mustChangePassword: (student as any).must_change_password === true,
+    preview,
   }
 }
 
@@ -134,4 +140,11 @@ export async function deleteOtherStudentSessions(studentId: string) {
 // ── Clean up expired sessions (call periodically) ─────────────
 export async function purgeExpiredSessions() {
   await db.from("lms_student_sessions").delete().lt("expires_at", new Date().toISOString())
+}
+
+// ── Preview sessions are read-only ────────────────────────────
+/** The answer every write endpoint gives a staff preview. */
+export const PREVIEW_READ_ONLY = {
+  error: "You're previewing as this student — nothing is saved in preview mode.",
+  preview: true,
 }

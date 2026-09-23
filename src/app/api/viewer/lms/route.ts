@@ -283,6 +283,10 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
       .from("lms_certificates")
       .select("student_id, issued_at, released_at")
       .in("enrollment_id", enrollmentIds)
+      // A client sees the certificates their people hold — not our internal
+      // records (a partner certificate kept on file, a hidden ICS copy).
+      .eq("visible_to_student", true)
+      .is("revoked_at", null)
 
     ;(certs ?? []).forEach((c: any) => {
       certByStudent[c.student_id] = {
@@ -376,6 +380,8 @@ async function resolveCohort(cohortId: string, row: any, p: Record<string, boole
       .select("student_id")
       .in("student_id", studentIds)
       .not("released_at", "is", null)
+      .eq("visible_to_student", true)
+      .is("revoked_at", null)
 
     ;(certs ?? []).forEach((c: any) => {
       certCountByStudent[c.student_id] = (certCountByStudent[c.student_id] ?? 0) + 1

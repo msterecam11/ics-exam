@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
-import { examTimeLimitS, elapsedSince, isSessionExpired } from "@/lib/lms-exam-session"
+import { examTimeLimitS, elapsedSince, isSessionExpired, UNLIMITED_EXAM_CAP_S } from "@/lib/lms-exam-session"
 import { getWritableEnrollment, getExamRules } from "@/lib/lms-enrollment"
 import { sanitizeQuestionsForClient, paperFor, type ExamQuestion } from "@/lib/lms-exam-scoring"
 import { examSections, buildPaper } from "@/lib/lms-exam-bank"
+import { scorePaper, type PaperQuestion } from "@/lib/lms-exam-bank"
+import { syncEnrollmentProgress } from "@/lib/lms-completion"
 
 // POST /api/lms/exam-attempt/start
 // Body: { module_id, course_id }
@@ -19,6 +21,7 @@ import { examSections, buildPaper } from "@/lib/lms-exam-bank"
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const { module_id, course_id } = await req.json().catch(() => ({}))
   if (!module_id || !course_id)
@@ -43,43 +46,16 @@ export async function POST(req: Request) {
   const settings    = module.activity_settings as any
   const { data: course } = await db.from("lms_courses").select("final_exam_pass_mark").eq("id", course_id).maybeSingle()
   const { maxAttempts } = await getExamRules(enrollment, course as any, settings)
-  const { count } = await db
-    .from("lms_module_attempts")
-    .select("*", { count: "exact", head: true })
-    .eq("module_id", module_id)
-    .eq("enrollment_id", enrollment.id)
-  if ((count ?? 0) >= maxAttempts)
-    return NextResponse.json({ error: `Maximum ${maxAttempts} attempt(s) reached` }, { status: 409 })
-
   const limitS = examTimeLimitS(settings)
   const now    = new Date()
 
-  // The paper is frozen here: the session stores the exact questions (with the
-  // key) as they are right now. The browser gets them sanitised, and the
-  // submission is graded against the session's copy — so editing the exam while
-  // a student is mid-exam, or afterwards, never changes what they are marked on.
-  // An exam built from the question bank draws its paper here — fixed sections
-  // as they are, draw sections at random — and it is frozen from this moment.
-  // An exam that still keeps its questions inline is frozen as it is, as before.
-  let currentQuestions: ExamQuestion[]
-  if (examSections(module as any)) {
-    const built = await buildPaper(module as any, student.id)
-    if (!built.ok) return NextResponse.json({ error: built.error }, { status: 409 })
-    currentQuestions = built.paper
-  } else {
-    currentQuestions = Array.isArray((module as any).questions) ? (module as any).questions as ExamQuestion[] : []
-  }
-  if (currentQuestions.length === 0)
-    return NextResponse.json({ error: "This exam has no questions yet" }, { status: 409 })
-
-  const respond = (startedAt: string, paper: ExamQuestion[]) => {
-    const elapsed = elapsedSince(startedAt, now)
-    return NextResponse.json({
-      started_at:   startedAt,
-      time_limit_s: limitS,
-      remaining_s:  limitS === null ? null : Math.max(0, limitS - elapsed),
-      questions:    sanitizeQuestionsForClient(paper),
-    })
+  const attemptCount = async () => {
+    const { count } = await db
+      .from("lms_module_attempts")
+      .select("*", { count: "exact", head: true })
+      .eq("module_id", module_id)
+      .eq("enrollment_id", enrollment.id)
+    return count ?? 0
   }
 
   const { data: open } = await db
@@ -90,18 +66,90 @@ export async function POST(req: Request) {
     .is("submitted_at", null)
     .maybeSingle()
 
-  if (open) {
-    if (!isSessionExpired(open.started_at, limitS, now)) {
-      if (Array.isArray((open as any).paper)) return respond(open.started_at, (open as any).paper)
-      // Session opened before frozen papers existed: freeze it now.
-      await db.from("lms_exam_sessions").update({ paper: currentQuestions }).eq("id", open.id).is("paper", null)
-      return respond(open.started_at, currentQuestions)
+  // A session left to run out without being submitted COUNTS AS AN ATTEMPT.
+  // It used to be closed quietly and a fresh one opened with a full clock, so
+  // a student could open the exam, read every question, let the time lapse and
+  // start again as often as they liked without ever using an attempt. It is
+  // recorded as a zero-score attempt on the paper they were shown, flagged as
+  // abandoned so staff can tell it apart from a real submission.
+  let previousExpired = false
+  if (open && isSessionExpired(open.started_at, limitS, now)) {
+    const { data: closed } = await db.from("lms_exam_sessions").update({ submitted_at: now.toISOString() })
+      .eq("id", open.id).is("submitted_at", null).select("id").maybeSingle()
+    if (closed) {
+      const paper = paperFor(open as any, (module as any).questions) as PaperQuestion[]
+      const { score, maxScore } = scorePaper(paper, {}, {})
+      const elapsedS = elapsedSince(open.started_at, now)
+      const { data: abandoned } = await db.from("lms_module_attempts").insert({
+        module_id, student_id: student.id, enrollment_id: enrollment.id, course_id,
+        attempt_no: (await attemptCount()) + 1,
+        status: "graded", score, max_score: maxScore, passed: false,
+        answers: {}, paper,
+        ai_feedback: { abandoned: true, time_limit_exceeded: true, elapsed_s: elapsedS, time_limit_s: limitS },
+        time_spent_s: Math.min(elapsedS, limitS ?? UNLIMITED_EXAM_CAP_S),
+        started_at: open.started_at, submitted_at: now.toISOString(),
+      }).select("id").single()
+      if (abandoned) {
+        await db.from("lms_exam_sessions").update({ attempt_id: (abandoned as any).id }).eq("id", open.id)
+        await syncEnrollmentProgress(student.id, course_id, enrollment.id)
+      }
+      previousExpired = true
     }
-    // Abandoned past its limit: close it (no attempt_id = never submitted) so a
-    // fresh session can open. It is kept, not deleted, as a record of the start.
-    await db.from("lms_exam_sessions").update({ submitted_at: now.toISOString() })
-      .eq("id", open.id).is("submitted_at", null)
   }
+
+  const used = await attemptCount()
+  if (used >= maxAttempts)
+    return NextResponse.json({
+      error: previousExpired
+        ? `Your last exam session ran out of time without being submitted, so it counted as an attempt. Maximum ${maxAttempts} attempt(s) reached.`
+        : `Maximum ${maxAttempts} attempt(s) reached`,
+    }, { status: 409 })
+
+  const respond = (startedAt: string, paper: ExamQuestion[]) => {
+    const elapsed = elapsedSince(startedAt, now)
+    return NextResponse.json({
+      started_at:   startedAt,
+      time_limit_s: limitS,
+      remaining_s:  limitS === null ? null : Math.max(0, limitS - elapsed),
+      questions:    sanitizeQuestionsForClient(paper),
+      ...(previousExpired ? { previous_session_expired: true } : {}),
+    })
+  }
+
+  // The paper is frozen here: the session stores the exact questions (with the
+  // key) as they are right now. The browser gets them sanitised, and the
+  // submission is graded against the session's copy — so editing the exam while
+  // a student is mid-exam, or afterwards, never changes what they are marked on.
+  // An exam built from the question bank draws its paper here — fixed sections
+  // as they are, draw sections at random — and it is frozen from this moment.
+  // An exam that still keeps its questions inline is frozen as it is, as before.
+  const paperNow = async (): Promise<{ ok: true; paper: ExamQuestion[] } | { ok: false; res: NextResponse }> => {
+    let questions: ExamQuestion[]
+    if (examSections(module as any)) {
+      const built = await buildPaper(module as any, student.id)
+      if (!built.ok) return { ok: false, res: NextResponse.json({ error: built.error }, { status: 409 }) }
+      questions = built.paper
+    } else {
+      questions = Array.isArray((module as any).questions) ? (module as any).questions as ExamQuestion[] : []
+    }
+    if (questions.length === 0)
+      return { ok: false, res: NextResponse.json({ error: "This exam has no questions yet" }, { status: 409 }) }
+    return { ok: true, paper: questions }
+  }
+
+  // Resume a session still within its time.
+  if (open && !previousExpired) {
+    if (Array.isArray((open as any).paper)) return respond(open.started_at, (open as any).paper)
+    // Session opened before frozen papers existed: freeze it now.
+    const p = await paperNow()
+    if (!p.ok) return p.res
+    await db.from("lms_exam_sessions").update({ paper: p.paper }).eq("id", open.id).is("paper", null)
+    return respond(open.started_at, p.paper)
+  }
+
+  const fresh = await paperNow()
+  if (!fresh.ok) return fresh.res
+  const currentQuestions = fresh.paper
 
   const { data: created, error } = await db
     .from("lms_exam_sessions")

@@ -124,7 +124,7 @@ export default async function StudentCoursePage({
   const [{ data: runAttempts }, { data: runCerts }] = runIds.length
     ? await Promise.all([
         db.from("lms_module_attempts").select("enrollment_id, passed, score, max_score, attempt_no").in("enrollment_id", runIds).order("attempt_no", { ascending: false }),
-        db.from("lms_certificates").select("enrollment_id, id, released_at, revoked_at").in("enrollment_id", runIds),
+        db.from("lms_certificates").select("enrollment_id, id, released_at, revoked_at").in("enrollment_id", runIds).eq("visible_to_student", true),
       ])
     : [{ data: [] as any[] }, { data: [] as any[] }]
   const runExam = new Map<string, { passed: boolean; pct: number }>()

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
+import { guardStaff, staffScope, canSeeEnrollment, forbidden } from "@/lib/staff-access"
 import { db } from "@/lib/db"
 import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
 import { notifyLastAttempt } from "@/lib/lms-email-events"
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
   const studentSession = await getStudentSession()
   if (!studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (studentSession.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const studentId = studentSession.id
 
@@ -244,9 +246,9 @@ export async function POST(req: Request) {
 
 // DELETE /api/lms/exam-attempt?module_id=xxx&student_id=xxx — admin only, resets all attempts
 export async function DELETE(req: Request) {
-  const session = await auth()
-  if (!session || (session.user.role !== "admin" && session.user.role !== "instructor"))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  // IR-14 — an instructor with "Reset attempts", for a student of theirs.
+  const g = await guardStaff({ permission: "reset_attempts" })
+  if (!g.ok) return g.res
 
   const { searchParams } = new URL(req.url)
   const moduleId  = searchParams.get("module_id")
@@ -260,6 +262,7 @@ export async function DELETE(req: Request) {
   const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
   const current = await getCurrentEnrollment(studentId, (mod as any)?.course_id)
   if (!current) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+  if (!(await canSeeEnrollment(g.scope, current.id))) return forbidden()
 
   await db.from("lms_exam_sessions").delete().eq("module_id", moduleId).eq("enrollment_id", current.id)
   const { error } = await db
@@ -283,6 +286,7 @@ export async function GET(req: Request) {
   // other staff role.
   const staff          = await auth()
   const adminSession   = staff && (staff.user.role === "admin" || staff.user.role === "instructor") ? staff : null
+  const staffScopeNow  = adminSession ? await staffScope({ id: adminSession.user.id, role: adminSession.user.role }) : null
   const studentSession = adminSession ? null : await getStudentSession()
   if (!adminSession && !studentSession)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -300,6 +304,8 @@ export async function GET(req: Request) {
   const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
   const current = await getCurrentEnrollment(studentId, (mod as any)?.course_id)
   if (!current) return NextResponse.json([])
+  // Staff: an instructor only for a student of their own programs (and tracks).
+  if (staffScopeNow && !(await canSeeEnrollment(staffScopeNow, current.id))) return forbidden()
 
   const { data, error } = await db
     .from("lms_module_attempts")

@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import GroupReportView from "@/components/lms/GroupReportView"
 import { parseCourseScope, loadGroupReport, loadCourseComparison, loadCourseAssessment, courseScopeOptions } from "@/lib/lms-report-scope"
-import { pageScope, canSeeProgram } from "@/lib/staff-access"
+import { pageScope, canSeeProgramPart } from "@/lib/staff-access"
 
 interface Props {
   params: Promise<{ courseId: string }>
@@ -21,7 +21,7 @@ export default async function LmsCourseGroupReportPage({ params, searchParams }:
   const sp = await searchParams
   // An instructor may only look at a run of a course inside one of their
   // programs — never "every run across programs" (RL-8).
-  if (!staff.isAdmin && !canSeeProgram(staff, sp.program ?? null)) notFound()
+  if (!canSeeProgramPart(staff, sp.program ?? null, sp.track ?? null)) notFound()
   const scope = parseCourseScope(sp)
   const refresh = sp.refresh === "1"
 

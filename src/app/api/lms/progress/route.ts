@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
@@ -30,6 +30,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const { content_item_id, module_id, course_id, status, position, time_spent } = body

@@ -193,15 +193,17 @@ export async function buildCourseReport(
     const examAttempts = attempts.filter((a: any) => a.module_id === examMod.id)
     if (examAttempts.length) {
       const best = examAttempts.slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))[0]
-      const maxAttempts = (examMod as any).activity_settings?.max_attempts ?? 3
+      // Pass mark AND attempt limit as grading applies them: the program's rule
+      // when there is one. (The limit used to come from the exam module alone,
+      // so a program allowing 5 attempts showed "1/3" here.)
+      const rules = await getExamRules(enrollRes.data as any, courseRes.data as any, (examMod as any).activity_settings)
       const pct = best.max_score ? Math.round((best.score / best.max_score) * 100) : num(best.score)
       exam = {
         title: examMod.title,
         score: num(best.score), maxScore: num(best.max_score), pct,
         passed: !!examAttempts.some((a: any) => a.passed),
-        attempts: examAttempts.length, maxAttempts,
-        // The pass mark grading used: the program's rule when there is one.
-        passMark: (await getExamRules(enrollRes.data as any, courseRes.data as any, (examMod as any).activity_settings)).passMark,
+        attempts: examAttempts.length, maxAttempts: rules.maxAttempts,
+        passMark: rules.passMark,
         timeSpent: examAttempts.reduce((s: number, a: any) => s + (a.time_spent_s ?? 0), 0),
       }
     }

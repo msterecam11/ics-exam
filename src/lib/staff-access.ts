@@ -112,6 +112,21 @@ export function canSeeTrack(scope: StaffScope, programId: string, trackId: strin
   return tracks.includes(trackId)
 }
 
+/**
+ * A report over a program, or one track of it. The whole program only for an
+ * instructor assigned to the whole program; a track-limited instructor must
+ * name one of their tracks. Nothing outside programs (course-wide, individual
+ * learners) for instructors.
+ */
+export function canSeeProgramPart(scope: StaffScope, programId: string | null | undefined, trackId: string | null | undefined): boolean {
+  if (scope.isAdmin) return true
+  if (!programId) return false
+  const tracks = scope.tracksByProgram.get(programId)
+  if (tracks === undefined) return false
+  if (!tracks.length) return true
+  return !!trackId && tracks.includes(trackId)
+}
+
 /** Narrows a list of program ids to the ones this account may see. */
 export function visibleProgramIds(scope: StaffScope, ids: string[]): string[] {
   return scope.isAdmin ? ids : ids.filter(id => scope.tracksByProgram.has(id))
@@ -199,6 +214,38 @@ export async function canSeeEnrollment(scope: StaffScope, enrollmentId: string):
   const e = data as any
   if (e.program_id) return canSeeProgram(scope, e.program_id) && canSeeTrack(scope, e.program_id, e.lms_program_members?.track_id ?? null)
   return canSeeStudent(scope, e.student_id)
+}
+
+/**
+ * One student's record in one course: the given enrollment, or their current
+ * one. For screens that take a student + course (reports, progress, attempts).
+ */
+export async function canSeeStudentCourse(scope: StaffScope, studentId: string, courseId: string, enrollmentId?: string | null): Promise<boolean> {
+  if (scope.isAdmin) return true
+  let id = enrollmentId ?? null
+  if (id) {
+    const { data } = await db.from("lms_enrollments").select("id").eq("id", id).eq("student_id", studentId).eq("course_id", courseId).maybeSingle()
+    if (!data) return false
+  } else {
+    const { getCurrentEnrollment } = await import("@/lib/lms-enrollment")
+    id = (await getCurrentEnrollment(studentId, courseId))?.id ?? null
+  }
+  return !!id && canSeeEnrollment(scope, id)
+}
+
+/** Every enrollment of one course this account may see — for course-wide lists. */
+export async function visibleEnrollmentIdsForCourse(scope: StaffScope, courseId: string): Promise<Set<string> | "all"> {
+  if (scope.isAdmin) return "all"
+  if (!scope.programIds.length) return new Set()
+  const { data } = await db
+    .from("lms_enrollments")
+    .select("id, program_id, lms_program_members(track_id)")
+    .eq("course_id", courseId)
+    .in("program_id", scope.programIds)
+    .range(0, 9999)
+  return new Set(((data ?? []) as any[])
+    .filter(e => canSeeTrack(scope, e.program_id, e.lms_program_members?.track_id ?? null))
+    .map(e => e.id as string))
 }
 
 // ── Reasons, for consistent API replies ──────────────────────────────────────

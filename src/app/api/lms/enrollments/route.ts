@@ -3,14 +3,13 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
 import { getCurrentEnrollment } from "@/lib/lms-enrollment"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudent, canSeeProgram, visibleEnrollmentIdsForCourse, forbidden } from "@/lib/staff-access"
 
 // GET /api/lms/enrollments?course_id=xxx  — list students enrolled in a course
 // GET /api/lms/enrollments?student_id=xxx — list courses a student is enrolled in
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { searchParams } = new URL(req.url)
   const courseId  = searchParams.get("course_id")
@@ -37,7 +36,9 @@ export async function GET(req: Request) {
     // source of truth shared with the student portal, dashboard, and reports.
     // (This route used to recompute it with a slightly different formula,
     // which made the admin roster disagree with everywhere else.)
-    const enriched = (data ?? []).map((e: any) => ({
+    // An instructor sees the learners of their own programs (and tracks) only.
+    const visible = await visibleEnrollmentIdsForCourse(g.scope, courseId)
+    const enriched = (data ?? []).filter((e: any) => visible === "all" || visible.has(e.id)).map((e: any) => ({
       ...e,
       progress_pct: Math.min(100, Math.round(e.progress_pct ?? 0)),
     }))
@@ -45,25 +46,28 @@ export async function GET(req: Request) {
   }
 
   // All enrollments for a student
+  if (!(await canSeeStudent(g.scope, studentId!))) return forbidden()
   const { data, error } = await db
     .from("lms_enrollments")
     .select(`
-      id, status, enrolled_at, completed_at,
+      id, status, enrolled_at, completed_at, program_id,
       lms_courses(id, title, description, delivery_mode, thumbnail_url, end_date, status)
     `)
     .eq("student_id", studentId!)
     .order("enrolled_at", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  return NextResponse.json((data ?? []).filter((e: any) => g.scope.isAdmin || canSeeProgram(g.scope, e.program_id)))
 }
 
 // POST — enroll one or more students in a course
 // Body: { course_id, student_ids: string[] }
 export async function POST(req: Request) {
+  // Admins only: this enrolls (or changes an enrollment) directly in a course,
+  // outside any program — instructors add people through their programs.
   const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!session || session.user.role !== "admin")
+    return NextResponse.json({ error: "Only an admin can do this" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const { course_id, student_ids } = body
@@ -178,9 +182,11 @@ export async function POST(req: Request) {
 
 // PATCH — update enrollment status (active / completed / dropped)
 export async function PATCH(req: Request) {
+  // Admins only: this enrolls (or changes an enrollment) directly in a course,
+  // outside any program — instructors add people through their programs.
   const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!session || session.user.role !== "admin")
+    return NextResponse.json({ error: "Only an admin can do this" }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const { id, status } = body

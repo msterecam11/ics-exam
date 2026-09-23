@@ -224,7 +224,7 @@ function convertToPkgQuestion(bq: PkgBankSet["questions"][number]): PackageQuest
   const type = bq.type === "mcq_multi" ? "mcq_multiple"
              : bq.type === "matching"  ? "match_pair"
              : bq.type as PackageQuestion["type"]
-  const base = { id: uid(), text: bq.text_en, points: 1, type }
+  const base = { id: uid(), text: bq.text_en, points: bq.score || 1, type }
   if (type === "mcq_single" || type === "mcq_multiple") {
     const opts = [...bq.lms_question_choices].sort((a, b) => a.order_index - b.order_index)
     return { ...base, options: opts.map(c => ({ id: uid(), text: c.text_en, is_correct: c.is_correct })) }

@@ -99,6 +99,7 @@ export default async function StudentExamResultsPage({ params, searchParams }: P
         attemptNo: a.attempt_no,
         pct: a.max_score > 0 ? Math.round((a.score / a.max_score) * 100) : null,
         passed: !!a.passed,
+        abandoned: a.ai_feedback?.abandoned === true,
         submittedAt: a.submitted_at ?? a.graded_at ?? null,
         timeS: a.time_spent_s ?? 0,
         // The paper this attempt was taken on (frozen at start), not today's exam.

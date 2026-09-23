@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import LmsStudentShell from "@/components/lms/LmsStudentShell"
 import SessionExpiredGuard from "@/components/lms/SessionExpiredGuard"
+import PreviewBanner from "@/components/lms/PreviewBanner"
 import { ENROLLMENT_ACCESS_COLUMNS, currentVisible } from "@/lib/lms-enrollment"
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 
@@ -11,7 +12,8 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
   if (!student) redirect("/lms/login")
   // An admin has required this student to set a new password (LMS Settings ->
   // Student Passwords). Nothing in the portal is reachable until they do.
-  if (student.mustChangePassword) redirect("/lms/change-password")
+  // (Not for a staff preview: it can't change the password, so it would be stuck.)
+  if (student.mustChangePassword && !student.preview) redirect("/lms/change-password")
 
   const today   = sessionToday()
   const in7days = sessionToday(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
@@ -38,6 +40,7 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
     >
       <SessionExpiredGuard loginUrl="/lms/login" reason="For security, your learning session has timed out." />
       {children}
+      {student.preview && <PreviewBanner name={student.name} />}
     </LmsStudentShell>
   )
 }

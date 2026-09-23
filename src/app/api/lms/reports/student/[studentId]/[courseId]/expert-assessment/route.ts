@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rateLimit"
 import { buildCourseReport } from "@/lib/lms-course-report"
 import Groq from "groq-sdk"
 import { isMgr } from "@/lib/staff-roles"
+import { staffScope, canSeeEnrollment } from "@/lib/staff-access"
 
 export const maxDuration = 60 // Long-running (AI generation). NOTE: this is a
 // serverless-host hint and is a NO-OP on Render, which is what this app runs on —
@@ -26,6 +27,12 @@ async function runOf(studentId: string, courseId: string, requested: unknown) {
   return getCurrentEnrollment(studentId, courseId)
 }
 
+// An instructor only for a run in their own programs (and tracks).
+async function inScope(session: any, enrollmentId: string) {
+  if (session.user.role === "admin") return true
+  return canSeeEnrollment(await staffScope({ id: session.user.id, role: session.user.role }), enrollmentId)
+}
+
 // GET — return the stored expert assessment
 export async function GET(req: Request, { params }: Params) {
   const session = await auth()
@@ -35,6 +42,7 @@ export async function GET(req: Request, { params }: Params) {
   // The assessment of the student's current enrollment in the course.
   const current = await runOf(studentId, courseId, new URL(req.url).searchParams.get("enrollment"))
   if (!current) return NextResponse.json(null)
+  if (!(await inScope(session, current.id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const { data } = await db
     .from("lms_report_assessments")
     .select("assessment, generated_at")
@@ -60,6 +68,7 @@ export async function POST(req: Request, { params }: Params) {
   const { studentId, courseId } = await params
   const run = await runOf(studentId, courseId, body.enrollment_id)
   if (!run) return NextResponse.json({ error: "Student is not enrolled in this course" }, { status: 404 })
+  if (!(await inScope(session, run.id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const report = await buildCourseReport(studentId, courseId, { enrollmentId: run.id })
   if (!report) return NextResponse.json({ error: "Report data not found" }, { status: 404 })
 

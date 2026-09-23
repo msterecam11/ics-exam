@@ -13,6 +13,8 @@ interface Attempt {
   attemptNo: number
   pct: number | null
   passed: boolean
+  /** Time ran out without the student submitting — counted as an attempt. */
+  abandoned?: boolean
   submittedAt: string | null
   timeS: number
   answers: any[]
@@ -98,7 +100,7 @@ export default function ExamAttemptsView({ courseId, student, courseTitle, examT
             <div className="text-right space-y-2">
               <p className={`text-3xl font-bold ${a.passed ? "text-emerald-600" : "text-red-500"}`}>{a.pct ?? 0}%</p>
               <Badge className={a.passed ? "bg-emerald-100 text-emerald-700 border-0" : "bg-red-100 text-red-700 border-0"}>
-                {a.passed ? "Passed" : "Failed"} · Passing: {passMark}%
+                {a.passed ? "Passed" : a.abandoned ? "Not submitted — time ran out" : "Failed"} · Passing: {passMark}%
               </Badge>
               <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
                 <Clock className="h-3 w-3" /> {fmtTime(a.timeS)}
@@ -127,7 +129,7 @@ export default function ExamAttemptsView({ courseId, student, courseTitle, examT
                   i === sel ? "border-[#1B4F8A] bg-[#1B4F8A] text-white"
                             : "border-slate-200 text-slate-600 hover:bg-slate-50"} ${
                   attempts.length === 1 ? "cursor-default" : ""}`}>
-                #{at.attemptNo} · {at.pct ?? 0}% · {at.passed ? "Pass" : "Fail"}
+                #{at.attemptNo} · {at.pct ?? 0}% · {at.passed ? "Pass" : at.abandoned ? "Not submitted" : "Fail"}
               </button>
             ))}
           </div>

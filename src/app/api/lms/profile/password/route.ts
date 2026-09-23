@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getStudentSession, deleteOtherStudentSessions } from "@/lib/lms-auth"
+import { getStudentSession, deleteOtherStudentSessions, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import bcrypt from "bcryptjs"
@@ -9,6 +9,7 @@ import bcrypt from "bcryptjs"
 export async function POST(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   // A stolen-but-not-yet-expired session cookie could otherwise be used to
   // brute-force the real account password (via `current`) at unlimited

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudent, canSeeProgram, forbidden } from "@/lib/staff-access"
 
 // GET /api/lms/progress/[studentId]
 // Returns student info + enrolled courses (with progress) + learning paths + cohorts
@@ -9,11 +9,11 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ studentId: string }> }
 ) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { studentId } = await params
+  if (!(await canSeeStudent(g.scope, studentId))) return forbidden()
 
   const { data: student, error: sErr } = await db
     .from("lms_students")
@@ -52,7 +52,8 @@ export async function GET(
 
   return NextResponse.json({
     student,
-    enrollments: (enrollments ?? []).map((e: any) => ({
+    // An instructor sees this student's courses in their own programs only.
+    enrollments: (enrollments ?? []).filter((e: any) => g.scope.isAdmin || canSeeProgram(g.scope, e.program_id)).map((e: any) => ({
       id:           e.id,
       status:       e.status,
       enrolled_at:  e.enrolled_at,

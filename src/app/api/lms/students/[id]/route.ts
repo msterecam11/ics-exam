@@ -73,10 +73,25 @@ export async function GET(
     examAttemptsByModule[key].push(a)
   }
 
+  // The attempt limit that actually applies: the program's rule when the run
+  // belongs to a program that sets one, else the exam's own setting.
+  const runIds = [...new Set(((examAttempts ?? []) as any[]).map(a => a.enrollment_id).filter(Boolean))]
+  const { data: runRows } = runIds.length
+    ? await db.from("lms_enrollments").select("id, program_id").in("id", runIds)
+    : { data: [] as any[] }
+  const programOfRun = new Map(((runRows ?? []) as any[]).map(r => [r.id, r.program_id as string | null]))
+  const programIds = [...new Set([...programOfRun.values()].filter(Boolean))] as string[]
+  const { data: ruleRows } = programIds.length
+    ? await db.from("lms_program_course_rules").select("program_id, course_id, max_attempts").in("program_id", programIds)
+    : { data: [] as any[] }
+  const ruleMax = new Map(((ruleRows ?? []) as any[]).map(r => [`${r.program_id}:${r.course_id}`, Number(r.max_attempts)]))
+
   const exam_summaries = Object.entries(examAttemptsByModule).map(([key, attempts]) => {
     const moduleId = key.split("|")[1]
     const mod = (attempts[0] as any).lms_modules
-    const maxAttempts = (mod?.activity_settings as any)?.max_attempts ?? 3
+    const programId = programOfRun.get(key.split("|")[0]) ?? null
+    const maxAttempts = (programId && ruleMax.get(`${programId}:${attempts[0].course_id}`))
+      || ((mod?.activity_settings as any)?.max_attempts ?? 3)
     const latestPassed = attempts.some((a: any) => a.passed)
     return {
       module_id:      moduleId,

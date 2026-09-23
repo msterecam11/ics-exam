@@ -5,15 +5,14 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
-import { isMgr } from "@/lib/staff-roles"
+import { guardStaff, canSeeStudentCourse, forbidden } from "@/lib/staff-access"
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ studentId: string; courseId: string }> }
 ) {
-  const session = await auth()
-  if (!session || !isMgr(session.user.role))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
 
   const { studentId, courseId } = await params
 
@@ -32,6 +31,8 @@ export async function GET(
   // Opt-in: an unqualified PDF request must not emit the integrity section.
   const includeSecurity = searchParams.get("includeSecurity") ?? "false"
   const enrollment = searchParams.get("enrollment")
+  if (!(await canSeeStudentCourse(g.scope, studentId, courseId,
+    enrollment && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enrollment) ? enrollment : null))) return forbidden()
   const enrollmentParam = enrollment && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(enrollment) ? `&enrollment=${enrollment}` : ""
 
   const port    = process.env.PORT ?? "3000"

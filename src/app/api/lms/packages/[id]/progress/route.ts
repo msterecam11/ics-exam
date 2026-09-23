@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { rateLimit } from "@/lib/rateLimit"
@@ -74,6 +74,13 @@ export async function POST(
     item_answers,
     time_spent,
   } = body
+
+  // A staff preview records nothing: time beacons are accepted as no-ops (so the
+  // player shows no errors), anything that would save a result is refused.
+  if (student.preview) {
+    if (completed_item_id === undefined && item_answers === undefined) return NextResponse.json(null)
+    return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
+  }
 
   // module_id and course_id used to be taken from the request body and written
   // through. The package itself records both, so derive them instead of trusting

@@ -95,6 +95,9 @@ export default async function StudentDashboard() {
     db.from("lms_certificates")
       .select("id, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(name))")
       .eq("student_id", student.id).is("revoked_at", null).not("released_at", "is", null)
+      // Only certificates meant for the student — a partner certificate kept as
+      // an internal record, or an ICS copy set to hidden, never shows here.
+      .eq("visible_to_student", true)
       .order("released_at", { ascending: false }),
 
     // Program start / sequential-course locks, so nothing below points at a

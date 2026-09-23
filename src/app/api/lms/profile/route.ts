@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getStudentSession } from "@/lib/lms-auth"
+import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 
 // GET /api/lms/profile
 export async function GET() {
@@ -21,6 +21,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const student = await getStudentSession()
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (student.preview) return NextResponse.json(PREVIEW_READ_ONLY, { status: 403 })
 
   // `name` is deliberately NOT accepted. It is the name printed on the student's
   // certificates, so students cannot change it themselves; an admin corrects it.
