@@ -3,12 +3,13 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
 // The privacy notice the sign-up form links to. The wording is the institute's
-// own and is reproduced as given — a legal document is formatted here, never
-// reworded. Update it by editing POLICY below.
+// own; the retention periods and the named law were agreed with them and should
+// be checked by someone qualified before sign-up opens to the public. Edit
+// POLICY below to change it — never reword it here without asking.
 
 export const metadata = {
-  title: "Privacy Policy — ICS Aviation Training Institute",
-  description: "How ICS Aviation Training Institute collects, uses, stores and protects personal data.",
+  title: "Privacy Policy — ICS Integrated Consulting Services",
+  description: "How ICS Integrated Consulting Services collects, uses, stores and protects personal data.",
 }
 
 const LAST_UPDATED = "23 September 2026"
@@ -19,7 +20,7 @@ const POLICY: Section[] = [
   {
     heading: "1. Introduction",
     body: [
-      "ICS Aviation Training Institute is committed to protecting the privacy and personal data of all trainees, clients, partners, and website users. This Privacy Policy explains how personal data is collected, used, stored, and protected in accordance with applicable data protection principles and best international practices.",
+      "ICS Integrated Consulting Services is committed to protecting the privacy and personal data of all trainees, clients, partners, and website users. This Privacy Policy explains how personal data is collected, used, stored, and protected in accordance with UAE Federal Decree-Law No. 45 of 2021 on the Protection of Personal Data, and with best international practices.",
       "This policy applies to:",
     ],
     items: ["Website users", "Training participants", "Clients and sponsoring organizations", "Instructors and personnel"],
@@ -68,11 +69,13 @@ const POLICY: Section[] = [
   },
   {
     heading: "6. Data Retention",
-    body: ["ICS retains data in accordance with operational and regulatory requirements:"],
+    body: ["ICS keeps personal data only for as long as it is needed, and no longer:"],
     items: [
-      "Training records: minimum 5 years",
-      "Certification records: retained for verification purposes",
-      "Website data: retained as per system requirements",
+      "Account registrations that are never confirmed: deleted after 30 days",
+      "Accounts with no training activity: deleted after 24 months",
+      "Training and assessment records: retained for 3 years after the course is completed",
+      "Certification records: retained while the certificate is valid and for 3 years afterwards, so that a certificate can be verified when an employer or auditor asks",
+      "Website and technical data: retained for up to 12 months",
     ],
   },
   {
@@ -113,7 +116,7 @@ const POLICY: Section[] = [
 
 const CLOSING: Record<string, string> = {
   "5. Data Sharing and Disclosure": "ICS does not sell or misuse personal data. All third parties are required to maintain confidentiality and data protection standards.",
-  "6. Data Retention": "Data is securely archived or deleted after the retention period.",
+  "6. Data Retention": "Where a regulator, an accreditation body or a client contract requires a longer period, that period applies to the records it covers. Data is securely archived or deleted once the retention period ends.",
   "8. User Rights": "Requests can be submitted through official contact channels.",
   "9. Cookies and Website Tracking": "Users may manage cookie preferences through browser settings.",
   "11. Updates to this Policy": "Updated versions will be published on the website.",
@@ -178,7 +181,7 @@ export default function PrivacyPolicyPage() {
               For any privacy-related inquiries or requests:
             </p>
             <div className="mt-3 bg-white border border-slate-200 rounded-xl px-5 py-4 text-sm text-slate-700 space-y-1">
-              <p className="font-medium text-slate-900">ICS Aviation Training Institute</p>
+              <p className="font-medium text-slate-900">ICS Integrated Consulting Services</p>
               <p>Email: <a href="mailto:info@ics-aviation.com" className="text-[#1B4F8A] hover:underline">info@ics-aviation.com</a></p>
               <p>Address: Dubai, UAE</p>
             </div>
@@ -188,7 +191,7 @@ export default function PrivacyPolicyPage() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="max-w-3xl mx-auto px-6 py-5 text-xs text-slate-400">
-          ICS Aviation Training Institute
+          ICS Integrated Consulting Services
         </div>
       </footer>
     </div>
