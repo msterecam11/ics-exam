@@ -206,7 +206,7 @@ export default async function StudentDashboard() {
             </p>
           </div>
           {todaySessions[0].meeting_link ? (
-            <a href={todaySessions[0].meeting_link} target="_blank" rel="noreferrer"
+            <a href={`/api/lms/sessions/${todaySessions[0].id}/join`} target="_blank" rel="noreferrer"
               className="flex-shrink-0 flex items-center gap-1.5 bg-white text-[#1B4F8A] font-semibold text-xs px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
               <Video className="h-3.5 w-3.5" /> Join Now
             </a>
@@ -531,7 +531,7 @@ export default async function StudentDashboard() {
                       </p>
                     </div>
                     {s.meeting_link && (
-                      <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                      <a href={`/api/lms/sessions/${s.id}/join`} target="_blank" rel="noreferrer"
                         className="flex-shrink-0 flex items-center gap-1 text-[10px] font-semibold text-white bg-[#1B4F8A] hover:bg-[#163f6e] px-2 py-1 rounded-lg transition-colors">
                         <Video className="h-3 w-3" /> Join
                       </a>

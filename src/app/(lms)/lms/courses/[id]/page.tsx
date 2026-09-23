@@ -716,7 +716,7 @@ export default async function StudentCoursePage({
                         </div>
                         <div className="shrink-0 flex flex-col gap-2 items-end">
                           {s.meeting_link && (
-                            <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                            <a href={`/api/lms/sessions/${s.id}/join`} target="_blank" rel="noreferrer"
                               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-[#1B4F8A] text-white hover:bg-[#163f6e] transition-colors">
                               <Video className="h-3.5 w-3.5" /> Join
                             </a>

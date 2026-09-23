@@ -105,6 +105,9 @@ function LoginForm() {
       const session = await getSession()
       if (session?.user?.role === "assessor") {
         router.push("/interview")
+      } else if (session?.user?.role === "facilitator") {
+        // Facilitators take attendance for their onsite groups — nothing else.
+        router.push("/lms-admin/attendance")
       } else if (session?.user?.role === "instructor") {
         // Instructors only work in the LMS — skip the hub.
         router.push("/lms-admin")

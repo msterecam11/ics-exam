@@ -153,22 +153,29 @@ export function sessionToday(now = new Date()): string {
 export async function enrollmentAttendance(viewer: SessionViewer & { student_id: string }):
   Promise<{ sessionTotal: number; presentCount: number; excusedCount: number; attendancePct: number | null }> {
   const today = sessionToday()
-  const sessions = await sessionsForViewers<{ id: string }>([viewer], "id", q => q.lte("session_date", today))
+  const sessions = await sessionsForViewers<{ id: string; duration_minutes: number; session_date: string; start_time: string; late_threshold: number }>([viewer], "id, duration_minutes, session_date, start_time, late_threshold", q => q.lte("session_date", today))
   if (!sessions.length) return { sessionTotal: 0, presentCount: 0, excusedCount: 0, attendancePct: null }
   const { data } = await db
     .from("lms_attendance")
-    .select("session_id, status")
+    .select("session_id, status, check_in_at, check_out_at, minutes_attended")
     .eq("student_id", viewer.student_id)
     .in("session_id", sessions.map(s => s.id))
+  const bySession = new Map(((data ?? []) as any[]).map(r => [r.session_id, r]))
   const rows = (data ?? []) as any[]
   const presentCount = rows.filter(r => r.status === "present" || r.status === "late").length
   const excusedCount = rows.filter(r => r.status === "excused").length
-  const counted = sessions.length - excusedCount
+  // Partial days count partly (check-in/out, or minutes from a meeting report).
+  let counted = 0, credit = 0
+  for (const s of sessions) {
+    const c = attendanceCredit(bySession.get(s.id), s)
+    if (c === null) continue
+    counted++; credit += c
+  }
   return {
     sessionTotal: sessions.length,
     presentCount,
     excusedCount,
-    attendancePct: counted > 0 ? Math.round((presentCount / counted) * 100) : null,
+    attendancePct: counted > 0 ? Math.round((credit / counted) * 100) : null,
   }
 }
 
@@ -179,4 +186,71 @@ export function sessionEndTime(start: string | null | undefined, minutes: number
   if (!Number.isFinite(h) || !Number.isFinite(m)) return undefined
   const total = h * 60 + m + Number(minutes)
   return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`
+}
+
+// ── Time in the room ─────────────────────────────────────────────────────────
+//
+// Session dates and times are the institute's local time (UTC+3).
+
+/** A session-local "HH:MM" on its date, as an instant. */
+export function sessionInstant(date: string, hhmm: string): Date {
+  return new Date(`${date}T${hhmm.slice(0, 5)}:00+03:00`)
+}
+
+/** "HH:MM" (institute time) of an instant. */
+export function localHHMM(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  return new Date(new Date(iso).getTime() + 3 * 3600_000).toISOString().slice(11, 16)
+}
+
+/** Late when they arrived after start + the session's late threshold. */
+export function isLate(session: { session_date: string; start_time: string; late_threshold?: number | null }, arrived: Date): boolean {
+  const start = sessionInstant(session.session_date, session.start_time)
+  return arrived.getTime() > start.getTime() + (session.late_threshold ?? 15) * 60_000
+}
+
+export type AttendanceRecord = {
+  status: string
+  check_in_at?: string | null
+  check_out_at?: string | null
+  minutes_attended?: number | null
+}
+
+export type CreditSession = {
+  duration_minutes: number
+  session_date?: string | null
+  start_time?: string | null
+  late_threshold?: number | null
+}
+
+/**
+ * How much of a session counts as attended, 0–1; null = not counted at all
+ * (excused). Present or late is a full session unless we know better: the
+ * minutes an online meeting report gave, or check-in to check-out in the room
+ * — someone who left at noon of a 7-hour day gets about half.
+ *
+ * The same grace as for lateness applies at both ends: arriving within it of
+ * the start, or leaving within it of the end, loses nothing. Only real late
+ * arrivals and early departures cut the time.
+ */
+export function attendanceCredit(rec: AttendanceRecord | null | undefined, session: CreditSession | number): number | null {
+  const s: CreditSession = typeof session === "number" ? { duration_minutes: session } : session
+  if (!rec) return 0
+  if (rec.status === "excused") return null
+  if (rec.status !== "present" && rec.status !== "late") return 0
+  const full = Math.max(1, s.duration_minutes || 60)
+  const grace = s.late_threshold ?? 15
+  if (rec.minutes_attended != null)
+    return rec.minutes_attended >= full - grace ? 1 : Math.min(1, rec.minutes_attended / full)
+  if (rec.check_in_at && rec.check_out_at) {
+    let inAt = new Date(rec.check_in_at).getTime(), outAt = new Date(rec.check_out_at).getTime()
+    if (s.session_date && s.start_time) {
+      const start = sessionInstant(s.session_date, s.start_time).getTime(), end = start + full * 60_000
+      if (inAt <= start + grace * 60_000) inAt = start
+      if (outAt >= end - grace * 60_000) outAt = end
+    }
+    const m = (outAt - inAt) / 60_000
+    return m > 0 ? Math.min(1, m / full) : 1
+  }
+  return 1
 }

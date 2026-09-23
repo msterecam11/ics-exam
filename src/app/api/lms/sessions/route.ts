@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { coursesForTrack } from "@/lib/lms-programs"
-import { guardStaff, canSeeProgram, canSeeTrack, forbidden } from "@/lib/staff-access"
+import { guardStaff, canSeeProgram, canSeeTrack, canTakeAttendance, forbidden } from "@/lib/staff-access"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
 // PATCH — update a session, or close / reopen it
 // Body: { id, action?: "open" | "close", ...fields }
 export async function PATCH(req: Request) {
-  const g = await guardStaff()
+  const g = await guardStaff({ allowFacilitator: true })
   if (!g.ok) return g.res
   const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
@@ -199,10 +199,14 @@ export async function PATCH(req: Request) {
   const { id, action } = body
   if (typeof id !== "string" || !UUID_RE.test(id)) return NextResponse.json({ error: "id required" }, { status: 400 })
 
-  const { data: current } = await db.from("lms_sessions").select("id, title, program_id, track_id, course_id, module_id").eq("id", id).maybeSingle()
+  const { data: current } = await db.from("lms_sessions").select("id, title, program_id, track_id, group_id, course_id, module_id").eq("id", id).maybeSingle()
   if (!current) return NextResponse.json({ error: "Session not found" }, { status: 404 })
-  if (!canSeeProgram(g.scope, (current as any).program_id)
-      || !canSeeTrack(g.scope, (current as any).program_id, (current as any).track_id)) return forbidden()
+  if (!canTakeAttendance(g.scope, current as any)) return forbidden()
+  // A facilitator may open or close the day (with its wrap-up notes), nothing else.
+  if (g.scope.role === "facilitator") {
+    const extra = Object.keys(body).filter(k => !["id", "action", "topics_covered", "instructor_notes"].includes(k))
+    if ((action !== "open" && action !== "close") || extra.length) return forbidden()
+  }
 
   const parsed = parseFields(body, true)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })

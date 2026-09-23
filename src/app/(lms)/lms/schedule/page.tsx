@@ -116,7 +116,7 @@ export default async function SchedulePage() {
                         </div>
                         {s.meeting_link && (
                           <a
-                            href={s.meeting_link}
+                            href={`/api/lms/sessions/${s.id}/join`}
                             target="_blank"
                             rel="noreferrer"
                             className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4F8A] hover:bg-[#163f6e] px-3 py-2 rounded-lg transition-colors"

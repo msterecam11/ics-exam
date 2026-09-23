@@ -13,7 +13,7 @@ import { db } from "@/lib/db"
 import { STAFF_PERMISSIONS, type StaffPermission } from "@/lib/staff-roles"
 import { auth } from "@/lib/auth"
 
-export type StaffRole = "admin" | "instructor"
+export type StaffRole = "admin" | "instructor" | "facilitator"
 
 // The list of extras lives in staff-roles.ts so the settings screen (a client
 // component) can read the labels without pulling in the database client.
@@ -36,9 +36,14 @@ export interface StaffScope {
   /** Tracks they cover, per program. An absent entry means the whole program. */
   tracksByProgram: Map<string, string[]>
   permissions: Record<string, boolean>
+  /** Onsite groups they're staff on (any role), and those they TEACH. */
+  groupIds: string[]
+  instructorGroupIds: string[]
 }
 
-const isStaffRole = (r?: string): r is StaffRole => r === "admin" || r === "instructor"
+// A facilitator is staff too, but reaches only what a route explicitly opens to
+// them (attendance of their groups) — see guardStaff's allowFacilitator.
+const isStaffRole = (r?: string): r is StaffRole => r === "admin" || r === "instructor" || r === "facilitator"
 
 /** The signed-in staff member, or null. Students and viewers are not staff. */
 export async function staffSession(): Promise<StaffSession | null> {
@@ -54,11 +59,14 @@ export async function staffSession(): Promise<StaffSession | null> {
  */
 export async function staffScope(session: StaffSession): Promise<StaffScope> {
   if (session.role === "admin")
-    return { userId: session.id, role: "admin", isAdmin: true, programIds: [], tracksByProgram: new Map(), permissions: {} }
+    return { userId: session.id, role: "admin", isAdmin: true, programIds: [], tracksByProgram: new Map(), permissions: {}, groupIds: [], instructorGroupIds: [] }
 
-  const [{ data: links }, { data: me }] = await Promise.all([
-    db.from("lms_program_instructors").select("program_id, track_ids").eq("user_id", session.id),
+  const facilitator = session.role === "facilitator"
+  const [{ data: links }, { data: me }, { data: groupLinks }] = await Promise.all([
+    // A facilitator is never a program instructor, whatever the table says.
+    facilitator ? Promise.resolve({ data: [] as any[] }) : db.from("lms_program_instructors").select("program_id, track_ids").eq("user_id", session.id),
     db.from("admin_users").select("permissions").eq("id", session.id).maybeSingle(),
+    db.from("lms_group_staff").select("group_id, role").eq("user_id", session.id),
   ])
 
   const tracksByProgram = new Map<string, string[]>()
@@ -72,11 +80,15 @@ export async function staffScope(session: StaffSession): Promise<StaffScope> {
   }
 
   const raw = (me as any)?.permissions
+  const groups = (groupLinks ?? []) as { group_id: string; role: string }[]
   return {
-    userId: session.id, role: "instructor", isAdmin: false,
+    userId: session.id, role: facilitator ? "facilitator" : "instructor", isAdmin: false,
     programIds: [...tracksByProgram.keys()],
     tracksByProgram,
-    permissions: raw && typeof raw === "object" ? raw : {},
+    // The instructor extras never apply to a facilitator.
+    permissions: !facilitator && raw && typeof raw === "object" ? raw : {},
+    groupIds: [...new Set(groups.map(g => g.group_id))],
+    instructorGroupIds: facilitator ? [] : [...new Set(groups.filter(g => g.role === "instructor").map(g => g.group_id))],
   }
 }
 
@@ -134,9 +146,15 @@ export function visibleProgramIds(scope: StaffScope, ids: string[]): string[] {
 
 // ── Students ─────────────────────────────────────────────────────────────────
 
-/** True when the student is a member of at least one program in scope. */
+/** True when the student is a member of at least one program in scope — or
+ *  a participant of an onsite group they teach. */
 export async function canSeeStudent(scope: StaffScope, studentId: string): Promise<boolean> {
   if (scope.isAdmin) return true
+  if (scope.instructorGroupIds.length) {
+    const { data: inGroup } = await db.from("lms_enrollments").select("id").eq("student_id", studentId)
+      .in("group_id", scope.instructorGroupIds).in("status", ["active", "completed"]).limit(1)
+    if ((inGroup ?? []).length) return true
+  }
   if (!scope.programIds.length) return false
   const { data } = await db
     .from("lms_program_members")
@@ -248,6 +266,18 @@ export async function visibleEnrollmentIdsForCourse(scope: StaffScope, courseId:
     .map(e => e.id as string))
 }
 
+/**
+ * Taking attendance on a session: admins; the staff (instructors and
+ * facilitators) of the onsite group the day belongs to; or, for a program's
+ * session, an instructor of that program (and track).
+ */
+export function canTakeAttendance(scope: StaffScope, session: { program_id: string | null; track_id: string | null; group_id?: string | null }): boolean {
+  if (scope.isAdmin) return true
+  if (session.group_id) return scope.groupIds.includes(session.group_id)
+  if (scope.role === "facilitator") return false
+  return canSeeProgram(scope, session.program_id) && canSeeTrack(scope, session.program_id!, session.track_id)
+}
+
 // ── Reasons, for consistent API replies ──────────────────────────────────────
 
 export const FORBIDDEN = { error: "You don't have access to this" }
@@ -273,9 +303,12 @@ export type GuardResult =
   | { ok: true; session: StaffSession; scope: StaffScope }
   | { ok: false; res: NextResponse }
 
-export async function guardStaff(opts: { admin?: boolean; permission?: StaffPermission } = {}): Promise<GuardResult> {
+export async function guardStaff(opts: { admin?: boolean; permission?: StaffPermission; allowFacilitator?: boolean } = {}): Promise<GuardResult> {
   const session = await staffSession()
   if (!session) return { ok: false, res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  // Deny by default: a facilitator reaches only routes that say so.
+  if (session.role === "facilitator" && !opts.allowFacilitator)
+    return { ok: false, res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
 
   const scope = await staffScope(session)
   if (opts.admin && !scope.isAdmin)
@@ -285,7 +318,7 @@ export async function guardStaff(opts: { admin?: boolean; permission?: StaffPerm
 
   // An instructor with no programs and no extras can't do anything useful, and
   // letting them through would mean every list quietly returns everything.
-  if (!scope.isAdmin && !scope.programIds.length && !opts.permission)
+  if (!scope.isAdmin && !scope.programIds.length && !scope.groupIds.length && !opts.permission)
     return { ok: false, res: NextResponse.json({ error: "You are not assigned to any program yet" }, { status: 403 }) }
 
   return { ok: true, session, scope }

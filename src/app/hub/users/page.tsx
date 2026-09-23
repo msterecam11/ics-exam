@@ -18,7 +18,7 @@ import { toast }    from "sonner"
 import { cn }       from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Role = "admin" | "instructor" | "assessor" | "viewer"
+type Role = "admin" | "instructor" | "assessor" | "viewer" | "facilitator"
 
 interface AdminUser {
   id: string; name: string; email: string; role: Role
@@ -44,6 +44,7 @@ const ROLE_CONFIG: Record<Role, {
   instructor: { label: "Instructor", bg: "bg-emerald-50",   text: "text-emerald-700", icon: GraduationCap },
   assessor:   { label: "Assessor",   bg: "bg-purple-50",    text: "text-purple-700",  icon: User          },
   viewer:     { label: "Viewer",     bg: "bg-amber-50",     text: "text-amber-700",   icon: Eye           },
+  facilitator: { label: "Facilitator", bg: "bg-teal-50",   text: "text-teal-700",    icon: User          },
 }
 
 const EXAM_SCOPES = [
@@ -581,6 +582,7 @@ function UserModal({ open, onClose, onSaved, editing }: {
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="admin">Admin</option>
                 <option value="instructor">Instructor</option>
+                <option value="facilitator">Facilitator (LMS attendance)</option>
                 <option value="assessor">Assessor</option>
                 <option value="viewer">Viewer</option>
               </select>
@@ -750,7 +752,7 @@ export default function HubUsersPage() {
               placeholder="Search by name or email…" className="pl-9" />
           </div>
           <div className="flex gap-2 flex-wrap">
-            {["all", "admin", "instructor", "assessor", "viewer"].map(r => (
+            {["all", "admin", "instructor", "facilitator", "assessor", "viewer"].map(r => (
               <button key={r} onClick={() => setRF(r)}
                 className={cn(
                   "px-3 py-2 rounded-lg text-sm font-medium border transition-colors",

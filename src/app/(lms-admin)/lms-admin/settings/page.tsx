@@ -21,7 +21,7 @@ import StudentPasswordsTab from "@/components/lms/StudentPasswordsTab"
 import { STAFF_PERMISSIONS } from "@/lib/staff-roles"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Role = "admin" | "instructor" | "assessor" | "viewer"
+type Role = "admin" | "instructor" | "assessor" | "viewer" | "facilitator"
 
 interface AdminUser {
   id:              string
@@ -51,6 +51,8 @@ const ROLE_CONFIG: Record<Role, RoleStyle> = {
   // undefined and threw — taking the WHOLE settings page down, not just the
   // row. The page had been dead since the first viewer was created.
   viewer:     { label: "Viewer",     bg: "bg-amber-50",     text: "text-amber-700",    icon: Eye           },
+  // Takes attendance for the onsite groups they are assigned to — nothing else.
+  facilitator: { label: "Facilitator", bg: "bg-teal-50",    text: "text-teal-700",     icon: User          },
 }
 
 // Never index ROLE_CONFIG directly. A role that exists in the database but not
@@ -204,8 +206,8 @@ function UserModal({
             {/* Viewer included so EDITING an existing viewer shows their current
                 role selected. Without it the dialog opened with nothing
                 highlighted, which reads as "no role" for a real account. */}
-            <div className="grid grid-cols-4 gap-2">
-              {(["admin", "instructor", "assessor", "viewer"] as Role[]).map(r => {
+            <div className="grid grid-cols-5 gap-2">
+              {(["admin", "instructor", "facilitator", "assessor", "viewer"] as Role[]).map(r => {
                 const cfg = roleStyle(r)
                 const Icon = cfg.icon
                 return (
@@ -395,7 +397,7 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">User Management</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Manage admins, instructors, assessors and viewers</p>
+          <p className="text-sm text-slate-500 mt-0.5">Manage admins, instructors, facilitators, assessors and viewers</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setAddOpen(true)} className="gap-2 bg-[#1B4F8A] hover:bg-[#163f6f] text-white">
@@ -412,7 +414,7 @@ function UsersTab({ currentUserId, isAdmin }: { currentUserId: string; isAdmin: 
             onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-          {(["all", "admin", "instructor", "assessor", "viewer"] as const).map(r => (
+          {(["all", "admin", "instructor", "facilitator", "assessor", "viewer"] as const).map(r => (
             <button key={r} onClick={() => setRoleFilter(r)}
               className={cn(
                 "px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors",

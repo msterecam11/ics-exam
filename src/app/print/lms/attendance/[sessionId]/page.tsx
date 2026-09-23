@@ -3,7 +3,8 @@ import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Image from "next/image"
 import { Users, Clock, MapPin, CalendarDays } from "lucide-react"
-import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
+import { sessionRoster, sessionEndTime, localHHMM } from "@/lib/lms-sessions"
+import { pageScope, canTakeAttendance } from "@/lib/staff-access"
 
 interface Props {
   params: Promise<{ sessionId: string }>
@@ -73,14 +74,14 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   // attendance sheet by URL. Viewers have no attendance surface, so there is
   // no viewer-grant path to honour here.
   const validSecret = !!process.env.PDF_INTERNAL_SECRET && pdf_secret === process.env.PDF_INTERNAL_SECRET
+  const { sessionId } = await params
   if (!validSecret) {
     const session = await auth()
     if (!session) redirect("/auth/login")
-    const role = session.user?.role ?? ""
-    if (role !== "admin" && role !== "instructor") notFound()
+    const scope = await pageScope()
+    const { data: s } = await db.from("lms_sessions").select("program_id, track_id, group_id").eq("id", sessionId).maybeSingle()
+    if (!scope || !s || !canTakeAttendance(scope, s as any)) notFound()
   }
-
-  const { sessionId } = await params
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
   // This selected end_time, is_open and late_threshold_minutes from
@@ -112,7 +113,7 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   const [roster, attendanceRes] = await Promise.all([
     sessionRoster(sess),
     db.from("lms_attendance")
-      .select("id, student_id, status, scanned_at")
+      .select("id, student_id, status, scanned_at, check_in_at, check_out_at, minutes_attended, source")
       .eq("session_id", sessionId),
   ])
   const attByStudent = new Map(((attendanceRes.data ?? []) as any[]).map(a => [a.student_id, a]))
@@ -123,8 +124,10 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
       return {
         id:            a?.id ?? `absent-${r.student_id}`,
         status:        a?.status ?? "absent",
-        checked_in_at: a?.scanned_at ?? null,
-        scan_method:   a ? "marked" : "not marked",
+        // Arrived / left in the institute's time (the server may run in UTC).
+        time_in:       localHHMM(a?.check_in_at),
+        time_out:      localHHMM(a?.check_out_at),
+        minutes:       a?.minutes_attended ?? null,
         lms_students:  { id: r.student_id, name: r.name, email: r.email, company: r.company },
       }
     })
@@ -289,8 +292,9 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
                     <span className="w-6 shrink-0">#</span>
                     <span className="flex-1">Student</span>
                     <span className="w-20 text-center">Status</span>
-                    <span className="w-28 text-center">Marked At</span>
-                    <span className="w-16 text-center">Method</span>
+                    <span className="w-14 text-center">In</span>
+                    <span className="w-14 text-center">Out</span>
+                    <span className="w-32 text-center">Signature</span>
                   </div>
 
                   {rows.length === 0 ? (
@@ -308,18 +312,11 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
                           {a.status}
                         </span>
                       </div>
-                      <div className="w-28 text-center">
-                        {a.checked_in_at ? (
-                          <span className="text-[10px] text-slate-600">
-                            {new Date(a.checked_in_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-300">—</span>
-                        )}
+                      <div className="w-14 text-center text-[10px] text-slate-600">{a.time_in ?? <span className="text-slate-300">—</span>}</div>
+                      <div className="w-14 text-center text-[10px] text-slate-600">
+                        {a.time_out ?? (a.minutes !== null ? `${a.minutes} min` : <span className="text-slate-300">—</span>)}
                       </div>
-                      <div className="w-16 text-center">
-                        <span className="text-[9px] text-slate-400 capitalize">{a.scan_method ?? "—"}</span>
-                      </div>
+                      <div className="w-32 h-5 border-b border-slate-300" />
                     </div>
                   ))}
                 </div>

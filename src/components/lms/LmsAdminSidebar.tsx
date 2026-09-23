@@ -21,6 +21,7 @@ import {
   Briefcase,
   Handshake,
   Award,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +37,7 @@ const navItems: { href: string; label: string; icon: any; exact?: boolean; needs
   { href: "/lms-admin/providers", label: "Service Providers", icon: Handshake },
   { href: "/lms-admin/progress",  label: "Student Progress", icon: TrendingUp },
   { href: "/lms-admin/sessions",       label: "Live Sessions",  icon: CalendarDays, needs: "staff" },
+  { href: "/lms-admin/attendance",     label: "Attendance",     icon: ClipboardCheck, needs: "attendance" },
   { href: "/lms-admin/questions", label: "Question Bank",   icon: HelpCircle, needs: "author_courses" },
   { href: "/lms-admin/reports",   label: "Reports",         icon: BarChart3, needs: "staff" },
   { href: "/lms-admin/certificates", label: "Certificates", icon: Award, needs: "release_certificates" },
@@ -96,8 +98,8 @@ export default function LmsAdminSidebar({ user, permissions, inSheet = false }: 
         })}
       </nav>
 
-      {/* Back to Hub — instructors only have the LMS */}
-      {user.role !== "instructor" && <div className="px-3 pb-2">
+      {/* Back to Hub — instructors and facilitators only have the LMS */}
+      {user.role !== "instructor" && user.role !== "facilitator" && <div className="px-3 pb-2">
         <Link
           href="/hub"
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors"

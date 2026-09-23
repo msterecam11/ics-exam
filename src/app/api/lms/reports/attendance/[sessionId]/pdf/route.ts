@@ -5,19 +5,19 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { getBrowser } from "@/lib/browser"
 import { PDFDocument } from "pdf-lib"
-import { guardStaff, canSeeTrack, forbidden } from "@/lib/staff-access"
+import { guardStaff, canTakeAttendance, forbidden } from "@/lib/staff-access"
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const g = await guardStaff()
+  const g = await guardStaff({ allowFacilitator: true })
   if (!g.ok) return g.res
 
   const { sessionId } = await params
 
   const sessionRes = await db.from("lms_sessions")
-    .select("title, session_date, program_id, track_id")
+    .select("title, session_date, program_id, track_id, group_id")
     .eq("id", sessionId)
     .single()
 
@@ -25,8 +25,8 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
   const sess = sessionRes.data as any
-  // A session belongs to a program (and maybe a track): only its staff may print it.
-  if (!g.scope.isAdmin && !(sess.program_id && canSeeTrack(g.scope, sess.program_id, sess.track_id))) return forbidden()
+  // Only whoever may take this session's attendance may print it.
+  if (!canTakeAttendance(g.scope, sess)) return forbidden()
   const sessionTitle = sess.title ?? "Session"
   const sessionDate  = sess.session_date
     ? new Date(sess.session_date).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })

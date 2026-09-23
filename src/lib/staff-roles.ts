@@ -13,7 +13,7 @@
 // Kept free of database imports so it can be used from anywhere, including
 // client components and middleware.
 
-export type Role = "admin" | "instructor" | "viewer" | "assessor" | "student"
+export type Role = "admin" | "instructor" | "facilitator" | "viewer" | "assessor" | "student"
 
 /** Full LMS administration. */
 export function isMgr(role?: string | null): boolean {
@@ -53,11 +53,14 @@ export type StaffPermission = typeof STAFF_PERMISSIONS[number]["key"]
  * `needs` is read as: undefined = admins only, "staff" = any staff account,
  * anything else = that permission.
  */
-export type NavNeeds = "staff" | StaffPermission | undefined
+// "attendance" = anyone who takes attendance, facilitators included.
+export type NavNeeds = "staff" | "attendance" | StaffPermission | undefined
 
 export function navVisible(needs: NavNeeds, role?: string | null, permissions?: Record<string, boolean> | null): boolean {
   if (role === "admin") return true
+  if (role === "facilitator") return needs === "attendance"
   if (role !== "instructor") return false
+  if (needs === "attendance") return true
   if (needs === undefined) return false
   if (needs === "staff") return true
   return permissions?.[needs] === true

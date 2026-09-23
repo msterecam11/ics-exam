@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { sessionIsFor, sessionToday } from "@/lib/lms-sessions"
+import { sessionIsFor, sessionToday, attendanceCredit } from "@/lib/lms-sessions"
 import { loadProgramReport, loadClientReport } from "@/lib/lms-report-scope"
 import { viewerProgramIds } from "@/lib/viewer-access"
 import { loadEnrollmentFacts } from "@/lib/lms-program-report"
@@ -230,7 +230,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     // this course; excused sessions don't count against them.
     const { data: sessions } = await db
       .from("lms_sessions")
-      .select("id, course_id, program_id, track_id, group_id")
+      .select("id, course_id, program_id, track_id, group_id, duration_minutes, session_date, start_time, late_threshold")
       .eq("course_id", courseId)
       .lte("session_date", sessionToday())   // future sessions aren't absences
 
@@ -238,22 +238,23 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     if (sessionIds.length > 0) {
       const { data: attendance } = await db
         .from("lms_attendance")
-        .select("session_id, student_id, status")
+        .select("session_id, student_id, status, check_in_at, check_out_at, minutes_attended")
         .in("session_id", sessionIds)
         .in("student_id", studentIds)
-      const statusOf = new Map(((attendance ?? []) as any[]).map(a => [`${a.session_id}|${a.student_id}`, a.status as string]))
+      const recordOf = new Map(((attendance ?? []) as any[]).map(a => [`${a.session_id}|${a.student_id}`, a]))
 
       for (const e of enrollments as any[]) {
         const viewer = { course_id: courseId, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null, group_id: e.group_id ?? null }
         const mine = ((sessions ?? []) as any[]).filter(s => sessionIsFor(s, viewer))
         if (!mine.length) continue
-        let present = 0, excused = 0
+        // Partial days count partly (check-in/out, or minutes from a meeting report).
+        let present = 0, total = 0
         for (const s of mine) {
-          const st = statusOf.get(`${s.id}|${e.student_id}`)
-          if (st === "present" || st === "late") present++
-          else if (st === "excused") excused++
+          const c = attendanceCredit(recordOf.get(`${s.id}|${e.student_id}`), s)
+          if (c === null) continue
+          total++; present += c
         }
-        attendanceByStudent[e.student_id] = { present, total: mine.length - excused }
+        attendanceByStudent[e.student_id] = { present, total }
       }
     }
   }

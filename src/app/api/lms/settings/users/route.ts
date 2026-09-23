@@ -39,7 +39,7 @@ const PermissionsSchema = z.object(
 const CreateSchema = z.object({
   name:       z.string().trim().min(1).max(100),
   email:      z.string().trim().email().max(255),
-  role:       z.enum(["admin", "instructor", "assessor", "viewer"]),
+  role:       z.enum(["admin", "instructor", "assessor", "viewer", "facilitator"]),
   password:   z.string().min(8).max(128),
   department: z.string().max(100).optional(),
   phone:      z.string().max(50).optional(),
@@ -50,7 +50,7 @@ const UpdateSchema = z.object({
   id:         z.string().uuid(),
   name:       z.string().trim().min(1).max(100).optional(),
   email:      z.string().trim().email().max(255).optional(),
-  role:       z.enum(["admin", "instructor", "assessor", "viewer"]).optional(),
+  role:       z.enum(["admin", "instructor", "assessor", "viewer", "facilitator"]).optional(),
   is_active:  z.boolean().optional(),
   department: z.string().max(100).optional(),
   phone:      z.string().max(50).optional(),

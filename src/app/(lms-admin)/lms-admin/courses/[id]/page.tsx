@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import {
-  ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, Edit2, Globe,
+  ArrowLeft, Plus, ChevronDown, Trash2, Edit2, Globe,
   Monitor, Layers, Loader2, CheckCircle2, Send, Archive, Smartphone,
   Settings, MoreVertical, X, GraduationCap, FlaskConical, BookOpen,
   Camera, Clock, RefreshCw, Award, FileText, ClipboardList,
@@ -163,18 +163,6 @@ const MODULE_TYPE_GROUPS = [
     types: [
       { value: "final_exam",  label: "Final Exam",  icon: "🎓", desc: "End-of-course exam — timed, pass mark required" },
       { value: "assignment",  label: "Assignment",  icon: "📤", desc: "Brief + file or text submission + AI grading" },
-    ],
-  },
-  {
-    key: "live_session",
-    label: "Live Session",
-    description: "Schedule and manage live instructor-led sessions with attendance tracking",
-    icon: "📅",
-    color: "border-blue-200 bg-blue-50 hover:border-blue-400",
-    activeColor: "border-blue-500 bg-blue-50 ring-2 ring-blue-300",
-    badgeColor: "bg-blue-100 text-blue-700",
-    types: [
-      { value: "live_session", label: "Live Session", icon: "📅", desc: "Instructor-led sessions — schedule, open/close, track attendance" },
     ],
   },
 ] as const
@@ -818,81 +806,9 @@ function ModuleContentEditor({ mod, courseId }: { mod: Module; courseId: string 
     case "package":
       return <PackageBuilder moduleId={mod.id} courseId={courseId} />
 
-    case "live_session":
-      return <SessionPanel moduleId={mod.id} courseId={courseId} moduleName={mod.title} />
-
     default:
       return <ComingSoon label={meta.label} icon={meta.icon} description="Editor coming soon" />
   }
-}
-
-// ── Session Panel — sessions linked to this module (read-only) ──
-// Courses are templates: class sessions are scheduled per program (Program
-// Manager → program → Sessions) so each group has its own dates and
-// attendance. This lists the sessions linked to this module across programs.
-function SessionPanel({ moduleId, moduleName }: { moduleId: string; courseId: string; moduleName: string }) {
-  interface LiveSession {
-    id: string; title: string; session_date: string; start_time: string
-    duration_minutes: number; location: string | null
-    is_open: boolean; attendance_count: number
-    program_id: string | null; program_name: string | null; track_name: string | null
-  }
-
-  const [sessions, setSessions] = useState<LiveSession[]>([])
-  const [loading,  setLoading]  = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/lms/sessions?module_id=${moduleId}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setSessions(Array.isArray(d) ? d : []))
-      .finally(() => setLoading(false))
-  }, [moduleId])
-
-  return (
-    <div className="max-w-3xl mx-auto pb-20">
-      <div className="mb-6 pb-6 border-b border-slate-100">
-        <p className="text-xs font-bold text-[#1B4F8A] uppercase tracking-wider mb-1.5 flex items-center gap-2">
-          <span>📅</span> Live Sessions
-        </p>
-        <h2 className="text-2xl font-bold text-slate-900 leading-tight">{moduleName}</h2>
-        <p className="text-slate-500 mt-1.5 text-sm">
-          Sessions are scheduled per program, so each group has its own dates and attendance:
-          open <Link href="/lms-admin/programs" className="text-[#1B4F8A] font-medium hover:underline">Program Manager</Link> → a program → <strong>Sessions</strong>, and link the session to this module.
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
-      ) : sessions.length === 0 ? (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-12 text-center">
-          <span className="text-4xl block mb-3">📅</span>
-          <p className="font-semibold text-slate-700">No sessions linked to this module yet</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {sessions.map(s => (
-            <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-slate-900 text-sm truncate">{s.title}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {new Date(s.session_date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  {" · "}{s.start_time?.slice(0, 5)} · {s.duration_minutes} min
-                  {s.location ? ` · ${s.location}` : ""}
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {s.program_name ? `${s.program_name}${s.track_name ? ` · ${s.track_name}` : ""}` : "No program"} · {s.attendance_count} attended{s.is_open ? "" : " · closed"}
-                </p>
-              </div>
-              <Link href={`/lms-admin/sessions/${s.id}`}>
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-1">Attendance <ChevronRight className="h-3 w-3" /></Button>
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── Slim settings panel for Package modules ────────────────────

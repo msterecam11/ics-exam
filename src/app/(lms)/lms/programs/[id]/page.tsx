@@ -219,7 +219,7 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
                   </p>
                 </div>
                 {s.meeting_link && (
-                  <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                  <a href={`/api/lms/sessions/${s.id}/join`} target="_blank" rel="noreferrer"
                     className="shrink-0 flex items-center gap-1 text-[10px] font-semibold text-white bg-[#1B4F8A] hover:bg-[#163f6e] px-2 py-1 rounded-lg">
                     <Video className="h-3 w-3" /> Join
                   </a>

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { attendanceCredit } from "@/lib/lms-sessions"
 import { coursesForTrack } from "@/lib/lms-program-courses"
 import { completionRate, passRate, averageScore, atRiskReasons } from "@/lib/lms-metrics"
 import { selectAll } from "@/lib/lms-report-cache"
@@ -61,18 +62,18 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     db.from("lms_modules").select("id, course_id, order_index, activity_settings").in("course_id", courseIds).eq("module_type", "final_exam").order("order_index"),
     programIds.length ? db.from("lms_program_course_rules").select("program_id, course_id, max_attempts").in("program_id", programIds) : Promise.resolve({ data: [] as any[] }),
     programIds.length
-      ? selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, session_date").in("program_id", programIds).in("course_id", courseIds).lte("session_date", todayISO()).range(from, to))
+      ? selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, session_date, start_time, late_threshold, duration_minutes").in("program_id", programIds).in("course_id", courseIds).lte("session_date", todayISO()).range(from, to))
       : Promise.resolve([] as any[]),
   ])
   // Onsite: an enrolment placed in a group attends that group's days.
   const groupIds = [...new Set(enrollments.map(e => e.group_id).filter(Boolean))] as string[]
   if (groupIds.length)
-    sessions.push(...await selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, group_id, session_date").in("group_id", groupIds).lte("session_date", todayISO()).range(from, to)))
+    sessions.push(...await selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, group_id, session_date, start_time, late_threshold, duration_minutes").in("group_id", groupIds).lte("session_date", todayISO()).range(from, to)))
   const sessionIds = sessions.map(s => s.id)
   const attendance: any[] = []
   for (let i = 0; i < sessionIds.length; i += 150) {
     const chunk = sessionIds.slice(i, i + 150)
-    attendance.push(...await selectAll<any>((from, to) => db.from("lms_attendance").select("session_id, student_id, status, scanned_at").in("session_id", chunk).range(from, to)))
+    attendance.push(...await selectAll<any>((from, to) => db.from("lms_attendance").select("session_id, student_id, status, scanned_at, check_in_at, check_out_at, minutes_attended").in("session_id", chunk).range(from, to)))
   }
 
   const examByCourse = new Map<string, any>()
@@ -112,10 +113,11 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     for (const s of sessions) {
       if (e.group_id ? s.group_id !== e.group_id : (s.group_id || s.program_id !== e.program_id || s.course_id !== e.course_id)) continue
       if (!e.group_id && s.track_id !== null && s.track_id !== trackId) continue
-      const a = attBySessionStudent.get(`${s.id}:${e.student_id}`)
-      if (a?.status === "excused") continue
+      // Partial days count partly (check-in/out, or minutes from a meeting report).
+      const c = attendanceCredit(attBySessionStudent.get(`${s.id}:${e.student_id}`), s)
+      if (c === null) continue
       counted++
-      if (a?.status === "present" || a?.status === "late") present++
+      present += c
     }
 
     const allAttempts = attemptsBy.get(e.id) ?? []

@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft, Users, CheckCircle2, Clock, AlertTriangle, RefreshCw, Loader2, Search, Download,
-  UserCheck, Eye, CalendarDays, MapPin, Video, BookOpen, Layers, Lock, Unlock, X, Briefcase,
+  UserCheck, Eye, CalendarDays, MapPin, Video, BookOpen, Layers, Lock, Unlock, X, Briefcase, LogIn, LogOut, Upload, Users2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,14 @@ interface Student {
   marked_at: string | null
   marked_by: string | null
   excuse_note: string | null
+  /** Arrived / left ("HH:MM", institute time), minutes from a meeting report. */
+  check_in: string | null
+  check_out: string | null
+  minutes: number | null
+  source: "manual" | "import" | null
+  joined_at: string | null
+  /** Share of the session that counts as attended (null = excused). */
+  credit: number | null
 }
 
 interface SessionInfo {
@@ -33,6 +41,7 @@ interface SessionInfo {
   program_id: string | null; program_name: string | null; track_name: string | null
   group_id?: string | null; group_label?: string | null
   course_title: string | null; module_title: string | null
+  online?: boolean; late_threshold?: number | null
 }
 
 const STATUS_CONFIG: Record<AttendStatus, { label: string; bg: string; text: string }> = {
@@ -60,6 +69,7 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
   const [downloading, setDownloading] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
   const [wrapUp, setWrapUp] = useState({ topics_covered: "", instructor_notes: "" })
+  const [importOpen, setImportOpen] = useState(false)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/lms/attendance?session_id=${sessionId}`)
@@ -75,6 +85,29 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
     if (!ids.length) return
     setBusy(ids.length === 1 ? ids[0] : "bulk")
     const { ok, data } = await send("/api/lms/attendance", "POST", { session_id: sessionId, student_ids: ids, status, excuse_note })
+    setBusy(null)
+    if (!ok) { toast.error(data.error ?? "Could not save"); return }
+    load()
+  }
+
+  // Arrived / left: now, for these people.
+  async function stamp(ids: string[], action: "check_in" | "check_out") {
+    if (!ids.length) return
+    setBusy(ids.length === 1 ? ids[0] : "bulk")
+    const { ok, data } = await send("/api/lms/attendance", "POST", { session_id: sessionId, student_ids: ids, action })
+    setBusy(null)
+    if (!ok) { toast.error(data.error ?? "Could not save"); return }
+    load()
+  }
+
+  // Correct the times by hand ("HH:MM"; empty clears it).
+  async function editTimes(s: Student) {
+    const cin = prompt(`${s.name} — arrived at (HH:MM, empty = not recorded)`, s.check_in ?? "")
+    if (cin === null) return
+    const cout = prompt(`${s.name} — left at (HH:MM, empty = not recorded)`, s.check_out ?? "")
+    if (cout === null) return
+    setBusy(s.id)
+    const { ok, data } = await send("/api/lms/attendance", "POST", { session_id: sessionId, student_id: s.id, action: "times", check_in: cin.trim() || null, check_out: cout.trim() || null })
     setBusy(null)
     if (!ok) { toast.error(data.error ?? "Could not save"); return }
     load()
@@ -113,8 +146,11 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
     absent:   students.filter(s => s.marked && s.status === "absent").length,
     unmarked: students.filter(s => !s.marked).length,
   }
-  const counted = students.length - counts.excused
-  const attendedPct = counted > 0 ? Math.round(((counts.present + counts.late) / counted) * 100) : 0
+  // Partial days count partly (check-in/out, or minutes from a meeting report).
+  const creditRows = students.filter(s => s.credit !== null)
+  const attendedPct = creditRows.length ? Math.round((creditRows.reduce((t, s) => t + (s.credit ?? 0), 0) / creditRows.length) * 100) : 0
+  const notIn  = students.filter(s => s.on_roster && !s.check_in && !(s.marked && (s.status === "excused" || s.status === "absent")))
+  const notOut = students.filter(s => s.on_roster && s.check_in && !s.check_out)
 
   const q = search.trim().toLowerCase()
   const filtered = students.filter(s =>
@@ -140,8 +176,9 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
 
   function exportCSV() {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`
-    const header = "Name,Email,Company,Status,Marked At,Marked By,Excuse Note"
-    const rows = students.map(s => [s.name, s.email, s.company, s.marked ? s.status : "not marked", s.marked_at, s.marked_by, s.excuse_note].map(esc).join(","))
+    const header = "Name,Email,Company,Status,Check-in,Check-out,Minutes,Attended %,Marked At,Marked By,Excuse Note"
+    const rows = students.map(s => [s.name, s.email, s.company, s.marked ? s.status : "not marked", s.check_in, s.check_out, s.minutes,
+      s.credit === null ? "" : Math.round(s.credit * 100), s.marked_at, s.marked_by, s.excuse_note].map(esc).join(","))
     const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -178,6 +215,7 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm text-slate-500">
             <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />
               {new Date(session.session_date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · {session.start_time?.slice(0, 5)} · {session.duration_minutes} min</span>
+            {session.group_label && <span className="flex items-center gap-1"><Users2 className="h-3.5 w-3.5" /> {session.group_label}</span>}
             {session.program_name && <span className="flex items-center gap-1"><Briefcase className="h-3.5 w-3.5" /> {session.program_name}</span>}
             {session.program_name && <span className="flex items-center gap-1"><Layers className="h-3.5 w-3.5" /> {session.track_name ?? "All tracks"}</span>}
             {session.course_title && <span className="flex items-center gap-1"><BookOpen className="h-3.5 w-3.5" /> {session.course_title}{session.module_title ? ` · ${session.module_title}` : ""}</span>}
@@ -187,6 +225,9 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => { setLoading(true); load() }} className="gap-2"><RefreshCw className="h-4 w-4" /> Refresh</Button>
+          {session.online && (
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Import meeting report</Button>
+          )}
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-2"><Download className="h-4 w-4" /> CSV</Button>
           <Link href={`/print/lms/attendance/${sessionId}`} target="_blank">
             <Button variant="outline" size="sm" className="gap-2"><Eye className="h-4 w-4" /> View report</Button>
@@ -232,6 +273,23 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
         <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
           <div className="h-full bg-[#1B4F8A] rounded-full transition-all duration-500" style={{ width: `${attendedPct}%` }} />
         </div>
+        {!session.online && (notIn.length > 0 || notOut.length > 0) && (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {notIn.length > 0 && (
+              <Button size="sm" disabled={busy === "bulk"} className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => { if (confirm(`Check in ${notIn.length} ${notIn.length === 1 ? "person" : "people"} now?`)) stamp(notIn.map(s => s.id), "check_in") }}>
+                <LogIn className="h-3.5 w-3.5" /> Check in all ({notIn.length})
+              </Button>
+            )}
+            {notOut.length > 0 && (
+              <Button size="sm" variant="outline" disabled={busy === "bulk"} className="h-8 text-xs gap-1.5"
+                onClick={() => { if (confirm(`Check out ${notOut.length} ${notOut.length === 1 ? "person" : "people"} now?`)) stamp(notOut.map(s => s.id), "check_out") }}>
+                <LogOut className="h-3.5 w-3.5" /> Check out all ({notOut.length})
+              </Button>
+            )}
+            <p className="text-xs text-slate-400">Late is set automatically after {session.late_threshold ?? 15} min. Leaving early counts only the hours they were in.</p>
+          </div>
+        )}
         {counts.unmarked > 0 && (
           <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
             <p className="text-xs text-slate-500">{counts.unmarked} student{counts.unmarked !== 1 ? "s" : ""} not marked yet (counted as absent)</p>
@@ -280,7 +338,8 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Student</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600 hidden sm:table-cell">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600 hidden md:table-cell">Marked</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600">{session.online ? "In meeting" : "In / Out"}</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600 hidden lg:table-cell">Marked</th>
                 <th className="px-4 py-3 font-medium text-slate-600 text-right">Mark</th>
               </tr>
             </thead>
@@ -300,7 +359,26 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
                         : <span className="text-xs text-slate-400">Not marked</span>}
                       {s.excuse_note && <p className="text-[10px] text-slate-400 mt-0.5 max-w-[14rem] truncate" title={s.excuse_note}>{s.excuse_note}</p>}
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-xs text-slate-500">
+                    <td className="px-4 py-3 text-xs">
+                      {session.online ? (
+                        <div className="space-y-0.5">
+                          {s.minutes !== null ? <p className="text-slate-700 font-medium">{s.minutes} min{s.credit !== null && s.credit < 1 ? ` · ${Math.round(s.credit * 100)}%` : ""}</p> : <p className="text-slate-300">—</p>}
+                          {s.check_in && <p className="text-slate-400">{s.check_in}–{s.check_out ?? "?"}</p>}
+                          {s.joined_at && <p className="text-[10px] text-emerald-600">Joined via LMS {new Date(s.joined_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p>}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          {s.check_in ? <button onClick={() => editTimes(s)} className="font-medium text-slate-700 hover:underline" title="Correct the times">{s.check_in}</button>
+                            : busy === s.id ? null : <button onClick={() => stamp([s.id], "check_in")} className="px-2 py-0.5 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 flex items-center gap-1"><LogIn className="h-3 w-3" /> In</button>}
+                          <span className="text-slate-300">–</span>
+                          {s.check_out ? <button onClick={() => editTimes(s)} className="font-medium text-slate-700 hover:underline" title="Correct the times">{s.check_out}</button>
+                            : s.check_in && busy !== s.id ? <button onClick={() => stamp([s.id], "check_out")} className="px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1"><LogOut className="h-3 w-3" /> Out</button>
+                            : <span className="text-slate-300">—</span>}
+                          {s.credit !== null && s.credit < 1 && s.credit > 0 && <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full">{Math.round(s.credit * 100)}%</span>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-xs text-slate-500">
                       {s.marked_at ? new Date(s.marked_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
                       {s.marked_by && <p className="text-[10px] text-slate-400">by {s.marked_by}</p>}
                     </td>
@@ -336,6 +414,8 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
         </div>
       )}
 
+      <ImportReportDialog open={importOpen} onClose={() => setImportOpen(false)} sessionId={sessionId} onDone={() => { setImportOpen(false); load() }} />
+
       {/* Close with wrap-up */}
       <Dialog open={closeOpen} onOpenChange={v => { if (!v) setCloseOpen(false) }}>
         <DialogContent className="sm:max-w-md">
@@ -360,5 +440,70 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+
+// ── Importing a Teams / Zoom attendance report (online sessions) ──────────────
+type ImportPreview = {
+  duration_minutes: number
+  matched: { student_id: string; name: string; email: string; minutes: number; first_join: string | null; status: string; credit_pct: number }[]
+  unmatched: { email: string; name: string | null; minutes: number }[]
+  missing: { student_id: string; name: string; email: string }[]
+}
+
+function ImportReportDialog({ open, onClose, sessionId, onDone }: { open: boolean; onClose: () => void; sessionId: string; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<ImportPreview | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function run(apply: boolean) {
+    if (!file) return
+    setBusy(true)
+    const fd = new FormData()
+    fd.append("session_id", sessionId); fd.append("file", file)
+    if (apply) fd.append("apply", "1")
+    const res = await fetch("/api/lms/attendance/import", { method: "POST", body: fd })
+    const data = await res.json().catch(() => ({}))
+    setBusy(false)
+    if (!res.ok) { toast.error(data.error ?? "Could not read the report"); return }
+    if (apply) { toast.success(`Attendance saved for ${data.matched} ${data.matched === 1 ? "person" : "people"}`); setFile(null); setPreview(null); onDone() }
+    else setPreview(data)
+  }
+  const close = () => { if (!busy) { setFile(null); setPreview(null); onClose() } }
+  const time = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) close() }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Import the meeting's attendance report</DialogTitle></DialogHeader>
+        <p className="text-sm text-slate-500 -mt-1">Download the attendance report from Teams or Zoom after the session and upload it here. People are matched by email; their time in the meeting counts toward their attendance.</p>
+        <input type="file" accept=".csv,.tsv,.txt" onChange={e => { setFile(e.target.files?.[0] ?? null); setPreview(null) }} className="text-sm" />
+        {preview && (
+          <div className="space-y-3">
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <p className="px-3 py-2 text-xs font-semibold text-slate-500 bg-slate-50 border-b border-slate-100">Matched ({preview.matched.length}) — session is {preview.duration_minutes} min</p>
+              <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                {preview.matched.map(m => (
+                  <div key={m.student_id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                    <p className="flex-1 min-w-0 truncate">{m.name}</p>
+                    <p className="text-xs text-slate-500">joined {time(m.first_join)} · {m.minutes} min · {m.credit_pct}%</p>
+                    <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full", m.status === "late" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>{m.status === "late" ? "Late" : "Present"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {preview.missing.length > 0 && <p className="text-xs text-slate-600"><b>Not in the report ({preview.missing.length}):</b> {preview.missing.map(m => m.name).join(", ")} — left as they are (not marked counts as absent).</p>}
+            {preview.unmatched.length > 0 && <p className="text-xs text-amber-700"><b>In the report but not on this session ({preview.unmatched.length}):</b> {preview.unmatched.map(u => u.email).join(", ")} — ignored.</p>}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={busy}>Cancel</Button>
+          {!preview
+            ? <Button onClick={() => run(false)} disabled={!file || busy} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">{busy && <Loader2 className="h-4 w-4 animate-spin" />}Check the file</Button>
+            : <Button onClick={() => run(true)} disabled={busy || !preview.matched.length} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">{busy && <Loader2 className="h-4 w-4 animate-spin" />}Save attendance</Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

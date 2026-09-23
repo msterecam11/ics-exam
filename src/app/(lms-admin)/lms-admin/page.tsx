@@ -37,6 +37,7 @@ type SP = { company?: string; program?: string; course?: string; period?: string
 export default async function LmsAdminDashboard({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await auth()
   if (!session) redirect("/auth/login")
+  if (session.user.role === "facilitator") redirect("/lms-admin/attendance")
 
   // IR-3 — this dashboard counts every student, course and enrollment in the
   // LMS, which is exactly what an instructor must not see. They get their own.
