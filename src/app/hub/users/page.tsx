@@ -563,7 +563,7 @@ function UserModal({ open, onClose, onSaved, editing }: {
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{editing ? "Edit User" : "New User"}</DialogTitle></DialogHeader>
         <div className="space-y-3 py-2">
           <div>
@@ -634,7 +634,7 @@ function DeleteModal({ user, onClose, onDeleted }: {
   }
   return (
     <Dialog open={!!user} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle>Delete User</DialogTitle></DialogHeader>
         <p className="text-sm text-slate-600">
           Delete <strong>{user?.name}</strong>? This cannot be undone.

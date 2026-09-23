@@ -336,7 +336,7 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
 
       {/* Close with wrap-up */}
       <Dialog open={closeOpen} onOpenChange={v => { if (!v) setCloseOpen(false) }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Close session</DialogTitle></DialogHeader>
           <p className="text-sm text-slate-500">Optionally record what was covered — it feeds the course analysis and reports. Attendance can still be corrected after closing.</p>
           <div className="space-y-3 pt-1">

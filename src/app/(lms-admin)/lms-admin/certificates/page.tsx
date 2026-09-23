@@ -275,7 +275,7 @@ export default function CertificatesPage() {
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f) }} />
 
       <Dialog open={!!editing} onOpenChange={o => { if (!o) { setEditing(null); setHistory(null) } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing?.number}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">

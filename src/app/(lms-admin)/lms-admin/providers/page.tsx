@@ -199,7 +199,7 @@ export default function ProvidersPage() {
       )}
 
       <Dialog open={editing !== undefined} onOpenChange={o => !o && setEditing(undefined)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing ? "Edit provider" : "New provider"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-[1fr_120px] gap-3">

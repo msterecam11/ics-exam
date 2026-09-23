@@ -130,7 +130,7 @@ function StudentModal({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Student" : "Add Student"}</DialogTitle>
         </DialogHeader>
@@ -338,7 +338,7 @@ function CsvImportModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) { onClose(); reset() } }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Import Students from CSV</DialogTitle>
         </DialogHeader>

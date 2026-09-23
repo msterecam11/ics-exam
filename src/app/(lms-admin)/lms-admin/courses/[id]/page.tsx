@@ -322,7 +322,7 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden">
 
         {/* ── STEP 1: Type Picker ─────────────────────────────── */}
         {step === "type" && (
@@ -517,7 +517,7 @@ function ContentModal({ open, onClose, moduleId, editing, onSaved, defaultType }
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{editing ? "Edit Content" : "Add Content"}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4 py-2">
           <div className="space-y-1">
@@ -613,7 +613,7 @@ function TestAsStudentModal({ open, onClose, courseId }: { open: boolean; onClos
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-[#1B4F8A]" /> Test as Student</DialogTitle></DialogHeader>
         <div className="py-2 space-y-3">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800"><p className="font-medium">Opens the student portal in a new tab logged in as that student.</p><p className="text-xs text-blue-600 mt-0.5">Session lasts 2 hours.</p></div>
@@ -665,7 +665,7 @@ function AssignmentSubmissionsModal({ open, onClose, item, courseId }: {
   const maxScore = item?.content?.max_score ?? null
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader><DialogTitle>Submissions — {item?.title}</DialogTitle></DialogHeader>
         <div className="flex-1 overflow-y-auto space-y-3 py-2">
           {loading ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
@@ -2121,7 +2121,7 @@ function AssignmentSubmissionsPanel({ mod }: { mod: Module }) {
 
       {/* ── Grading Dialog ──────────────────────────────────── */}
       <Dialog open={!!grading} onOpenChange={open => { if (!open) setGrading(null) }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Award className="h-4 w-4 text-[#1B4F8A]" />
