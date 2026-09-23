@@ -99,7 +99,8 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
 
   const enrollmentIds = ((enrollmentRows ?? []) as any[]).map(e => e.id)
   const { data: certRows } = enrollmentIds.length
-    ? await db.from("lms_certificates").select("enrollment_id, released_at").in("enrollment_id", enrollmentIds).is("revoked_at", null)
+    ? await db.from("lms_certificates").select("enrollment_id, released_at").in("enrollment_id", enrollmentIds)
+        .is("revoked_at", null).eq("visible_to_student", true)
     : { data: [] as any[] }
   const certByEnrollment = new Map<string, "released" | "held">(
     ((certRows ?? []) as any[]).map(c => [c.enrollment_id, c.released_at ? "released" : "held"]))

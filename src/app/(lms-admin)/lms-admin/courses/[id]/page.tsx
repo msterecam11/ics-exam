@@ -1007,6 +1007,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     progress_enforcement: !!course.progress_enforcement,
     certificate_enabled:  !!course.certificate_enabled,
     certificate_auto_release: !!(course as any).certificate_auto_release,
+    ics_certificate_visible:  (course as any).ics_certificate_visible !== false,
+    partner_certificate:      !!(course as any).partner_certificate,
+    partner_certificate_visible: !!(course as any).partner_certificate_visible,
+    certificate_validity_months: (course as any).certificate_validity_months ?? null,
     final_exam_pass_mark: course.final_exam_pass_mark ?? 70,
   })
   const [saving, setSaving] = useState(false)
@@ -1033,7 +1037,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         short_description: form.short_description ?? null,
         level: form.level || null,
         duration_hours: form.duration_hours ?? null,
-        learning_outcomes: form.learning_outcomes ?? [], progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
+        learning_outcomes: form.learning_outcomes ?? [], progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release,
+        ics_certificate_visible: form.ics_certificate_visible, partner_certificate: form.partner_certificate,
+        partner_certificate_visible: form.partner_certificate_visible,
+        certificate_validity_months: form.certificate_validity_months, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
     })
     const data = await res.json(); setSaving(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
@@ -1084,6 +1091,41 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         {form.certificate_enabled && (
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>
         )}
+        {form.certificate_enabled && (
+          <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6">
+            <input type="checkbox" checked={form.ics_certificate_visible} onChange={e => set("ics_certificate_visible", e.target.checked)} className="mt-0.5" />
+            <div>
+              <p className="text-sm font-medium">Students can see our certificate</p>
+              <p className="text-xs text-slate-500 mt-0.5">Unchecked = we keep the record for our own history and reports; the student sees nothing.</p>
+            </div>
+          </label>
+        )}
+
+        {/* A partner-delivered course: their certificate, our record. */}
+        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
+          <input type="checkbox" checked={form.partner_certificate} onChange={e => set("partner_certificate", e.target.checked)} className="mt-0.5" />
+          <div>
+            <p className="text-sm font-medium">The service provider also issues a certificate</p>
+            <p className="text-xs text-slate-500 mt-0.5">For an ICAO or partner course — we hold a record of theirs so the history and report numbers are complete.</p>
+          </div>
+        </label>
+        {form.partner_certificate && (
+          <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6">
+            <input type="checkbox" checked={form.partner_certificate_visible} onChange={e => set("partner_certificate_visible", e.target.checked)} className="mt-0.5" />
+            <div>
+              <p className="text-sm font-medium">Students can see the partner&apos;s certificate</p>
+              <p className="text-xs text-slate-500 mt-0.5">Only worth ticking once we hold their PDF — upload it under Certificates.</p>
+            </div>
+          </label>
+        )}
+
+        <div className="space-y-1"><Label>Certificate valid for (months)</Label>
+          <Input type="number" min={1} max={600} className="w-32"
+            value={form.certificate_validity_months ?? ""}
+            onChange={e => set("certificate_validity_months", e.target.value ? parseInt(e.target.value) : null)} />
+          <p className="text-xs text-slate-500">Leave empty if it never expires. Expiring certificates show up in the reports attention list.</p>
+        </div>
+
         <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Default for new programs, and the mark for students outside programs (their existing results are re-checked). Programs keep their own copy.</p></div>
       </div>
       <div className="bg-white rounded-xl border p-5 space-y-4">

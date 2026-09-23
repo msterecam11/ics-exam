@@ -58,7 +58,7 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     selectAll<any>(joined("lms_module_attempts", "enrollment_id, module_id, score, max_score, passed, started_at, submitted_at, graded_at")),
     selectAll<any>(joined("lms_package_progress", "enrollment_id, updated_at")),
     selectAll<any>(joined("lms_progress", "enrollment_id, updated_at")),
-    selectAll<any>(joined("lms_certificates", "enrollment_id, verification_code, released_at, revoked_at")),
+    selectAll<any>(joined("lms_certificates", "enrollment_id, verification_code, released_at, revoked_at, issuer")),
     db.from("lms_modules").select("id, course_id, order_index, activity_settings").in("course_id", courseIds).eq("module_type", "final_exam").order("order_index"),
     programIds.length ? db.from("lms_program_course_rules").select("program_id, course_id, max_attempts").in("program_id", programIds) : Promise.resolve({ data: [] as any[] }),
     programIds.length
@@ -85,7 +85,13 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
   const attemptsBy = group(attempts, a => a.enrollment_id)
   const pkgBy = group(pkg, p => p.enrollment_id)
   const progBy = group(prog, p => p.enrollment_id)
-  const certBy = new Map<string, any>(certs.filter(c => !c.revoked_at).map(c => [c.enrollment_id, c]))
+  // An enrolment can hold two certificates now (ours and the partner's). A
+  // person is certified once, so reports count one — ours when we have it.
+  const certBy = new Map<string, any>()
+  for (const c of certs.filter(x => !x.revoked_at)) {
+    const kept = certBy.get(c.enrollment_id)
+    if (!kept || (kept.issuer !== "ics" && c.issuer === "ics")) certBy.set(c.enrollment_id, c)
+  }
   const attBySessionStudent = new Map<string, any>(attendance.map(a => [`${a.session_id}:${a.student_id}`, a]))
 
   return enrollments.map(e => {

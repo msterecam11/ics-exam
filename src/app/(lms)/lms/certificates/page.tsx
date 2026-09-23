@@ -31,9 +31,14 @@ export default async function CertificatesPage() {
     .from("lms_certificates")
     // A course retaken in a later program has one certificate per enrollment;
     // the program name tells them apart.
-    .select("id, course_id, enrollment_id, verification_code, type, source_title, issued_at, released_at, lms_courses(title), lms_enrollments(lms_programs(id, name, is_individual))")
+    .select(`id, course_id, enrollment_id, verification_code, type, source_title, issued_at, released_at,
+             issuer, pdf_url, expires_at, lms_service_providers(name),
+             lms_courses(title), lms_enrollments(lms_programs(id, name, is_individual))`)
     .eq("student_id", student.id)
     .is("revoked_at", null)
+    // An internal record — a partner's certificate we hold but they hand over —
+    // is not the student's to see here.
+    .eq("visible_to_student", true)
     .order("issued_at", { ascending: false })
 
   // In-progress enrollments (active, not yet completed)
@@ -60,6 +65,9 @@ export default async function CertificatesPage() {
     issued_at:         c.issued_at,
     released:          !!c.released_at,
     needsFeedback:     needsFeedback.has(c.id),
+    issuedBy:          c.issuer === "provider" ? (c.lms_service_providers?.name ?? "Our training partner") : "ICS Aviation Institute",
+    fileUrl:           c.pdf_url ?? null,
+    expiresAt:         c.expires_at ?? null,
     program:           c.lms_enrollments?.lms_programs && !c.lms_enrollments.lms_programs.is_individual
                          ? { id: c.lms_enrollments.lms_programs.id as string, name: c.lms_enrollments.lms_programs.name as string }
                          : null,
@@ -149,7 +157,7 @@ export default async function CertificatesPage() {
                       <p className="font-semibold text-slate-900 text-sm leading-snug line-clamp-2">
                         {cert.title}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">ICS Aviation Institute</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{cert.issuedBy}</p>
                     </div>
                   </div>
 
@@ -196,21 +204,30 @@ export default async function CertificatesPage() {
 
                   {/* Download button */}
                   <div className="mt-auto">
-                    <button
-                      disabled
-                      title={cert.needsFeedback
-                        ? "Complete the course feedback first"
-                        : cert.released
-                        ? "Certificate template is being prepared by our team"
-                        : "This certificate has not been released yet"}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-400 cursor-not-allowed select-none"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download PDF
-                      <span className="ml-1 text-[10px] font-normal bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">
-                        {cert.released ? "Coming soon" : "Not yet available"}
-                      </span>
-                    </button>
+                    {cert.fileUrl && cert.released && !cert.needsFeedback ? (
+                      <a
+                        href={`/api/lms/certificates/${cert.id}/file`}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-[#1B4F8A] text-white hover:bg-[#163f6f] transition-colors"
+                      >
+                        <Download className="h-4 w-4" /> Download PDF
+                      </a>
+                    ) : (
+                      <button
+                        disabled
+                        title={cert.needsFeedback
+                          ? "Complete the course feedback first"
+                          : cert.released
+                          ? "The certificate document is being prepared"
+                          : "This certificate has not been released yet"}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-400 cursor-not-allowed select-none"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                        <span className="ml-1 text-[10px] font-normal bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">
+                          {cert.released ? "Coming soon" : "Not yet available"}
+                        </span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

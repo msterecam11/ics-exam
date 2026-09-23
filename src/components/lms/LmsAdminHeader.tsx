@@ -12,6 +12,7 @@ const pageTitles: Record<string, string> = {
   "/lms-admin/programs":      "Program Manager",
   "/lms-admin/companies":     "Companies",
   "/lms-admin/providers":     "Service Providers",
+  "/lms-admin/certificates":  "Certificates",
   "/lms-admin/students":      "Students",
   "/lms-admin/progress":      "Student Progress",
   "/lms-admin/cohorts":       "Cohorts",

@@ -48,6 +48,7 @@ function generateCertificateNumber(): string {
 // ── Issue certificate (deduped) ────────────────────────────────
 async function issueCertificate({
   studentId, courseId, enrollmentId, title, type, sourceId, sourceTitle, autoRelease = true,
+  issuer = "ics", providerId = null, visibleToStudent = true, validityMonths = null,
 }: {
   studentId:    string
   courseId?:    string | null
@@ -57,6 +58,12 @@ async function issueCertificate({
   sourceId?:    string
   sourceTitle?: string
   autoRelease?: boolean   // when true, the certificate is released to the student immediately
+  /** "provider" is the partner's certificate: we hold the record, they issue the paper. */
+  issuer?:      "ics" | "provider"
+  providerId?:  string | null
+  /** false = an internal record; the student never sees it in their portal. */
+  visibleToStudent?: boolean
+  validityMonths?: number | null
 }): Promise<string | null> {
   // Dedup: check if already issued
   if (type === "course" && enrollmentId) {
@@ -67,6 +74,7 @@ async function issueCertificate({
       .select("id")
       .eq("enrollment_id", enrollmentId)
       .eq("type", "course")
+      .eq("issuer", issuer)
       .maybeSingle()
     if (ex) return null
   } else if (type === "course" && courseId) {
@@ -101,6 +109,12 @@ async function issueCertificate({
       source_title:      sourceTitle ?? null,
       issued_at:         new Date().toISOString(),
       released_at:       autoRelease ? new Date().toISOString() : null,
+      issuer,
+      provider_id:       providerId,
+      visible_to_student: visibleToStudent,
+      expires_at:        validityMonths && validityMonths > 0
+        ? new Date(Date.now() + validityMonths * 30.4375 * 86400_000).toISOString()
+        : null,
     })
     if (!error) return verificationCode
     if (!error.message.includes("unique")) break
@@ -188,7 +202,9 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
     // Fetch course
     const { data: course } = await db
       .from("lms_courses")
-      .select("title, certificate_enabled, certificate_auto_release")
+      .select(`title, certificate_enabled, certificate_auto_release, provider_id,
+               partner_certificate, partner_certificate_visible, ics_certificate_visible,
+               certificate_validity_months`)
       .eq("id", courseId)
       .single()
 
@@ -204,11 +220,29 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
     const certEnabled = program ? program.certificate_enabled : (course as any).certificate_enabled !== false
     if (!certEnabled) return
 
+    const c = course as any
+    const autoRelease = program ? program.certificate_auto_release : c.certificate_auto_release === true
+    const validity = c.certificate_validity_months ?? null
+
     const certNumber = await issueCertificate({
       studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
-      autoRelease: program ? program.certificate_auto_release : (course as any).certificate_auto_release === true,
+      autoRelease, issuer: "ics", visibleToStudent: c.ics_certificate_visible !== false,
+      validityMonths: validity,
     })
 
+    // A partner-delivered course can also earn THEIR certificate. We hold the
+    // record so the history and the report numbers are complete; whether the
+    // student sees it depends on our having their PDF.
+    if (c.partner_certificate && c.provider_id) {
+      await issueCertificate({
+        studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
+        autoRelease, issuer: "provider", providerId: c.provider_id,
+        visibleToStudent: c.partner_certificate_visible === true,
+        validityMonths: validity,
+      })
+    }
+
+    // Only our own certificate is worth emailing about — the partner's is theirs to send.
     if (certNumber) await notifyCertificateIssued(studentId, courseId, enrollment.id)
   } catch (err) {
     // Non-fatal: must never break exam submission. Logged so a certificate

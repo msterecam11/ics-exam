@@ -22,6 +22,7 @@ import {
   Building2,
   Briefcase,
   Handshake,
+  Award,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +42,7 @@ const navItems: { href: string; label: string; icon: any; exact?: boolean; needs
   { href: "/lms-admin/sessions",       label: "Live Sessions",  icon: CalendarDays, needs: "staff" },
   { href: "/lms-admin/questions", label: "Question Bank",   icon: HelpCircle, needs: "author_courses" },
   { href: "/lms-admin/reports",   label: "Reports",         icon: BarChart3, needs: "staff" },
+  { href: "/lms-admin/certificates", label: "Certificates", icon: Award },
   { href: "/lms-admin/library",   label: "Library",         icon: FolderOpen, needs: "author_courses" },
   { href: "/lms-admin/settings",  label: "Settings",        icon: Settings   },
 ]
