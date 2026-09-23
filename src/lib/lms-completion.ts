@@ -294,6 +294,8 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     const pkgModIds  = (modules as any[]).filter((m: any) => m.module_type === "package").map((m: any) => m.id)
     const examModIds = (modules as any[]).filter((m: any) => m.module_type === "final_exam").map((m: any) => m.id)
+    const assignModIds = (modules as any[]).filter((m: any) => m.module_type === "assignment").map((m: any) => m.id)
+    const exerciseModIds = (modules as any[]).filter((m: any) => m.module_type === "exercise").map((m: any) => m.id)
 
     // 2. Fetch package IDs (needed before items + progress queries)
     const { data: pkgRows } = pkgModIds.length
@@ -305,7 +307,7 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
     for (const p of pkgRows ?? []) modIdToPkgId[(p as any).module_id] = (p as any).id
 
     // 3. All remaining data in parallel
-    const [pkgItemRows, pkgProgRows, examAttemptRows] = await Promise.all([
+    const [pkgItemRows, pkgProgRows, examAttemptRows, assignRows, exerciseRows] = await Promise.all([
       pkgIds.length
         ? db.from("lms_package_items").select("package_id").in("package_id", pkgIds).then(r => r.data ?? [])
         : Promise.resolve([]),
@@ -317,6 +319,14 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         ? db.from("lms_module_attempts").select("module_id, passed")
             .eq("enrollment_id", enrollment.id).in("module_id", examModIds)
             .order("attempt_no", { ascending: false }).then(r => r.data ?? [])
+        : Promise.resolve([]),
+      assignModIds.length
+        ? db.from("lms_module_attempts").select("module_id, passed, status")
+            .eq("enrollment_id", enrollment.id).in("module_id", assignModIds).then(r => r.data ?? [])
+        : Promise.resolve([]),
+      exerciseModIds.length
+        ? db.from("lms_exercise_results").select("module_id, passed")
+            .eq("enrollment_id", enrollment.id).in("module_id", exerciseModIds).then(r => r.data ?? [])
         : Promise.resolve([]),
     ])
 
@@ -330,6 +340,9 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     const examPassedSet    = new Set((examAttemptRows as any[]).filter((a: any) => a.passed).map((a: any) => a.module_id))
     const examAttemptedSet = new Set((examAttemptRows as any[]).map((a: any) => a.module_id))
+    const assignPassedSet    = new Set((assignRows as any[]).filter((a: any) => a.passed && a.status === "released").map((a: any) => a.module_id))
+    const assignSubmittedSet = new Set((assignRows as any[]).map((a: any) => a.module_id))
+    const exercisePassedSet  = new Set((exerciseRows as any[]).filter((e: any) => e.passed).map((e: any) => e.module_id))
 
     // 5. Per-module % — exact match to courses/[id]/page.tsx
     let sumPct = 0
@@ -345,9 +358,13 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         sumPct += done ? 100 : total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
       } else if (mod.module_type === "final_exam") {
         sumPct += examPassedSet.has(mod.id) ? 100 : examAttemptedSet.has(mod.id) ? 30 : 0
+      } else if (mod.module_type === "assignment") {
+        // Passed once the mark is released; submitted counts half.
+        sumPct += assignPassedSet.has(mod.id) ? 100 : assignSubmittedSet.has(mod.id) ? 50 : 0
+      } else if (mod.module_type === "exercise") {
+        sumPct += exercisePassedSet.has(mod.id) ? 100 : 0
       }
-      // Assignment / live-session modules add 0% for now: they aren't tracked
-      // yet (to be counted properly with the onsite work).
+      // Live-session modules add 0%: attendance is tracked on its own.
     }
 
     const pct = Math.min(100, Math.round(sumPct / (modules as any[]).length))

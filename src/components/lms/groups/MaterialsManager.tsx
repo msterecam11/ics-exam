@@ -21,8 +21,10 @@ const FROM_LABEL = { enrolment: "From enrolment", start: "From the first day", c
 const ACCEPT = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.png,.jpg,.jpeg,.mp4"
 const MAX = 50 * 1024 * 1024
 
-export default function MaterialsManager({ courseId, groupId, modules }: {
+export default function MaterialsManager({ courseId, groupId, modules, onlyModuleId }: {
   courseId: string; groupId?: string | null; modules: { id: string; title: string }[]
+  /** Just the files of one item (an exercise sheet, an assignment template). */
+  onlyModuleId?: string
 }) {
   const [rows, setRows] = useState<Material[] | null>(null)
   const [open, setOpen] = useState(false)
@@ -34,8 +36,9 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
   const load = useCallback(async () => {
     const res = await fetch(`/api/lms/materials?course_id=${courseId}${groupId ? `&group_id=${groupId}` : ""}`)
     const d = await res.json().catch(() => [])
-    setRows(Array.isArray(d) ? d : [])
-  }, [courseId, groupId])
+    const all: Material[] = Array.isArray(d) ? d : []
+    setRows(onlyModuleId ? all.filter(m => m.module_id === onlyModuleId) : all)
+  }, [courseId, groupId, onlyModuleId])
   useEffect(() => { load() }, [load])
 
   function pick(f: File | null) {
@@ -52,7 +55,7 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
     fd.append("file", file)
     fd.append("course_id", courseId)
     if (groupId) fd.append("group_id", groupId)
-    if (form.module_id) fd.append("module_id", form.module_id)
+    if (onlyModuleId || form.module_id) fd.append("module_id", onlyModuleId ?? form.module_id)
     fd.append("title", form.title)
     fd.append("available_from", form.available_from)
     const res = await fetch("/api/lms/materials", { method: "POST", body: fd })
@@ -79,7 +82,9 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
   }
 
   const sections: { title: string; items: Material[] }[] = []
-  if (rows) {
+  if (rows && onlyModuleId) {
+    if (rows.length) sections.push({ title: "Files for this item", items: rows })
+  } else if (rows) {
     const general = rows.filter(r => !r.module_id)
     if (general.length) sections.push({ title: groupId ? "This group" : "Whole course", items: general })
     for (const m of modules) {
@@ -92,7 +97,7 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm text-slate-500">
-          {groupId ? "Files only this group's participants see." : "Files every participant of the course sees — the manual, handouts, exercise and assignment sheets."}
+          {onlyModuleId ? "Participants download these from this item and from Course Material." : groupId ? "Files only this group's participants see." : "Files every participant of the course sees — the manual, handouts, exercise and assignment sheets."}
           {" "}PDF, Office, ZIP, images or video, up to 50 MB each.
         </p>
         <Button onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.click(), 50) }} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-1.5 shrink-0">
@@ -100,7 +105,7 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
         </Button>
       </div>
 
-      {!groupId && (
+      {!groupId && !onlyModuleId && (
         <p className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400" />
           Each module&apos;s PDF slides are listed for participants automatically, with a Download button — switch that off per module in its Options.
@@ -122,7 +127,7 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
                   <p className="text-sm font-medium text-slate-800 truncate">{m.title}</p>
                   <p className="text-xs text-slate-400 truncate">{m.file_name} · {fmtSize(m.size_bytes)} · downloaded by {m.downloaded_by}</p>
                 </div>
-                {!groupId && (
+                {!groupId && !onlyModuleId && (
                   <select value={m.module_id ?? ""} onChange={e => patch(m.id, { module_id: e.target.value || null })}
                     className="h-8 rounded-lg border border-slate-200 px-2 text-xs bg-white max-w-[11rem]" title="Show under">
                     <option value="">Whole course</option>
@@ -156,7 +161,7 @@ export default function MaterialsManager({ courseId, groupId, modules }: {
               {file ? <span className="font-medium text-slate-800">{file.name} · {fmtSize(file.size)}</span> : "Choose a file, or drop it here"}
             </button>
             <div className="space-y-1.5"><Label>Title participants see</Label><Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
-            {!groupId && modules.length > 0 && (
+            {!groupId && !onlyModuleId && modules.length > 0 && (
               <div className="space-y-1.5"><Label>Show under</Label>
                 <select value={form.module_id} onChange={e => setForm(p => ({ ...p, module_id: e.target.value }))} className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm bg-white">
                   <option value="">Whole course</option>

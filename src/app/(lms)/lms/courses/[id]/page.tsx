@@ -115,7 +115,7 @@ export default async function StudentCoursePage({
   // Fetch modules
   const { data: modules } = await db
     .from("lms_modules")
-    .select("id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings")
+    .select("id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings, parent_module_id")
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })
 
@@ -229,6 +229,22 @@ export default async function StudentCoursePage({
     }
   }
 
+  // Assignments: the latest submission (a mark shows only once released).
+  // Exercises: the instructor's mark from class.
+  const assignIds = (modules ?? []).filter((m: any) => m.module_type === "assignment").map((m: any) => m.id)
+  const exerciseIds = (modules ?? []).filter((m: any) => m.module_type === "exercise").map((m: any) => m.id)
+  const [{ data: myAssign }, { data: myExercises }] = await Promise.all([
+    assignIds.length
+      ? db.from("lms_module_attempts").select("module_id, status, score, max_score, passed, attempt_no").eq("enrollment_id", current.id).in("module_id", assignIds).order("attempt_no", { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+    exerciseIds.length
+      ? db.from("lms_exercise_results").select("module_id, passed, score_pct, comment").eq("enrollment_id", current.id).in("module_id", exerciseIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ])
+  const assignMap = new Map<string, any>()
+  for (const a of (myAssign ?? []) as any[]) if (!assignMap.has(a.module_id)) assignMap.set(a.module_id, a)
+  const exerciseMap = new Map<string, any>(((myExercises ?? []) as any[]).map(e => [e.module_id, e]))
+
   // Compute module completion
   const mods = (modules ?? []).map((m: any) => {
     if (m.module_type === "package") {
@@ -253,7 +269,25 @@ export default async function StudentCoursePage({
         examBlocked,
       }
     }
-    // Assignment / live-session modules: no tracked progress yet (onsite work).
+    if (m.module_type === "assignment") {
+      const a = assignMap.get(m.id)
+      const released = a?.status === "released"
+      const pct = released && a.max_score ? Math.round((a.score / a.max_score) * 100) : null
+      return {
+        ...m, items: [], mandatory: [{ id: m.id }], doneCount: released && a.passed ? 1 : 0,
+        pct: released && a.passed ? 100 : a ? 50 : 0, pkgStatus: null, pkgScore: null, examAttempt: null,
+        assign: a ? { released, passed: !!a.passed, pct } : null,
+      }
+    }
+    if (m.module_type === "exercise") {
+      const e = exerciseMap.get(m.id)
+      return {
+        ...m, items: [], mandatory: [{ id: m.id }], doneCount: e?.passed ? 1 : 0,
+        pct: e?.passed ? 100 : 0, pkgStatus: null, pkgScore: null, examAttempt: null,
+        exercise: e ? { passed: !!e.passed, pct: e.score_pct, comment: e.comment } : null,
+      }
+    }
+    // Live-session modules: attendance is shown under Live Sessions.
     return { ...m, items: [], mandatory: [], doneCount: 0, pct: 0, pkgStatus: null, pkgScore: null, examAttempt: null }
   })
 
@@ -262,7 +296,8 @@ export default async function StudentCoursePage({
   const modsWithLock = mods.map((mod: any, idx: number) => {
     if (!mod.lock_until_previous || idx === 0) return { ...mod, isModuleLocked: false }
     // Find the closest previous mandatory module
-    const prevMandatory = mods.slice(0, idx).reverse().find((m: any) => m.is_mandatory !== false)
+    // Exercises (marked in class) and live sessions never hold the next module.
+    const prevMandatory = mods.slice(0, idx).reverse().find((m: any) => m.is_mandatory !== false && m.module_type !== "exercise" && m.module_type !== "live_session")
     const prevDone = prevMandatory ? prevMandatory.pct >= 100 : true
     return { ...mod, isModuleLocked: !prevDone }
   })
@@ -490,14 +525,17 @@ export default async function StudentCoursePage({
         <MaterialsList courseId={courseId} sections={materialSections} />
         {passResult && passResult.mode === "rule" && <PassResultCard r={passResult} />}
 
-        {/* Modules */}
+        {/* Modules — an assignment / exercise inside a module sits indented under it */}
         <div className="space-y-3">
           {modsWithLock.map((mod: any, mi: number) => {
             const isPackage = mod.module_type === "package"
             const isExam    = mod.module_type === "final_exam"
             const isAssign  = mod.module_type === "assignment"
             const isSession = mod.module_type === "live_session"
-            const isSingle  = isPackage || isExam || isAssign || isSession
+            const isExercise = mod.module_type === "exercise"
+            const isSingle  = isPackage || isExam || isAssign || isSession || isExercise
+            const nested    = !!mod.parent_module_id
+            const number    = nested ? "↳" : modsWithLock.slice(0, mi + 1).filter((x: any) => !x.parent_module_id).length
             const isLocked  = mod.isModuleLocked === true || !!courseNotStarted || lock.locked
 
             // For single-action modules, wrap the whole card in a Link
@@ -509,6 +547,8 @@ export default async function StudentCoursePage({
             const moduleCompleted = isPackage
               ? (mod.pkgStatus === "passed" || mod.pkgStatus === "completed")
               : isExam ? mod.examAttempt?.passed
+              : isAssign ? !!(mod.assign?.released && mod.assign.passed)
+              : isExercise ? !!mod.exercise?.passed
               : false
 
             const ctaLabel = moduleCompleted ? null
@@ -536,6 +576,13 @@ export default async function StudentCoursePage({
                 : mod.examAttempt
                   ? <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Not passed{mod.examAttempt.score != null ? ` · ${mod.examAttempt.score}%` : ""} · {mod.examAttempt.totalAttempts}/{mod.examAttempt.maxAttempts} attempts</span>
                 : null
+              ) : isAssign ? (
+                !mod.assign ? null
+                : !mod.assign.released ? <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Submitted · awaiting mark</span>
+                : <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Not passed{mod.assign.pct != null ? ` · ${mod.assign.pct}%` : ""} · open to resubmit</span>
+              ) : isExercise ? (
+                mod.exercise ? <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Not passed{mod.exercise.pct != null && mod.exercise.pct < 100 ? ` · ${mod.exercise.pct}%` : ""}</span>
+                : <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Done in class · marked by your instructor</span>
               ) : null
 
             const cardInner = (
@@ -550,9 +597,9 @@ export default async function StudentCoursePage({
                     : "bg-[#1B4F8A]/10 text-[#1B4F8A]"
                   )}>
                     {moduleCompleted    ? <CheckCircle2 className="h-4 w-4" />
-                    : mod.pkgStatus === "failed" ? mi + 1
+                    : mod.pkgStatus === "failed" ? number
                     : mod.pct >= 100   ? <CheckCircle2 className="h-4 w-4" />
-                    : mi + 1}
+                    : number}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -561,6 +608,9 @@ export default async function StudentCoursePage({
                     </div>
                     {mod.description && (
                       <p className="text-xs text-slate-500 mt-0.5 truncate">{mod.description}</p>
+                    )}
+                    {mod.exercise?.comment && (
+                      <p className="text-xs text-slate-600 mt-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">Instructor: {mod.exercise.comment}</p>
                     )}
                     <div className="flex items-center gap-3 mt-1">
                       {mod.estimated_duration && (
@@ -622,7 +672,7 @@ export default async function StudentCoursePage({
             )
 
             return (
-              <div key={mod.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div key={mod.id} className={cn("bg-white rounded-xl border border-slate-200 overflow-hidden", nested && "ml-8 sm:ml-12")}>
                 {/* Locked modules (any type) */}
                 {isLocked ? (
                   <div className="flex items-center gap-4 px-5 py-4 opacity-50 cursor-not-allowed select-none">
@@ -653,7 +703,7 @@ export default async function StudentCoursePage({
                   <div className="flex items-center gap-4 px-5 py-4">
                     {cardInner}
                   </div>
-                ) : isSingle && href && !moduleCompleted ? (
+                ) : isSingle && href && (!moduleCompleted || isAssign) ? (
                   <Link href={href} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors group">
                     {cardInner}
                   </Link>

@@ -9,6 +9,7 @@
 // skipped — without sending anything or writing to the log.
 
 import { db } from "@/lib/db"
+import { assignmentAttempts, TO_MARK } from "@/lib/lms-marking"
 import {
   loadEmailSettings, effectiveRule, sendRuleEmail, todaysReminderCounts,
   type EmailSettings, type RuleSendResult,
@@ -500,9 +501,7 @@ async function instructorDigests(
       .select("program_id, student_id, completed_at, lms_courses(title), lms_students(name)")
       .in("program_id", programs.map(p => p.id)).eq("status", "completed")
       .gte("completed_at", weekAgo.toISOString()),
-    db.from("lms_assignment_submissions")
-      .select("student_id, status, submitted_at, lms_modules(title, course_id), lms_students(name)")
-      .eq("status", "submitted"),
+    assignmentAttempts("student_id, status, submitted_at, lms_students(name)").or(TO_MARK),
   ])
 
   for (const p of programs) {

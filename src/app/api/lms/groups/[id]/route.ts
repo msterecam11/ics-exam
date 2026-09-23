@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
-import { guardStaff } from "@/lib/staff-access"
+import { guardStaff, forbidden } from "@/lib/staff-access"
 import { todayISO } from "@/lib/lms-enrollment"
 import { checkCourseCompletion } from "@/lib/lms-completion"
 import {
@@ -20,10 +20,14 @@ export const dynamic = "force-dynamic"
 
 type Params = { params: Promise<{ id: string }> }
 
+// Admins manage the group; its own instructors can open it (participants,
+// days, marking) but not change it.
 export async function GET(_req: Request, { params }: Params) {
-  const g = await guardStaff({ admin: true })
+  const g = await guardStaff()
   if (!g.ok) return g.res
   const { id } = await params
+  const manage = g.scope.isAdmin
+  if (!manage && !g.scope.instructorGroupIds.includes(id)) return forbidden()
   const group = await loadGroup(id)
   if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 })
 
@@ -72,10 +76,11 @@ export async function GET(_req: Request, { params }: Params) {
     course: courseRes.data,
     provider: providerRes.data ?? null,
     staff: ((staffRes.data ?? []) as any[]).filter(s => s.admin_users).map(s => ({ user_id: s.admin_users.id, name: s.admin_users.name, email: s.admin_users.email, role: s.role })),
-    staffOptions: staffOptRes.data ?? [],
+    staffOptions: manage ? staffOptRes.data ?? [] : [],
     seats_taken: participants.length,
     participants,
-    candidates,
+    candidates: manage ? candidates : [],
+    can_manage: manage,
     days: days.map(d => ({ ...d, attendance: countsBy.get(d.id) ?? null })),
   })
 }

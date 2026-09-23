@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { assignmentAttempts } from "@/lib/lms-marking"
 import { sessionIsFor, sessionToday, attendanceCredit } from "@/lib/lms-sessions"
 import { loadProgramReport, loadClientReport } from "@/lib/lms-report-scope"
 import { viewerProgramIds } from "@/lib/viewer-access"
@@ -262,16 +263,15 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   // Assignment submissions per student — count directly from submissions table
   const assignmentsByStudent: Record<string, { submitted: number; graded: number }> = {}
   if (p.assignments) {
-    const { data: subs } = await db
-      .from("lms_assignment_submissions")
-      .select("student_id, status")
+    const { data: subs } = await assignmentAttempts("student_id, status")
       .in("enrollment_id", enrollmentIds)
 
     ;(subs ?? []).forEach((s: any) => {
       if (!assignmentsByStudent[s.student_id])
         assignmentsByStudent[s.student_id] = { submitted: 0, graded: 0 }
       assignmentsByStudent[s.student_id].submitted += 1
-      if (s.status === "graded") assignmentsByStudent[s.student_id].graded += 1
+      // Counted as graded once the participant can see the mark.
+      if (s.status === "released") assignmentsByStudent[s.student_id].graded += 1
     })
   }
 

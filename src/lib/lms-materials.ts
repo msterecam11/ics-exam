@@ -48,7 +48,7 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   const courseId = enrollment.course_id
 
   const [{ data: modules }, { data: files }, { data: pkgs }, groupRes] = await Promise.all([
-    db.from("lms_modules").select("id, title, order_index").eq("course_id", courseId).order("order_index"),
+    db.from("lms_modules").select("id, title, order_index, parent_module_id").eq("course_id", courseId).order("order_index"),
     db.from("lms_materials").select("id, module_id, group_id, title, file_name, size_bytes, available_from, order_index, created_at")
       .eq("course_id", courseId).order("order_index").order("created_at"),
     db.from("lms_packages").select("id, module_id, slides_downloadable, lms_package_items(id, type, order_index, config)").eq("course_id", courseId),
@@ -78,7 +78,11 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   if (courseWide.length) sections.push({ key: "course", title: "Course", items: courseWide })
 
   const pkgByModule = new Map(((pkgs ?? []) as any[]).map(p => [p.module_id, p]))
-  for (const m of (modules ?? []) as any[]) {
+  // An exercise / assignment inside a module: its files sit in the module's section.
+  const allMods = (modules ?? []) as any[]
+  const ids = new Set(allMods.map(m => m.id))
+  const nested = (m: any) => m.parent_module_id && ids.has(m.parent_module_id)
+  for (const m of allMods.filter(x => !nested(x))) {
     const items: MaterialItem[] = []
     const pkg = pkgByModule.get(m.id)
     if (pkg && pkg.slides_downloadable !== false) {
@@ -98,6 +102,8 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
       }
     }
     items.push(...mine.filter(f => f.module_id === m.id).map(fileItem))
+    for (const c of allMods.filter(x => x.parent_module_id === m.id))
+      items.push(...mine.filter(f => f.module_id === c.id).map(f => ({ ...fileItem(f), title: `${c.title} — ${f.title}` })))
     if (items.length) sections.push({ key: `module:${m.id}`, title: m.title, items })
   }
 

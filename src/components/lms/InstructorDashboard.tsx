@@ -1,8 +1,10 @@
 import Link from "next/link"
 import { db } from "@/lib/db"
+import { assignmentAttempts, TO_MARK } from "@/lib/lms-marking"
 import { Briefcase, CalendarDays, ClipboardList, ChevronRight, Users } from "lucide-react"
 import type { StaffScope } from "@/lib/staff-access"
 import { canSeeTrack } from "@/lib/staff-access"
+import { groupLabel, SEAT_STATUSES } from "@/lib/lms-groups"
 
 // IR-3 — the instructor's Dashboard: their own programs, nothing else.
 // The admin dashboard counts every student, course and enrollment in the LMS,
@@ -13,8 +15,9 @@ const fmt = (d: string | null) =>
 
 export default async function InstructorDashboard({ scope, name }: { scope: StaffScope; name?: string | null }) {
   const ids = scope.programIds
+  const groupIds = scope.instructorGroupIds
 
-  if (!ids.length) {
+  if (!ids.length && !groupIds.length) {
     return (
       <div className="max-w-xl">
         <h1 className="text-2xl font-bold text-slate-900">Welcome{name ? `, ${name}` : ""}</h1>
@@ -28,18 +31,22 @@ export default async function InstructorDashboard({ scope, name }: { scope: Staf
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const [{ data: programs }, { data: members }, { data: sessions }, { data: toGrade }] = await Promise.all([
+  const none = ["00000000-0000-0000-0000-000000000000"]
+  const [{ data: programs }, { data: members }, { data: sessions }, { data: toGrade }, { data: groups }, { data: groupSeats }] = await Promise.all([
     db.from("lms_programs")
       .select("id, name, status, start_date, end_date, lms_companies(name)")
-      .in("id", ids).order("start_date", { ascending: false, nullsFirst: false }),
-    db.from("lms_program_members").select("program_id, student_id, status, track_id").in("program_id", ids),
+      .in("id", ids.length ? ids : none).order("start_date", { ascending: false, nullsFirst: false }),
+    db.from("lms_program_members").select("program_id, student_id, status, track_id").in("program_id", ids.length ? ids : none),
     db.from("lms_sessions")
       .select("id, title, session_date, start_time, location, program_id, track_id, lms_courses(title)")
-      .in("program_id", ids).gte("session_date", today).is("closed_at", null)
+      .in("program_id", ids.length ? ids : none).gte("session_date", today).is("closed_at", null)
       .order("session_date").limit(8),
-    db.from("lms_assignment_submissions")
-      .select("id, student_id, submitted_at, lms_modules(title), lms_students(name)")
-      .eq("status", "submitted").order("submitted_at", { ascending: false }).limit(50),
+    assignmentAttempts("id, student_id, submitted_at, lms_students(name)")
+      .or(TO_MARK).order("submitted_at", { ascending: false }).limit(50),
+    // Onsite groups this instructor teaches.
+    db.from("lms_course_groups").select("id, name, start_date, end_date, city, status, lms_courses(title)")
+      .in("id", groupIds.length ? groupIds : none).neq("status", "cancelled").order("start_date", { ascending: false }),
+    db.from("lms_enrollments").select("group_id, student_id").in("group_id", groupIds.length ? groupIds : none).in("status", SEAT_STATUSES),
   ])
 
   const mine = (members ?? []).filter((m: any) => canSeeTrack(scope, m.program_id, m.track_id))
@@ -47,6 +54,8 @@ export default async function InstructorDashboard({ scope, name }: { scope: Staf
   // Withdrawn members are excluded here as well as in the per-program count,
   // so the two numbers can't disagree.
   const myStudents = new Set(mine.filter((m: any) => m.status !== "withdrawn").map((m: any) => m.student_id))
+  for (const e of (groupSeats ?? []) as any[]) myStudents.add(e.student_id)
+  const seatsIn = (gid: string) => ((groupSeats ?? []) as any[]).filter(e => e.group_id === gid).length
   const grading = (toGrade ?? []).filter((a: any) => myStudents.has(a.student_id))
   const upcoming = (sessions ?? []).filter((s: any) => canSeeTrack(scope, s.program_id, s.track_id))
 
@@ -75,7 +84,27 @@ export default async function InstructorDashboard({ scope, name }: { scope: Staf
         <Stat icon={ClipboardList} label="Waiting to be graded" value={grading.length} />
       </div>
 
-      <section className="bg-white rounded-xl border border-slate-200">
+      {(groups ?? []).length > 0 && (
+        <section className="bg-white rounded-xl border border-slate-200">
+          <div className="px-5 py-3 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-900 text-sm">My groups</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Onsite deliveries you teach — participants, days, exercises and assignments to mark.</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {(groups ?? []).map((g: any) => (
+              <Link key={g.id} href={`/lms-admin/groups/${g.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{g.lms_courses?.title ?? "Course"} — {groupLabel(g)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{seatsIn(g.id)} participants · {g.status}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-slate-300 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {ids.length > 0 && <section className="bg-white rounded-xl border border-slate-200">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
           <h2 className="font-semibold text-slate-900 text-sm">My programs</h2>
           <Link href="/lms-admin/programs" className="text-xs text-[#1B4F8A] hover:underline">Open Program Manager</Link>
@@ -93,7 +122,7 @@ export default async function InstructorDashboard({ scope, name }: { scope: Staf
             </Link>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="bg-white rounded-xl border border-slate-200">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">

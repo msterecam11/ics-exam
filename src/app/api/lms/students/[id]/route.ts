@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { assignmentAttempts } from "@/lib/lms-marking"
 import { guardStaff, canSeeStudent } from "@/lib/staff-access"
 
 // GET /api/lms/students/[id]
@@ -27,16 +28,21 @@ export async function GET(
 
   if (sErr || !student) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // Assignment submissions — use module_id direct join, instructor_note instead of feedback
-  const { data: assignmentSubs } = await db
-    .from("lms_assignment_submissions")
-    .select(`
-      id, status, score, max_score, instructor_note, submitted_at, graded_at, file_url,
-      lms_modules(id, title, course_id)
-    `)
+  // Assignment submissions (module attempts of assignment modules), with a
+  // short-lived link to the submitted file.
+  const { data: rawSubs } = await assignmentAttempts("id, status, score, max_score, submitted_at, graded_at, answers, ai_feedback")
     .eq("student_id", id)
     .order("submitted_at", { ascending: false })
-    .limit(100) as any
+    .limit(100)
+  const subPaths = ((rawSubs ?? []) as any[]).map(a => a.answers?.file_path).filter(Boolean) as string[]
+  const { data: subSigned } = subPaths.length ? await db.storage.from("lms-submissions").createSignedUrls(subPaths, 3600) : { data: [] as any[] }
+  const subUrl = new Map(((subSigned ?? []) as any[]).map(s => [s.path, s.signedUrl]))
+  const assignmentSubs = ((rawSubs ?? []) as any[]).map(a => ({
+    id: a.id, status: a.status, score: a.score, max_score: a.max_score, submitted_at: a.submitted_at, graded_at: a.graded_at,
+    instructor_note: a.ai_feedback?.overall_comment ?? null,
+    file_url: a.answers?.file_path ? subUrl.get(a.answers.file_path) ?? null : null,
+    lms_modules: a.lms_modules,
+  }))
 
   // Final exam attempts grouped by module
   const { data: examAttempts } = await db

@@ -119,7 +119,8 @@ export async function buildCourseReport(
     db.from("lms_packages").select("id, module_id, pass_mark, lms_package_items(id, title, type, config)").eq("course_id", courseId),
     db.from("lms_package_progress").select("package_id, module_id, status, score, item_scores, completed_items, time_spent, started_at, completed_at").eq("enrollment_id", enrollmentId),
     db.from("lms_module_attempts").select("module_id, attempt_no, score, max_score, passed, status, answers, ai_feedback, time_spent_s, paper").eq("enrollment_id", enrollmentId),
-    db.from("lms_assignment_submissions").select("status, score, max_score, instructor_note, lms_modules(id, title, course_id)").eq("enrollment_id", enrollmentId),
+    // Exercises marked in class (assignments come from the module attempts above).
+    db.from("lms_exercise_results").select("module_id, passed, score_pct, comment").eq("enrollment_id", enrollmentId),
     // Attendance over the sessions of THIS enrollment's program (and track) only.
     enrollmentAttendance({
       student_id: studentId, course_id: courseId,
@@ -309,12 +310,29 @@ export async function buildCourseReport(
   }
 
   // ── Assignments ──
-  const assignments = (assignRes.data ?? [])
-    .filter((a: any) => (a.lms_modules as any)?.course_id === courseId)
-    .map((a: any) => ({
-      title: (a.lms_modules as any)?.title ?? "Assignment",
-      status: a.status, score: num(a.score), maxScore: num(a.max_score), note: a.instructor_note ?? null,
-    }))
+  // Latest submission per assignment module; a mark counts once released or
+  // confirmed by the instructor. Then exercises, marked in class.
+  const modRows = (modulesRes.data ?? []) as any[]
+  const latestAssign = new Map<string, any>()
+  for (const a of ((attemptsRes.data ?? []) as any[]).sort((x, y) => y.attempt_no - x.attempt_no))
+    if (modRows.find(m => m.id === a.module_id)?.module_type === "assignment" && !latestAssign.has(a.module_id)) latestAssign.set(a.module_id, a)
+  const assignments = [
+    ...modRows.filter(m => m.module_type === "assignment").map(m => {
+      const a = latestAssign.get(m.id)
+      const marked = a && (a.status === "released" || a.ai_feedback?.graded_by === "instructor")
+      return {
+        title: m.title, status: !a ? "not submitted" : marked ? (a.passed ? "passed" : "not passed") : "awaiting mark",
+        score: marked ? num(a.score) : null, maxScore: marked ? num(a.max_score) : null, note: marked ? (a.ai_feedback?.overall_comment ?? null) : null,
+      }
+    }),
+    ...modRows.filter(m => m.module_type === "exercise").map(m => {
+      const e = ((assignRes.data ?? []) as any[]).find(x => x.module_id === m.id)
+      return {
+        title: `${m.title} (exercise)`, status: !e ? "not marked" : e.passed ? "passed" : "not passed",
+        score: e ? num(e.score_pct) : null, maxScore: e ? 100 : null, note: e?.comment ?? null,
+      }
+    }),
+  ]
 
   // ── Attendance ──
   // Excused sessions don't count against the learner.

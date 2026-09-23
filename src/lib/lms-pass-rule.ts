@@ -126,7 +126,7 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
 
   const [{ data: mods }, { data: attempts }, { data: exResults }] = await Promise.all([
     db.from("lms_modules").select("id, title, module_type, is_mandatory, activity_settings, assignment_due_date, order_index").eq("course_id", e.course_id).order("order_index"),
-    db.from("lms_module_attempts").select("module_id, score, max_score, passed, status").eq("enrollment_id", e.id),
+    db.from("lms_module_attempts").select("module_id, score, max_score, passed, status, ai_feedback").eq("enrollment_id", e.id),
     db.from("lms_exercise_results").select("module_id, passed, score_pct").eq("enrollment_id", e.id),
   ])
   const modules = (mods ?? []) as any[]
@@ -180,7 +180,9 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
     const notes: string[] = []
     for (const m of assignMods) {
       const mine = atts.filter(a => a.module_id === m.id)
-      const graded = mine.filter(a => a.status === "graded" || a.status === "released")
+      // Only a mark an instructor gave or confirmed counts: the AI's score on a
+      // written answer is a suggestion until then.
+      const graded = mine.filter(a => a.status === "released" || (a.status === "graded" && a.ai_feedback?.graded_by === "instructor"))
       const best = graded.reduce<number | null>((b, a) => { const p = pct(a.score, a.max_score); return p !== null && (b === null || p > b) ? p : b }, null)
       const passMark = Number(m.activity_settings?.pass_mark ?? r.pass ?? 60)
       const due = m.assignment_due_date ? String(m.assignment_due_date).slice(0, 10) : null

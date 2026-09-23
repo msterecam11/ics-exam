@@ -37,6 +37,7 @@ import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
 import GroupsPanel from "@/components/lms/groups/GroupsPanel"
 import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 import CompletionRulesPanel from "@/components/lms/course/CompletionRulesPanel"
+import ExerciseEditor from "@/components/lms/course/ExerciseEditor"
 
 // Dynamically import activity editor (quiz / test / exam)
 const ActivityEditor = dynamic(() => import("@/components/lms/ActivityEditor"), {
@@ -109,6 +110,8 @@ interface Module {
   delivery_type: string; order_index: number
   estimated_duration: number | null
   module_type: string
+  /** An assignment / exercise can sit inside a module. */
+  parent_module_id?: string | null
   content_body?: Record<string, unknown> | null
   web_url?: string | null
   library_file?: LibraryFile | null
@@ -164,6 +167,7 @@ const MODULE_TYPE_GROUPS = [
     types: [
       { value: "final_exam",  label: "Final Exam",  icon: "🎓", desc: "End-of-course exam — timed, pass mark required" },
       { value: "assignment",  label: "Assignment",  icon: "📤", desc: "Brief + file or text submission + AI grading" },
+      { value: "exercise",    label: "Exercise",    icon: "🛠️", desc: "Practical work in class — the instructor marks it (pass/fail or rubric)" },
     ],
   },
 ] as const
@@ -179,10 +183,12 @@ export function getModuleTypeMeta(type: string) {
 // ──────────────────────────────────────────────────────────────
 // MODULE MODAL  (2-step: pick type → fill details)
 // ──────────────────────────────────────────────────────────────
-function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes }: {
+function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes, parents }: {
   open: boolean; onClose: () => void; courseId: string
   editing: Module | null; onSaved: (m: Module) => void
   existingTypes: string[]
+  /** Modules an assignment or exercise can sit inside. */
+  parents: { id: string; title: string }[]
 }) {
   const [step,        setStep]        = useState<"type" | "details">("type")
   const [moduleType,  setModuleType]  = useState("package")
@@ -190,7 +196,9 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
   const [description, setDescription] = useState("")
   const [delivery,    setDelivery]    = useState("online")
   const [duration,    setDuration]    = useState("")
+  const [parentId,    setParentId]    = useState("")
   const [saving,      setSaving]      = useState(false)
+  const nestable = moduleType === "assignment" || moduleType === "exercise"
 
   useEffect(() => {
     if (open) {
@@ -202,10 +210,11 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
         setDescription(editing.description ?? "")
         setDelivery(editing.delivery_type ?? "online")
         setDuration(editing.estimated_duration ? String(editing.estimated_duration) : "")
+        setParentId(editing.parent_module_id ?? "")
       } else {
         setStep("type")
         setModuleType("package")
-        setTitle(""); setDescription(""); setDelivery("online"); setDuration("")
+        setTitle(""); setDescription(""); setDelivery("online"); setDuration(""); setParentId("")
       }
     }
   }, [open, editing])
@@ -219,6 +228,7 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
       delivery_type:      delivery,
       estimated_duration: duration ? parseInt(duration) : null,
       module_type:        moduleType,
+      ...(nestable ? { parent_module_id: parentId || null } : {}),
     }
     const res = editing
       ? await fetch("/api/lms/modules", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, ...payload }) })
@@ -321,6 +331,17 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
                   autoFocus required
                 />
               </div>
+              {nestable && (
+                <div className="space-y-1">
+                  <Label>Belongs to</Label>
+                  <select value={parentId} onChange={e => setParentId(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm">
+                    <option value="">— On its own (not inside a module)</option>
+                    {parents.filter(p => p.id !== editing?.id).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                  <p className="text-xs text-slate-400">Shown nested under that module, e.g. &quot;Module 2 → Exercise 2.1&quot;.</p>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label>Description <span className="text-slate-400 font-normal">(optional)</span></Label>
                 <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief summary shown in the sidebar" />
@@ -796,12 +817,30 @@ function ModuleContentEditor({ mod, courseId }: { mod: Module; courseId: string 
 
     case "assignment":
       return (
-        <AssignmentEditor
-          moduleId={mod.id}
-          initialBriefHtml={mod.assignment_brief_html ?? null}
-          initialRubric={
-            (mod.assignment_rubric as import("@/components/lms/AssignmentEditor").RubricCriterion[] | null) ?? null
-          }
+        <>
+          <AssignmentEditor
+            moduleId={mod.id}
+            initialBriefHtml={mod.assignment_brief_html ?? null}
+            initialRubric={
+              (mod.assignment_rubric as import("@/components/lms/AssignmentEditor").RubricCriterion[] | null) ?? null
+            }
+          />
+          <div className="max-w-3xl mx-auto pb-20 space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Template / attachments</p>
+            <MaterialsManager courseId={courseId} modules={[]} onlyModuleId={mod.id} />
+          </div>
+        </>
+      )
+
+    case "exercise":
+      return (
+        <ExerciseEditor
+          moduleId={mod.id} courseId={courseId}
+          initial={{
+            instructions: mod.assignment_brief_html ?? null,
+            rubric: (mod.assignment_rubric as unknown as import("@/components/lms/course/ExerciseEditor").ExerciseCriterion[] | null) ?? null,
+            settings: (mod.activity_settings as unknown as Partial<import("@/components/lms/course/ExerciseEditor").ExerciseSettings> | null) ?? null,
+          }}
         />
       )
 
@@ -1896,13 +1935,13 @@ function SortableModuleItem({
 
       <button
         onClick={onSelect}
-        className={cn("w-full flex items-start gap-2.5 pl-7 pr-10 py-2.5 text-left transition-colors",
+        className={cn("w-full flex items-start gap-2.5 pr-10 py-2.5 text-left transition-colors", mod.parent_module_id ? "pl-12" : "pl-7",
           isActive
             ? "bg-white/15 text-white"
             : "text-white/70 hover:bg-white/10 hover:text-white"
         )}>
         <span className="shrink-0 w-5 h-5 rounded-full bg-white/15 text-white text-[10px] font-bold flex items-center justify-center mt-0.5">
-          {index + 1}
+          {mod.parent_module_id ? "↳" : index + 1}
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-xs leading-snug line-clamp-2 font-medium">{mod.title}</p>
@@ -2121,6 +2160,12 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
     }
     init()
   }, [courseId])
+
+  async function reloadModules() {
+    const res = await fetch(`/api/lms/modules?course_id=${courseId}`)
+    const mods = await res.json().catch(() => [])
+    setModules((Array.isArray(mods) ? mods : []).map((m: Module) => ({ ...m, expanded: true })))
+  }
 
   async function deleteModule(id: string) {
     if (!confirm("Delete this module and all its content?")) return
@@ -2435,9 +2480,11 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
         courseId={courseId}
         editing={editingModule}
         existingTypes={modules.map(m => m.module_type ?? "")}
+        parents={modules.filter(m => !["assignment", "exercise", "final_exam"].includes(m.module_type)).map(m => ({ id: m.id, title: m.title }))}
         onSaved={m => {
-          if (editingModule) { setModules(prev => prev.map(x => x.id === m.id ? { ...x, ...m } : x)) }
-          else { setModules(prev => [...prev, m]); setActiveView(m.id) }
+          // Reload: an item placed inside a module moves the ones after it down.
+          reloadModules()
+          if (!editingModule) setActiveView(m.id)
         }}
       />
     </div>

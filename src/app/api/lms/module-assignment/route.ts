@@ -7,7 +7,7 @@ import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
-import { checkCourseCompletion } from "@/lib/lms-completion"
+import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
 
@@ -223,7 +223,7 @@ export async function PATCH(req: Request) {
   const adminSession = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const body = await req.json().catch(() => ({}))
-  const { attempt_id, release, score, max_score, passed, feedback } = body
+  const { attempt_id, release, score, max_score, passed, feedback, reason } = body
   if (!attempt_id) return NextResponse.json({ error: "attempt_id required" }, { status: 400 })
 
   // Only ASSIGNMENT attempts can be graded or released here. The attempt's type
@@ -231,7 +231,7 @@ export async function PATCH(req: Request) {
   // of any attempt — including a Final Exam attempt — by id.
   const { data: target } = await db
     .from("lms_module_attempts")
-    .select("id, student_id, enrollment_id, course_id, ai_feedback, lms_modules!inner(module_type)")
+    .select("id, student_id, enrollment_id, course_id, score, status, ai_feedback, lms_modules!inner(module_type)")
     .eq("id", attempt_id)
     .maybeSingle()
   if (!target) return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
@@ -252,7 +252,12 @@ export async function PATCH(req: Request) {
     return NextResponse.json(data)
   }
 
-  // Grade action
+  // Grade action. Re-marking a result the instructor already gave needs a reason.
+  const alreadyMarked = (target as any).ai_feedback?.graded_by === "instructor" || (target as any).status === "released"
+  const rescored = alreadyMarked && score !== undefined && Number(score) !== Number((target as any).score)
+  if (rescored && !(typeof reason === "string" && reason.trim()))
+    return NextResponse.json({ error: "Give a reason for changing a mark already given" }, { status: 400 })
+
   const { data, error } = await db
     .from("lms_module_attempts")
     .update({
@@ -261,7 +266,11 @@ export async function PATCH(req: Request) {
       passed:      passed    ?? false,
       // Merge rather than replace: this used to overwrite the whole object,
       // discarding the AI grader's per-criterion scores and comments.
-      ai_feedback: { ...(((target as any).ai_feedback) ?? {}), overall_comment: feedback ?? "", graded_by: "instructor" },
+      ai_feedback: {
+        ...(((target as any).ai_feedback) ?? {}), overall_comment: feedback ?? "", graded_by: "instructor",
+        // Changing a mark already given is recorded with its reason (and who, when).
+        ...(rescored ? { rescores: [...((((target as any).ai_feedback) ?? {}).rescores ?? []), { from: (target as any).score, to: score, reason: String(reason).slice(0, 500), by: g.session.name ?? g.session.id, at: new Date().toISOString() }] } : {}),
+      },
       status:      "graded",
       graded_at:   new Date().toISOString(),
     })
@@ -277,5 +286,6 @@ export async function PATCH(req: Request) {
 // A marked assignment can be what completes the course under its pass rule.
 async function recheck(target: any) {
   if (!target?.enrollment_id || !target?.course_id) return
+  await syncEnrollmentProgress(target.student_id, target.course_id, target.enrollment_id)
   await checkCourseCompletion(target.student_id, target.course_id, target.enrollment_id).catch(() => {})
 }

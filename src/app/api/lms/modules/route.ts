@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     .select(`
       id, course_id, title, description, delivery_type, order_index,
       estimated_duration, prerequisite_module_id, min_attendance_pct, created_at,
-      module_type, content_body, web_url, library_file_id, downloadable,
+      module_type, parent_module_id, content_body, web_url, library_file_id, downloadable,
       questions, activity_settings,
       assignment_brief_html, assignment_rubric, assignment_submission_types,
       assignment_due_date, assignment_max_attempts,
@@ -46,11 +46,15 @@ export async function POST(req: Request) {
   const {
     course_id, title, description, delivery_type, order_index,
     estimated_duration, prerequisite_module_id, min_attendance_pct,
-    module_type,
+    module_type, parent_module_id,
   } = body
 
   if (!course_id) return NextResponse.json({ error: "course_id required" }, { status: 400 })
   if (!title?.trim()) return NextResponse.json({ error: "title required" }, { status: 400 })
+
+  // An assignment or exercise can sit inside a module (shown nested under it).
+  const parent = await checkParent(course_id, module_type, parent_module_id ?? null, null)
+  if (!parent.ok) return NextResponse.json({ error: parent.error }, { status: 400 })
 
   // Only one final_exam allowed per course
   if (module_type === "final_exam") {
@@ -65,7 +69,10 @@ export async function POST(req: Request) {
 
   // Auto-assign order_index if not provided
   let idx = order_index
-  if (idx === undefined || idx === null) {
+  if ((idx === undefined || idx === null) && parent.id) {
+    // Right after the parent module and its other items; the rest move down one.
+    idx = await slotAfter(course_id, parent.id)
+  } else if (idx === undefined || idx === null) {
     const { count } = await db
       .from("lms_modules")
       .select("*", { count: "exact", head: true })
@@ -85,6 +92,7 @@ export async function POST(req: Request) {
       prerequisite_module_id: prerequisite_module_id || null,
       min_attendance_pct:    min_attendance_pct || null,
       module_type:           module_type ?? "content",
+      parent_module_id:      parent.id,
     })
     .select()
     .single()
@@ -161,9 +169,17 @@ export async function PATCH(req: Request) {
     }
   }
 
+  if (fields.parent_module_id !== undefined) {
+    const { data: self } = await db.from("lms_modules").select("course_id, module_type").eq("id", id).maybeSingle()
+    if (!self) return NextResponse.json({ error: "Module not found" }, { status: 404 })
+    const parent = await checkParent((self as any).course_id, fields.module_type ?? (self as any).module_type, fields.parent_module_id || null, id)
+    if (!parent.ok) return NextResponse.json({ error: parent.error }, { status: 400 })
+    fields.parent_module_id = parent.id
+  }
+
   const allowed = [
     // Basic
-    "title", "description", "delivery_type", "order_index",
+    "title", "description", "delivery_type", "order_index", "parent_module_id",
     "estimated_duration", "prerequisite_module_id", "min_attendance_pct",
     "module_type",
     // Content
@@ -254,4 +270,33 @@ export async function DELETE(req: Request) {
   const { error } = await db.from("lms_modules").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
+}
+
+
+// ── Nesting ─────────────────────────────────────────────────────────────────
+
+const NESTABLE = ["assignment", "exercise"]
+
+/** An assignment or exercise may name a parent module of the same course
+ *  (not itself, and not another assignment/exercise). */
+async function checkParent(courseId: string, type: string | undefined, parentId: string | null, selfId: string | null):
+  Promise<{ ok: true; id: string | null } | { ok: false; error: string }> {
+  if (!parentId) return { ok: true, id: null }
+  if (!NESTABLE.includes(type ?? "")) return { ok: false, error: "Only assignments and exercises can sit inside a module" }
+  if (parentId === selfId) return { ok: false, error: "A module can't contain itself" }
+  const { data } = await db.from("lms_modules").select("id, module_type").eq("id", parentId).eq("course_id", courseId).maybeSingle()
+  if (!data) return { ok: false, error: "That module isn't in this course" }
+  if (NESTABLE.includes((data as any).module_type)) return { ok: false, error: "Put it inside a content module, not another assignment or exercise" }
+  return { ok: true, id: parentId }
+}
+
+/** The order slot right after a module and the items already inside it. */
+async function slotAfter(courseId: string, parentId: string): Promise<number> {
+  const { data } = await db.from("lms_modules").select("id, order_index, parent_module_id").eq("course_id", courseId).order("order_index")
+  const rows = (data ?? []) as any[]
+  const parent = rows.find(r => r.id === parentId)
+  const after = Math.max(parent?.order_index ?? 0, ...rows.filter(r => r.parent_module_id === parentId).map(r => r.order_index))
+  for (const r of rows.filter(r => r.order_index > after).sort((a, b) => b.order_index - a.order_index))
+    await db.from("lms_modules").update({ order_index: r.order_index + 1 }).eq("id", r.id)
+  return after + 1
 }

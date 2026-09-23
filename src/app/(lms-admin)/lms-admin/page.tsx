@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
+import { assignmentAttempts, TO_MARK } from "@/lib/lms-marking"
 import Link from "next/link"
 import {
   BookOpen, Users, GraduationCap, CalendarDays,
@@ -95,7 +96,7 @@ export default async function LmsAdminDashboard({ searchParams }: { searchParams
         db.from("lms_courses").select("*", { count: "exact", head: true }).neq("status", "archived"),
       ])
 
-  let pq = db.from("lms_assignment_submissions").select("*", { count: "exact", head: true }).eq("status", "submitted")
+  let pq = assignmentAttempts("id", { count: true }).or(TO_MARK)
   if (filtered) pq = pq.in("enrollment_id", enrollments.length ? enrollments.map(e => e.id).slice(0, 1000) : ["00000000-0000-0000-0000-000000000000"])
   const { count: pendingAssignments } = await pq
 

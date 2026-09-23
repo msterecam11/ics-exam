@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cn } from "@/lib/utils"
 import { GroupFormDialog, type GroupFormValue } from "@/components/lms/groups/GroupFormDialog"
 import MaterialsManager from "@/components/lms/groups/MaterialsManager"
+import { GroupExercises, GroupAssignments } from "@/components/lms/groups/GroupMarking"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
@@ -37,6 +38,8 @@ type Detail = {
   participants: Person[]
   candidates: Person[]
   days: Day[]
+  /** Admins; a group's instructors only view and mark. */
+  can_manage: boolean
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -54,7 +57,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter()
   const [d, setD] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<"participants" | "days" | "results" | "materials">("participants")
+  const [tab, setTab] = useState<"participants" | "days" | "exercises" | "assignments" | "results" | "materials">("participants")
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [modules, setModules] = useState<{ id: string; title: string }[]>([])
@@ -124,12 +127,13 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   if (!d) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
 
   const g = d.group
+  const manage = d.can_manage
   const full = !!g.seats && d.seats_taken >= g.seats
   const instructors = d.staff.filter(s => s.role === "instructor"), facilitators = d.staff.filter(s => s.role === "facilitator")
 
   return (
     <div className="max-w-5xl space-y-5 pb-16">
-      <Link href={`/lms-admin/courses/${d.course?.id}`} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#1B4F8A]">
+      <Link href={manage ? `/lms-admin/courses/${d.course?.id}` : "/lms-admin"} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#1B4F8A]">
         <ArrowLeft className="h-3.5 w-3.5" /> {d.course?.title}
       </Link>
 
@@ -144,7 +148,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             </div>
             <p className="text-sm text-slate-500 mt-0.5">{d.course?.title}{d.course?.course_code ? ` · ${d.course.course_code}` : ""}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {manage && <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
             {g.status === "planned" && <Button size="sm" onClick={() => setStatus("confirmed")} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"><CheckCircle2 className="h-3.5 w-3.5" /> Confirm</Button>}
             {g.status === "confirmed" && <Button variant="outline" size="sm" onClick={() => setStatus("planned", "Back to planned? Participants will no longer see this group or its days.")} className="gap-1.5"><RotateCcw className="h-3.5 w-3.5" /> Back to planned</Button>}
@@ -152,7 +156,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             {(g.status === "planned" || g.status === "confirmed") && <Button variant="outline" size="sm" onClick={() => setStatus("cancelled", "Cancel this group?")} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"><XCircle className="h-3.5 w-3.5" /> Cancel</Button>}
             {g.status === "cancelled" && <Button variant="outline" size="sm" onClick={() => setStatus("planned")} className="gap-1.5"><RotateCcw className="h-3.5 w-3.5" /> Reopen</Button>}
             {d.seats_taken === 0 && <Button variant="outline" size="sm" onClick={remove} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>}
-          </div>
+          </div>}
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5 pt-5 border-t border-slate-100 text-sm">
@@ -169,16 +173,16 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["results", "Results"], ["materials", "Materials"]] as const).map(([k, label]) => (
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["exercises", "Exercises"], ["assignments", "Assignments"], ["results", "Results"], ["materials", "Materials"]] as const).filter(([k]) => manage || k !== "materials").map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
 
       {tab === "participants" && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          {manage && <div className="flex justify-end">
             <Button size="sm" onClick={() => setAdding(true)} disabled={g.status === "cancelled" || g.status === "completed"} className="gap-1.5 bg-[#1B4F8A] hover:bg-[#163f6e] text-white"><Plus className="h-3.5 w-3.5" /> Add participants</Button>
-          </div>
+          </div>}
           {d.participants.length === 0 ? (
             <div className="border-2 border-dashed border-slate-200 rounded-xl py-12 text-center text-sm text-slate-400">Nobody in this group yet</div>
           ) : (
@@ -190,8 +194,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                     <p className="text-sm font-medium text-slate-800 truncate">{p.student?.name}{p.status === "completed" && <span className="ml-2 text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">Completed</span>}</p>
                     <p className="text-xs text-slate-400 truncate">{[p.student?.email, p.student?.company, p.program ? `${p.program.name}${p.program.client ? ` (${p.program.client})` : ""}` : "Individual"].filter(Boolean).join(" · ")}</p>
                   </div>
-                  {p.student && <ViewAsStudentButton studentId={p.student.id} studentName={p.student.name} />}
-                  <button onClick={() => takeOut(p)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50" title="Take out of this group"><UserMinus className="h-4 w-4" /></button>
+                  {manage && p.student && <ViewAsStudentButton studentId={p.student.id} studentName={p.student.name} />}
+                  {manage && <button onClick={() => takeOut(p)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50" title="Take out of this group"><UserMinus className="h-4 w-4" /></button>}
                 </div>
               ))}
             </div>
@@ -203,7 +207,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-slate-500">Attendance is taken per day. Open a day to mark present, late, absent or excused.</p>
-            <Button size="sm" variant="outline" onClick={makeDays} className="gap-1.5 shrink-0"><Plus className="h-3.5 w-3.5" /> Create missing days</Button>
+            {manage && <Button size="sm" variant="outline" onClick={makeDays} className="gap-1.5 shrink-0"><Plus className="h-3.5 w-3.5" /> Create missing days</Button>}
           </div>
           {d.days.length === 0 ? (
             <div className="border-2 border-dashed border-slate-200 rounded-xl py-12 text-center text-sm text-slate-400">No days yet</div>
@@ -218,7 +222,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                     <p className="flex-1 min-w-0 text-sm text-slate-600 truncate">{day.title}</p>
                     <p className="text-xs text-slate-500 shrink-0">{marked ? `${(a?.present ?? 0) + (a?.late ?? 0)} present · ${a?.absent ?? 0} absent${a?.excused ? ` · ${a.excused} excused` : ""}` : "Not taken yet"}</p>
                     <Link href={`/lms-admin/sessions/${day.id}`} className="text-xs font-medium text-[#1B4F8A] hover:underline shrink-0">Attendance</Link>
-                    {!marked && <button onClick={() => dropDay(day)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50" title="Remove this day"><Trash2 className="h-4 w-4" /></button>}
+                    {manage && !marked && <button onClick={() => dropDay(day)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50" title="Remove this day"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 )
               })}
@@ -227,6 +231,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
+      {tab === "exercises" && <GroupExercises groupId={id} />}
+      {tab === "assignments" && <GroupAssignments groupId={id} />}
       {tab === "results" && <GroupResults groupId={id} />}
 
       {tab === "materials" && d.course && (
