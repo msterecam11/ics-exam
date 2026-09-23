@@ -3,8 +3,8 @@
  *
  * The one scheduled job the LMS needs. A single daily run evaluates every dated
  * email rule (EM-2, 3, 4, 5, 9, 10 and the weekly EM-13) and sends what is due.
- * It replaces the older /api/cron/course-reminders and /api/cron/session-reminders,
- * which stay in place for now so an existing schedule keeps working.
+ * (The older course-reminders and session-reminders endpoints were removed:
+ * the first ignored each program's email settings.)
  *
  * Render cron job (Render dashboard → Cron Jobs → New Cron Job):
  *   Command : curl -fsS -H "x-cron-secret: $CRON_SECRET" https://<your-app>.onrender.com/api/cron/lms-daily

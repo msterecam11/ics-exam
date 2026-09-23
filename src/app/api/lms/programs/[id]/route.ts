@@ -145,7 +145,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // Structure can change only while nobody has been added.
   if (body.structure !== undefined && body.structure !== (current as any).structure) {
-    if (!["course", "path", "tracks"].includes(body.structure)) return NextResponse.json({ error: "Invalid structure" }, { status: 400 })
+    if (!["course", "tracks"].includes(body.structure)) return NextResponse.json({ error: "Invalid structure" }, { status: 400 })
     const { count } = await db.from("lms_program_members").select("*", { count: "exact", head: true }).eq("program_id", id)
     if ((count ?? 0) > 0) return NextResponse.json({ error: "The structure can't change once students are added" }, { status: 409 })
     updates.structure = body.structure

@@ -26,8 +26,7 @@ export async function GET(req: Request) {
       assignment_due_date, assignment_max_attempts,
       completion_method, completion_time_minutes, completion_check,
       is_mandatory, lock_until_previous, available_from, available_until, show_in_progress,
-      library_file:lms_library_files(id, name, original_name, mime_type, file_type, size_bytes, public_url),
-      lms_content_items(id, title, type, order_index, download_allowed, is_mandatory, completion_rule, content)
+      library_file:lms_library_files(id, name, original_name, mime_type, file_type, size_bytes, public_url)
     `)
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })

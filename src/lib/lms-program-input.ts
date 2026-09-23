@@ -36,7 +36,7 @@ export async function parseProgramInput(body: any, partial: boolean): Promise<Re
   }
 
   if (!partial) {
-    if (!["course", "path", "tracks"].includes(body?.structure))
+    if (!["course", "tracks"].includes(body?.structure))
       return { ok: false, error: "Choose a structure: one course, one learning path, or tracks" }
     v.structure = body.structure
   }

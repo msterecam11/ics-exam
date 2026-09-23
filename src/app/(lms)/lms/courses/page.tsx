@@ -27,26 +27,14 @@ export default async function MyCoursesPage() {
   const enrollmentIds = rawEnrollments.map((e: any) => e.id)
 
   // ── 2. Parallel fetches ──────────────────────────────────────
-  const [modulesResult, progResult, pkgProgResult, inProgressResult, locks] = await Promise.all([
+  const [modulesResult, pkgProgResult, locks] = await Promise.all([
     allCourseIds.length
       ? db.from("lms_modules").select("id, course_id, estimated_duration, module_type").in("course_id", allCourseIds)
-      : Promise.resolve({ data: [] }),
-
-    // Standard content-item progress
-    allCourseIds.length
-      ? db.from("lms_progress").select("course_id, status, content_item_id, updated_at").in("enrollment_id", enrollmentIds)
       : Promise.resolve({ data: [] }),
 
     // Package progress (one row per package module)
     allCourseIds.length
       ? db.from("lms_package_progress").select("course_id, module_id, status, updated_at").in("enrollment_id", enrollmentIds)
-      : Promise.resolve({ data: [] }),
-
-    // Last in-progress content item per course (for the Continue button)
-    allCourseIds.length
-      ? db.from("lms_progress").select("course_id, content_item_id, updated_at")
-          .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
-          .order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] }),
 
     // Program start date / sequential-course locks.
@@ -58,14 +46,9 @@ export default async function MyCoursesPage() {
 
   // ── 3. Last accessed + module count ─────────────────────────
   const lastAccessedByCourse: Record<string, string> = {}
-  for (const row of [...((pkgProgResult.data ?? []) as any[]), ...((progResult.data ?? []) as any[])]) {
+  for (const row of (pkgProgResult.data ?? []) as any[]) {
     if (!lastAccessedByCourse[row.course_id] || row.updated_at > lastAccessedByCourse[row.course_id])
       lastAccessedByCourse[row.course_id] = row.updated_at
-  }
-
-  const nextItemByCourse: Record<string, string> = {}
-  for (const row of (inProgressResult.data ?? []) as any[]) {
-    if (!nextItemByCourse[row.course_id]) nextItemByCourse[row.course_id] = row.content_item_id
   }
 
   const moduleCountByCourse:  Record<string, number> = {}
@@ -112,7 +95,6 @@ export default async function MyCoursesPage() {
       lockReason:    lock?.locked ? lock.reason : null,
       progress:      pct,
       lastAccessed:  lastAccessedByCourse[cid] ?? null,
-      nextContentId: nextItemByCourse[cid]     ?? null,
       moduleCount:   moduleCountByCourse[cid]  ?? 0,
       totalMinutes:  totalMins,
       remainMinutes: Math.round(totalMins * (1 - pct / 100)),

@@ -88,7 +88,7 @@ function NewProgramDialog({ open, onClose }: { open: boolean; onClose: () => voi
           <div className="space-y-1.5">
             <Label>Structure *</Label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(Object.keys(STRUCTURE_META) as Program["structure"][]).map(k => {
+              {(["course", "tracks"] as Program["structure"][]).map(k => {
                 const m = STRUCTURE_META[k]
                 return (
                   <button key={k} type="button" onClick={() => setStructure(k)}

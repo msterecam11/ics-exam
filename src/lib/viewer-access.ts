@@ -1,8 +1,8 @@
 import { db } from "@/lib/db"
 
 // ── LMS viewer grants ─────────────────────────────────────────────────────
-// A viewer (or a client's training manager) is granted access to a course, a
-// cohort, a PROGRAM or a whole COMPANY. Program and company grants are what
+// A viewer (or a client's training manager) is granted access to a course,
+// a PROGRAM or a whole COMPANY. Program and company grants are what
 // the program / client / student reports (RL-9) are gated on; everything they
 // see is the client copy (no internal notes, feedback rules applied).
 
@@ -85,8 +85,7 @@ export async function canViewEnrollmentReport(userId: string, enrollmentId: stri
 }
 
 // Does this viewer user have "reports" permission covering this student's
-// course — either a direct course-scope grant, or a cohort-scope grant where
-// the student is a member of that cohort?
+// course — a course grant, or a program / company grant the run sits in?
 export async function canViewLmsReport(userId: string, studentId: string, courseId: string): Promise<boolean> {
   // One learner's results — the individual level.
   const grants = await lmsGrants(userId, "report_individual")
@@ -112,49 +111,7 @@ export async function canViewLmsReport(userId: string, studentId: string, course
     if (inProgram && inProgram.length > 0) return true
   }
 
-  const cohortGrantIds = grants.filter((r: any) => r.resource_type === "cohort").map((r: any) => r.resource_id)
-  if (cohortGrantIds.length === 0) return false
-
-  const { data: membership } = await db
-    .from("lms_cohort_members")
-    .select("cohort_id")
-    .eq("student_id", studentId)
-    .in("cohort_id", cohortGrantIds)
-
-  const memberCohortIds = (membership ?? []).map((m: any) => m.cohort_id)
-  if (memberCohortIds.length === 0) return false
-
-  // Membership alone isn't enough — the COURSE must also belong to one of those
-  // cohorts. Without this, a cohort-scoped grant would expose that learner's
-  // reports for every OTHER course they happen to be enrolled in, including
-  // courses belonging to a different client entirely.
-  return cohortCoversCourse(memberCohortIds, courseId)
-}
-
-/** Do any of these cohorts include this course (directly or via a track)? */
-async function cohortCoversCourse(cohortIds: string[], courseId: string): Promise<boolean> {
-  const { data: direct } = await db
-    .from("lms_cohort_courses")
-    .select("cohort_id")
-    .eq("course_id", courseId)
-    .in("cohort_id", cohortIds)
-    .limit(1)
-  if (direct && direct.length > 0) return true
-
-  const { data: tracks } = await db
-    .from("lms_cohort_tracks")
-    .select("id")
-    .in("cohort_id", cohortIds)
-  const trackIds = (tracks ?? []).map((t: any) => t.id)
-  if (trackIds.length === 0) return false
-
-  const { data: viaTrack } = await db
-    .from("lms_cohort_track_courses")
-    .select("track_id")
-    .eq("course_id", courseId)
-    .in("track_id", trackIds)
-    .limit(1)
-  return !!viaTrack && viaTrack.length > 0
+  return false
 }
 
 /**
@@ -202,16 +159,11 @@ export async function canViewExamCandidate(userId: string, candidateId: string):
 }
 
 /**
- * Cohort-level (whole-course) report access. A course-scope grant covers it
- * directly; a cohort-scope grant covers it when that cohort includes the course.
+ * Whole-course report access: a course-scope grant.
  */
 export async function canViewLmsCourseReport(userId: string, courseId: string): Promise<boolean> {
   const grants = await lmsGrants(userId, "report_individual")
   if (grants.length === 0) return false
 
-  if (grants.some((r: any) => r.resource_type === "course" && r.resource_id === courseId)) return true
-
-  const cohortGrantIds = grants.filter((r: any) => r.resource_type === "cohort").map((r: any) => r.resource_id)
-  if (cohortGrantIds.length === 0) return false
-  return cohortCoversCourse(cohortGrantIds, courseId)
+  return grants.some((r: any) => r.resource_type === "course" && r.resource_id === courseId)
 }

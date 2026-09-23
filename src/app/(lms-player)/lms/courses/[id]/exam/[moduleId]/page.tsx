@@ -46,7 +46,7 @@ export default async function StudentExamPage({
   if ((module as any).lock_until_previous) {
     const { data: allModules } = await db
       .from("lms_modules")
-      .select("id, module_type, order_index, is_mandatory, lms_content_items(id, is_mandatory)")
+      .select("id, module_type, order_index, is_mandatory")
       .eq("course_id", courseId)
       .order("order_index", { ascending: true })
 
@@ -83,18 +83,6 @@ export default async function StudentExamPage({
           .limit(1)
           .maybeSingle()
         prevDone = !!att
-      } else {
-        // content module: every mandatory content item must be completed
-        const mandItems = ((prev as any).lms_content_items ?? []).filter((i: any) => i.is_mandatory)
-        if (mandItems.length > 0) {
-          const { data: prog } = await db
-            .from("lms_progress")
-            .select("content_item_id, status")
-            .eq("enrollment_id", enrollment.id)
-            .in("content_item_id", mandItems.map((i: any) => i.id))
-          const doneSet = new Set((prog ?? []).filter((p: any) => p.status === "completed").map((p: any) => p.content_item_id))
-          prevDone = mandItems.every((i: any) => doneSet.has(i.id))
-        }
       }
 
       if (!prevDone) redirect(`/lms/courses/${courseId}`)

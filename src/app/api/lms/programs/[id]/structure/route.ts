@@ -72,6 +72,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const courseId = typeof body.course_id === "string" && UUID_RE.test(body.course_id) ? body.course_id : null
       const pathId   = typeof body.path_id === "string" && UUID_RE.test(body.path_id) ? body.path_id : null
       if (!!courseId === !!pathId) return NextResponse.json({ error: "Choose one course or one learning path" }, { status: 400 })
+      // Learning paths were retired: nothing new may be built on them.
+      if (pathId) return NextResponse.json({ error: "Learning paths are no longer used — add the courses directly" }, { status: 400 })
 
       let trackId: string | null = null
       if (body.track_id != null) {

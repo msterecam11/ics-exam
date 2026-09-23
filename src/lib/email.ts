@@ -376,48 +376,6 @@ export async function sendStudentCredentialsEmail(opts: {
   }
 }
 
-/** Sent when a student completes all mandatory content in a course */
-export function buildCompletionEmail(opts: {
-  studentName: string
-  courseTitle: string
-  courseId?:   string   // unused in the body; kept for callers that pass it
-  completedAt: string
-  kind?:       "course" | "learning path" | "programme"   // label for subject line
-}) {
-  const { studentName, courseTitle, completedAt, kind = "course" } = opts
-  const kindLabel = kind === "course" ? "Course" : kind === "learning path" ? "Learning Path" : "Programme"
-  const dateStr = new Date(completedAt).toLocaleDateString("en-GB", {
-    day: "numeric", month: "long", year: "numeric",
-  })
-  const dashUrl = `${APP_URL}/lms/dashboard`
-
-  const body = `
-    <div style="text-align:center;padding:10px 0 20px;">
-      <div style="display:inline-block;background:#ecfdf5;border-radius:50%;padding:20px;">
-        <span style="font-size:40px;">🎓</span>
-      </div>
-    </div>
-    <h2 style="margin:0 0 6px;color:#059669;font-size:24px;text-align:center;">Congratulations, ${studentName}!</h2>
-    <p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
-      You have successfully completed all required content for:
-    </p>
-    <div style="background:${BLUE};border-radius:10px;padding:20px 24px;text-align:center;margin-bottom:24px;">
-      <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">${courseTitle}</p>
-      <p style="margin:6px 0 0;color:rgba(255,255,255,.7);font-size:13px;">Completed on ${dateStr}</p>
-    </div>
-    <p style="color:#475569;font-size:14px;line-height:1.6;text-align:center;">
-      Your completion has been recorded. If a certificate is available, it will appear in your dashboard.
-    </p>
-    <p style="text-align:center;">
-      ${btn("Go to Dashboard →", dashUrl)}
-    </p>
-  `
-  return {
-    subject: `${kindLabel} Complete: "${courseTitle}" — ICS Aviation LMS`,
-    html:    baseTemplate(body),
-  }
-}
-
 /** Sent when a student requests a password reset */
 export function buildPasswordResetEmail(opts: {
   studentName: string

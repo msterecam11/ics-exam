@@ -4,9 +4,9 @@ import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowLeft, Loader2, User, Building2, Mail,
-  BookOpen, CheckCircle2, Clock, BarChart2,
+  BookOpen, Clock, BarChart2,
   GraduationCap, Award, FileText, AlertCircle,
-  Calendar, Globe, Layers,
+  Calendar, Globe,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,20 +27,6 @@ interface Enrollment {
   course: { id: string; title: string; status: string } | null
 }
 
-interface LearningPath { id: string; title: string; added_at: string }
-
-interface QuizAttempt {
-  id: string; score: number | null; total_score: number | null
-  passed: boolean | null; submitted_at: string
-  lms_quizzes: {
-    id: string; title: string
-    lms_content_items: {
-      id: string; title: string; module_id: string
-      lms_modules: { id: string; title: string; course_id: string } | null
-    } | null
-  } | null
-}
-
 interface AssignmentSub {
   id: string; status: string
   score: number | null; max_score: number | null
@@ -58,8 +44,6 @@ interface ExamSummary {
 interface Progress {
   student: Student
   enrollments: Enrollment[]
-  learning_paths: LearningPath[]
-  quiz_attempts: QuizAttempt[]
   assignment_submissions: AssignmentSub[]
   exam_summaries: ExamSummary[]
 }
@@ -132,7 +116,7 @@ export default function StudentProgressPage({
   const [data,    setData]    = useState<Progress | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
-  const [tab,     setTab]     = useState<"enrollments" | "activities" | "assignments" | "exams">("enrollments")
+  const [tab,     setTab]     = useState<"enrollments" | "assignments" | "exams">("enrollments")
   const [resetting, setResetting] = useState<string | null>(null)
 
   useEffect(() => {
@@ -160,17 +144,14 @@ export default function StudentProgressPage({
     </div>
   )
 
-  const { student, enrollments, learning_paths, quiz_attempts, assignment_submissions, exam_summaries = [] } = data
+  const { student, enrollments, assignment_submissions, exam_summaries = [] } = data
 
   const completedCourses = enrollments.filter(e => e.status === "completed").length
-  const passedQuizzes    = quiz_attempts.filter(a => a.passed === true).length
-  const avgScore = quiz_attempts.filter(a => a.score != null && a.total_score).length
-    ? Math.round(
-        quiz_attempts
-          .filter(a => a.score != null && a.total_score)
-          .reduce((acc, a) => acc + ((a.score! / a.total_score!) * 100), 0) /
-        quiz_attempts.filter(a => a.score != null && a.total_score).length
-      )
+  // Final exams: the real measure (the old quiz figures here came from a
+  // retired quiz system and always read 0).
+  const passedExams = exam_summaries.filter(x => x.passed).length
+  const avgProgress = enrollments.length
+    ? Math.round(enrollments.reduce((acc, e) => acc + (e.progress_pct ?? 0), 0) / enrollments.length)
     : null
 
   return (
@@ -199,15 +180,6 @@ export default function StudentProgressPage({
                 Last login: {student.last_login ? fmtDate(student.last_login) : <span className="text-slate-300">Never</span>}
               </span>
             </div>
-            {learning_paths.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {learning_paths.map(p => (
-                  <Badge key={p.id} variant="outline" className="text-xs gap-1">
-                    <Layers className="h-3 w-3" />{p.title}
-                  </Badge>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -217,17 +189,17 @@ export default function StudentProgressPage({
         <StatCard icon={BookOpen}      label="Enrolled Courses"   value={enrollments.length} />
         <StatCard icon={GraduationCap} label="Completed Courses"  value={completedCourses}
           color={completedCourses > 0 ? "text-emerald-600" : "text-[#1B4F8A]"} />
-        <StatCard icon={Award}         label="Passed Quizzes"  value={passedQuizzes}
-          sub={`of ${quiz_attempts.length} attempts`} />
-        <StatCard icon={BarChart2}     label="Avg Score"
-          value={avgScore != null ? `${avgScore}%` : "—"}
-          sub="across all quizzes" />
+        <StatCard icon={Award}         label="Exams Passed"  value={passedExams}
+          sub={`of ${exam_summaries.length} final exam${exam_summaries.length === 1 ? "" : "s"}`} />
+        <StatCard icon={BarChart2}     label="Avg Progress"
+          value={avgProgress != null ? `${avgProgress}%` : "—"}
+          sub="across enrolled courses" />
       </div>
 
       {/* Tabs */}
       <div>
         <div className="flex gap-1 border-b border-slate-200 mb-4">
-          {(["enrollments", "activities", "assignments", "exams"] as const).map(t => (
+          {(["enrollments", "assignments", "exams"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -239,7 +211,6 @@ export default function StudentProgressPage({
               )}
             >
               {t === "enrollments"  ? `Courses (${enrollments.length})`
-               : t === "activities" ? `Quizzes (${quiz_attempts.length})`
                : t === "assignments"? `Assignments (${assignment_submissions.length})`
                : `Exams (${exam_summaries.length})`}
             </button>
@@ -282,65 +253,6 @@ export default function StudentProgressPage({
                     )}
                   </div>
                 ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Quizzes tab */}
-        {tab === "activities" && (
-          <div>
-            {quiz_attempts.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <CheckCircle2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No quiz attempts yet</p>
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Quiz</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600 hidden md:table-cell">Module</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Score</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Result</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600 hidden lg:table-cell">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {quiz_attempts.map(a => {
-                      const pct = a.score != null && a.total_score
-                        ? Math.round((a.score / a.total_score) * 100) : null
-                      return (
-                        <tr key={a.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-slate-800">{a.lms_quizzes?.title ?? "—"}</p>
-                          </td>
-                          <td className="px-4 py-3 hidden md:table-cell text-slate-500 text-xs">
-                            {a.lms_quizzes?.lms_content_items?.lms_modules?.title ?? "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            {pct != null
-                              ? <span className="font-medium tabular-nums">{pct}%</span>
-                              : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            {a.passed === true && (
-                              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Passed</Badge>
-                            )}
-                            {a.passed === false && (
-                              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">Failed</Badge>
-                            )}
-                            {a.passed == null && <span className="text-slate-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-4 py-3 hidden lg:table-cell text-slate-400 text-xs">
-                            {fmtDate(a.submitted_at)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
               </div>
             )}
           </div>

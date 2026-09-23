@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { guardStaff, canSeeStudent, canSeeProgram, forbidden } from "@/lib/staff-access"
 
 // GET /api/lms/progress/[studentId]
-// Returns student info + enrolled courses (with progress) + learning paths + cohorts
+// Returns student info + enrolled courses (with progress)
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ studentId: string }> }
@@ -32,24 +32,6 @@ export async function GET(
 
   if (enrErr) console.error("[progress] enrollments error:", enrErr.message)
 
-  // ── Learning paths ───────────────────────────────────────────────────────
-  const { data: pathMembers, error: pathErr } = await db
-    .from("lms_learning_path_members")
-    .select("added_at, lms_learning_paths(id, title)")
-    .eq("student_id", studentId)
-    .order("added_at", { ascending: false })
-
-  if (pathErr) console.error("[progress] paths error:", pathErr.message)
-
-  // ── Cohorts ──────────────────────────────────────────────────────────────
-  const { data: cohortMembers, error: cohortErr } = await db
-    .from("lms_cohort_members")
-    .select("added_at, track_id, lms_cohorts(id, name, mode, start_date, end_date)")
-    .eq("student_id", studentId)
-    .order("added_at", { ascending: false })
-
-  if (cohortErr) console.error("[progress] cohorts error:", cohortErr.message)
-
   return NextResponse.json({
     student,
     // An instructor sees this student's courses in their own programs only.
@@ -62,25 +44,5 @@ export async function GET(
       progress_pct: e.progress_pct ?? 0,
       course:       e.lms_courses ?? null,
     })),
-    learning_paths: (pathMembers ?? [])
-      .filter((p: any) => p.lms_learning_paths)
-      .map((p: any) => ({
-        added_at:    p.added_at,
-        id:          p.lms_learning_paths.id,
-        title:       p.lms_learning_paths.title,
-        description: p.lms_learning_paths.description ?? null,
-      })),
-    cohorts: (cohortMembers ?? [])
-      .filter((c: any) => c.lms_cohorts)
-      .map((c: any) => ({
-        added_at:   c.added_at,
-        track_id:   c.track_id ?? null,
-        id:         c.lms_cohorts.id,
-        name:       c.lms_cohorts.name,
-        description: c.lms_cohorts.description ?? null,
-        mode:       c.lms_cohorts.mode ?? "unified",
-        start_date: c.lms_cohorts.start_date ?? null,
-        end_date:   c.lms_cohorts.end_date ?? null,
-      })),
   })
 }

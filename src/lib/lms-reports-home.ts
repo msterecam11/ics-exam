@@ -103,11 +103,8 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
   // Last activity for enrollments still in progress.
   const active = enrollments.filter(e => e.status === "active")
   const activeIds = active.map(e => e.id)
-  const [pkg, prog] = await Promise.all([
-    inChunks(activeIds, async c => selectAll<any>((f, t) => db.from("lms_package_progress").select("enrollment_id, updated_at").in("enrollment_id", c).range(f, t))),
-    inChunks(activeIds, async c => selectAll<any>((f, t) => db.from("lms_progress").select("enrollment_id, updated_at").in("enrollment_id", c).range(f, t))),
-  ])
-  for (const r of [...pkg, ...prog]) anyActivity.set(r.enrollment_id, maxIso(anyActivity.get(r.enrollment_id), r.updated_at)!)
+  const pkg = await inChunks(activeIds, async c => selectAll<any>((f, t) => db.from("lms_package_progress").select("enrollment_id, updated_at").in("enrollment_id", c).range(f, t)))
+  for (const r of pkg) anyActivity.set(r.enrollment_id, maxIso(anyActivity.get(r.enrollment_id), r.updated_at)!)
 
   // Certificates held and feedback given.
   const certs = await inChunks(enrollmentIds, async c =>

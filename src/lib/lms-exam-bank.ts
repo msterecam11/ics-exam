@@ -591,13 +591,9 @@ export async function runCorrections(scope: PaperScope, opts: {
   report.finished.programs = [...finishedPrograms.values()]
 
   if (opts.apply && newlyPassed.length) {
-    const { checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } = await import("@/lib/lms-completion")
+    const { checkCourseCompletion } = await import("@/lib/lms-completion")
     for (const a of newlyPassed)
-      await Promise.all([
-        checkCourseCompletion(a.student_id, a.course_id, a.enrollment_id ?? undefined),
-        checkLearningPathCompletion(a.student_id, a.course_id),
-        checkCohortCompletion(a.student_id, a.course_id),
-      ])
+      await checkCourseCompletion(a.student_id, a.course_id, a.enrollment_id ?? undefined)
   }
   return report
 }

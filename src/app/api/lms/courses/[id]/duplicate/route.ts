@@ -35,13 +35,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   // packages or items. Any failure now removes the partial copy (children first)
   // so the admin either gets a complete copy or nothing.
   async function abort(message: string) {
-    const { data: mods } = await db.from("lms_modules").select("id").eq("course_id", newCourseId)
-    const modIds = (mods ?? []).map((m: any) => m.id)
     const { data: pkgs } = await db.from("lms_packages").select("id").eq("course_id", newCourseId)
     const pkgIds = (pkgs ?? []).map((p: any) => p.id)
     if (pkgIds.length) await db.from("lms_package_items").delete().in("package_id", pkgIds)
     await db.from("lms_packages").delete().eq("course_id", newCourseId)
-    if (modIds.length) await db.from("lms_content_items").delete().in("module_id", modIds)
     await db.from("lms_module_activities").delete().eq("course_id", newCourseId)
     await db.from("lms_modules").delete().eq("course_id", newCourseId)
     await db.from("lms_courses").delete().eq("id", newCourseId)
@@ -100,19 +97,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    // 6. Legacy content items
-    const { data: srcContent } = await db.from("lms_content_items").select("*").in("module_id", srcModuleIds)
-    const contentCopy = ((srcContent ?? []) as any[]).map(ci => {
-      const c: any = { ...ci }; delete c.id; delete c.created_at; delete c.updated_at
-      c.module_id = moduleIdMap.get(ci.module_id)
-      return c
-    })
-    if (contentCopy.length) {
-      const { error } = await db.from("lms_content_items").insert(contentCopy)
-      if (error) return abort("Content copy failed")
-    }
-
-    // 7. Module activities — not copied before, so a duplicated course would
+    // 6. Module activities — not copied before, so a duplicated course would
     //    have silently lost them. (None exist yet.)
     const { data: srcActs } = await db.from("lms_module_activities").select("*").in("module_id", srcModuleIds)
     const actsCopy = ((srcActs ?? []) as any[]).map(a => {

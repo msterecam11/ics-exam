@@ -309,12 +309,10 @@ async function lastActivityByStudent(studentIds: string[]): Promise<Map<string, 
     const cur = out.get(sid)
     if (!cur || ts > cur) out.set(sid, ts)
   }
-  const [prog, pkg, att] = await Promise.all([
-    db.from("lms_progress").select("student_id, updated_at").in("student_id", studentIds),
+  const [pkg, att] = await Promise.all([
     db.from("lms_package_progress").select("student_id, updated_at").in("student_id", studentIds),
     db.from("lms_module_attempts").select("student_id, submitted_at, started_at").in("student_id", studentIds),
   ])
-  for (const r of prog.data ?? []) bump((r as any).student_id, (r as any).updated_at)
   for (const r of pkg.data ?? []) bump((r as any).student_id, (r as any).updated_at)
   for (const r of att.data ?? []) bump((r as any).student_id, (r as any).submitted_at ?? (r as any).started_at)
   return out

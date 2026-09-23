@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
 import { guardStaff, staffScope, canSeeEnrollment, forbidden } from "@/lib/staff-access"
 import { db } from "@/lib/db"
-import { syncEnrollmentProgress, checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
+import { syncEnrollmentProgress, checkCourseCompletion } from "@/lib/lms-completion"
 import { notifyLastAttempt } from "@/lib/lms-email-events"
 import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { paperFor } from "@/lib/lms-exam-scoring"
@@ -214,12 +214,7 @@ export async function POST(req: Request) {
   if (course_id) {
     await syncEnrollmentProgress(studentId, course_id, enrollment.id)
     if (correctedPassed) {
-      // Run all completion checks in parallel — each is independently non-critical
-      await Promise.all([
-        checkCourseCompletion(studentId, course_id, enrollment.id),
-        checkLearningPathCompletion(studentId, course_id),
-        checkCohortCompletion(studentId, course_id),
-      ])
+      await checkCourseCompletion(studentId, course_id, enrollment.id)
     } else if (attempt.attempt_no === maxAttempts - 1) {
       // EM-8 — failed with exactly one attempt left. Never fatal to the
       // submission, so a mail problem can't cost the student their result.

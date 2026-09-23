@@ -28,7 +28,6 @@ export interface CourseRow {
   lockReason: string | null
   progress: number
   lastAccessed: string | null
-  nextContentId: string | null
   moduleCount: number
   totalMinutes: number
   remainMinutes: number
@@ -91,15 +90,11 @@ function CourseThumbnail({ url, title, showRibbon = false }: { url: string | nul
 
 // ── Course card ────────────────────────────────────────────────
 function CourseCard({ row }: { row: CourseRow }) {
-  const { course, progress, status, lastAccessed, nextContentId, moduleCount, totalMinutes, remainMinutes } = row
+  const { course, progress, status, lastAccessed, moduleCount, totalMinutes, remainMinutes } = row
   const done   = status === "completed"
   const locked = !done && !!row.lockReason
 
-  // Resume the exact item when there is one; otherwise the course page.
-  // (This linked to /lms/content/<id>, a page that doesn't exist.)
-  const ctaHref  = !done && !row.readOnly && nextContentId
-    ? `/lms/courses/${course.id}/content/${nextContentId}`
-    : `/lms/courses/${course.id}`
+  const ctaHref  = `/lms/courses/${course.id}`
   const ctaLabel = done || row.readOnly ? "Review" : progress > 0 ? "Continue" : "Start"
 
   const accessedLabel = relativeAccessed(lastAccessed)

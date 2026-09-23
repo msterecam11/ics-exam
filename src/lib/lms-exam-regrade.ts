@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { checkCourseCompletion, checkLearningPathCompletion, checkCohortCompletion } from "@/lib/lms-completion"
+import { checkCourseCompletion } from "@/lib/lms-completion"
 
 // Re-applies a CURRENT final-exam pass mark to stored attempts.
 //
@@ -103,8 +103,6 @@ export async function reapplyExamPassMark(courseId: string, opts?: { programId?:
   for (const enrollmentId of newlyPassed) {
     const studentId = studentByEnrollment.get(enrollmentId)!
     await checkCourseCompletion(studentId, courseId, enrollmentId)
-    await checkLearningPathCompletion(studentId, courseId)
-    await checkCohortCompletion(studentId, courseId)
   }
 
   // An enrollment with several attempts may have lost one passing attempt but

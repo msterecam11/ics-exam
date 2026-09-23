@@ -13,7 +13,7 @@ export async function GET(
   const { id } = await params
   if (!(await canSeeStudent(g.scope, id))) return NextResponse.json({ error: "Student not found" }, { status: 404 })
 
-  const [{ data: student, error: sErr }, { data: enrollments }, { data: paths }] = await Promise.all([
+  const [{ data: student, error: sErr }, { data: enrollments }] = await Promise.all([
     db.from("lms_students")
       .select("id, name, email, job_title, company, company_id, employee_number, phone, department, language, last_login, created_at, lms_companies(id, name, code, status)")
       .eq("id", id)
@@ -23,24 +23,9 @@ export async function GET(
       .select("id, status, enrolled_at, completed_at, progress_pct, program_id, lms_courses(id, title, status), lms_programs(id, name)")
       .eq("student_id", id)
       .order("enrolled_at", { ascending: false }),
-    db.from("lms_learning_path_members")
-      .select("added_at, lms_learning_paths(id, title)")
-      .eq("student_id", id)
-      .order("added_at", { ascending: false }),
   ])
 
   if (sErr || !student) return NextResponse.json({ error: "Not found" }, { status: 404 })
-
-  // Quiz attempts (in-content quizzes)
-  const { data: quizAttempts } = await db
-    .from("lms_quiz_attempts")
-    .select(`
-      id, score, total_score, passed, submitted_at,
-      lms_quizzes(id, title)
-    `)
-    .eq("student_id", id)
-    .order("submitted_at", { ascending: false })
-    .limit(200) as any
 
   // Assignment submissions — use module_id direct join, instructor_note instead of feedback
   const { data: assignmentSubs } = await db
@@ -104,26 +89,6 @@ export async function GET(
     }
   })
 
-  // Cohort memberships
-  const { data: cohortRows } = await db
-    .from("lms_cohort_members")
-    .select("added_at, track_id, lms_cohorts(id, name, mode, start_date, end_date)")
-    .eq("student_id", id)
-    .order("added_at", { ascending: false })
-
-  const cohorts = (cohortRows ?? [])
-    .filter((c: any) => c.lms_cohorts)
-    .map((c: any) => ({
-      added_at:   c.added_at,
-      track_id:   c.track_id ?? null,
-      id:         c.lms_cohorts.id,
-      name:       c.lms_cohorts.name,
-      description: null,
-      mode:       c.lms_cohorts.mode ?? "unified",
-      start_date: c.lms_cohorts.start_date ?? null,
-      end_date:   c.lms_cohorts.end_date ?? null,
-    }))
-
   return NextResponse.json({
     student,
     enrollments: (enrollments ?? []).map((e: any) => ({
@@ -135,12 +100,6 @@ export async function GET(
       program:      e.lms_programs ?? null,
       course:       e.lms_courses,
     })),
-    learning_paths: (paths ?? []).map((p: any) => ({
-      added_at: p.added_at,
-      ...p.lms_learning_paths,
-    })),
-    cohorts,
-    quiz_attempts:          quizAttempts      ?? [],
     assignment_submissions: assignmentSubs    ?? [],
     exam_summaries,
   })

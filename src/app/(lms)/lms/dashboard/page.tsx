@@ -42,21 +42,14 @@ export default async function StudentDashboard() {
 
   // ── Step 2: all queries in parallel ──────────────────────────
   const [
-    lastProgressResult,
     sessionsResult,
     lastLoginResult,
-    recentProgResult,
     lastPkgResult,
     recentPkgResult,
     programs,
     certificatesResult,
     locks,
   ] = await Promise.all([
-    db.from("lms_progress")
-      .select("content_item_id, course_id, updated_at, position, lms_content_items(id, title, type)")
-      .in("enrollment_id", enrollmentIds).eq("status", "in_progress")
-      .order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-
     sessionsForViewers<any>(viewers,
       "id, title, session_date, start_time, location, meeting_link, duration_minutes",
       q => q.gte("session_date", today).is("closed_at", null).order("session_date", { ascending: true }).order("start_time", { ascending: true }),
@@ -64,16 +57,6 @@ export default async function StudentDashboard() {
 
     db.from("lms_students").select("last_login").eq("id", student.id).single(),
 
-    db.from("lms_progress")
-      .select("content_item_id, course_id, updated_at, lms_content_items(title, type)")
-      .in("enrollment_id", enrollmentIds).eq("status", "completed")
-      .order("updated_at", { ascending: false }).limit(4),
-
-    // The "resume" card and "Recent Activity" were built only on lms_progress
-    // (content items). Courses are delivered as packages — lms_content_items
-    // and lms_progress are empty — so neither ever appeared for any student,
-    // and someone midway through a course got no call to action at all (the
-    // "Ready to start?" fallback only shows at 0%). Read package progress too.
     courseIds.length
       ? db.from("lms_package_progress")
           .select("module_id, course_id, current_item_index, updated_at, lms_packages(title, lms_modules(title))")
@@ -116,45 +99,22 @@ export default async function StudentDashboard() {
   }
 
   // ── Derived ───────────────────────────────────────────────────
-  // One resume target from whichever source was touched most recently —
-  // a content item or a package.
   type Resume = { href: string; title: string; detail: string; at: string }
-  const resumeCandidates: Resume[] = []
-  const contentResume = lastProgressResult.data as any
-  if (contentResume) {
-    const pos = contentResume.position ?? {}
-    resumeCandidates.push({
-      href:   `/lms/courses/${contentResume.course_id}/content/${contentResume.content_item_id}`,
-      title:  (contentResume.lms_content_items as any)?.title ?? "Continue studying",
-      detail: [
-        (contentResume.lms_content_items as any)?.type ?? "",
-        pos.second != null ? `${Math.floor(pos.second / 60)}m${pos.second % 60}s` : "",
-        pos.page   != null ? `page ${pos.page}`   : "",
-        pos.slide  != null ? `slide ${pos.slide}` : "",
-      ].filter(Boolean).join(" · "),
-      at: contentResume.updated_at,
-    })
-  }
   const pkgResume = lastPkgResult.data as any
-  if (pkgResume?.module_id && pkgResume?.course_id) {
-    resumeCandidates.push({
+  const resumeItem: Resume | null = pkgResume?.module_id && pkgResume?.course_id
+    ? {
       href:   `/lms/courses/${pkgResume.course_id}/package/${pkgResume.module_id}`,
       // Package rows are all titled just "Package"; the module carries the real name.
       title:  (pkgResume.lms_packages as any)?.lms_modules?.title ?? (pkgResume.lms_packages as any)?.title ?? "Continue studying",
       detail: pkgResume.current_item_index != null ? `item ${pkgResume.current_item_index + 1}` : "",
       at:     pkgResume.updated_at,
-    })
-  }
-  const resumeItem: Resume | null =
-    resumeCandidates.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))[0] ?? null
+    }
+    : null
   const sessions         = (sessionsResult.data ?? []) as any[]
   const todaySessions    = sessions.filter(s => s.session_date === today)
   const upcomingSessions = sessions.filter(s => s.session_date > today)
-  // Completed content items and completed packages, newest first.
+  // Completed modules, newest first.
   const recentProg: { key: string; title: string; at: string }[] = [
-    ...((recentProgResult.data ?? []) as any[]).map((p: any) => ({
-      key: `ci-${p.content_item_id}`, title: (p.lms_content_items as any)?.title ?? "item", at: p.updated_at,
-    })),
     ...((recentPkgResult.data ?? []) as any[]).map((p: any) => ({
       key: `pkg-${p.package_id}`, title: (p.lms_packages as any)?.lms_modules?.title ?? (p.lms_packages as any)?.title ?? "module", at: p.completed_at ?? p.updated_at,
     })),

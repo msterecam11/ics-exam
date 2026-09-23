@@ -6,10 +6,8 @@ import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import {
-  CheckCircle2, PlayCircle, FileText, Image as ImageIcon,
-  Link2, ListOrdered, HelpCircle, ClipboardList,
-  Lock, Globe, Monitor, Layers, Clock, ChevronRight,
-  CalendarDays, MapPin, Video, FlaskConical, GraduationCap, History, Award, Star,
+  CheckCircle2, Lock, Globe, Monitor, Layers, Clock, ChevronRight,
+  CalendarDays, MapPin, Video, History, Award, Star,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -19,34 +17,6 @@ import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 import { getFeedbackState } from "@/lib/lms-feedback"
 
 // ── Icons & labels ────────────────────────────────────────────
-const CONTENT_ICONS: Record<string, React.ElementType> = {
-  video:         PlayCircle,
-  ppt:           FileText,
-  pdf:           FileText,
-  text:          FileText,
-  image:         ImageIcon,
-  link:          Link2,
-  steps:         ListOrdered,
-  quiz:          HelpCircle,
-  progress_test: FlaskConical,
-  final_exam:    GraduationCap,
-  assignment:    ClipboardList,
-}
-
-const CONTENT_COLORS: Record<string, string> = {
-  video:         "text-purple-600 bg-purple-50",
-  ppt:           "text-orange-600 bg-orange-50",
-  pdf:           "text-red-600 bg-red-50",
-  text:          "text-slate-600 bg-slate-100",
-  image:         "text-pink-600 bg-pink-50",
-  link:          "text-blue-600 bg-blue-50",
-  steps:         "text-teal-600 bg-teal-50",
-  quiz:          "text-amber-600 bg-amber-50",
-  progress_test: "text-blue-600 bg-blue-50",
-  final_exam:    "text-amber-700 bg-amber-100",
-  assignment:    "text-green-600 bg-green-50",
-}
-
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
   online: Globe, onsite: Monitor, hybrid: Layers,
 }
@@ -136,13 +106,10 @@ export default async function StudentCoursePage({
   }
   const runCert = new Map<string, boolean>(((runCerts ?? []) as any[]).map(c => [c.enrollment_id, !!c.released_at && !c.revoked_at]))
 
-  // Fetch modules with content
+  // Fetch modules
   const { data: modules } = await db
     .from("lms_modules")
-    .select(`
-      id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings,
-      lms_content_items(id, title, type, order_index, is_mandatory, download_allowed, completion_rule)
-    `)
+    .select("id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings")
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })
 
@@ -175,16 +142,6 @@ export default async function StudentCoursePage({
   ).reverse() // chronological
   const pastSessions = (liveSessions ?? []).filter(
     (s: any) => s.session_date < today || s.closed_at
-  )
-
-  // Fetch student's progress for this course (content items)
-  const { data: progressRows } = await db
-    .from("lms_progress")
-    .select("content_item_id, status, position")
-    .eq("enrollment_id", current.id)
-
-  const progressMap = new Map(
-    (progressRows ?? []).map((p: any) => [p.content_item_id, p])
   )
 
   // Fetch package progress for package modules
@@ -290,14 +247,8 @@ export default async function StudentCoursePage({
         examBlocked,
       }
     }
-    const items = (m.lms_content_items ?? [])
-      .sort((a: any, b: any) => a.order_index - b.order_index)
-    const mandatory = items.filter((i: any) => i.is_mandatory)
-    const doneCount = mandatory.filter(
-      (i: any) => progressMap.get(i.id)?.status === "completed"
-    ).length
-    const pct = mandatory.length > 0 ? Math.round(doneCount / mandatory.length * 100) : 0
-    return { ...m, items, mandatory, doneCount, pct, pkgStatus: null, pkgScore: null, examAttempt: null }
+    // Assignment / live-session modules: no tracked progress yet (onsite work).
+    return { ...m, items: [], mandatory: [], doneCount: 0, pct: 0, pkgStatus: null, pkgScore: null, examAttempt: null }
   })
 
   // Compute locked state per module based on lock_until_previous
@@ -672,71 +623,9 @@ export default async function StudentCoursePage({
                     {cardInner}
                   </div>
                 ) : (
-                  <>
-                    {/* Multi-item modules: non-clickable header */}
-                    <div className="flex items-center gap-4 px-5 py-4 border-b border-slate-100">
-                      {cardInner}
-                    </div>
-
-                    {/* Content items */}
-                    <div className="divide-y divide-slate-50">
-                      {mod.items.map((item: any, ci: number) => {
-                        const prog   = progressMap.get(item.id)
-                        const done   = prog?.status === "completed"
-                        const inProg = prog?.status === "in_progress"
-                        const Icon   = CONTENT_ICONS[item.type] ?? FileText
-                        const color  = CONTENT_COLORS[item.type] ?? "text-slate-600 bg-slate-100"
-
-                        let locked = !!courseNotStarted || lock.locked
-                        if (!locked && course.progress_enforcement && ci > 0) {
-                          const prevMandatory = mod.items.slice(0, ci).filter((i: any) => i.is_mandatory)
-                          locked = prevMandatory.some((i: any) => progressMap.get(i.id)?.status !== "completed")
-                        }
-
-                        const itemInner = (
-                          <>
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", color)}>
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className={cn("text-sm font-medium", done ? "text-slate-400 line-through" : "text-slate-800")}>
-                                {item.title}
-                              </p>
-                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                <span className="text-xs text-slate-400 uppercase">{item.type}</span>
-                                {!item.is_mandatory && <span className="text-xs text-slate-300">Optional</span>}
-                                {inProg && prog?.position && (
-                                  <span className="text-[10px] font-medium bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                                    ▶ Resume
-                                    {prog.position.second != null && ` ${Math.floor(prog.position.second / 60)}m${prog.position.second % 60}s`}
-                                    {prog.position.page  != null && ` p.${prog.position.page}`}
-                                    {prog.position.slide != null && ` slide ${prog.position.slide}`}
-                                    {prog.position.step  != null && ` step ${prog.position.step}`}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="shrink-0">
-                              {locked ? <Lock className="h-4 w-4 text-slate-300" />
-                               : done  ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                               : <ChevronRight className="h-4 w-4 text-slate-300" />}
-                            </div>
-                          </>
-                        )
-
-                        return locked ? (
-                          <div key={item.id} className="flex items-center gap-4 px-5 py-3.5 opacity-50 cursor-not-allowed select-none">
-                            {itemInner}
-                          </div>
-                        ) : (
-                          <Link key={item.id} href={`/lms/courses/${courseId}/content/${item.id}`}
-                            className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50">
-                            {itemInner}
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  </>
+                  <div className="flex items-center gap-4 px-5 py-4">
+                    {cardInner}
+                  </div>
                 )}
               </div>
             )

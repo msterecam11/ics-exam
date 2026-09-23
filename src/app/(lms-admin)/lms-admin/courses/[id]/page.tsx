@@ -2,20 +2,12 @@
 
 import { use, useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
-import dynamic from "next/dynamic"
 import {
-  ArrowLeft, Plus, ChevronDown, ChevronRight,
-  Trash2, Edit2, Users, Globe, Monitor, Layers,
-  Loader2, CheckCircle2, Send, Archive,
-  Eye, Smartphone, Settings, UserPlus, UserX,
-  MoreVertical, BarChart2, Search, X,
-  GraduationCap, FlaskConical, BookOpen,
-  Camera, Clock, Tag, Shield, RefreshCw, Award,
-  FileText, HelpCircle, ClipboardList,
-  FileVideo, Image, Link2, ListOrdered,
-  MessageSquare, Star, Download, ExternalLink,
-  Layers2, MoreHorizontal, Lock, GripVertical,
-  ChevronUp, Sparkles,
+  ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, Edit2, Globe,
+  Monitor, Layers, Loader2, CheckCircle2, Send, Archive, Smartphone,
+  Settings, MoreVertical, X, GraduationCap, FlaskConical, BookOpen,
+  Camera, Clock, RefreshCw, Award, FileText, ClipboardList,
+  MessageSquare, ExternalLink, GripVertical, ChevronUp, Sparkles,
 } from "lucide-react"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -29,7 +21,6 @@ import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
@@ -43,66 +34,6 @@ import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/Course
 import { ProviderSelect } from "@/components/lms/ProviderSelect"
 import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
 
-// Dynamically import TipTap editor (browser-only)
-const RichTextEditor = dynamic(() => import("@/components/lms/RichTextEditor").then(m => ({ default: m.RichTextEditor })), {
-  ssr: false,
-  loading: () => (
-    <div className="border border-slate-200 rounded-xl h-48 flex items-center justify-center">
-      <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
-    </div>
-  ),
-})
-
-
-// Dynamically import activity editor (quiz / test / exam)
-const ActivityEditor = dynamic(() => import("@/components/lms/ActivityEditor"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-32">
-      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
-    </div>
-  ),
-})
-
-// Dynamically import assignment editor
-const AssignmentEditor = dynamic(() => import("@/components/lms/AssignmentEditor"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-32">
-      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
-    </div>
-  ),
-})
-
-// Dynamically import module settings panel
-const ModuleSettingsPanel = dynamic(() => import("@/components/lms/ModuleSettingsPanel"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-32">
-      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
-    </div>
-  ),
-})
-
-// Dynamically import package editor (WYSIWYG builder)
-const PackageBuilder = dynamic(() => import("@/components/lms/PackageEditor"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-32">
-      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
-    </div>
-  ),
-})
-
-// Dynamically import package reports
-const PackageReports = dynamic(() => import("@/components/lms/PackageReports"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-32">
-      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
-    </div>
-  ),
-})
 
 
 // ── Types ──────────────────────────────────────────────────────
@@ -122,11 +53,6 @@ interface Course {
   capacity: number | null; enrollment_count: number
   updated_at: string | null
   feedback_enabled: boolean; feedback_anonymous: boolean
-}
-interface ContentItem {
-  id: string; title: string; type: string
-  order_index: number; download_allowed: boolean
-  is_mandatory: boolean; content?: Record<string, any>
 }
 interface LibraryFile {
   id: string; name: string; original_name: string
@@ -160,55 +86,12 @@ interface Module {
   available_from?: string | null
   available_until?: string | null
   show_in_progress?: boolean
-  lms_content_items: ContentItem[]
   expanded?: boolean
 }
-interface Enrollment {
-  id: string; status: string; enrolled_at: string
-  completed_at: string | null; progress_pct: number; time_spent_s?: number
-  lms_students: { id: string; name: string; email: string; company?: string }
-}
-
-// Seconds → compact "2h 15m" / "45m" / "30s" / "—"
-function fmtTime(s?: number) {
-  if (!s || s < 1) return "—"
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
-  if (h > 0) return `${h}h${m > 0 ? ` ${m}m` : ""}`
-  if (m > 0) return `${m}m`
-  return `${s}s`
-}
-
 // ── Constants ──────────────────────────────────────────────────
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
   online: Globe, onsite: Monitor, hybrid: Layers,
 }
-const CONTENT_ICONS: Record<string, React.ElementType> = {
-  video: FileVideo, ppt: FileText, pdf: FileText, text: FileText,
-  image: Image, link: Link2, steps: ListOrdered, quiz: HelpCircle,
-  progress_test: FlaskConical, final_exam: GraduationCap, assignment: ClipboardList,
-}
-const CONTENT_COLORS: Record<string, string> = {
-  video: "text-purple-600 bg-purple-50", ppt: "text-orange-600 bg-orange-50",
-  pdf: "text-red-600 bg-red-50", text: "text-slate-600 bg-slate-100",
-  image: "text-pink-600 bg-pink-50", link: "text-blue-600 bg-blue-50",
-  steps: "text-teal-600 bg-teal-50", quiz: "text-amber-600 bg-amber-50",
-  progress_test: "text-blue-600 bg-blue-50", final_exam: "text-amber-700 bg-amber-100",
-  assignment: "text-green-600 bg-green-50",
-}
-const CONTENT_TYPES = [
-  { value: "video", label: "Video", group: "media" },
-  { value: "ppt", label: "PowerPoint / Slides", group: "media" },
-  { value: "pdf", label: "PDF Document", group: "media" },
-  { value: "image", label: "Image", group: "media" },
-  { value: "link", label: "External Link", group: "media" },
-  { value: "text", label: "Text / Rich Content", group: "media" },
-  { value: "steps", label: "Step-by-Step Guide", group: "media" },
-  { value: "quiz", label: "Quiz", group: "assessment" },
-  { value: "progress_test", label: "Progress Test", group: "assessment" },
-  { value: "final_exam", label: "Final Exam", group: "assessment" },
-  { value: "assignment", label: "Assignment", group: "assessment" },
-]
-
 type ActiveView = "overview" | "users" | "settings" | "ai-report" | string // string = module id
 type SaveStatus = "saved" | "saving" | "unsaved"
 
@@ -313,7 +196,7 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
     toast.success(editing ? "Module updated" : "Module created")
     onSaved(editing
       ? { ...editing, ...data }
-      : { ...data, module_type: moduleType, lms_content_items: [], expanded: true }
+      : { ...data, module_type: moduleType, expanded: true }
     )
     onClose()
   }
@@ -445,149 +328,6 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
 }
 
 // ──────────────────────────────────────────────────────────────
-// CONTENT MODAL
-// ──────────────────────────────────────────────────────────────
-function ContentModal({ open, onClose, moduleId, editing, onSaved, defaultType }: {
-  open: boolean; onClose: () => void; moduleId: string
-  editing: ContentItem | null; onSaved: (c: ContentItem) => void
-  defaultType?: string
-}) {
-  const [title, setTitle] = useState(""); const [type, setType] = useState(defaultType ?? "video")
-  const [url, setUrl] = useState(""); const [download, setDownload] = useState(false)
-  const [isMandatory, setIsMandatory] = useState(true); const [saving, setSaving] = useState(false)
-  const [quizzes, setQuizzes] = useState<{ id: string; title: string; question_count: number }[]>([])
-  const [selQuizId, setSelQuizId] = useState(""); const [loadingQz, setLoadingQz] = useState(false)
-  const [assignInstructions, setAssignInstructions] = useState("")
-  const [assignMaxScore, setAssignMaxScore] = useState("100")
-  const [assignAllowText, setAssignAllowText] = useState(true)
-  const [assignAllowFile, setAssignAllowFile] = useState(true)
-
-  useEffect(() => {
-    if (open) {
-      setTitle(editing?.title ?? ""); setType(editing?.type ?? defaultType ?? "video")
-      setUrl(editing?.content?.url ?? ""); setDownload(editing?.download_allowed ?? false)
-      setIsMandatory(editing?.is_mandatory ?? true); setSelQuizId(editing?.content?.quiz_id ?? "")
-      if (editing?.type === "assignment") {
-        setAssignInstructions(editing.content?.instructions ?? "")
-        setAssignMaxScore(editing.content?.max_score ? String(editing.content.max_score) : "100")
-        setAssignAllowText(editing.content?.allow_text !== false)
-        setAssignAllowFile(editing.content?.allow_file !== false)
-      }
-    }
-  }, [open, editing])
-
-  const isQuizLike  = ["quiz", "progress_test", "final_exam"].includes(type)
-  const isAssignment = type === "assignment"
-  const needsUrl    = ["video", "ppt", "pdf", "image", "link"].includes(type)
-
-  useEffect(() => {
-    if (isQuizLike && quizzes.length === 0) {
-      setLoadingQz(true)
-      fetch("/api/lms/quizzes").then(r => r.json()).then(data => { setQuizzes(Array.isArray(data) ? data : []); setLoadingQz(false) })
-    }
-  }, [isQuizLike, quizzes.length])
-
-  function buildContent() {
-    if (type === "video")  return { url }
-    if (type === "ppt")    return { url }
-    if (type === "pdf")    return { url }
-    if (type === "image")  return { url }
-    if (type === "link")   return { url, open_in_tab: true }
-    if (type === "text")   return editing?.content ?? { html_en: "", html_ar: "" }
-    if (type === "steps")  return editing?.content ?? { steps: [] }
-    if (isQuizLike)        return { quiz_id: selQuizId }
-    if (isAssignment)      return { instructions: assignInstructions.trim() || null, max_score: assignMaxScore ? parseFloat(assignMaxScore) : null, allow_text: assignAllowText, allow_file: assignAllowFile }
-    return {}
-  }
-
-  const canSubmit = title.trim() && (!needsUrl || url) && (!isQuizLike || selQuizId)
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!canSubmit) return; setSaving(true)
-    const res = editing
-      ? await fetch("/api/lms/content", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, title: title.trim(), download_allowed: download, is_mandatory: isMandatory, content: buildContent() }) })
-      : await fetch("/api/lms/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module_id: moduleId, title: title.trim(), type, content: buildContent(), download_allowed: download, is_mandatory: isMandatory, completion_rule: { type: isQuizLike ? "quiz" : "click" } }) })
-    const data = await res.json(); setSaving(false)
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    if (!editing && isQuizLike && selQuizId) {
-      await fetch("/api/lms/quizzes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selQuizId, content_item_id: data.id }) })
-    }
-    toast.success(editing ? "Updated" : "Added"); onSaved(data); onClose()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? "Edit Content" : "Add Content"}</DialogTitle></DialogHeader>
-        <form onSubmit={submit} className="space-y-4 py-2">
-          <div className="space-y-1">
-            <Label>Title <span className="text-red-500">*</span></Label>
-            <Input value={title} onChange={e => setTitle(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label>Type {editing && <span className="text-slate-400 text-xs ml-1">(cannot change)</span>}</Label>
-            <select value={type} onChange={e => { if (!editing) { setType(e.target.value); setSelQuizId("") } }} disabled={!!editing} className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm disabled:opacity-60">
-              <optgroup label="Media & Learning">
-                {CONTENT_TYPES.filter(t => t.group === "media").map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </optgroup>
-              <optgroup label="Assessments">
-                {CONTENT_TYPES.filter(t => t.group === "assessment").map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </optgroup>
-            </select>
-          </div>
-          {needsUrl && (
-            <div className="space-y-1">
-              <Label>URL <span className="text-red-500">*</span></Label>
-              <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." />
-            </div>
-          )}
-          {isAssignment && (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label>Instructions</Label>
-                <textarea value={assignInstructions} onChange={e => setAssignInstructions(e.target.value)} rows={3} className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm resize-none" />
-              </div>
-              <div className="flex gap-3 items-end">
-                <div className="flex-1 space-y-1">
-                  <Label>Max Score</Label>
-                  <Input type="number" min={0} value={assignMaxScore} onChange={e => setAssignMaxScore(e.target.value)} />
-                </div>
-                <div className="space-y-2 pb-1">
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" checked={assignAllowText} onChange={e => setAssignAllowText(e.target.checked)} /> Text</label>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" checked={assignAllowFile} onChange={e => setAssignAllowFile(e.target.checked)} /> File</label>
-                </div>
-              </div>
-            </div>
-          )}
-          {isQuizLike && (
-            <div className="space-y-1">
-              <Label>Quiz <span className="text-red-500">*</span></Label>
-              {loadingQz ? <div className="text-sm text-slate-400">Loading…</div>
-              : quizzes.length === 0 ? <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">No quizzes found. <a href="/lms-admin/quizzes" target="_blank" className="underline">Create one →</a></p>
-              : <select value={selQuizId} onChange={e => setSelQuizId(e.target.value)} required disabled={!!editing} className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm">
-                  <option value="">— Choose —</option>
-                  {quizzes.map(q => <option key={q.id} value={q.id}>{q.title} ({q.question_count}q)</option>)}
-                </select>}
-            </div>
-          )}
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={isMandatory} onChange={e => setIsMandatory(e.target.checked)} /> Mandatory</label>
-            {!isQuizLike && !isAssignment && <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} /> Download</label>}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving || !canSubmit} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? "Save" : "Add"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-
-// ──────────────────────────────────────────────────────────────
 // TEST AS STUDENT MODAL
 // ──────────────────────────────────────────────────────────────
 function TestAsStudentModal({ open, onClose, courseId }: { open: boolean; onClose: () => void; courseId: string }) {
@@ -631,81 +371,6 @@ function TestAsStudentModal({ open, onClose, courseId }: { open: boolean; onClos
               </div>
             ))}
           </div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────
-// ASSIGNMENT SUBMISSIONS MODAL
-// ──────────────────────────────────────────────────────────────
-function AssignmentSubmissionsModal({ open, onClose, item, courseId }: {
-  open: boolean; onClose: () => void; item: ContentItem | null; courseId: string
-}) {
-  const [submissions, setSubmissions] = useState<any[]>([]); const [loading, setLoading] = useState(true)
-  const [grading, setGrading] = useState<string | null>(null)
-  const [scoreInput, setScoreInput] = useState(""); const [feedInput, setFeedInput] = useState("")
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!open || !item) return; setLoading(true)
-    fetch(`/api/lms/assignments?content_item_id=${item.id}`).then(r => r.json()).then(data => { setSubmissions(Array.isArray(data) ? data : []); setLoading(false) })
-  }, [open, item])
-
-  async function grade(subId: string) {
-    setSaving(true)
-    const res = await fetch("/api/lms/assignments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: subId, status: "graded", score: scoreInput ? parseFloat(scoreInput) : null, feedback: feedInput.trim() || null }) })
-    const data = await res.json(); setSaving(false)
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    setSubmissions(prev => prev.map(s => s.id === subId ? data : s)); setGrading(null); toast.success("Graded!")
-  }
-
-  const maxScore = item?.content?.max_score ?? null
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader><DialogTitle>Submissions — {item?.title}</DialogTitle></DialogHeader>
-        <div className="flex-1 overflow-y-auto space-y-3 py-2">
-          {loading ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
-          : submissions.length === 0 ? <div className="text-center py-10 text-slate-400"><ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" /><p>No submissions yet</p></div>
-          : submissions.map(sub => {
-            const student = sub.lms_students ?? {}; const isGrading = grading === sub.id
-            return (
-              <div key={sub.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b">
-                  <div className="w-8 h-8 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] font-bold text-sm flex items-center justify-center shrink-0">{student.name?.[0]?.toUpperCase() ?? "?"}</div>
-                  <div className="flex-1 min-w-0"><p className="font-medium text-slate-900 text-sm">{student.name}</p><p className="text-xs text-slate-500">{student.email}</p></div>
-                  <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", sub.status === "graded" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{sub.status}</span>
-                  <p className="text-xs text-slate-400">{new Date(sub.submitted_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
-                </div>
-                <div className="px-4 py-3 space-y-2">
-                  {sub.text_response && <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3 whitespace-pre-line max-h-32 overflow-y-auto">{sub.text_response}</p>}
-                  {sub.file_url && <a href={sub.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-[#1B4F8A] hover:underline"><Download className="h-3.5 w-3.5" /> {sub.file_name ?? "Download"}</a>}
-                </div>
-                {isGrading ? (
-                  <div className="px-4 pb-4 space-y-2 border-t pt-3">
-                    <div className="flex gap-2 items-start">
-                      <div className="flex-1"><Label className="text-xs">Feedback</Label><textarea value={feedInput} onChange={e => setFeedInput(e.target.value)} rows={2} className="w-full mt-1 rounded-lg border px-3 py-2 text-sm resize-none" /></div>
-                      {maxScore && <div className="w-24 shrink-0"><Label className="text-xs">Score/{maxScore}</Label><Input type="number" min={0} max={maxScore} value={scoreInput} onChange={e => setScoreInput(e.target.value)} className="mt-1 h-9" /></div>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => grade(sub.id)} disabled={saving} className="bg-[#1B4F8A] text-white gap-1.5">{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Save</Button>
-                      <Button size="sm" variant="outline" onClick={() => setGrading(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="px-4 pb-3 flex items-center justify-between border-t pt-2">
-                    {sub.status === "graded" ? <div className="text-sm">Score: <strong>{sub.score ?? "—"}{maxScore ? `/${maxScore}` : ""}</strong></div> : <div />}
-                    <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={() => { setGrading(sub.id); setScoreInput(sub.score ? String(sub.score) : ""); setFeedInput(sub.feedback ?? "") }}>
-                      <Star className="h-3 w-3" /> {sub.status === "graded" ? "Re-grade" : "Grade"}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
@@ -922,76 +587,6 @@ function OverviewList({ label, hint, placeholder, items, onChange }: {
       <button type="button" onClick={() => onChange([...list, ""])} className="mt-2 text-xs font-medium text-[#1B4F8A] hover:underline flex items-center gap-1">
         <Plus className="h-3.5 w-3.5" /> Add
       </button>
-    </div>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────
-// MODULE CONTENT VIEW  (content items accordion)
-// ──────────────────────────────────────────────────────────────
-function ModuleContentView({ mod, onAddContent, onEditContent, onDeleteContent }: {
-  mod: Module
-  onAddContent: (moduleId: string) => void
-  onEditContent: (item: ContentItem, moduleId: string) => void
-  onDeleteContent: (moduleId: string, itemId: string) => void
-}) {
-  return (
-    <div className="max-w-3xl mx-auto pb-16">
-      {/* Module header */}
-      <div className="mb-8">
-        <p className="text-xs font-semibold text-[#1B4F8A] uppercase tracking-wider mb-1">Module</p>
-        <h2 className="text-2xl font-bold text-slate-900">{mod.title}</h2>
-        {mod.description && <p className="text-slate-500 mt-1">{mod.description}</p>}
-        <div className="flex items-center gap-3 mt-2 text-sm text-slate-400">
-          {mod.estimated_duration && <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{mod.estimated_duration} min</span>}
-          <span className="capitalize flex items-center gap-1">
-            {(() => { const Icon = DELIVERY_ICONS[mod.delivery_type] ?? Globe; return <><Icon className="h-3.5 w-3.5" />{mod.delivery_type}</> })()}
-          </span>
-        </div>
-      </div>
-
-      {/* Content items */}
-      {mod.lms_content_items.length === 0 ? (
-        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 py-16 text-center">
-          <BookOpen className="h-10 w-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">This module is empty</p>
-          <p className="text-sm text-slate-400 mt-1 mb-5">Add videos, PDFs, quizzes, assignments and more</p>
-          <Button onClick={() => onAddContent(mod.id)} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
-            <Plus className="h-4 w-4" /> Add First Content Item
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {mod.lms_content_items.sort((a, b) => a.order_index - b.order_index).map((item, ci) => {
-            const Icon  = CONTENT_ICONS[item.type] ?? FileText
-            const color = CONTENT_COLORS[item.type] ?? "text-slate-600 bg-slate-100"
-            return (
-              <div key={item.id} className="bg-white rounded-xl border border-slate-200 flex items-center gap-3 px-4 py-3.5 hover:shadow-sm transition-shadow group">
-                <span className="text-xs text-slate-300 w-5 text-right shrink-0">{ci + 1}</span>
-                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", color)}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-slate-800">{item.title}</p>
-                  <p className="text-xs text-slate-400 capitalize mt-0.5">{item.type.replace("_", " ")}{!item.is_mandatory && " · Optional"}</p>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => onEditContent(item, mod.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-[#1B4F8A] hover:bg-[#1B4F8A]/5 transition-colors">
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => onDeleteContent(mod.id, item.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-          <button onClick={() => onAddContent(mod.id)}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:text-[#1B4F8A] hover:border-[#1B4F8A]/40 transition-all text-sm font-medium">
-            <Plus className="h-4 w-4" /> Add content item
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -2573,11 +2168,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
   // Modals
   const [moduleModal,     setModuleModal]     = useState(false)
   const [editingModule,   setEditingModule]   = useState<Module | null>(null)
-  const [contentModal,    setContentModal]    = useState<string | null>(null)
-  const [addingType,      setAddingType]      = useState<string | undefined>(undefined)
-  const [editingContent,  setEditingContent]  = useState<{ item: ContentItem; moduleId: string } | null>(null)
   const [testAsStudent,   setTestAsStudent]   = useState(false)
-  const [submissionsItem, setSubmissionsItem] = useState<ContentItem | null>(null)
   const [aiAnalyzing,     setAiAnalyzing]     = useState(false)
   const [aiReport,        setAiReport]        = useState<any>(null)
 
@@ -2640,15 +2231,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
     reorderModules(arrayMove(modules, from, to))
   }
 
-  async function deleteContent(moduleId: string, contentId: string) {
-    if (!confirm("Remove this content item?")) return
-    const res  = await fetch(`/api/lms/content?id=${contentId}`, { method: "DELETE" })
-    const data = await res.json()
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success("Removed")
-    setModules(prev => prev.map(m => m.id === moduleId ? { ...m, lms_content_items: m.lms_content_items.filter(c => c.id !== contentId) } : m))
-  }
-
   async function toggleStatus() {
     if (!course) return
     const newStatus = course.status === "published" ? "draft" : "published"
@@ -2687,23 +2269,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
     } finally {
       setAiAnalyzing(false)
     }
-  }
-
-  // Quick-add blocks that don't need a modal (divider, callout)
-  async function quickAddBlock(type: string, moduleId: string) {
-    const defaults: Record<string, { title: string; content: Record<string, any> }> = {
-      divider: { title: "Section Divider", content: {} },
-      callout: { title: "Important note", content: { variant: "info", text: "Add your note here" } },
-    }
-    const d = defaults[type]; if (!d) return
-    const res  = await fetch("/api/lms/content", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ module_id: moduleId, title: d.title, type, content: d.content, download_allowed: false, is_mandatory: false, completion_rule: { type: "click" } }),
-    })
-    const data = await res.json()
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    setModules(prev => prev.map(m => m.id === moduleId ? { ...m, lms_content_items: [...m.lms_content_items, data] } : m))
-    toast.success(`${type === "divider" ? "Divider" : "Callout"} added`)
   }
 
   const activeModule = typeof activeView === "string" && activeView !== "overview" && activeView !== "users" && activeView !== "settings"
@@ -2927,23 +2492,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
           else { setModules(prev => [...prev, m]); setActiveView(m.id) }
         }}
       />
-      <ContentModal
-        open={!!contentModal || !!editingContent}
-        onClose={() => { setContentModal(null); setEditingContent(null); setAddingType(undefined) }}
-        moduleId={editingContent?.moduleId ?? contentModal ?? ""}
-        editing={editingContent?.item ?? null}
-        defaultType={editingContent ? undefined : addingType}
-        onSaved={item => {
-          const targetId = editingContent?.moduleId ?? contentModal
-          setModules(prev => prev.map(m => {
-            if (m.id !== targetId) return m
-            if (editingContent) return { ...m, lms_content_items: m.lms_content_items.map(c => c.id === item.id ? item : c) }
-            return { ...m, lms_content_items: [...m.lms_content_items, item] }
-          }))
-        }}
-      />
       <TestAsStudentModal open={testAsStudent} onClose={() => setTestAsStudent(false)} courseId={courseId} />
-      <AssignmentSubmissionsModal open={!!submissionsItem} onClose={() => setSubmissionsItem(null)} item={submissionsItem} courseId={courseId} />
     </div>
   )
 }

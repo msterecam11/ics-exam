@@ -1,5 +1,4 @@
 import { db } from "@/lib/db"
-import { sendEmail, buildCompletionEmail } from "@/lib/email"
 import { sendRuleEmail, programEmailOverrides } from "@/lib/lms-email-settings"
 import { buildCourseCompletedEmail, buildCertificateEmail } from "@/lib/lms-email-templates"
 import { getCurrentEnrollment, type EnrollmentContext } from "@/lib/lms-enrollment"
@@ -251,216 +250,6 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
   }
 }
 
-// ── LEARNING PATH completion ───────────────────────────────────
-// Called after every course final exam pass.
-// Checks if this course belongs to any learning path the student is in,
-// and if ALL courses in that path now have their final exams passed.
-export async function checkLearningPathCompletion(studentId: string, courseId: string) {
-  try {
-    // Find all paths that contain this course
-    const { data: pathLinks } = await db
-      .from("lms_learning_path_courses")
-      .select("path_id")
-      .eq("course_id", courseId)
-
-    if (!pathLinks?.length) return
-
-    const pathIds = pathLinks.map((p: any) => p.path_id)
-
-    // Filter to paths the student is actually enrolled in
-    const { data: memberLinks } = await db
-      .from("lms_learning_path_members")
-      .select("path_id")
-      .eq("student_id", studentId)
-      .in("path_id", pathIds)
-
-    if (!memberLinks?.length) return
-
-    for (const { path_id } of memberLinks) {
-      // Get all course IDs in this path
-      const { data: pathCourses } = await db
-        .from("lms_learning_path_courses")
-        .select("course_id")
-        .eq("path_id", path_id)
-
-      if (!pathCourses?.length) continue
-      const allCourseIds = pathCourses.map((pc: any) => pc.course_id)
-
-      // Every course must have a final exam (mandatory or not — the exam is
-      // the completion gate regardless of its is_mandatory flag).
-      const { data: finalExams } = await db
-        .from("lms_modules")
-        .select("id")
-        .in("course_id", allCourseIds)
-        .eq("module_type", "final_exam")
-
-      // Every course in the path must have a final exam
-      if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
-
-      // Count DISTINCT exams passed, not passing attempt rows. Counting rows
-      // meant one exam passed on N separate retakes satisfied an N-course
-      // requirement — so a learner could earn the whole path/cohort certificate
-      // having actually completed a single course. Retaking after a pass is
-      // allowed (the limit only blocks at max_attempts), so this was reachable.
-      const { data: passedRows } = await db
-        .from("lms_module_attempts")
-        .select("module_id, enrollment_id")
-        .eq("student_id", studentId)
-        .eq("passed", true)
-        .in("module_id", finalExams.map((e: any) => e.id))
-
-      const passedCount = new Set((passedRows ?? []).map((r: any) => r.module_id)).size
-
-      if ((passedCount ?? 0) < finalExams.length) continue
-
-      // All passed — fetch path settings
-      const { data: path } = await db
-        .from("lms_learning_paths")
-        .select("title, certificate_enabled")
-        .eq("id", path_id)
-        .single()
-
-      if (!path || (path as any).certificate_enabled === false) continue
-
-      const certNumber = await issueCertificate({
-        studentId,
-        title:    path.title,
-        type:     "learning_path",
-        sourceId: path_id,
-      })
-
-      // Notify the student — only when a new certificate was actually issued
-      if (certNumber) {
-        const { data: student } = await db
-          .from("lms_students").select("name, email").eq("id", studentId).single()
-        if (student?.email) {
-          const { subject, html } = buildCompletionEmail({
-            studentName: student.name,
-            courseTitle: path.title,
-            completedAt: new Date().toISOString(),
-            kind: "learning path",
-          })
-          sendEmail({ type: "completion", to: student.email, subject, html, studentId }).catch(() => {})
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[completion] checkLearningPathCompletion failed", { studentId, courseId, err })
-  }
-}
-
-// ── COHORT completion ──────────────────────────────────────────
-// Called after every course final exam pass.
-// Unified mode:        all cohort courses must be passed.
-// Specialization mode: all courses in the student's assigned track must be passed.
-export async function checkCohortCompletion(studentId: string, courseId: string) {
-  try {
-    // Find all cohorts this student is a member of
-    const { data: memberRows } = await db
-      .from("lms_cohort_members")
-      .select("cohort_id, track_id")
-      .eq("student_id", studentId)
-
-    if (!memberRows?.length) return
-
-    for (const { cohort_id, track_id } of memberRows) {
-      const { data: cohort } = await db
-        .from("lms_cohorts")
-        .select("mode, name, certificate_enabled")
-        .eq("id", cohort_id)
-        .single()
-
-      if (!cohort || (cohort as any).certificate_enabled === false) continue
-
-      const mode = (cohort as any).mode ?? "unified"
-      let allCourseIds: string[] = []
-      let trackName: string | undefined
-
-      if (mode === "unified") {
-        const { data: cohortCourses } = await db
-          .from("lms_cohort_courses")
-          .select("course_id")
-          .eq("cohort_id", cohort_id)
-
-        if (!cohortCourses?.length) continue
-        allCourseIds = cohortCourses.map((c: any) => c.course_id)
-
-        // Only proceed if this course belongs to this cohort
-        if (!allCourseIds.includes(courseId)) continue
-
-      } else {
-        // Specialization: student must be assigned to a track
-        if (!track_id) continue
-
-        const [{ data: trackData }, { data: trackCourses }] = await Promise.all([
-          db.from("lms_cohort_tracks").select("name").eq("id", track_id).single(),
-          db.from("lms_cohort_track_courses").select("course_id").eq("track_id", track_id),
-        ])
-
-        if (!trackCourses?.length) continue
-        allCourseIds = trackCourses.map((c: any) => c.course_id)
-        trackName = trackData?.name
-
-        // Only proceed if this course belongs to the student's track
-        if (!allCourseIds.includes(courseId)) continue
-      }
-
-      // Every course must have a final exam (mandatory or not — the exam is
-      // the completion gate regardless of its is_mandatory flag).
-      const { data: finalExams } = await db
-        .from("lms_modules")
-        .select("id")
-        .in("course_id", allCourseIds)
-        .eq("module_type", "final_exam")
-
-      if (!finalExams?.length || finalExams.length !== allCourseIds.length) continue
-
-      // Count DISTINCT exams passed, not passing attempt rows. Counting rows
-      // meant one exam passed on N separate retakes satisfied an N-course
-      // requirement — so a learner could earn the whole path/cohort certificate
-      // having actually completed a single course. Retaking after a pass is
-      // allowed (the limit only blocks at max_attempts), so this was reachable.
-      const { data: passedRows } = await db
-        .from("lms_module_attempts")
-        .select("module_id, enrollment_id")
-        .eq("student_id", studentId)
-        .eq("passed", true)
-        .in("module_id", finalExams.map((e: any) => e.id))
-
-      const passedCount = new Set((passedRows ?? []).map((r: any) => r.module_id)).size
-
-      if ((passedCount ?? 0) < finalExams.length) continue
-
-      // All passed — issue cohort certificate
-      const certNumber = await issueCertificate({
-        studentId,
-        title:       (cohort as any).name,
-        type:        "cohort",
-        sourceId:    cohort_id,
-        sourceTitle: trackName,
-      })
-
-      // Notify the student — only when a new certificate was actually issued
-      if (certNumber) {
-        const { data: student } = await db
-          .from("lms_students").select("name, email").eq("id", studentId).single()
-        if (student?.email) {
-          const title = trackName ? `${(cohort as any).name} — ${trackName}` : (cohort as any).name
-          const { subject, html } = buildCompletionEmail({
-            studentName: student.name,
-            courseTitle: title,
-            completedAt: new Date().toISOString(),
-            kind: "programme",
-          })
-          sendEmail({ type: "completion", to: student.email, subject, html, studentId }).catch(() => {})
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[completion] checkCohortCompletion failed", { studentId, courseId, err })
-  }
-}
-
 // ── Sync enrollment progress % ─────────────────────────────────
 // Formula mirrors the student portal (courses/[id]/page.tsx):
 //   per-module %: pkg → passed|completed=100%, else items ratio
@@ -496,7 +285,6 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     const pkgModIds  = (modules as any[]).filter((m: any) => m.module_type === "package").map((m: any) => m.id)
     const examModIds = (modules as any[]).filter((m: any) => m.module_type === "final_exam").map((m: any) => m.id)
-    const cntModIds  = (modules as any[]).filter((m: any) => m.module_type !== "package" && m.module_type !== "final_exam").map((m: any) => m.id)
 
     // 2. Fetch package IDs (needed before items + progress queries)
     const { data: pkgRows } = pkgModIds.length
@@ -508,7 +296,7 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
     for (const p of pkgRows ?? []) modIdToPkgId[(p as any).module_id] = (p as any).id
 
     // 3. All remaining data in parallel
-    const [pkgItemRows, pkgProgRows, examAttemptRows, mandatoryItemRows, contentProgRows] = await Promise.all([
+    const [pkgItemRows, pkgProgRows, examAttemptRows] = await Promise.all([
       pkgIds.length
         ? db.from("lms_package_items").select("package_id").in("package_id", pkgIds).then(r => r.data ?? [])
         : Promise.resolve([]),
@@ -520,14 +308,6 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         ? db.from("lms_module_attempts").select("module_id, passed")
             .eq("enrollment_id", enrollment.id).in("module_id", examModIds)
             .order("attempt_no", { ascending: false }).then(r => r.data ?? [])
-        : Promise.resolve([]),
-      cntModIds.length
-        ? db.from("lms_content_items").select("id, module_id")
-            .in("module_id", cntModIds).eq("is_mandatory", true).then(r => r.data ?? [])
-        : Promise.resolve([]),
-      cntModIds.length
-        ? db.from("lms_progress").select("content_item_id")
-            .eq("enrollment_id", enrollment.id).eq("status", "completed").then(r => r.data ?? [])
         : Promise.resolve([]),
     ])
 
@@ -541,13 +321,6 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
 
     const examPassedSet    = new Set((examAttemptRows as any[]).filter((a: any) => a.passed).map((a: any) => a.module_id))
     const examAttemptedSet = new Set((examAttemptRows as any[]).map((a: any) => a.module_id))
-
-    const mandatoryByModId: Record<string, string[]> = {}
-    for (const ci of mandatoryItemRows as any[]) {
-      if (!mandatoryByModId[(ci as any).module_id]) mandatoryByModId[(ci as any).module_id] = []
-      mandatoryByModId[(ci as any).module_id].push((ci as any).id)
-    }
-    const completedIds = new Set((contentProgRows as any[]).map((r: any) => r.content_item_id))
 
     // 5. Per-module % — exact match to courses/[id]/page.tsx
     let sumPct = 0
@@ -563,11 +336,9 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
         sumPct += done ? 100 : total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
       } else if (mod.module_type === "final_exam") {
         sumPct += examPassedSet.has(mod.id) ? 100 : examAttemptedSet.has(mod.id) ? 30 : 0
-      } else {
-        const items = mandatoryByModId[mod.id] ?? []
-        const done  = items.filter((id: string) => completedIds.has(id)).length
-        sumPct += items.length > 0 ? Math.round((done / items.length) * 100) : 0
       }
+      // Assignment / live-session modules add 0% for now: they aren't tracked
+      // yet (to be counted properly with the onsite work).
     }
 
     const pct = Math.min(100, Math.round(sumPct / (modules as any[]).length))

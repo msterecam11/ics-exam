@@ -54,10 +54,9 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
   const courseIds = [...new Set(enrollments.map(e => e.course_id))]
   const programIds = [...new Set(enrollments.map(e => e.program_id).filter(Boolean))] as string[]
 
-  const [attempts, pkg, prog, certs, examMods, rules, sessions] = await Promise.all([
+  const [attempts, pkg, certs, examMods, rules, sessions] = await Promise.all([
     selectAll<any>(joined("lms_module_attempts", "enrollment_id, module_id, score, max_score, passed, started_at, submitted_at, graded_at")),
     selectAll<any>(joined("lms_package_progress", "enrollment_id, updated_at")),
-    selectAll<any>(joined("lms_progress", "enrollment_id, updated_at")),
     selectAll<any>(joined("lms_certificates", "enrollment_id, verification_code, released_at, revoked_at, issuer")),
     db.from("lms_modules").select("id, course_id, order_index, activity_settings").in("course_id", courseIds).eq("module_type", "final_exam").order("order_index"),
     programIds.length ? db.from("lms_program_course_rules").select("program_id, course_id, max_attempts").in("program_id", programIds) : Promise.resolve({ data: [] as any[] }),
@@ -84,7 +83,6 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
   }
   const attemptsBy = group(attempts, a => a.enrollment_id)
   const pkgBy = group(pkg, p => p.enrollment_id)
-  const progBy = group(prog, p => p.enrollment_id)
   // An enrolment can hold two certificates now (ours and the partner's). A
   // person is certified once, so reports count one — ours when we have it.
   const certBy = new Map<string, any>()
@@ -118,7 +116,6 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     const allAttempts = attemptsBy.get(e.id) ?? []
     const lastActivity = maxIso(
       ...(pkgBy.get(e.id) ?? []).map(p => p.updated_at),
-      ...(progBy.get(e.id) ?? []).map(p => p.updated_at),
       ...allAttempts.map(a => a.graded_at ?? a.submitted_at ?? a.started_at),
     )
     const cert = certBy.get(e.id)

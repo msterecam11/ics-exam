@@ -11,15 +11,13 @@ type Option = { id: string; title: string }
 
 function useCatalog() {
   const [courses, setCourses] = useState<Option[]>([])
-  const [paths, setPaths] = useState<Option[]>([])
   useEffect(() => {
     fetch("/api/lms/courses").then(r => r.ok ? r.json() : [])// Only published courses. A draft added here becomes a real enrolment the
     // moment the program is activated, and the student would open a half-built
     // course with no warning to anyone.
     .then(d => setCourses((Array.isArray(d) ? d : []).filter((c: any) => c.status === "published")))
-    fetch("/api/lms/learning-paths").then(r => r.ok ? r.json() : []).then(d => setPaths(Array.isArray(d) ? d : []))
   }, [])
-  return { courses, paths }
+  return { courses }
 }
 
 function reportSync(data: any) {
@@ -33,12 +31,11 @@ function reportSync(data: any) {
 }
 
 // ── One scope (whole program / common courses / one track) ──────────────
-function ScopeItems({ detail, trackId, canEdit, allowPaths, allowCourses, single, onChanged }: {
+function ScopeItems({ detail, trackId, canEdit, single, onChanged }: {
   detail: ProgramDetail; trackId: string | null; canEdit: boolean
-  allowPaths: boolean; allowCourses: boolean; single: boolean; onChanged: () => void
+  single: boolean; onChanged: () => void
 }) {
-  const { courses, paths } = useCatalog()
-  const [kind, setKind] = useState<"course" | "path">(allowCourses ? "course" : "path")
+  const { courses } = useCatalog()
   const [pick, setPick] = useState("")
   const [busy, setBusy] = useState(false)
   const items = detail.items.filter(i => i.track_id === trackId).sort((a, b) => a.order_index - b.order_index)
@@ -48,7 +45,7 @@ function ScopeItems({ detail, trackId, canEdit, allowPaths, allowCourses, single
     if (!pick) return
     setBusy(true)
     const { ok, data } = await postJson(`/api/lms/programs/${programId}/structure`, "POST",
-      { action: "add_item", track_id: trackId, ...(kind === "course" ? { course_id: pick } : { path_id: pick }) })
+      { action: "add_item", track_id: trackId, course_id: pick })
     setBusy(false)
     if (!ok) { toast.error(data.error ?? "Could not add"); return }
     setPick(""); reportSync(data); onChanged()
@@ -97,17 +94,10 @@ function ScopeItems({ detail, trackId, canEdit, allowPaths, allowCourses, single
       })}
       {canEdit && !(single && items.length >= 1) && (
         <div className="flex flex-wrap gap-2 pt-1">
-          {allowCourses && allowPaths && (
-            <select value={kind} onChange={e => { setKind(e.target.value as any); setPick("") }}
-              className="h-9 rounded-lg border border-slate-200 px-2 text-sm bg-white">
-              <option value="course">Course</option>
-              <option value="path">Learning path</option>
-            </select>
-          )}
           <select value={pick} onChange={e => setPick(e.target.value)}
             className="h-9 rounded-lg border border-slate-200 px-2 text-sm bg-white flex-1 min-w-[12rem]">
-            <option value="">{kind === "course" ? "Choose a course…" : "Choose a learning path…"}</option>
-            {(kind === "course" ? courses : paths).map(o => <option key={o.id} value={o.id}>{o.title}</option>)}
+            <option value="">Choose a course…</option>
+            {courses.map(o => <option key={o.id} value={o.id}>{o.title}</option>)}
           </select>
           <Button size="sm" onClick={add} disabled={!pick || busy} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-1.5 h-9">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
@@ -240,14 +230,7 @@ export default function ProgramStructureTab({ detail, isAdmin, onChanged }: { de
       {program.structure === "course" && (
         <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
           <p className="text-sm font-semibold text-slate-800 flex items-center gap-2"><BookOpen className="h-4 w-4 text-[#1B4F8A]" /> The course everyone takes</p>
-          <ScopeItems detail={detail} trackId={null} canEdit={canEdit} allowCourses allowPaths={false} single onChanged={onChanged} />
-        </section>
-      )}
-
-      {program.structure === "path" && (
-        <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-          <p className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Route className="h-4 w-4 text-violet-500" /> The learning path everyone follows</p>
-          <ScopeItems detail={detail} trackId={null} canEdit={canEdit} allowCourses={false} allowPaths single onChanged={onChanged} />
+          <ScopeItems detail={detail} trackId={null} canEdit={canEdit} single onChanged={onChanged} />
         </section>
       )}
 
@@ -258,7 +241,7 @@ export default function ProgramStructureTab({ detail, isAdmin, onChanged }: { de
               <p className="text-sm font-semibold text-slate-800">Courses for all tracks</p>
               <p className="text-xs text-slate-500">Everyone in the program takes these (e.g. the General course).</p>
             </div>
-            <ScopeItems detail={detail} trackId={null} canEdit={canEdit} allowCourses allowPaths single={false} onChanged={onChanged} />
+            <ScopeItems detail={detail} trackId={null} canEdit={canEdit} single={false} onChanged={onChanged} />
           </section>
 
           {tracks.map(t => {
@@ -286,7 +269,7 @@ export default function ProgramStructureTab({ detail, isAdmin, onChanged }: { de
                     </div>
                   )}
                 </div>
-                <ScopeItems detail={detail} trackId={t.id} canEdit={canEdit} allowCourses allowPaths single={false} onChanged={onChanged} />
+                <ScopeItems detail={detail} trackId={t.id} canEdit={canEdit} single={false} onChanged={onChanged} />
               </section>
             )
           })}

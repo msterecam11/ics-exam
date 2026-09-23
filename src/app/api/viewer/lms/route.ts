@@ -30,8 +30,6 @@ export async function GET() {
 
     if (row.resource_type === "course") {
       items.push(await resolveCourse(row.resource_id, row, p, session.user.id))
-    } else if (row.resource_type === "cohort") {
-      items.push(await resolveCohort(row.resource_id, row, p))
     } else if (row.resource_type === "program") {
       const item = await resolveProgram(row.resource_id, row, p)
       if (item) items.push(item)
@@ -324,92 +322,6 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     access_id:     row.id,
     resource_type: row.resource_type,
     resource_id:   courseId,
-    label:         row.label ?? "",
-    permissions:   p,
-    students,
-  }
-}
-
-// ── Cohort scope ──────────────────────────────────────────────────────────────
-async function resolveCohort(cohortId: string, row: any, p: Record<string, boolean>) {
-  const { data: members } = await db
-    .from("lms_cohort_members")
-    .select("student_id, lms_students(id, name, email, company, job_title, last_login)")
-    .eq("cohort_id", cohortId)
-
-  const studentIds = (members ?? []).map((m: any) => m.student_id)
-  if (studentIds.length === 0) {
-    return { access_id: row.id, resource_type: row.resource_type, resource_id: cohortId, label: row.label, permissions: p, students: [] }
-  }
-
-  // All enrollments for cohort members — progress_pct is the same source-of-truth
-  // column the admin dashboard/reports read (kept in sync by syncEnrollmentProgress).
-  const { data: enrollments } = await db
-    .from("lms_enrollments")
-    .select("student_id, course_id, status, completed_at, progress_pct")
-    .in("student_id", studentIds)
-    .neq("status", "dropped")
-
-  // Aggregate per student
-  const byStudent: Record<string, { enrolled: number; completed: number }> = {}
-  ;(enrollments ?? []).forEach((e: any) => {
-    if (!byStudent[e.student_id]) byStudent[e.student_id] = { enrolled: 0, completed: 0 }
-    byStudent[e.student_id].enrolled += 1
-    if (e.status === "completed" || e.completed_at) byStudent[e.student_id].completed += 1
-  })
-
-  // Progress across all their courses (if permission) — average of each
-  // enrollment's real progress_pct, not the legacy content-item completion count.
-  const progressByStudent: Record<string, number> = {}
-  if (p.progress) {
-    const sums: Record<string, { total: number; count: number }> = {}
-    ;(enrollments ?? []).forEach((e: any) => {
-      if (!sums[e.student_id]) sums[e.student_id] = { total: 0, count: 0 }
-      sums[e.student_id].total += e.progress_pct ?? 0
-      sums[e.student_id].count += 1
-    })
-    Object.entries(sums).forEach(([sid, { total, count }]) => {
-      progressByStudent[sid] = count > 0 ? Math.round(total / count) : 0
-    })
-  }
-  // Certificates
-  const certCountByStudent: Record<string, number> = {}
-  if (p.certificates) {
-    const { data: certs } = await db
-      .from("lms_certificates")
-      .select("student_id")
-      .in("student_id", studentIds)
-      .not("released_at", "is", null)
-      .eq("visible_to_student", true)
-      .is("revoked_at", null)
-
-    ;(certs ?? []).forEach((c: any) => {
-      certCountByStudent[c.student_id] = (certCountByStudent[c.student_id] ?? 0) + 1
-    })
-  }
-
-  const students = (members ?? []).map((m: any) => {
-    const sid = m.student_id
-    const agg = byStudent[sid] ?? { enrolled: 0, completed: 0 }
-
-    return {
-      id:                m.lms_students?.id ?? sid,
-      name:              m.lms_students?.name ?? "Unknown",
-      email:             m.lms_students?.email ?? "",
-      company:           m.lms_students?.company ?? null,
-      job_title:         m.lms_students?.job_title ?? null,
-      courses_enrolled:  agg.enrolled,
-      courses_completed: agg.completed,
-      progress_pct:      p.progress ? (progressByStudent[sid] ?? 0) : null,
-      certificates_earned: p.certificates ? (certCountByStudent[sid] ?? 0) : null,
-      last_login:        p.last_login ? (m.lms_students?.last_login ?? null) : null,
-    }
-  })
-
-  return {
-    access_id:     row.id,
-    resource_type: row.resource_type,
-    resource_id:   cohortId,
     label:         row.label ?? "",
     permissions:   p,
     students,
