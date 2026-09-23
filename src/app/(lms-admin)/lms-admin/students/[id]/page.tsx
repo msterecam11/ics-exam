@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
+import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import {
   ArrowLeft, Loader2, User, Building2, Mail,
   BookOpen, Clock, BarChart2,
@@ -169,7 +170,10 @@ export default function StudentProgressPage({
             {student.name[0]?.toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-slate-900">{student.name}</h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-xl font-bold text-slate-900">{student.name}</h1>
+              <ViewAsStudentButton studentId={student.id} studentName={student.name} />
+            </div>
             <div className="flex flex-wrap gap-3 mt-1.5 text-sm text-slate-500">
               <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{student.email}</span>
               {student.company && <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5" />{student.company}</span>}

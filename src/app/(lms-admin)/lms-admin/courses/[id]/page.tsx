@@ -2,12 +2,13 @@
 
 import { use, useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import {
   ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, Edit2, Globe,
   Monitor, Layers, Loader2, CheckCircle2, Send, Archive, Smartphone,
   Settings, MoreVertical, X, GraduationCap, FlaskConical, BookOpen,
   Camera, Clock, RefreshCw, Award, FileText, ClipboardList,
-  MessageSquare, ExternalLink, GripVertical, ChevronUp, Sparkles,
+  MessageSquare, GripVertical, ChevronUp, Sparkles,
 } from "lucide-react"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -33,6 +34,46 @@ import { cn } from "@/lib/utils"
 import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/CourseCatalogueSettings"
 import { ProviderSelect } from "@/components/lms/ProviderSelect"
 import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
+
+// Dynamically import activity editor (quiz / test / exam)
+const ActivityEditor = dynamic(() => import("@/components/lms/ActivityEditor"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
+    </div>
+  ),
+})
+
+// Dynamically import assignment editor
+const AssignmentEditor = dynamic(() => import("@/components/lms/AssignmentEditor"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
+    </div>
+  ),
+})
+
+// Dynamically import module settings panel
+const ModuleSettingsPanel = dynamic(() => import("@/components/lms/ModuleSettingsPanel"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
+    </div>
+  ),
+})
+
+// Dynamically import package editor (WYSIWYG builder)
+const PackageBuilder = dynamic(() => import("@/components/lms/PackageEditor"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
+    </div>
+  ),
+})
 
 
 
@@ -322,57 +363,6 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes 
           </form>
         )}
 
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────
-// TEST AS STUDENT MODAL
-// ──────────────────────────────────────────────────────────────
-function TestAsStudentModal({ open, onClose, courseId }: { open: boolean; onClose: () => void; courseId: string }) {
-  const [students, setStudents] = useState<any[]>([]); const [loading, setLoading] = useState(true)
-  const [launching, setLaunching] = useState<string | null>(null); const [search, setSearch] = useState("")
-
-  useEffect(() => {
-    if (!open) return; setLoading(true)
-    fetch(`/api/lms/enrollments?course_id=${courseId}`).then(r => r.json()).then(data => {
-      setStudents(Array.isArray(data) ? data.map((e: any) => e.lms_students).filter(Boolean) : []); setLoading(false)
-    })
-  }, [open, courseId])
-
-  async function launch(studentId: string) {
-    setLaunching(studentId)
-    const res = await fetch("/api/lms/admin/preview-as", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ student_id: studentId, course_id: courseId }) })
-    const data = await res.json(); setLaunching(null)
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return }
-    toast.success(`Opening as ${data.student_name}…`); window.open(data.redirect_to, "_blank"); onClose()
-  }
-
-  const filtered = students.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.email?.toLowerCase().includes(search.toLowerCase()))
-
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-[#1B4F8A]" /> Test as Student</DialogTitle></DialogHeader>
-        <div className="py-2 space-y-3">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800"><p className="font-medium">Opens the student portal in a new tab logged in as that student.</p><p className="text-xs text-blue-600 mt-0.5">Session lasts 2 hours.</p></div>
-          <Input placeholder="Search enrolled students…" value={search} onChange={e => setSearch(e.target.value)} />
-          <div className="max-h-64 overflow-y-auto space-y-1 border rounded-xl p-2">
-            {loading ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
-            : filtered.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">{students.length === 0 ? "No students enrolled" : "No match"}</p>
-            : filtered.map(s => (
-              <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50">
-                <div className="w-8 h-8 rounded-full bg-[#1B4F8A]/10 text-[#1B4F8A] font-bold text-sm flex items-center justify-center shrink-0">{s.name?.[0]?.toUpperCase()}</div>
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{s.name}</p><p className="text-xs text-slate-400 truncate">{s.email}</p></div>
-                <Button size="sm" onClick={() => launch(s.id)} disabled={!!launching} className="gap-1.5 h-7 text-xs bg-[#1B4F8A] hover:bg-[#163f6e] text-white shrink-0">
-                  {launching === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Open
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -2168,7 +2158,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
   // Modals
   const [moduleModal,     setModuleModal]     = useState(false)
   const [editingModule,   setEditingModule]   = useState<Module | null>(null)
-  const [testAsStudent,   setTestAsStudent]   = useState(false)
   const [aiAnalyzing,     setAiAnalyzing]     = useState(false)
   const [aiReport,        setAiReport]        = useState<any>(null)
 
@@ -2492,7 +2481,6 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
           else { setModules(prev => [...prev, m]); setActiveView(m.id) }
         }}
       />
-      <TestAsStudentModal open={testAsStudent} onClose={() => setTestAsStudent(false)} courseId={courseId} />
     </div>
   )
 }

@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
+import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import {
   ArrowLeft, Loader2, User, Building2, Mail, Globe, Calendar, Clock,
   BookOpen, ChevronRight, AlertCircle, TrendingUp,
@@ -93,6 +94,7 @@ export default function StudentProgressOverview({ params }: { params: Promise<{ 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-xl font-bold text-slate-900">{student.name}</h1>
+              <div className="ml-auto"><ViewAsStudentButton studentId={student.id} studentName={student.name} /></div>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
               <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{student.email}</span>
