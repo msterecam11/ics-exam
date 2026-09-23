@@ -43,6 +43,16 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "That test address doesn't look like an e-mail" }, { status: 400 })
       patch.test_address = a || null
     }
+    // The allow-list: when it holds anything, mail reaches only those addresses.
+    if ("allowed_recipients" in c) {
+      const raw = Array.isArray(c.allowed_recipients) ? c.allowed_recipients
+        : typeof c.allowed_recipients === "string" ? c.allowed_recipients.split(/[\s,;]+/) : []
+      const list = raw.map((x: unknown) => String(x ?? "").trim().toLowerCase()).filter(Boolean)
+      for (const a of list)
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))
+          return NextResponse.json({ error: `"${a}" doesn't look like an e-mail` }, { status: 400 })
+      patch.allowed_recipients = list.length ? [...new Set(list)].slice(0, 50) : null
+    }
     if (c.daily_cap !== undefined) {
       const n = Number(c.daily_cap)
       if (!Number.isInteger(n) || n < 0 || n > 20)

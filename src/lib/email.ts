@@ -54,12 +54,17 @@ interface SendOptions {
 // sends directly — enrolment, completion, cohorts, learning paths, CSV import —
 // reached real people while the switch said otherwise. It belongs here instead:
 // every email in the system passes through sendEmail().
-let configCache: { at: number; cfg: { master_enabled: boolean; test_mode: boolean; test_address: string | null } } | null = null
-async function emailConfig() {
+type EmailConfigRow = {
+  master_enabled: boolean; test_mode: boolean; test_address: string | null
+  allowed_recipients: string[] | null
+}
+let configCache: { at: number; cfg: EmailConfigRow } | null = null
+async function emailConfig(): Promise<EmailConfigRow> {
   if (configCache && Date.now() - configCache.at < 30_000) return configCache.cfg
-  const { data } = await db.from("lms_email_config").select("master_enabled, test_mode, test_address").eq("id", 1).maybeSingle()
+  const { data } = await db.from("lms_email_config")
+    .select("master_enabled, test_mode, test_address, allowed_recipients").eq("id", 1).maybeSingle()
   // Unreadable config fails SAFE: test mode on, no address, so nothing is sent.
-  const cfg = (data as any) ?? { master_enabled: true, test_mode: true, test_address: null }
+  const cfg = (data as any) ?? { master_enabled: true, test_mode: true, test_address: null, allowed_recipients: null }
   configCache = { at: Date.now(), cfg }
   return cfg
 }
@@ -76,12 +81,18 @@ export async function sendEmail(opts: SendOptions) {
   const redirected = !off && cfg.test_mode && !!cfg.test_address && cfg.test_address !== to
   const recipient = redirected ? cfg.test_address! : to
 
+  // An allow-list, when set, is the last word: real delivery, but only to these
+  // addresses. It exists so a live client cannot be reached while we test.
+  const allow = (cfg.allowed_recipients ?? []).map(a => a.trim().toLowerCase()).filter(Boolean)
+  const blocked = allow.length > 0 && !allow.includes(recipient.trim().toLowerCase())
+
   let status   = "sent"
   let errorMsg: string | null = null
 
   try {
     if (off) status = "skipped"                              // sending is switched off
     else if (needsSink) status = "skipped"                   // test mode with nowhere to send
+    else if (blocked) status = "skipped"                     // not on the allow-list
     else if (isReservedTestAddress(recipient)) status = "skipped"  // reserved test domain — never deliverable
     else await sendGraphMailAs({ fromEmail: LMS_EMAIL, toEmail: recipient, subject, html })
   } catch (e: any) {
@@ -102,7 +113,10 @@ export async function sendEmail(opts: SendOptions) {
     rule:           opts.rule ?? null,
     program_id:     opts.programId ?? null,
     intended_email: opts.intendedEmail ?? (redirected ? to : null),
-    reason:         opts.reason ?? (off ? "Email sending is off" : needsSink ? "Test mode is on but no test address is set" : redirected ? "Test mode — redirected" : null),
+    reason:         off ? "Email sending is off"
+                    : needsSink ? "Test mode is on but no test address is set"
+                    : blocked ? "Not on the allow-list"
+                    : opts.reason ?? (redirected ? "Test mode — redirected" : null),
   })
 
   return { ok: status === "sent", error: errorMsg }

@@ -9,7 +9,7 @@ import { EMAIL_RULES, ruleLabel } from "@/lib/lms-email-rules"
 import EmailRuleRow, { type Tri } from "@/components/lms/emails/EmailRuleRow"
 
 interface Settings {
-  config: { master_enabled: boolean; test_mode: boolean; test_address: string | null; daily_cap: number }
+  config: { master_enabled: boolean; test_mode: boolean; test_address: string | null; allowed_recipients: string[] | null; daily_cap: number }
   rules: Record<string, { enabled: boolean; config: Record<string, any> }>
 }
 
@@ -119,7 +119,26 @@ export default function EmailSettingsPanel() {
           </label>
         </div>
 
-        {!s.config.test_mode && (
+        {/* Stricter than test mode: real delivery, but only to these addresses.
+            It is how a live client is kept out of reach while we test. */}
+        <label className="text-xs block">
+          <span className="block text-slate-500 mb-1">Only send to these addresses</span>
+          <Input value={(s.config.allowed_recipients ?? []).join(", ")}
+            onChange={e => setConfig({ allowed_recipients: e.target.value } as any)}
+            placeholder="you@example.com, colleague@example.com" />
+          <span className="block text-[10px] text-slate-400 mt-0.5">
+            Leave empty for no restriction. With anything in here, every other recipient is skipped and logged —
+            real students and clients cannot be reached, even with test mode off.
+          </span>
+        </label>
+
+        {(s.config.allowed_recipients ?? []).length > 0 && (
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+            Only {(s.config.allowed_recipients ?? []).length} address{(s.config.allowed_recipients ?? []).length === 1 ? "" : "es"} can receive email. Everyone else is skipped.
+          </p>
+        )}
+
+        {!s.config.test_mode && (s.config.allowed_recipients ?? []).length === 0 && (
           <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             Test mode is off — emails go to real students.
           </p>

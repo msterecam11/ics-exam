@@ -15,6 +15,8 @@ export interface EmailConfig {
   master_enabled: boolean
   test_mode: boolean
   test_address: string | null
+  /** When set, mail reaches only these addresses — real delivery, narrow audience. */
+  allowed_recipients?: string[] | null
   daily_cap: number
 }
 
@@ -25,12 +27,12 @@ export interface EmailSettings {
   rules: Record<string, RuleState>
 }
 
-const FALLBACK_CONFIG: EmailConfig = { master_enabled: true, test_mode: true, test_address: null, daily_cap: 1 }
+const FALLBACK_CONFIG: EmailConfig = { master_enabled: true, test_mode: true, test_address: null, allowed_recipients: null, daily_cap: 1 }
 
 /** Reads the global configuration and every rule's default. */
 export async function loadEmailSettings(): Promise<EmailSettings> {
   const [cfgRes, rulesRes] = await Promise.all([
-    db.from("lms_email_config").select("master_enabled, test_mode, test_address, daily_cap").eq("id", 1).maybeSingle(),
+    db.from("lms_email_config").select("master_enabled, test_mode, test_address, allowed_recipients, daily_cap").eq("id", 1).maybeSingle(),
     db.from("lms_email_rules").select("code, enabled, config"),
   ])
   const config = { ...FALLBACK_CONFIG, ...(cfgRes.data ?? {}) } as EmailConfig
