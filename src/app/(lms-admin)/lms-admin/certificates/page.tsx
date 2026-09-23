@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Award, Search, Loader2, ChevronDown, ChevronUp, Download, Upload, Ban,
-  RotateCcw, Send, Pencil, History, Eye, EyeOff, Building2,
+  RotateCcw, Send, Pencil, History, Eye, EyeOff, Building2, Plus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import IssueCertificateDialog from "@/components/lms/IssueCertificateDialog"
 
 // Every certificate in one place: Company → Program → Course → participant,
 // plus the two branches that would otherwise be unreachable — individual
@@ -55,6 +56,7 @@ export default function CertificatesPage() {
   const [history, setHistory] = useState<any[] | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [uploadFor, setUploadFor] = useState<string | null>(null)
+  const [issuing, setIssuing] = useState(false)
 
   const load = useCallback(async () => {
     const res = await fetch("/api/lms/certificates")
@@ -144,13 +146,18 @@ export default function CertificatesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Award className="h-6 w-6 text-[#1B4F8A]" /> Certificates
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {totals.total} in total · {totals.held} awaiting release · {totals.partner} from partners · {totals.revoked} revoked
-        </p>
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Award className="h-6 w-6 text-[#1B4F8A]" /> Certificates
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {totals.total} in total · {totals.held} awaiting release · {totals.partner} from partners · {totals.revoked} revoked
+          </p>
+        </div>
+        <Button onClick={() => setIssuing(true)} className="bg-[#1B4F8A] hover:bg-[#163f6f] text-white gap-2">
+          <Plus className="h-4 w-4" /> Issue certificate
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -261,6 +268,8 @@ export default function CertificatesPage() {
           ))}
         </div>
       )}
+
+      <IssueCertificateDialog open={issuing} onClose={() => setIssuing(false)} onIssued={load} />
 
       <input ref={fileInput} type="file" accept="application/pdf,image/png,image/jpeg" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f) }} />

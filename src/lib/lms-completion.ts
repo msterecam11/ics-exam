@@ -28,7 +28,7 @@ import crypto from "crypto"
 const CERT_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 const CERT_LENGTH   = 12
 
-function generateCertificateNumber(): string {
+export function generateCertificateNumber(): string {
   // Rejection sampling: bytes at or above the largest whole multiple of the
   // alphabet length are discarded rather than folded with %, which would make
   // the first few symbols very slightly likelier than the rest.
