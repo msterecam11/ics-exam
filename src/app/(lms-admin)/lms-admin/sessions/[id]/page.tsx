@@ -31,6 +31,7 @@ interface SessionInfo {
   location: string | null; meeting_link: string | null; closed_at: string | null; is_open: boolean
   topics_covered: string | null; instructor_notes: string | null; agenda: string | null
   program_id: string | null; program_name: string | null; track_name: string | null
+  group_id?: string | null; group_label?: string | null
   course_title: string | null; module_title: string | null
 }
 
@@ -156,12 +157,13 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
     </div>
   )
 
-  const backHref = session.program_id ? `/lms-admin/programs/${session.program_id}?tab=sessions` : "/lms-admin/sessions"
+  const backHref = session.group_id ? `/lms-admin/groups/${session.group_id}`
+    : session.program_id ? `/lms-admin/programs/${session.program_id}?tab=sessions` : "/lms-admin/sessions"
 
   return (
     <div className="space-y-6">
       <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
-        <ArrowLeft className="h-4 w-4" /> {session.program_name ?? "Sessions"}
+        <ArrowLeft className="h-4 w-4" /> {session.group_label ?? session.program_name ?? "Sessions"}
       </Link>
 
       {/* Header */}

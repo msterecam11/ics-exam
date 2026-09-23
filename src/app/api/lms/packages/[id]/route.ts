@@ -19,7 +19,7 @@ export async function GET(
     .from("lms_packages")
     .select(`
       id, module_id, course_id, title, description,
-      pass_mark, free_navigation, certificate_on_pass, created_at, updated_at,
+      pass_mark, free_navigation, certificate_on_pass, slides_downloadable, created_at, updated_at,
       lms_package_items (
         id, package_id, order_index, type, title, config, required, created_at
       )
@@ -54,7 +54,7 @@ export async function PUT(
 
   const { id } = await params
   const body = await req.json()
-  const { title, description, pass_mark, free_navigation, certificate_on_pass, items } = body
+  const { title, description, pass_mark, free_navigation, certificate_on_pass, slides_downloadable, items } = body
 
   const { error: pkgErr } = await db
     .from("lms_packages")
@@ -64,6 +64,7 @@ export async function PUT(
       ...(pass_mark           !== undefined && { pass_mark }),
       ...(free_navigation     !== undefined && { free_navigation }),
       ...(certificate_on_pass !== undefined && { certificate_on_pass }),
+      ...(typeof slides_downloadable === "boolean" && { slides_downloadable }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

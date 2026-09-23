@@ -187,7 +187,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
   // syncEnrollmentProgress), so the viewer sees identical numbers.
   const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("id, student_id, status, enrolled_at, completed_at, progress_pct, program_id, lms_program_members(track_id), lms_students(id, name, email, company, job_title, last_login)")
+    .select("id, student_id, status, enrolled_at, completed_at, progress_pct, program_id, group_id, lms_program_members(track_id), lms_students(id, name, email, company, job_title, last_login)")
     .eq("course_id", courseId)
     .neq("status", "dropped")
 
@@ -230,7 +230,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
     // this course; excused sessions don't count against them.
     const { data: sessions } = await db
       .from("lms_sessions")
-      .select("id, course_id, program_id, track_id")
+      .select("id, course_id, program_id, track_id, group_id")
       .eq("course_id", courseId)
       .lte("session_date", sessionToday())   // future sessions aren't absences
 
@@ -244,7 +244,7 @@ async function resolveCourse(courseId: string, row: any, p: Record<string, boole
       const statusOf = new Map(((attendance ?? []) as any[]).map(a => [`${a.session_id}|${a.student_id}`, a.status as string]))
 
       for (const e of enrollments as any[]) {
-        const viewer = { course_id: courseId, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null }
+        const viewer = { course_id: courseId, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null, group_id: e.group_id ?? null }
         const mine = ((sessions ?? []) as any[]).filter(s => sessionIsFor(s, viewer))
         if (!mine.length) continue
         let present = 0, excused = 0

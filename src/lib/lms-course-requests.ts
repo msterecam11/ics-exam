@@ -10,6 +10,7 @@
 
 import { db } from "@/lib/db"
 import { syncMemberEnrollments, ensureProgramRules, activeMemberCount } from "@/lib/lms-programs"
+import { loadGroup, placeInGroup, groupLabel } from "@/lib/lms-groups"
 import { sendRuleEmail } from "@/lib/lms-email-settings"
 import { baseTemplate, btn, BLUE, APP_BASE_URL } from "@/lib/email"
 
@@ -31,6 +32,7 @@ interface RequestRow {
   id: string
   student_id: string
   course_id: string
+  group_id: string | null
   status: string
   lms_students: { id: string; name: string; email: string | null; company_id: string | null } | null
   lms_courses: { id: string; title: string } | null
@@ -39,7 +41,7 @@ interface RequestRow {
 async function loadRequest(id: string): Promise<RequestRow | null> {
   const { data } = await db
     .from("lms_course_requests")
-    .select("id, student_id, course_id, status, lms_students(id, name, email, company_id), lms_courses(id, title)")
+    .select("id, student_id, course_id, group_id, status, lms_students(id, name, email, company_id), lms_courses(id, title)")
     .eq("id", id).maybeSingle()
   return (data as any) ?? null
 }
@@ -88,7 +90,7 @@ export async function programOptions(studentCompanyId: string | null, courseId: 
 }
 
 export type Decision =
-  | { ok: true; programId: string; created: boolean; enrollments: number }
+  | { ok: true; programId: string; created: boolean; enrollments: number; groupNote?: string | null }
   | { ok: false; status: number; error: string }
 
 /** Approve into an existing program, or create one when `createName` is given. */
@@ -150,7 +152,22 @@ export async function approveRequest(o: {
     status: "approved", program_id: programId, decided_by: o.adminId, decided_at: new Date().toISOString(),
   }).eq("id", r.id).eq("status", "pending")
 
-  return { ok: true, programId: programId!, created, enrollments: sync.created + sync.reactivated }
+  // The dates they asked for: place the new enrolment in that group. A group
+  // that filled up (or closed) since doesn't undo the approval — the admin is
+  // told, and places them from the group's page.
+  let groupNote: string | null = null
+  if (r.group_id) {
+    const group = await loadGroup(r.group_id)
+    const { data: enr } = await db.from("lms_enrollments").select("id").eq("student_id", r.student_id)
+      .eq("course_id", r.course_id).eq("status", "active").maybeSingle()
+    if (!group || !enr) groupNote = "Couldn't place them in the dates they asked for — do it from the group's page."
+    else {
+      const placed = await placeInGroup(group, [(enr as any).id], { override: false })
+      groupNote = placed.ok ? `Placed in ${groupLabel(group)}.` : `Not placed in ${groupLabel(group)}: ${placed.error}.`
+    }
+  }
+
+  return { ok: true, programId: programId!, created, enrollments: sync.created + sync.reactivated, groupNote }
 }
 
 export async function rejectRequest(o: { requestId: string; adminId: string; reason: string }): Promise<Decision> {

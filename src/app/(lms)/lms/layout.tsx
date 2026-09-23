@@ -28,7 +28,7 @@ export default async function LmsLayout({ children }: { children: React.ReactNod
 
   // Upcoming sessions in the next 7 days — only the student's own program/track sessions.
   const upcomingSessions = (await sessionsForViewers(
-    enrollments.map((e: any) => ({ course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null })),
+    enrollments.map((e: any) => ({ course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null, group_id: e.group_id ?? null })),
     "id",
     q => q.gte("session_date", today).lte("session_date", in7days).is("closed_at", null),
   ).catch(() => [])).length

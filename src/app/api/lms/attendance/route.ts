@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { sessionRoster, ATTEND_STATUSES, type AttendStatus } from "@/lib/lms-sessions"
+import { groupLabel } from "@/lib/lms-groups"
 import { guardStaff, canSeeProgram, canSeeTrack, forbidden } from "@/lib/staff-access"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -10,8 +11,9 @@ async function loadSession(id: string) {
   const { data } = await db
     .from("lms_sessions")
     .select(`id, title, session_date, start_time, duration_minutes, location, meeting_link, closed_at,
-             topics_covered, instructor_notes, agenda, course_id, program_id, track_id, module_id,
-             lms_courses(id, title), lms_programs(id, name, status), lms_program_tracks(id, name), lms_modules(id, title)`)
+             topics_covered, instructor_notes, agenda, course_id, program_id, track_id, group_id, module_id,
+             lms_courses(id, title), lms_programs(id, name, status), lms_program_tracks(id, name), lms_modules(id, title),
+             session_group:lms_course_groups(id, name, start_date, end_date, city)`)
     .eq("id", id)
     .maybeSingle()
   return data as any
@@ -50,6 +52,7 @@ export async function GET(req: Request) {
       course_title: sess.lms_courses?.title ?? null,
       program_name: sess.lms_programs?.name ?? null,
       track_name:   sess.lms_program_tracks?.name ?? null,
+      group_label:  sess.session_group ? groupLabel(sess.session_group) : null,
       module_title: sess.lms_modules?.title ?? null,
       is_open:      sess.closed_at === null,
     },

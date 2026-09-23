@@ -8,6 +8,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getStudentSession, PREVIEW_READ_ONLY } from "@/lib/lms-auth"
+import { openGroups } from "@/lib/lms-groups"
+import { todayISO } from "@/lib/lms-enrollment"
 import { catalogueViewer, visibleTo } from "@/lib/lms-catalogue"
 import { loadEmailSettings, effectiveRule, sendRuleEmail } from "@/lib/lms-email-settings"
 import { buildCatalogueAckEmail, buildCatalogueAdminEmail } from "@/lib/lms-email-templates"
@@ -43,6 +45,15 @@ export async function POST(req: Request) {
   if (typeof courseId !== "string" || !UUID_RE.test(courseId))
     return NextResponse.json({ error: "Which course?" }, { status: 400 })
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 1000) : null
+  // An onsite date they'd like (optional): an open group of this course with a seat.
+  let groupId: string | null = null
+  if (body.group_id) {
+    if (typeof body.group_id !== "string" || !UUID_RE.test(body.group_id)) return NextResponse.json({ error: "Which date?" }, { status: 400 })
+    const open = (await openGroups(courseId, todayISO())).find(g => g.id === body.group_id)
+    if (!open) return NextResponse.json({ error: "Those dates aren't available any more" }, { status: 409 })
+    if (open.full) return NextResponse.json({ error: "Those dates are full — please choose another" }, { status: 409 })
+    groupId = open.id
+  }
 
   // They may only ask for a course they can actually see.
   const viewer = await catalogueViewer(student.id)
@@ -61,7 +72,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await db
     .from("lms_course_requests")
-    .insert({ student_id: student.id, course_id: courseId, note })
+    .insert({ student_id: student.id, course_id: courseId, note, group_id: groupId })
     .select("id, course_id, status, note, created_at")
     .single()
 

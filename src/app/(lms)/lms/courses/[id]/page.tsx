@@ -15,6 +15,10 @@ import CourseFeedbackForm from "@/components/lms/CourseFeedbackForm"
 import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enrollment"
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 import { getFeedbackState } from "@/lib/lms-feedback"
+import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
+import { GROUP_COLUMNS, groupDates, groupLabel } from "@/lib/lms-groups"
+import { materialsFor } from "@/lib/lms-materials"
+import { GroupCard, MaterialsList, type StudentGroup } from "@/components/lms/groups/StudentCoursePanels"
 
 // ── Icons & labels ────────────────────────────────────────────
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
@@ -116,7 +120,7 @@ export default async function StudentCoursePage({
   // Live sessions of THIS student's group: their program (and track) for this
   // course. Another program taking the same course has its own sessions.
   const liveSessions = await sessionsForViewers<any>(
-    [{ course_id: courseId, program_id: current.program_id, track_id: current.member?.track_id ?? null }],
+    [{ course_id: courseId, program_id: current.program_id, track_id: current.member?.track_id ?? null, group_id: current.group_id }],
     "id, title, session_date, start_time, duration_minutes, location, closed_at, meeting_link, recording_url",
     q => q.order("session_date", { ascending: false }).order("start_time", { ascending: false }),
   ).catch(() => [] as any[])
@@ -272,6 +276,32 @@ export default async function StudentCoursePage({
   const fb = await getFeedbackState(current)
   const showFeedbackForm = fb.due
   const alreadySubmittedFeedback = fb.settings.enabled && fb.submitted
+
+  // Onsite / hybrid: the group (scheduled delivery) this participant is in,
+  // shown once it's confirmed — dates, times, venue, provider, instructors.
+  let studentGroup: StudentGroup | null = null
+  if (current.group_id) {
+    const { data: gr } = await db.from("lms_course_groups")
+      .select(`${GROUP_COLUMNS}, lms_service_providers(name)`).eq("id", current.group_id).maybeSingle()
+    const grp = gr as any
+    if (grp && VISIBLE_GROUP_STATUSES.includes(grp.status)) {
+      const [{ data: staff }, { count: dayCount }] = await Promise.all([
+        db.from("lms_group_staff").select("admin_users(name)").eq("group_id", grp.id).eq("role", "instructor"),
+        db.from("lms_sessions").select("id", { count: "exact", head: true }).eq("group_id", grp.id),
+      ])
+      studentGroup = {
+        label: groupLabel(grp), dates: groupDates(grp),
+        daily_start: grp.daily_start, daily_end: grp.daily_end,
+        venue_name: grp.venue_name, venue_address: grp.venue_address, city: grp.city, country: grp.country, map_url: grp.map_url,
+        provider: grp.lms_service_providers?.name ?? null, language: grp.language,
+        instructors: ((staff ?? []) as any[]).map(s => s.admin_users?.name).filter(Boolean),
+        days: dayCount ?? 0,
+      }
+    }
+  }
+  const groupPending = course.delivery_mode !== "online" && !studentGroup
+  // Everything they can download: course, module slides and files, their group's.
+  const materialSections = await materialsFor(current).catch(() => [])
 
   const DeliveryIcon  = DELIVERY_ICONS[course.delivery_mode] ?? Globe
 
@@ -450,6 +480,10 @@ export default async function StudentCoursePage({
             </details>
           )
         })()}
+
+        {/* Onsite delivery + downloads */}
+        <GroupCard group={studentGroup} pending={groupPending} />
+        <MaterialsList courseId={courseId} sections={materialSections} />
 
         {/* Modules */}
         <div className="space-y-3">

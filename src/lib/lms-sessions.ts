@@ -9,11 +9,15 @@ import { db } from "@/lib/db"
 //
 // Sessions without a program are from before Program Manager; their roster is
 // the course's enrollments outside any program.
+//
+// A GROUP session (onsite, Phase 2) is one day of a scheduled delivery. Its
+// roster is simply the enrolments placed in that group — whichever program (or
+// none) each participant came through.
 
 export const ATTEND_STATUSES = ["present", "late", "absent", "excused"] as const
 export type AttendStatus = typeof ATTEND_STATUSES[number]
 
-export type SessionScope = { id?: string; course_id: string; program_id: string | null; track_id: string | null }
+export type SessionScope = { id?: string; course_id: string; program_id: string | null; track_id: string | null; group_id?: string | null }
 
 export type RosterEntry = {
   student_id: string
@@ -36,7 +40,18 @@ export async function sessionRoster(session: SessionScope & { id: string }, opts
   // enrollments, and nobody listed only because of an old attendance record.
   const statuses = opts?.activeOnly ? ["active"] : ["active", "completed"]
 
-  if (session.program_id) {
+  if (session.group_id) {
+    const { data, error } = await db
+      .from("lms_enrollments")
+      .select("id, student_id, lms_students(id, name, email, company)")
+      .eq("group_id", session.group_id)
+      .in("status", statuses)
+    if (error) throw new Error("Could not load the session roster")
+    for (const e of (data ?? []) as any[]) {
+      const s = e.lms_students
+      if (s) out.set(s.id, { student_id: s.id, enrollment_id: e.id, name: s.name, email: s.email, company: s.company, on_roster: true })
+    }
+  } else if (session.program_id) {
     let q = db
       .from("lms_enrollments")
       .select("id, student_id, status, lms_program_members!inner(status, track_id), lms_students(id, name, email, company)")
@@ -84,20 +99,25 @@ export type SessionViewer = {
   course_id: string
   program_id: string | null
   track_id: string | null
+  /** The onsite group this enrolment is placed in, if any. */
+  group_id?: string | null
 }
 
 /** True if this session is one the enrollment's student attends. */
 export function sessionIsFor(session: SessionScope, viewer: SessionViewer): boolean {
   if (session.course_id !== viewer.course_id) return false
+  // A group's days are for that group's participants only.
+  if (session.group_id) return !!viewer.group_id && session.group_id === viewer.group_id
   if (!viewer.program_id) return session.program_id === null
   if (session.program_id !== viewer.program_id) return false
   return session.track_id === null || session.track_id === viewer.track_id
 }
 
 /**
- * Sessions for a set of enrollments (each with its program and track). One
- * query by course, then filtered — a student sees only their own program's
- * (and track's) sessions, never another group's.
+ * Sessions for a set of enrollments (each with its program and track, or its
+ * onsite group). One query by course, then filtered — a student sees only
+ * their own program's (and track's) or group's sessions, never another's. A
+ * group's days appear once the group is confirmed.
  */
 export async function sessionsForViewers<T = any>(
   viewers: SessionViewer[],
@@ -106,12 +126,19 @@ export async function sessionsForViewers<T = any>(
 ): Promise<T[]> {
   const courseIds = [...new Set(viewers.map(v => v.course_id))]
   if (!courseIds.length) return []
-  let q = db.from("lms_sessions").select(`${columns}, course_id, program_id, track_id`).in("course_id", courseIds)
+  let q = db.from("lms_sessions")
+    .select(`${columns}, course_id, program_id, track_id, group_id, session_group:lms_course_groups(status)`)
+    .in("course_id", courseIds)
   if (build) q = build(q)
   const { data, error } = await q
   if (error) throw new Error("Could not load sessions")
-  return ((data ?? []) as any[]).filter(s => viewers.some(v => sessionIsFor(s, v))) as T[]
+  return ((data ?? []) as any[])
+    .filter(s => !s.group_id || VISIBLE_GROUP_STATUSES.includes(s.session_group?.status))
+    .filter(s => viewers.some(v => sessionIsFor(s, v))) as T[]
 }
+
+/** A group is shown to its participants only once it's confirmed. */
+export const VISIBLE_GROUP_STATUSES = ["confirmed", "completed"]
 
 /** Today's date (YYYY-MM-DD) in the institute's time zone (UTC+3). */
 export function sessionToday(now = new Date()): string {

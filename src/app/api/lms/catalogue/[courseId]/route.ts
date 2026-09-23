@@ -6,6 +6,8 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getStudentSession } from "@/lib/lms-auth"
 import { catalogueViewer, visibleTo } from "@/lib/lms-catalogue"
+import { openGroups } from "@/lib/lms-groups"
+import { todayISO } from "@/lib/lms-enrollment"
 
 export const dynamic = "force-dynamic"
 
@@ -38,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
     db.from("lms_modules").select("id, title, module_type, order_index").eq("course_id", courseId).order("order_index"),
     db.from("lms_enrollments").select("id, status").eq("student_id", student.id).eq("course_id", courseId)
       .neq("status", "dropped").maybeSingle(),
-    db.from("lms_course_requests").select("id, status, created_at, decision_note").eq("student_id", student.id)
+    db.from("lms_course_requests").select("id, status, created_at, decision_note, group_id").eq("student_id", student.id)
       .eq("course_id", courseId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ])
 
@@ -59,6 +61,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ courseI
       : null,
     modules: (modules ?? []).map((m: any) => ({ id: m.id, title: m.title, type: m.module_type })),
     enrolled: !!enrolment,
+    // Onsite / hybrid: the upcoming dates they can ask for.
+    groups: c.delivery_mode === "online" ? [] : await openGroups(c.id, todayISO()),
     request: request ? { id: (request as any).id, status: (request as any).status, reason: (request as any).decision_note } : null,
   })
 }

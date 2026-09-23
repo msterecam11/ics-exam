@@ -49,6 +49,8 @@ export type EnrollmentContext = {
   completed_at: string | null
   program_id: string | null
   member_id: string | null
+  /** The onsite group (scheduled delivery) this enrolment is placed in. */
+  group_id: string | null
   program: EnrollmentProgram | null
   member: { status: "active" | "withdrawn" | "completed"; end_date_override: string | null; track_id: string | null } | null
   /** full = learn and submit · read_only = review only · none = no access */
@@ -58,7 +60,7 @@ export type EnrollmentContext = {
 }
 
 const ENROLLMENT_SELECT = `
-  id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id,
+  id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id, group_id,
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
   lms_program_members(status, end_date_override, track_id)`
 
@@ -91,6 +93,7 @@ function toContext(row: any, now = new Date()): EnrollmentContext {
     id: row.id, student_id: row.student_id, course_id: row.course_id, status: row.status,
     enrolled_at: row.enrolled_at, completed_at: row.completed_at,
     program_id: row.program_id ?? null, member_id: row.member_id ?? null,
+    group_id: row.group_id ?? null,
     program, member,
   }
   const { access, note } = computeAccess(base, now)
@@ -139,7 +142,7 @@ export async function getCurrentEnrollments(studentId: string): Promise<Enrollme
 
 /** Columns to add to an lms_enrollments select (which must also include
  *  course_id, status and enrolled_at) so rows can go through currentVisible(). */
-export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id,
+export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id, group_id,
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
   lms_program_members(status, end_date_override, track_id)`
 

@@ -19,6 +19,7 @@ import {
 export type PortalCourse = {
   enrollment_id: string
   course_id: string
+  group_id: string | null
   title: string
   description: string | null
   thumbnail_url: string | null
@@ -93,7 +94,7 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
   const memberIds = (members as any[]).map(m => m.id)
   const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, lms_courses(id, title, description, thumbnail_url, delivery_mode, status)")
+    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, group_id, lms_courses(id, title, description, thumbnail_url, delivery_mode, status)")
     .in("member_id", memberIds)
     .neq("status", "dropped")
 
@@ -140,6 +141,7 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
     const courses: PortalCourse[] = mine.map(e => ({
       enrollment_id: e.id,
       course_id: e.course_id,
+      group_id: e.group_id ?? null,
       title: e.lms_courses?.title ?? "Untitled course",
       description: e.lms_courses?.description ?? null,
       thumbnail_url: e.lms_courses?.thumbnail_url ?? null,

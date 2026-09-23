@@ -90,7 +90,7 @@ export default async function PrintAttendanceReport({ params, searchParams }: Pr
   const sessionRes = await db.from("lms_sessions")
     .select(`
       id, title, session_date, start_time, location, closed_at,
-      late_threshold, duration_minutes, course_id, program_id, track_id,
+      late_threshold, duration_minutes, course_id, program_id, track_id, group_id,
       lms_courses(title), lms_programs(name), lms_program_tracks(name)
     `)
     .eq("id", sessionId)

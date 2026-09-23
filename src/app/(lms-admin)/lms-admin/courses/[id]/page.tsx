@@ -8,7 +8,7 @@ import {
   Monitor, Layers, Loader2, CheckCircle2, Send, Archive, Smartphone,
   Settings, MoreVertical, X, GraduationCap, FlaskConical, BookOpen,
   Camera, Clock, RefreshCw, Award, FileText, ClipboardList,
-  MessageSquare, GripVertical, ChevronUp, Sparkles,
+  MessageSquare, GripVertical, ChevronUp, Sparkles, FolderDown, CalendarDays,
 } from "lucide-react"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -34,6 +34,8 @@ import { cn } from "@/lib/utils"
 import CourseCatalogueSettings, { CategorySelect } from "@/components/lms/CourseCatalogueSettings"
 import { ProviderSelect } from "@/components/lms/ProviderSelect"
 import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
+import GroupsPanel from "@/components/lms/groups/GroupsPanel"
+import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 
 // Dynamically import activity editor (quiz / test / exam)
 const ActivityEditor = dynamic(() => import("@/components/lms/ActivityEditor"), {
@@ -133,7 +135,7 @@ interface Module {
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
   online: Globe, onsite: Monitor, hybrid: Layers,
 }
-type ActiveView = "overview" | "users" | "settings" | "ai-report" | string // string = module id
+type ActiveView = "overview" | "users" | "settings" | "ai-report" | "materials" | "groups" | string // string = module id
 type SaveStatus = "saved" | "saving" | "unsaved"
 
 // ──────────────────────────────────────────────────────────────
@@ -904,9 +906,21 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
     available_until:     mod.available_until     ?? "",
     estimated_duration:  mod.estimated_duration  ?? "",
   })
+  // Whether participants may download this module's slide PDFs (kept on the
+  // module's package; viewing them in the LMS is unaffected).
+  const [pkg, setPkg] = useState<{ id: string; slides_downloadable: boolean } | null>(null)
+  useEffect(() => {
+    fetch(`/api/lms/packages?module_id=${mod.id}`).then(r => r.ok ? r.json() : null)
+      .then(p => { if (p?.id) setPkg({ id: p.id, slides_downloadable: p.slides_downloadable !== false }) })
+      .catch(() => {})
+  }, [mod.id])
 
   async function save() {
     setSaving(true); setSaved(false)
+    if (pkg) await fetch(`/api/lms/packages/${pkg.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slides_downloadable: pkg.slides_downloadable }),
+    })
     await fetch("/api/lms/modules", {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -968,6 +982,18 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
           label="Lock until previous module is done"
           hint="Students cannot open this package until the module above is completed"
         />
+        {pkg && (
+          <div className="flex items-start justify-between gap-4 py-4 border-b border-slate-100 last:border-0">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-800">Participants can download the slides</p>
+              <p className="text-xs text-slate-500 mt-0.5">The module&apos;s PDF slides appear in Course Material with a Download button. Off: they can still view them in the LMS.</p>
+            </div>
+            <button type="button" onClick={() => setPkg(p => p && { ...p, slides_downloadable: !p.slides_downloadable })}
+              className={cn("relative w-10 h-6 rounded-full transition-colors shrink-0 mt-0.5", pkg.slides_downloadable ? "bg-[#1B4F8A]" : "bg-slate-200")}>
+              <span className={cn("absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform", pkg.slides_downloadable ? "left-5" : "left-1")} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Scheduling */}
@@ -2260,7 +2286,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  const activeModule = typeof activeView === "string" && activeView !== "overview" && activeView !== "users" && activeView !== "settings"
+  const activeModule = typeof activeView === "string" && !["overview", "users", "settings", "ai-report", "materials", "groups"].includes(activeView)
     ? modules.find(m => m.id === activeView) ?? null
     : null
 
@@ -2395,6 +2421,8 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
             {/* Users + Settings */}
             {[
+              { key: "materials", icon: FolderDown, label: "Materials" },
+              ...(course && course.delivery_mode !== "online" ? [{ key: "groups", icon: CalendarDays, label: "Groups" }] : []),
               { key: "settings",  icon: Settings,  label: "Settings" },
               { key: "ai-report", icon: Sparkles,  label: "Expert Report" },
             ].map(({ key, icon: Icon, label }) => (
@@ -2448,6 +2476,19 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
                   onCourseChange={updates => setCourse(prev => prev ? { ...prev, ...updates } : prev)}
                   onSaveStatus={setSaveStatus}
                 />
+              )}
+
+              {/* Materials */}
+              {activeView === "materials" && course && (
+                <div className="max-w-4xl pb-20 space-y-4">
+                  <h2 className="text-lg font-bold text-slate-900">Materials</h2>
+                  <MaterialsManager courseId={courseId} modules={modules.map(m => ({ id: m.id, title: m.title }))} />
+                </div>
+              )}
+
+              {/* Groups (onsite / hybrid) */}
+              {activeView === "groups" && course && (
+                <GroupsPanel courseId={courseId} providerId={course.provider_id ?? null} deliveryMode={course.delivery_mode} />
               )}
 
               {/* Settings */}

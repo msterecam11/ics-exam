@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     .from("lms_packages")
     .select(`
       id, module_id, course_id, title, description,
-      pass_mark, free_navigation, certificate_on_pass, created_at, updated_at,
+      pass_mark, free_navigation, certificate_on_pass, slides_downloadable, created_at, updated_at,
       lms_package_items (
         id, package_id, order_index, type, title, config, required, created_at
       )

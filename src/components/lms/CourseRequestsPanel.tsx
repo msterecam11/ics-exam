@@ -22,6 +22,7 @@ interface Req {
   student: { id: string; name: string; email: string | null; company: string | null; individual: boolean } | null
   course: { id: string; title: string; delivery_mode: string } | null
   program: { id: string; name: string } | null
+  group?: { id: string; label: string } | null
   options: Option[]
 }
 
@@ -99,6 +100,7 @@ function RequestCard({ r, onDone }: { r: Req; onDone: () => void }) {
     setBusy(false)
     if (!res.ok) { toast.error(data.error ?? "That didn't work"); return }
     toast.success(done)
+    if (data.groupNote) (data.groupNote.startsWith("Placed") ? toast.success : toast.warning)(data.groupNote, { duration: 8000 })
     onDone()
   }
 
@@ -118,6 +120,7 @@ function RequestCard({ r, onDone }: { r: Req; onDone: () => void }) {
             <span className="font-medium text-slate-700">{r.student?.name ?? "A removed student"}</span>
             <span>· {r.student?.company ?? "Individual learner"}</span>
             <span>· asked {fmt(r.created_at)}</span>
+            {r.group && <span className="text-[#1B4F8A] font-medium">· wants {r.group.label}</span>}
           </p>
         </div>
         {decided && (

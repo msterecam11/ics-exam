@@ -11,6 +11,7 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { guardStaff } from "@/lib/staff-access"
 import { programOptions, approveRequest, rejectRequest } from "@/lib/lms-course-requests"
+import { groupLabel } from "@/lib/lms-groups"
 
 export const dynamic = "force-dynamic"
 
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
   const status = new URL(req.url).searchParams.get("status") ?? "pending"
   let q = db.from("lms_course_requests")
     .select(`id, status, note, decision_note, created_at, decided_at, program_id,
+             lms_course_groups(id, name, start_date, end_date, city),
              lms_students(id, name, email, company_id, lms_companies(name)),
              lms_courses(id, title, delivery_mode),
              lms_programs(id, name)`)
@@ -53,6 +55,7 @@ export async function GET(req: Request) {
       } : null,
       course: r.lms_courses ? { id: r.lms_courses.id, title: r.lms_courses.title, delivery_mode: r.lms_courses.delivery_mode } : null,
       program: r.lms_programs ? { id: r.lms_programs.id, name: r.lms_programs.name } : null,
+      group: r.lms_course_groups ? { id: r.lms_course_groups.id, label: groupLabel(r.lms_course_groups) } : null,
       options,
     })
   }

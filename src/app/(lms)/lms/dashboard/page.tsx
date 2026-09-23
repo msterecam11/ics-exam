@@ -37,7 +37,7 @@ export default async function StudentDashboard() {
   // Sessions of the student's own groups only: each enrollment's program and
   // track (a course taken by another program has its own sessions).
   const viewers = enrollments.filter((e: any) => e.access === "full").map((e: any) => ({
-    course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null,
+    course_id: e.course_id, program_id: e.program_id ?? null, track_id: e.lms_program_members?.track_id ?? null, group_id: e.group_id ?? null,
   }))
 
   // ── Step 2: all queries in parallel ──────────────────────────

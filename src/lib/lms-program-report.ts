@@ -43,7 +43,7 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     return q
   }
   const enrollments = await selectAll<any>((from, to) =>
-    scoped(db.from("lms_enrollments").select("id, student_id, course_id, program_id, member_id, status, progress_pct, time_spent_s, enrolled_at, completed_at, lms_program_members(track_id)"))
+    scoped(db.from("lms_enrollments").select("id, student_id, course_id, program_id, member_id, group_id, status, progress_pct, time_spent_s, enrolled_at, completed_at, lms_program_members(track_id)"))
       .order("enrolled_at").range(from, to))
   if (!enrollments.length) return []
 
@@ -64,6 +64,10 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
       ? selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, session_date").in("program_id", programIds).in("course_id", courseIds).lte("session_date", todayISO()).range(from, to))
       : Promise.resolve([] as any[]),
   ])
+  // Onsite: an enrolment placed in a group attends that group's days.
+  const groupIds = [...new Set(enrollments.map(e => e.group_id).filter(Boolean))] as string[]
+  if (groupIds.length)
+    sessions.push(...await selectAll<any>((from, to) => db.from("lms_sessions").select("id, program_id, track_id, course_id, group_id, session_date").in("group_id", groupIds).lte("session_date", todayISO()).range(from, to)))
   const sessionIds = sessions.map(s => s.id)
   const attendance: any[] = []
   for (let i = 0; i < sessionIds.length; i += 150) {
@@ -102,11 +106,12 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
     const passed = mine.some(a => a.passed)
     const trackId = e.lms_program_members?.track_id ?? null
 
-    // Past sessions of this enrollment's program + track; excused ones don't count.
+    // Past sessions of this enrollment's program + track — or of its onsite
+    // group; excused ones don't count.
     let counted = 0, present = 0
     for (const s of sessions) {
-      if (s.program_id !== e.program_id || s.course_id !== e.course_id) continue
-      if (s.track_id !== null && s.track_id !== trackId) continue
+      if (e.group_id ? s.group_id !== e.group_id : (s.group_id || s.program_id !== e.program_id || s.course_id !== e.course_id)) continue
+      if (!e.group_id && s.track_id !== null && s.track_id !== trackId) continue
       const a = attBySessionStudent.get(`${s.id}:${e.student_id}`)
       if (a?.status === "excused") continue
       counted++

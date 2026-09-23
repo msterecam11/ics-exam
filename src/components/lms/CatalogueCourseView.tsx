@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, Clock, BarChart3, Globe, Monitor, Layers, CheckCircle2, Hourglass,
-  Loader2, Check, BookOpen, Send, X, Users, Award, Languages, ListChecks,
+  Loader2, Check, BookOpen, Send, X, Users, Award, Languages, ListChecks, CalendarDays, MapPin,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -28,6 +28,12 @@ interface Detail {
   modules: { id: string; title: string; type: string }[]
   enrolled: boolean
   request: { id: string; status: string; reason: string | null } | null
+  /** Onsite / hybrid: upcoming dates (confirmed groups) they can ask for. */
+  groups?: {
+    id: string; dates: string; city: string | null; venue_name: string | null
+    daily_start: string | null; daily_end: string | null; provider: string | null
+    seats_left: number | null; full: boolean
+  }[]
 }
 
 const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers }
@@ -40,6 +46,7 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
   const [asking, setAsking] = useState(false)
   const [note, setNote] = useState("")
   const [sending, setSending] = useState(false)
+  const [groupId, setGroupId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -53,12 +60,12 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
     setSending(true)
     const res = await fetch("/api/lms/catalogue/requests", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ course_id: courseId, note: note.trim() || undefined }),
+      body: JSON.stringify({ course_id: courseId, note: note.trim() || undefined, group_id: groupId ?? undefined }),
     })
     const data = await res.json().catch(() => ({}))
     setSending(false)
     if (!res.ok) { toast.error(data.error ?? "Could not send your request"); return }
-    setAsking(false); setNote("")
+    setAsking(false); setNote(""); setGroupId(null)
     toast.success("Request sent — we'll come back to you")
     load()
   }
@@ -182,6 +189,36 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
 
         {/* ── Right: how to get on it, and what happens after ───────── */}
         <aside className="lg:sticky lg:top-4 bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          {/* Onsite / hybrid: the upcoming dates — pick one when asking to join */}
+          {c.delivery_mode !== "online" && !c.enrolled && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Upcoming dates</p>
+              {!c.groups?.length ? (
+                <p className="text-sm text-slate-500">No dates are scheduled yet — ask to join and we&apos;ll tell you when the next one is.</p>
+              ) : c.groups.map(g => {
+                const chosen = groupId === g.id
+                return (
+                  <button key={g.id} type="button" disabled={g.full || pending}
+                    onClick={() => { setGroupId(chosen ? null : g.id); if (!chosen) setAsking(true) }}
+                    className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${chosen ? "border-[#1B4F8A] bg-[#1B4F8A]/5" : "border-slate-200 hover:border-[#1B4F8A]/40"} ${g.full ? "opacity-50 cursor-not-allowed" : ""}`}>
+                    <p className="text-sm font-semibold text-slate-800 flex items-center justify-between gap-2">
+                      {g.dates}
+                      {chosen && <Check className="h-4 w-4 text-[#1B4F8A]" />}
+                    </p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <MapPin className="h-3 w-3" />{[g.venue_name, g.city].filter(Boolean).join(", ") || "Venue to be confirmed"}
+                      {g.daily_start && <span className="ml-1">· {g.daily_start.slice(0, 5)}–{g.daily_end?.slice(0, 5)}</span>}
+                    </p>
+                    <p className={`text-[11px] mt-0.5 ${g.full ? "text-red-600" : "text-slate-400"}`}>
+                      {g.full ? "Full" : g.seats_left !== null ? `${g.seats_left} seat${g.seats_left === 1 ? "" : "s"} left` : "Places available"}
+                      {g.provider ? ` · ${g.provider}` : ""}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {/* CV-5 — already on it, already asked, or free to ask */}
           {c.enrolled ? (
             <>
@@ -202,6 +239,11 @@ export default function CatalogueCourseView({ courseId }: { courseId: string }) 
           ) : asking ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-800">Ask to join this course</p>
+              {c.delivery_mode !== "online" && !!c.groups?.length && (
+                <p className="text-xs text-slate-500">
+                  {groupId ? <>For <b className="text-slate-700">{c.groups.find(g => g.id === groupId)?.dates}</b></> : "No date chosen — pick one above, or send without and we'll suggest one."}
+                </p>
+              )}
               <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} maxLength={1000}
                 placeholder="Anything you'd like us to know? (optional)"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none" />

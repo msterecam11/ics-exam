@@ -107,7 +107,7 @@ export async function buildCourseReport(
   const [studentRes, courseRes, enrollRes] = await Promise.all([
     db.from("lms_students").select("id, name, email, job_title, company, department").eq("id", studentId).single(),
     db.from("lms_courses").select("id, title, delivery_mode, feedback_anonymous, final_exam_pass_mark").eq("id", courseId).single(),
-    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id, lms_program_members(track_id, lms_program_tracks(name)), lms_programs(id, name, is_individual, lms_companies(name))")
+    db.from("lms_enrollments").select("id, status, enrolled_at, completed_at, progress_pct, program_id, course_id, group_id, lms_program_members(track_id, lms_program_tracks(name)), lms_programs(id, name, is_individual, lms_companies(name))")
       .eq("id", enrollmentId).eq("student_id", studentId).eq("course_id", courseId).maybeSingle(),
   ])
   if (!studentRes.data || !courseRes.data || !enrollRes.data) return null
@@ -125,6 +125,7 @@ export async function buildCourseReport(
       student_id: studentId, course_id: courseId,
       program_id: (enrollRes.data as any).program_id ?? null,
       track_id: (enrollRes.data as any).lms_program_members?.track_id ?? null,
+      group_id: (enrollRes.data as any).group_id ?? null,
     }).catch(() => ({ sessionTotal: 0, presentCount: 0, excusedCount: 0, attendancePct: null })),
     db.from("lms_report_assessments").select("assessment, generated_at").eq("enrollment_id", enrollmentId).maybeSingle(),
   ])

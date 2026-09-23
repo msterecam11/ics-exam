@@ -40,7 +40,7 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
   const finished = p.totalCount > 0 && p.completedCount === p.totalCount
 
   // Sessions and attendance of this program only (and the student's track).
-  const viewers = closed ? [] : p.courses.map(c => ({ course_id: c.course_id, program_id: p.program.id, track_id: p.track?.id ?? null }))
+  const viewers = closed ? [] : p.courses.map(c => ({ course_id: c.course_id, program_id: p.program.id, track_id: p.track?.id ?? null, group_id: c.group_id }))
   const today = sessionToday()
   const [upcoming, attendance] = await Promise.all([
     sessionsForViewers<any>(viewers,

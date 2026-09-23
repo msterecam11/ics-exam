@@ -398,12 +398,16 @@ async function classReminders(
   // way the job behaves the same whatever timezone the server runs in.
   const { data: sessions } = await db
     .from("lms_sessions")
-    .select("id, title, session_date, start_time, duration_minutes, location, meeting_link, course_id, program_id, track_id, lms_courses(id, title)")
+    .select("id, title, session_date, start_time, duration_minutes, location, meeting_link, course_id, program_id, track_id, group_id, lms_courses(id, title), session_group:lms_course_groups(status)")
     .gte("session_date", iso(new Date(now.getTime() - DAY_MS)))
     .lte("session_date", iso(new Date(horizon.getTime() + DAY_MS)))
     .is("closed_at", null)
 
   for (const s of (sessions ?? []) as any[]) {
+    if (s.group_id) {
+      out.push(...await groupSessionReminders(s, byId, settings, now, dryRun, capUsed, history))
+      continue
+    }
     const p = s.program_id ? byId.get(s.program_id) : null
     if (s.program_id && !p) continue                                // not a live program
     const eff = effectiveRule(settings, "class_reminder", p?.emailSettings)
@@ -427,6 +431,47 @@ async function classReminders(
         courseId: s.course_id, sessionId: s.id, ...t,
       }))
     }
+  }
+  return out
+}
+
+// A group's day: its participants can come through different programs (or
+// none), so each person's OWN program switches and "hours before" decide —
+// never one setting for the whole room. Nothing goes out for a group that
+// isn't confirmed.
+async function groupSessionReminders(
+  s: any, byId: Map<string, ProgramFact>, settings: EmailSettings, now: Date,
+  dryRun: boolean, capUsed: Map<string, number>, history: Map<string, string>,
+): Promise<RuleSendResult[]> {
+  const out: RuleSendResult[] = []
+  if (s.session_group?.status !== "confirmed") return out
+  const roster = await sessionRoster(s, { activeOnly: true })
+  if (!roster.length) return out
+  const enrIds = roster.map(r => r.enrollment_id).filter(Boolean) as string[]
+  const { data: enr } = enrIds.length
+    ? await db.from("lms_enrollments").select("id, program_id").in("id", enrIds)
+    : { data: [] as any[] }
+  const programOf = new Map(((enr ?? []) as any[]).map(e => [e.id, e.program_id as string | null]))
+  const startsAt = new Date(`${s.session_date}T${(s.start_time ?? "00:00").slice(0, 5)}:00`)
+  const lead = (startsAt.getTime() - now.getTime()) / 3_600_000
+  for (const r of roster) {
+    const programId = (r.enrollment_id && programOf.get(r.enrollment_id)) || null
+    const p = programId ? byId.get(programId) : null
+    if (programId && !p) continue                                   // their program isn't live
+    const eff = effectiveRule(settings, "class_reminder", p?.emailSettings)
+    if (lead < 0 || lead > num(eff.config.hours, 24)) continue
+    if (history.has(key("class_reminder", r.student_id, s.id))) continue
+    const t = buildSessionReminderEmail({
+      studentName: r.name, sessionTitle: s.title ?? "Session", courseTitle: s.lms_courses?.title ?? "your course",
+      sessionDate: s.session_date, startTime: (s.start_time ?? "").slice(0, 5),
+      endTime: sessionEndTime(s.start_time, s.duration_minutes),
+      location: s.location ?? undefined, meetingLink: s.meeting_link ?? undefined, sessionId: s.id,
+    })
+    out.push(await sendRuleEmail({
+      settings, dryRun, capUsed, rule: "class_reminder", effective: eff,
+      to: r.email, studentId: r.student_id, programId,
+      courseId: s.course_id, sessionId: s.id, ...t,
+    }))
   }
   return out
 }
