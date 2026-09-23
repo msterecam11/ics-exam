@@ -113,7 +113,7 @@ export default function IssueCertificateDialog({ open, onClose, onIssued }: {
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) { reset(); onClose() } }}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[88vh] overflow-auto">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-[#1B4F8A]" /> Issue a certificate</DialogTitle></DialogHeader>
 
         <div className="space-y-4">
