@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
   const { data: student } = await db
     .from("lms_students")
-    .select("id, name, email, password_hash, failed_attempts, locked_until, language, avatar_url")
+    .select("id, name, email, password_hash, failed_attempts, locked_until, language, avatar_url, email_verified_at")
     .eq("email", email.toLowerCase().trim())
     .single()
 
@@ -76,6 +76,17 @@ export async function POST(req: Request) {
     }
     await db.from("lms_students").update(updates).eq("id", student.id)
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+  }
+
+  // A self sign-up that has never confirmed its address gets no further — the
+  // account exists but does nothing. Checked AFTER the password, so the message
+  // can only ever be seen by whoever owns the account.
+  if (!(student as any).email_verified_at) {
+    await db.from("lms_students").update({ failed_attempts: 0, locked_until: null }).eq("id", student.id)
+    return NextResponse.json({
+      error: "Confirm your email address first — check your inbox for the link we sent.",
+      needsVerification: true,
+    }, { status: 403 })
   }
 
   // Reset failed attempts

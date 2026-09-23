@@ -26,7 +26,7 @@ const LMS_EMAIL = process.env.LMS_EMAIL ?? "lms@ics-aviation.com"
 // The older callers use the first five names; everything that goes through the
 // EM-1..EM-20 rules logs its rule code as the type instead.
 export type EmailType =
-  | "enrollment" | "session_reminder" | "completion" | "password_reset" | "course_reminder"
+  | "enrollment" | "session_reminder" | "completion" | "password_reset" | "course_reminder" | "signup"
   | EmailRuleCode
 
 interface SendOptions {
@@ -447,4 +447,42 @@ export function buildPasswordResetEmail(opts: {
     subject: "Reset your password — ICS Aviation LMS",
     html:    baseTemplate(body),
   }
+}
+
+/** Self sign-up: confirm the address before the account can do anything. */
+export function buildVerifyEmail(opts: { studentName: string; verifyUrl: string; expiresHours: number }) {
+  const { studentName, verifyUrl, expiresHours } = opts
+  const body = `
+    <h2 style="margin:0 0 6px;color:${BLUE};font-size:22px;text-align:center;">Confirm your email</h2>
+    <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
+      Hi ${studentName}, thank you for registering with ICS Integrated Consulting Services.
+      Confirm your email address to activate your account.
+    </p>
+    <p style="text-align:center;">${btn("Confirm my email →", verifyUrl)}</p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6;text-align:center;margin-top:24px;">
+      This link expires in ${expiresHours} hours. If you didn't register with us, ignore this email —
+      the account is never activated and is removed automatically.
+    </p>`
+  return { subject: "Confirm your email — ICS Aviation LMS", html: baseTemplate(body) }
+}
+
+/**
+ * Someone tried to register with an address that already has an account. Sent
+ * INSTEAD of a verification mail, so the sign-up form never reveals who is
+ * already registered.
+ */
+export function buildAlreadyRegisteredEmail(opts: { studentName: string; loginUrl: string; forgotUrl: string }) {
+  const { studentName, loginUrl, forgotUrl } = opts
+  const body = `
+    <h2 style="margin:0 0 6px;color:${BLUE};font-size:22px;text-align:center;">You already have an account</h2>
+    <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
+      Hi ${studentName}, someone just tried to register with this email address — it may well have been you.
+      There is no need: you already have an ICS Aviation Learning Portal account.
+    </p>
+    <p style="text-align:center;">${btn("Sign in →", loginUrl)}</p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6;text-align:center;margin-top:24px;">
+      Forgotten your password? <a href="${forgotUrl}" style="color:${BLUE};">Reset it here</a>.
+      If this wasn't you, nothing has changed and you can ignore this email.
+    </p>`
+  return { subject: "You already have an account — ICS Aviation LMS", html: baseTemplate(body) }
 }

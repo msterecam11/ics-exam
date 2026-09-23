@@ -37,6 +37,8 @@ interface Student {
   lms_companies: { id: string; name: string; code: string; status: string } | null
   language:   string
   last_login: string | null
+  email_verified_at?: string | null
+  self_registered?: boolean
   created_at: string
 }
 
@@ -655,7 +657,21 @@ export default function StudentsPage() {
                           {s.name[0]?.toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-medium text-slate-900">{s.name}</p>
+                          <p className="font-medium text-slate-900 flex items-center gap-2 flex-wrap">
+                            {s.name}
+                            {/* A self sign-up that has never confirmed its address can do
+                                nothing, and is removed automatically after 30 days. */}
+                            {s.self_registered && !s.email_verified_at && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                                Unconfirmed
+                              </span>
+                            )}
+                            {s.self_registered && s.email_verified_at && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                                Self-registered
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-slate-500">{s.email}</p>
                         </div>
                       </div>

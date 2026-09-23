@@ -22,6 +22,7 @@ export default function LmsLoginPage() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState("")
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [needsVerification, setNeedsVerification] = useState(false)
 
   // In development the captcha is bypassed (server also bypasses in dev)
   const isDev = process.env.NODE_ENV === "development"
@@ -49,6 +50,7 @@ export default function LmsLoginPage() {
 
     if (!res.ok) {
       setError(data.error ?? "Login failed")
+      setNeedsVerification(data.needsVerification === true)
       // Reset the widget so a fresh token is required next attempt
       if (typeof (window as any).turnstile !== "undefined") (window as any).turnstile.reset()
       setTurnstileToken(null)
@@ -124,6 +126,11 @@ export default function LmsLoginPage() {
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
                   {error}
+                  {needsVerification && (
+                    <Link href="/lms/verify" className="block mt-1.5 font-medium underline">
+                      Send me the link again
+                    </Link>
+                  )}
                 </div>
               )}
 
@@ -148,7 +155,9 @@ export default function LmsLoginPage() {
             </form>
 
             <p className="text-center text-xs text-slate-400 mt-6">
-              Don&apos;t have an account? Contact your instructor or admin.
+              Don&apos;t have an account?{" "}
+              <Link href="/lms/signup" className="text-[#1B4F8A] font-medium hover:underline">Create one</Link>
+              {" "}— or contact your instructor or admin.
             </p>
           </div>
         </div>

@@ -62,6 +62,7 @@ export async function GET(req: Request) {
   let query = db
     .from("lms_students")
     .select(`id, name, email, job_title, company, company_id, employee_number, phone, department, language, last_login, created_at,
+             email_verified_at, self_registered,
              lms_companies(id, name, code, status)`, { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)

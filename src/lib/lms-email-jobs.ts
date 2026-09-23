@@ -34,6 +34,8 @@ export interface DailyRunOptions {
 
 export interface DailyRunReport {
   ranAt: string
+  /** Unconfirmed self sign-ups removed on this run. */
+  purgedUnconfirmed?: number
   dryRun: boolean
   masterEnabled: boolean
   testMode: boolean
@@ -189,6 +191,11 @@ export async function runDailyEmails(opts: DailyRunOptions = {}): Promise<DailyR
     results.push(...await instructorDigests(programs, memberIndex, settings, now, dryRun))
   }
 
+  // Housekeeping, not email: a registration nobody ever confirmed is deleted
+  // after 30 days, so the students list doesn't silt up with ghosts. Stated in
+  // the privacy policy, so it has to actually happen.
+  const purged = dryRun ? 0 : await purgeUnconfirmedSignups(now)
+
   const counts: DailyRunReport["counts"] = {}
   for (const r of results) {
     const c = counts[r.rule] ?? (counts[r.rule] = { sent: 0, skipped: 0, failed: 0 })
@@ -203,8 +210,25 @@ export async function runDailyEmails(opts: DailyRunOptions = {}): Promise<DailyR
     testMode: settings.config.test_mode, testAddress: settings.config.test_address,
     programs: programs.length,
     members: programs.reduce((a, p) => a + p.members.length, 0),
-    results, counts,
+    results, counts, purgedUnconfirmed: purged,
   }
+}
+
+/** Unconfirmed self sign-ups older than 30 days. Never touches a confirmed
+ *  account, and never one that staff created. */
+async function purgeUnconfirmedSignups(now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - 30 * 86400_000).toISOString()
+  const { data } = await db.from("lms_students").select("id")
+    .is("email_verified_at", null).eq("self_registered", true).lt("created_at", cutoff).limit(500)
+  const ids = ((data ?? []) as any[]).map(s => s.id)
+  if (!ids.length) return 0
+  // Only ever a bare registration: anything enrolled is left alone and reported.
+  const { data: enrolled } = await db.from("lms_enrollments").select("student_id").in("student_id", ids)
+  const keep = new Set(((enrolled ?? []) as any[]).map(e => e.student_id))
+  const removable = ids.filter(id => !keep.has(id))
+  if (!removable.length) return 0
+  await db.from("lms_students").delete().in("id", removable)
+  return removable.length
 }
 
 // ── Fact gathering ───────────────────────────────────────────────────────────
