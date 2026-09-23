@@ -16,7 +16,7 @@ import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enr
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 import { getFeedbackState } from "@/lib/lms-feedback"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
-import { GROUP_COLUMNS, groupDates, groupLabel } from "@/lib/lms-groups"
+import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen } from "@/lib/lms-groups"
 import { materialsFor } from "@/lib/lms-materials"
 import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import { PassResultCard } from "@/components/lms/course/PassResultView"
@@ -246,6 +246,15 @@ export default async function StudentCoursePage({
   const exerciseMap = new Map<string, any>(((myExercises ?? []) as any[]).map(e => [e.module_id, e]))
 
   // Compute module completion
+  // Onsite / hybrid: the final exam opens when the group's instructor releases
+  // it; an assignment can be locked by them.
+  const { data: accessRow } = current.group_id
+    ? await db.from("lms_course_groups").select("item_access").eq("id", current.group_id).maybeSingle()
+    : { data: null }
+  const gateOf = (m: any) => current.group_id && !isItemOpen((accessRow as any)?.item_access, m)
+    ? (m.module_type === "final_exam" ? "Opens when your instructor releases it" : "Locked by your instructor for now")
+    : null
+
   const mods = (modules ?? []).map((m: any) => {
     if (m.module_type === "package") {
       const pkgProg = pkgProgressMap.get(m.id)
@@ -294,6 +303,9 @@ export default async function StudentCoursePage({
   // Compute locked state per module based on lock_until_previous
   // A module is locked when: lock_until_previous=true AND the previous mandatory module is not 100% done
   const modsWithLock = mods.map((mod: any, idx: number) => {
+    // Not gated once done (a passed exam, a passed assignment).
+    const gateNote = mod.pct >= 100 ? null : gateOf(mod)
+    if (gateNote) return { ...mod, isModuleLocked: true, gateNote }
     if (!mod.lock_until_previous || idx === 0) return { ...mod, isModuleLocked: false }
     // Find the closest previous mandatory module
     // Exercises (marked in class) and live sessions never hold the next module.
@@ -681,6 +693,7 @@ export default async function StudentCoursePage({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-slate-400 text-sm">{mod.title}</p>
+                      {mod.gateNote && <p className="text-xs text-slate-500 mt-0.5">{mod.gateNote}</p>}
                       {mod.description && (
                         <p className="text-xs text-slate-300 mt-0.5 truncate">{mod.description}</p>
                       )}

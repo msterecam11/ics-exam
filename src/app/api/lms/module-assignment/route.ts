@@ -10,6 +10,7 @@ import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollmen
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
+import { itemGate } from "@/lib/lms-groups"
 
 const BUCKET = "lms-submissions"
 const SIGNED_URL_SECONDS = 60 * 60
@@ -132,6 +133,10 @@ export async function POST(req: Request) {
   const writable = await getWritableEnrollment(student.id, course_id)
   if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
   const enrollment = writable.enrollment
+
+  // The group's instructor may have locked it.
+  const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "assignment" })
+  if (!gate.open) return NextResponse.json({ error: gate.message, locked: true }, { status: 403 })
 
   // Due date check
   if (module.assignment_due_date) {

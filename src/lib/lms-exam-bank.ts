@@ -446,18 +446,28 @@ async function resolvePapers(papers: { moduleId: string; paper: PaperQuestion[] 
 }
 
 /** Score a paper: voided questions count for nobody. */
-export function scorePaper(paper: PaperQuestion[], answers: any, aiScores: Record<string, { score: number }> | undefined) {
+/** An instructor's mark for one question, kept on the attempt (ai_feedback.question_overrides). */
+export type QuestionOverride = { score: number; reason: string; by?: string | null; by_name?: string | null; at?: string }
+
+/**
+ * Score a paper. An instructor's override for a question wins over the
+ * automatic mark (objective key or AI), so a correction run keeps it.
+ */
+export function scorePaper(paper: PaperQuestion[], answers: any, aiScores: Record<string, { score: number }> | undefined,
+  overrides?: Record<string, QuestionOverride> | null) {
   let max = 0, earned = 0
   for (const q of paper) {
     if (q.voided) continue
     max += Number(q.points ?? 0)
-    if (q.type === "open_ended") earned += Math.min(Number(aiScores?.[q.id]?.score ?? 0), Number(q.points ?? 0))
+    const o = overrides?.[q.id]
+    if (o) earned += Math.max(0, Math.min(Number(o.score) || 0, Number(q.points ?? 0)))
+    else if (q.type === "open_ended") earned += Math.min(Number(aiScores?.[q.id]?.score ?? 0), Number(q.points ?? 0))
     else earned += scoreObjectiveQuestion(q, (answers ?? {})[q.id])
   }
   return { score: earned, maxScore: max, pct: max > 0 ? Math.round((earned / max) * 100) : 0 }
 }
 
-async function passMarkFor(courseId: string, programId: string | null) {
+export async function passMarkFor(courseId: string, programId: string | null) {
   if (programId) {
     const { data } = await db.from("lms_program_course_rules").select("pass_mark").eq("program_id", programId).eq("course_id", courseId).maybeSingle()
     if ((data as any)?.pass_mark != null) return Number((data as any).pass_mark)
@@ -522,7 +532,7 @@ export async function runCorrections(scope: PaperScope, opts: {
 
     const newPaper = oldPaper.map(q => resolver(a.module_id, q))
     const aiScores = a.ai_feedback?.open_ended_scores as Record<string, { score: number }> | undefined
-    const { score, maxScore, pct } = scorePaper(newPaper, a.answers, aiScores)
+    const { score, maxScore, pct } = scorePaper(newPaper, a.answers, aiScores, a.ai_feedback?.question_overrides)
 
     const pmKey = `${a.course_id}|${a.program?.id ?? ""}`
     if (!passMarks.has(pmKey)) passMarks.set(pmKey, await passMarkFor(a.course_id, a.program?.id ?? null))

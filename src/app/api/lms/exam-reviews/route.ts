@@ -114,7 +114,12 @@ export async function POST(req: Request) {
     const aiFeedback = { ...(attempt.ai_feedback ?? {}) }
     aiFeedback.open_ended_scores = { ...(aiFeedback.open_ended_scores ?? {}),
       [q.id]: { score, justification: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "Re-marked after the rubric was corrected" } }
-    const result = scorePaper(attempt.paper, attempt.answers, aiFeedback.open_ended_scores)
+    // This mark replaces any earlier instructor override for the question.
+    if (aiFeedback.question_overrides?.[q.id]) {
+      const { [q.id]: _dropped, ...rest } = aiFeedback.question_overrides
+      aiFeedback.question_overrides = rest
+    }
+    const result = scorePaper(attempt.paper, attempt.answers, aiFeedback.open_ended_scores, aiFeedback.question_overrides)
 
     // The pass mark that applies to this attempt's program.
     const { data: enr } = attempt.enrollment_id

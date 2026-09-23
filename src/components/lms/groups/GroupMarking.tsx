@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { AccessPanel } from "@/components/lms/groups/GroupExam"
 
 // The group screen's marking tabs:
 //   GroupExercises   — a grid, participant × exercise; click a cell to mark it
@@ -175,6 +176,7 @@ export function GroupAssignments({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-5">
+      <AccessPanel groupId={groupId} type="assignment" />
       {d.assignments.map(a => {
         const subs = d.submissions.filter(s => s.module_id === a.id)
         const toMark = subs.filter(s => !s.confirmed).length

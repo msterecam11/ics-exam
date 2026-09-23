@@ -292,3 +292,32 @@ export async function syncGroupDayDetails(group: CourseGroup) {
     location,
   }).eq("group_id", group.id).is("closed_at", null)
 }
+
+// ─── Open / lock per group ────────────────────────────────────────────────────
+// The group's instructor opens the final exam when the class is ready for it
+// (no access code), and can lock or reopen assignments. Stored on the group as
+// item_access { module_id: { open, by, at } }. Participants without a group
+// (online) are never gated here.
+
+export const GATED_TYPES = ["final_exam", "assignment"] as const
+export type ItemAccess = Record<string, { open: boolean; by?: string | null; at?: string | null }>
+
+/** Before the instructor decides: the exam waits, assignments are open. */
+export const defaultOpen = (moduleType: string) => moduleType !== "final_exam"
+
+export function isItemOpen(access: ItemAccess | null | undefined, mod: { id: string; module_type: string }): boolean {
+  if (!(GATED_TYPES as readonly string[]).includes(mod.module_type)) return true
+  const e = access?.[mod.id]
+  return e ? e.open === true : defaultOpen(mod.module_type)
+}
+
+/** Can this participant start / submit this item now? */
+export async function itemGate(groupId: string | null | undefined, mod: { id: string; module_type: string }):
+  Promise<{ open: true } | { open: false; message: string }> {
+  if (!groupId || !(GATED_TYPES as readonly string[]).includes(mod.module_type)) return { open: true }
+  const { data } = await db.from("lms_course_groups").select("item_access").eq("id", groupId).maybeSingle()
+  if (isItemOpen((data as any)?.item_access, mod)) return { open: true }
+  return { open: false, message: mod.module_type === "final_exam"
+    ? "The final exam opens when your instructor releases it."
+    : "Your instructor has locked this assignment for now." }
+}

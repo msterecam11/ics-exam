@@ -7,6 +7,7 @@ import { sanitizeQuestionsForClient, paperFor, type ExamQuestion } from "@/lib/l
 import { examSections, buildPaper } from "@/lib/lms-exam-bank"
 import { scorePaper, type PaperQuestion } from "@/lib/lms-exam-bank"
 import { syncEnrollmentProgress } from "@/lib/lms-completion"
+import { itemGate } from "@/lib/lms-groups"
 
 // POST /api/lms/exam-attempt/start
 // Body: { module_id, course_id }
@@ -65,6 +66,13 @@ export async function POST(req: Request) {
     .eq("module_id", module_id)
     .is("submitted_at", null)
     .maybeSingle()
+
+  // In a group, the exam opens when the instructor releases it. A paper
+  // already under way can still be finished.
+  if (!open) {
+    const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "final_exam" })
+    if (!gate.open) return NextResponse.json({ error: gate.message, locked: true }, { status: 403 })
+  }
 
   // A session left to run out without being submitted COUNTS AS AN ATTEMPT.
   // It used to be closed quietly and a fresh one opened with a full clock, so
