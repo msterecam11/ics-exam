@@ -213,9 +213,10 @@ export async function POST(req: Request) {
   // Sync progress + check completion
   if (course_id) {
     await syncEnrollmentProgress(studentId, course_id, enrollment.id)
-    if (correctedPassed) {
-      await checkCourseCompletion(studentId, course_id, enrollment.id)
-    } else if (attempt.attempt_no === maxAttempts - 1) {
+    // Always ask: a course with a pass rule can complete on a failed exam when
+    // the exam isn't required and the weighted score carries it.
+    await checkCourseCompletion(studentId, course_id, enrollment.id)
+    if (!correctedPassed && attempt.attempt_no === maxAttempts - 1) {
       // EM-8 — failed with exactly one attempt left. Never fatal to the
       // submission, so a mail problem can't cost the student their result.
       notifyLastAttempt({

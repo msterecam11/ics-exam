@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useMemo, useState } from "react"
+import { Fragment, use, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { GroupFormDialog, type GroupFormValue } from "@/components/lms/groups/GroupFormDialog"
 import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
+import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
 type Person = {
   enrollment_id: string; status: string
@@ -53,7 +54,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter()
   const [d, setD] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<"participants" | "days" | "materials">("participants")
+  const [tab, setTab] = useState<"participants" | "days" | "results" | "materials">("participants")
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [modules, setModules] = useState<{ id: string; title: string }[]>([])
@@ -168,7 +169,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["materials", "Materials"]] as const).map(([k, label]) => (
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["results", "Results"], ["materials", "Materials"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
@@ -225,6 +226,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           )}
         </div>
       )}
+
+      {tab === "results" && <GroupResults groupId={id} />}
 
       {tab === "materials" && d.course && (
         <MaterialsManager courseId={d.course.id} groupId={id} modules={modules} />
@@ -296,5 +299,56 @@ function AddParticipants({ open, onClose, groupId, candidates, seatsLeft, onDone
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+
+// Each participant against the course's pass rule.
+function GroupResults({ groupId }: { groupId: string }) {
+  const [rows, setRows] = useState<any[] | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
+  useEffect(() => {
+    fetch(`/api/lms/groups/${groupId}/results`).then(r => r.json()).then(d => setRows(d.rows ?? [])).catch(() => setRows([]))
+  }, [groupId])
+  if (!rows) return <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
+  if (!rows.length) return <div className="border-2 border-dashed border-slate-200 rounded-xl py-12 text-center text-sm text-slate-400">Nobody in this group yet</div>
+  const keys: { key: string; label: string }[] = []
+  for (const r of rows) for (const c of r.result?.components ?? []) if (!keys.some(k => k.key === c.key)) keys.push({ key: c.key, label: c.label })
+  const examOnly = rows.every(r => r.result?.mode !== "rule")
+  return (
+    <div className="space-y-2">
+      {examOnly && <p className="text-xs text-slate-500">This course completes by passing the final exam. Set a pass rule in the course&apos;s Settings → Completion &amp; grading to weigh in assignments, exercises and attendance.</p>}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+            <tr>
+              <th className="text-left px-4 py-2.5 font-medium">Participant</th>
+              {keys.map(k => <th key={k.key} className="px-3 py-2.5 font-medium text-center">{k.label}</th>)}
+              <th className="px-3 py-2.5 font-medium text-center">Score</th>
+              <th className="px-3 py-2.5 font-medium text-center">Result</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map(r => (
+              <Fragment key={r.enrollment_id}>
+                <tr className="hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(open === r.enrollment_id ? null : r.enrollment_id)}>
+                  <td className="px-4 py-2.5 font-medium text-slate-800">{r.student?.name}</td>
+                  {keys.map(k => {
+                    const c = r.result?.components?.find((x: any) => x.key === k.key)
+                    return <td key={k.key} className="px-3 py-2.5">{c ? <span className="flex items-center justify-center gap-1.5"><ComponentBadge c={c} /><span className="text-xs text-slate-600">{c.score !== null ? `${c.score}%` : "—"}</span></span> : <span className="block text-center text-slate-300">—</span>}</td>
+                  })}
+                  <td className="px-3 py-2.5 text-center font-semibold text-slate-800">{r.result?.score !== null && r.result?.score !== undefined ? `${r.result.score}%` : "—"}</td>
+                  <td className="px-3 py-2.5 text-center"><ResultPill r={r.result} /></td>
+                </tr>
+                {open === r.enrollment_id && r.result?.reasons?.length > 0 && (
+                  <tr><td colSpan={keys.length + 3} className="px-4 py-2 text-xs text-slate-500 bg-slate-50">{r.result.reasons.join(" · ")}</td></tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-slate-400">Click a row to see what's missing. The course completes (and the certificate issues) automatically once someone passes.</p>
+    </div>
   )
 }

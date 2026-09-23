@@ -36,6 +36,7 @@ import { ProviderSelect } from "@/components/lms/ProviderSelect"
 import ExamSectionsEditor from "@/components/lms/bank/ExamSectionsEditor"
 import GroupsPanel from "@/components/lms/groups/GroupsPanel"
 import MaterialsManager from "@/components/lms/groups/MaterialsManager"
+import CompletionRulesPanel from "@/components/lms/course/CompletionRulesPanel"
 
 // Dynamically import activity editor (quiz / test / exam)
 const ActivityEditor = dynamic(() => import("@/components/lms/ActivityEditor"), {
@@ -662,7 +663,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><GraduationCap className="h-4 w-4 text-[#1B4F8A]" /> Learning & Completion</h3>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.progress_enforcement} onChange={e => set("progress_enforcement", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Sequential progress enforcement</p><p className="text-xs text-slate-500 mt-0.5">Students must complete each item before the next</p></div></label>
-        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.certificate_enabled} onChange={e => set("certificate_enabled", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Issue certificate on completion</p><p className="text-xs text-slate-500 mt-0.5">Students receive a certificate when they pass the final exam. Inside a program, that program&apos;s certificate settings apply instead.</p></div></label>
+        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.certificate_enabled} onChange={e => set("certificate_enabled", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Issue certificate on completion</p><p className="text-xs text-slate-500 mt-0.5">Students receive a certificate when they complete the course (see Completion &amp; grading below). Inside a program, that program&apos;s certificate settings apply instead.</p></div></label>
         {form.certificate_enabled && (
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>
         )}
@@ -703,6 +704,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
 
         <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Default for new programs, and the mark for students outside programs (their existing results are re-checked). Programs keep their own copy.</p></div>
       </div>
+      <CompletionRulesPanel courseId={course.id} />
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1B4F8A]" /> Course Feedback</h3>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">

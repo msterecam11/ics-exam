@@ -10,6 +10,7 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { guardStaff } from "@/lib/staff-access"
 import { todayISO } from "@/lib/lms-enrollment"
+import { checkCourseCompletion } from "@/lib/lms-completion"
 import {
   GROUP_COLUMNS, GROUP_STATUSES, SEAT_STATUSES, loadGroup, readGroupInput, readStaff, seatsTaken, groupLabel,
   syncGroupDayDetails, type CourseGroup, type GroupStatus,
@@ -145,6 +146,13 @@ export async function PATCH(req: Request, { params }: Params) {
   if (staffList) {
     await db.from("lms_group_staff").delete().eq("group_id", id)
     if (staffList.length) await db.from("lms_group_staff").insert(staffList.map(s => ({ group_id: id, user_id: s.user_id, role: s.role })))
+  }
+
+  // The group has finished: attendance is final, so each participant's pass
+  // rule can now be decided.
+  if (updates.status === "completed") {
+    const { data: people } = await db.from("lms_enrollments").select("id, student_id").eq("group_id", id).eq("status", "active")
+    for (const p of (people ?? []) as any[]) await checkCourseCompletion(p.student_id, group.course_id, p.id).catch(() => {})
   }
 
   await auditLog(session, "lms.group.update", "lms_course_group", id, groupLabel(updated), {

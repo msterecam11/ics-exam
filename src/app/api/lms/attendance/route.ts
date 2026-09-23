@@ -6,6 +6,7 @@ import {
 } from "@/lib/lms-sessions"
 import { groupLabel } from "@/lib/lms-groups"
 import { guardStaff, canTakeAttendance, forbidden } from "@/lib/staff-access"
+import { checkCourseCompletion } from "@/lib/lms-completion"
 
 // Attendance for one session (a program's class, or an onsite group's day).
 // Who: admins, the program's instructors, and the group's instructors and
@@ -188,6 +189,7 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: "Could not save attendance" }, { status: 500 })
 
   await auditLog(staff, `lms.attendance.${action ?? "mark"}`, "lms_session", session_id, sess.title, { status: rows[0]?.status, count: rows.length })
+  await recheckCompletion(sess.course_id, rows.map(r => ({ student_id: r.student_id, enrollment_id: r.enrollment_id })))
   return NextResponse.json({ ok: true, marked: rows.length })
 }
 
@@ -209,4 +211,11 @@ export async function DELETE(req: Request) {
   if (error) return NextResponse.json({ error: "Could not clear the mark" }, { status: 500 })
   await auditLog(staff, "lms.attendance.clear", "lms_session", sessionId, null, { student_id: studentId })
   return NextResponse.json({ ok: true })
+}
+
+// Attendance can be what completes a course under its pass rule (the rule
+// waits until the last day has passed).
+async function recheckCompletion(courseId: string, people: { student_id: string; enrollment_id: string | null }[]) {
+  for (const p of people)
+    if (p.enrollment_id) await checkCourseCompletion(p.student_id, courseId, p.enrollment_id).catch(() => {})
 }

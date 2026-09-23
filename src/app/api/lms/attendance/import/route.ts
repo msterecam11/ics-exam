@@ -16,6 +16,7 @@ import { auditLog } from "@/lib/audit"
 import { sessionRoster, isLate, attendanceCredit } from "@/lib/lms-sessions"
 import { guardStaff, canTakeAttendance, forbidden } from "@/lib/staff-access"
 import { decodeReport, parseMeetingReport } from "@/lib/lms-attendance-import"
+import { checkCourseCompletion } from "@/lib/lms-completion"
 
 export const dynamic = "force-dynamic"
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -70,5 +71,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: "Could not save attendance" }, { status: 500 })
   }
   await auditLog(staff, "lms.attendance.import", "lms_session", sessionId, s.title, { matched: matched.length, unmatched: unmatched.length, file: file.name })
+  for (const m of matched)
+    if (m.enrollment_id) await checkCourseCompletion(m.student_id, s.course_id, m.enrollment_id).catch(() => {})
   return NextResponse.json({ applied: true, matched: matched.length, unmatched, missing })
 }

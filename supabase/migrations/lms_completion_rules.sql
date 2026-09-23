@@ -1,0 +1,11 @@
+-- Onsite Phase 4 — the pass rule, per course. Null = as before: the course is
+-- completed by passing its final exam. Additive.
+--
+-- { "pass_mark": 70,
+--   "components": {
+--     "exam":        { "weight": 50, "required": true },            -- pass = the exam's pass mark (program rules win)
+--     "assignments": { "weight": 30, "required": true, "pass": 60 },
+--     "exercises":   { "weight": 10, "required": true },
+--     "attendance":  { "weight": 10, "required": true, "min": 80 },
+--     "modules":     { "weight": 0,  "required": true } } }        -- online content completed
+alter table lms_courses add column if not exists completion_rules jsonb;

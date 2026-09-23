@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { sendRuleEmail, programEmailOverrides } from "@/lib/lms-email-settings"
 import { buildCourseCompletedEmail, buildCertificateEmail } from "@/lib/lms-email-templates"
 import { getCurrentEnrollment, type EnrollmentContext } from "@/lib/lms-enrollment"
+import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import crypto from "crypto"
 
 // ── Certificate number generator ──────────────────────────────
@@ -187,7 +188,15 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
     const enrollment = enrollmentId
       ? { id: enrollmentId, course_id: courseId, ...(await enrollmentProgram(enrollmentId)) }
       : await getCurrentEnrollment(studentId, courseId)
-    if (!enrollment || !(await passedFinalExam(enrollment))) return
+    if (!enrollment) return
+    // A course with a pass rule completes when the rule says so (requirements
+    // met and the weighted score reached, nothing left to come); otherwise,
+    // as always, when the final exam is passed.
+    const rules = await courseRules(courseId)
+    if (rules) {
+      const result = await evaluatePassRule(enrollment.id)
+      if (!result?.passed) return
+    } else if (!(await passedFinalExam(enrollment))) return
 
     // Mark enrollment as completed
     await db
@@ -359,7 +368,9 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
       .eq("id", enrollment.id)
 
     // Reset "completed" enrollment if content was added and progress dropped below 100%
-    if (pct < 100) {
+    // (not for a course with a pass rule — the rule, not module progress, says
+    // when it's complete).
+    if (pct < 100 && !(await courseRules(courseId))) {
       await db.from("lms_enrollments")
         .update({ status: "active", completed_at: null })
         .eq("id", enrollment.id)

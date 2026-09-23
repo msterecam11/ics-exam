@@ -7,6 +7,7 @@ import { scoreOpenEndedAnswer } from "@/lib/ai-scoring"
 import { rateLimit } from "@/lib/rateLimit"
 import { res429 } from "@/lib/apiUtils"
 import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollment"
+import { checkCourseCompletion } from "@/lib/lms-completion"
 import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
 
@@ -230,7 +231,7 @@ export async function PATCH(req: Request) {
   // of any attempt — including a Final Exam attempt — by id.
   const { data: target } = await db
     .from("lms_module_attempts")
-    .select("id, student_id, ai_feedback, lms_modules!inner(module_type)")
+    .select("id, student_id, enrollment_id, course_id, ai_feedback, lms_modules!inner(module_type)")
     .eq("id", attempt_id)
     .maybeSingle()
   if (!target) return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
@@ -247,6 +248,7 @@ export async function PATCH(req: Request) {
       .select("id, status")
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await recheck(target)
     return NextResponse.json(data)
   }
 
@@ -268,5 +270,12 @@ export async function PATCH(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await recheck(target)
   return NextResponse.json(data)
+}
+
+// A marked assignment can be what completes the course under its pass rule.
+async function recheck(target: any) {
+  if (!target?.enrollment_id || !target?.course_id) return
+  await checkCourseCompletion(target.student_id, target.course_id, target.enrollment_id).catch(() => {})
 }

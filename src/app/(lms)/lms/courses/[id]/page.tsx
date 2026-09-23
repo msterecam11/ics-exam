@@ -18,6 +18,8 @@ import { getFeedbackState } from "@/lib/lms-feedback"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
 import { GROUP_COLUMNS, groupDates, groupLabel } from "@/lib/lms-groups"
 import { materialsFor } from "@/lib/lms-materials"
+import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
+import { PassResultCard } from "@/components/lms/course/PassResultView"
 import { GroupCard, MaterialsList, type StudentGroup } from "@/components/lms/groups/StudentCoursePanels"
 
 // ── Icons & labels ────────────────────────────────────────────
@@ -302,6 +304,8 @@ export default async function StudentCoursePage({
   const groupPending = course.delivery_mode !== "online" && !studentGroup
   // Everything they can download: course, module slides and files, their group's.
   const materialSections = await materialsFor(current).catch(() => [])
+  // A course with a pass rule shows where they stand on it.
+  const passResult = (await courseRules(courseId)) ? await evaluatePassRule(current).catch(() => null) : null
 
   const DeliveryIcon  = DELIVERY_ICONS[course.delivery_mode] ?? Globe
 
@@ -484,6 +488,7 @@ export default async function StudentCoursePage({
         {/* Onsite delivery + downloads */}
         <GroupCard group={studentGroup} pending={groupPending} />
         <MaterialsList courseId={courseId} sections={materialSections} />
+        {passResult && passResult.mode === "rule" && <PassResultCard r={passResult} />}
 
         {/* Modules */}
         <div className="space-y-3">
