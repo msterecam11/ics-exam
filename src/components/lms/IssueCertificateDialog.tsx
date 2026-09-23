@@ -113,10 +113,10 @@ export default function IssueCertificateDialog({ open, onClose, onIssued }: {
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) { reset(); onClose() } }}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-auto">
+      <DialogContent className="max-w-3xl max-h-[88vh] overflow-auto">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-[#1B4F8A]" /> Issue a certificate</DialogTitle></DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {/* Who */}
           <div className="space-y-1">
             <Label>For</Label>
@@ -215,11 +215,16 @@ export default function IssueCertificateDialog({ open, onClose, onIssued }: {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1"><Label>Issued</Label>
               <Input type="date" value={issuedAt} onChange={e => setIssuedAt(e.target.value)} /></div>
             <div className="space-y-1"><Label>Expires</Label>
               <Input type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Template</Label>
+              <select disabled className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm bg-slate-50 text-slate-400">
+                <option>Default (none yet)</option>
+              </select>
+            </div>
           </div>
 
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
@@ -238,7 +243,9 @@ export default function IssueCertificateDialog({ open, onClose, onIssued }: {
           </label>
 
           <p className="text-xs text-slate-400">
-            The certificate number is generated for you. Choosing a template comes with the certificate designer.
+            The certificate number is generated for you. The template list fills up once the certificate
+            designer exists — until then every ICS certificate is a record, not a document, and a partner&apos;s
+            is whatever PDF you attach to it.
           </p>
 
           <div className="flex justify-end gap-2 pt-1">
