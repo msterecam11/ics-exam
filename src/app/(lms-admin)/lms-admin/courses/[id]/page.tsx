@@ -678,16 +678,22 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><Globe className="h-4 w-4 text-[#1B4F8A]" /> Delivery & Access</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1"><Label>Delivery Mode</Label><select value={form.delivery_mode} onChange={e => set("delivery_mode", e.target.value)} className="w-full h-9 rounded-lg border bg-transparent px-3 text-sm"><option value="online">Online</option><option value="onsite">On-site</option><option value="hybrid">Hybrid</option></select></div>
-          <div className="space-y-1"><Label>Capacity</Label><Input type="number" min={1} value={form.capacity ?? ""} onChange={e => set("capacity", e.target.value ? parseInt(e.target.value) : null)} placeholder="Unlimited" /></div>
-          <div className="space-y-1"><Label>Start Date</Label><Input type="date" value={form.start_date ?? ""} onChange={e => set("start_date", e.target.value || null)} /></div>
-          <div className="space-y-1"><Label>End Date</Label><Input type="date" value={form.end_date ?? ""} onChange={e => set("end_date", e.target.value || null)} /></div>
         </div>
+        <p className="text-xs text-slate-500">Dates, venue and seats are set per group (onsite / hybrid) or per program.</p>
+        <details className="rounded-lg border border-slate-200 px-3 py-2">
+          <summary className="text-sm font-medium text-slate-700 cursor-pointer">Individual enrolments only (outside a program)</summary>
+          <p className="text-xs text-slate-500 mt-2">These apply only to someone enrolled straight into the course, not through a program or a group: they can&apos;t start before the start date, the course turns read-only after the end date, and direct enrolment stops at the capacity. Leave empty normally.</p>
+          <div className="grid grid-cols-3 gap-4 mt-3">
+            <div className="space-y-1"><Label>Capacity</Label><Input type="number" min={1} value={form.capacity ?? ""} onChange={e => set("capacity", e.target.value ? parseInt(e.target.value) : null)} placeholder="Unlimited" /></div>
+            <div className="space-y-1"><Label>Start Date</Label><Input type="date" value={form.start_date ?? ""} onChange={e => set("start_date", e.target.value || null)} /></div>
+            <div className="space-y-1"><Label>End Date</Label><Input type="date" value={form.end_date ?? ""} onChange={e => set("end_date", e.target.value || null)} /></div>
+          </div>
+        </details>
       </div>
       <CourseCatalogueSettings form={form as any} set={set as any} />
 
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><GraduationCap className="h-4 w-4 text-[#1B4F8A]" /> Learning & Completion</h3>
-        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.progress_enforcement} onChange={e => set("progress_enforcement", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Sequential progress enforcement</p><p className="text-xs text-slate-500 mt-0.5">Students must complete each item before the next</p></div></label>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3"><input type="checkbox" checked={form.certificate_enabled} onChange={e => set("certificate_enabled", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Issue certificate on completion</p><p className="text-xs text-slate-500 mt-0.5">Students receive a certificate when they complete the course (see Completion &amp; grading below). Inside a program, that program&apos;s certificate settings apply instead.</p></div></label>
         {form.certificate_enabled && (
           <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3 ml-6"><input type="checkbox" checked={form.certificate_auto_release} onChange={e => set("certificate_auto_release", e.target.checked)} className="mt-0.5" /><div><p className="text-sm font-medium">Auto-release certificate</p><p className="text-xs text-slate-500 mt-0.5">Release immediately on completion. Unchecked = hold until an admin releases it.</p></div></label>

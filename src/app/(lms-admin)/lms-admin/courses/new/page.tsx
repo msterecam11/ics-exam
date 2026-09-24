@@ -34,17 +34,10 @@ export default function NewCoursePage() {
   const [title,        setTitle]        = useState("")
   const [description,  setDescription]  = useState("")
   const [language,     setLanguage]     = useState("en")
+  const [courseCode,   setCourseCode]   = useState("")
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("online")
 
-  // Dates & capacity
-  const [startDate, setStartDate] = useState("")
-  const [endDate,   setEndDate]   = useState("")
-  const [capacity,  setCapacity]  = useState("")
-  const [dripDays,  setDripDays]  = useState("")
-
   // Settings
-  const [progressEnforcement,    setProgressEnforcement]    = useState(true)
-  const [minAttendancePct,       setMinAttendancePct]       = useState(80)
   const [finalExamPassMark,      setFinalExamPassMark]      = useState(70)
   const [certificateEnabled,     setCertificateEnabled]     = useState(true)
   const [certificateAutoRelease, setCertificateAutoRelease] = useState(false)
@@ -64,12 +57,7 @@ export default function NewCoursePage() {
         description:              description.trim() || null,
         language,
         delivery_mode:            deliveryMode,
-        start_date:               startDate || null,
-        end_date:                 endDate   || null,
-        capacity:                 capacity  ? parseInt(capacity)  : null,
-        drip_days:                dripDays  ? parseInt(dripDays)  : null,
-        progress_enforcement:     progressEnforcement,
-        min_attendance_pct:       minAttendancePct,
+        course_code:              courseCode.trim() || null,
         final_exam_pass_mark:     finalExamPassMark,
         certificate_enabled:      certificateEnabled,
         certificate_auto_release: certificateAutoRelease,
@@ -132,6 +120,10 @@ export default function NewCoursePage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
+              <Label htmlFor="code">Course Code <span className="text-slate-400 font-normal">(optional)</span></Label>
+              <Input id="code" value={courseCode} onChange={e => setCourseCode(e.target.value)} placeholder="e.g. ETD-AS-101" maxLength={40} />
+            </div>
+            <div className="space-y-2">
               <Label>Language</Label>
               <Select value={language} onValueChange={v => setLanguage(v ?? "en")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -173,63 +165,12 @@ export default function NewCoursePage() {
           </div>
         </section>
 
-        {/* ─── Schedule & Capacity ────────────────────────────── */}
-        <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-          <h2 className="text-base font-semibold text-slate-900">Schedule &amp; Capacity</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="start">Start Date</Label>
-              <Input id="start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end">End Date</Label>
-              <Input id="end" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cap">Max Capacity</Label>
-              <Input
-                id="cap"
-                type="number"
-                min={1}
-                value={capacity}
-                onChange={e => setCapacity(e.target.value)}
-                placeholder="Unlimited"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="drip" className="flex items-center gap-1">
-                Drip Days
-                <span className="text-slate-400" title="Unlock new modules every N days after enrollment">
-                  <Info className="h-3.5 w-3.5" />
-                </span>
-              </Label>
-              <Input
-                id="drip"
-                type="number"
-                min={1}
-                value={dripDays}
-                onChange={e => setDripDays(e.target.value)}
-                placeholder="No drip"
-              />
-            </div>
-          </div>
-        </section>
-
         {/* ─── Learning Settings ──────────────────────────────── */}
         <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
           <h2 className="text-base font-semibold text-slate-900">Learning Settings</h2>
 
+          <p className="text-xs text-slate-500 -mt-2">Defaults for participants enrolled outside a program — a program keeps its own copy.</p>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="att">Min. Attendance %</Label>
-              <Input
-                id="att"
-                type="number"
-                min={0} max={100}
-                value={minAttendancePct}
-                onChange={e => setMinAttendancePct(Number(e.target.value))}
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="pass">Final Exam Pass Mark %</Label>
               <Input
@@ -245,13 +186,6 @@ export default function NewCoursePage() {
           {/* Toggle settings */}
           <div className="space-y-3 pt-1">
             {[
-              {
-                id:      "progEnf",
-                label:   "Enforce sequential progress",
-                desc:    "Students must complete each item before moving on",
-                value:   progressEnforcement,
-                setter:  setProgressEnforcement,
-              },
               {
                 id:      "certEn",
                 label:   "Enable certificates",
@@ -303,6 +237,11 @@ export default function NewCoursePage() {
             ))}
           </div>
         </section>
+
+        <p className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>Dates, venue and seats are set per <b>group</b> (onsite / hybrid) or per <b>program</b>. After creating, the course&apos;s Settings hold the pass rule, evaluation &amp; impact, and the catalogue.</span>
+        </p>
 
         {/* ─── Actions ────────────────────────────────────────── */}
         <div className="flex items-center justify-end gap-3 pb-8">

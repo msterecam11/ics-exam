@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const {
-    title, description, thumbnail_url, language, delivery_mode,
+    title, description, thumbnail_url, language, delivery_mode, course_code,
     progress_enforcement, progress_test_every_x, min_attendance_pct,
     certificate_enabled, certificate_auto_release,
     feedback_enabled, feedback_mandatory,
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
       description:              description?.trim() || null,
       thumbnail_url:            thumbnail_url || null,
       language:                 language ?? "en",
+      course_code:              typeof course_code === "string" && course_code.trim() ? course_code.trim().slice(0, 40) : null,
       delivery_mode:            delivery_mode ?? "online",
       progress_enforcement:     progress_enforcement ?? true,
       progress_test_every_x:    progress_test_every_x || null,
