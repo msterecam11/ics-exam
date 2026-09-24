@@ -1,6 +1,6 @@
 import { CalendarDays, Clock, MapPin, Globe, UserCheck, Download, Lock, FolderDown, ExternalLink } from "lucide-react"
 import { FileIcon, fmtSize } from "@/components/lms/groups/file-display"
-import type { MaterialSection } from "@/lib/lms-materials"
+import type { MaterialSection, MaterialItem } from "@/lib/lms-materials"
 
 // The participant's view of an onsite course's delivery (their group) and of
 // everything they can download. Plain server-rendered markup: downloads are
@@ -90,6 +90,25 @@ export function MaterialsList({ courseId, sections }: { courseId: string; sectio
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** The files of one exercise / assignment (sheet, template), shown where the work is done. */
+export function ItemFiles({ courseId, items, label = "Files" }: { courseId: string; items: MaterialItem[]; label?: string }) {
+  if (!items.length) return null
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 space-y-1">
+      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+      {items.map(it => (
+        <div key={it.key} className="flex items-center gap-2 text-sm">
+          <FileIcon name={it.fileName} className={it.available ? "h-4 w-4 text-[#1B4F8A] shrink-0" : "h-4 w-4 text-slate-300 shrink-0"} />
+          <span className={it.available ? "flex-1 min-w-0 truncate text-slate-700" : "flex-1 min-w-0 truncate text-slate-400"}>{it.title}</span>
+          {it.available
+            ? <a href={`/api/lms/materials/download?course_id=${courseId}&key=${encodeURIComponent(it.key)}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1B4F8A] hover:underline shrink-0"><Download className="h-3.5 w-3.5" /> Download</a>
+            : <span className="text-xs text-slate-400 shrink-0">{it.lockedNote}</span>}
+        </div>
+      ))}
     </div>
   )
 }

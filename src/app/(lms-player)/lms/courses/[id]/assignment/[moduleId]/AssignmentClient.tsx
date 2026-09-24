@@ -20,7 +20,7 @@ export interface Submission {
   max_score:    number | null
   passed:       boolean
   answers:      { file_url?: string; file_name?: string; file_size?: number; text_response?: string }
-  ai_feedback:  { overall_comment?: string; criteria_scores?: { criterion: string; score: number; max: number; comment: string }[] }
+  ai_feedback:  { overall_comment?: string; graded_by?: string; criteria_scores?: { criterion: string; score: number; max: number; comment: string }[] }
   submitted_at: string
 }
 
@@ -221,7 +221,7 @@ export default function AssignmentClient({
                   : "text-blue-800"
               )}>
                 {submission.status === "graded"
-                  ? submission.passed ? "Passed (AI graded)" : "Not passed (AI graded)"
+                  ? `${submission.passed ? "Passed" : "Not passed"} (${submission.ai_feedback?.graded_by === "instructor" ? "marked by your instructor" : "AI graded"})`
                   : "Submitted — awaiting instructor review"}
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -242,6 +242,12 @@ export default function AssignmentClient({
               </div>
             )}
           </div>
+          {submission.status === "graded" && submission.ai_feedback?.graded_by === "instructor" && submission.ai_feedback.overall_comment?.trim() && (
+            <div className="border-t border-slate-200 px-6 py-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Feedback from your instructor</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{submission.ai_feedback.overall_comment}</p>
+            </div>
+          )}
           {submission.ai_feedback?.criteria_scores && submission.ai_feedback.criteria_scores.length > 0 && (
             <div className="border-t border-slate-200 px-6 py-4 space-y-3">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">AI Rubric Feedback</p>

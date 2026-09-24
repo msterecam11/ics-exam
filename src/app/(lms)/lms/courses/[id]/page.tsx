@@ -22,7 +22,7 @@ import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import { PassResultCard } from "@/components/lms/course/PassResultView"
 import { EvaluationCard, ImpactCard } from "@/components/lms/course/EvaluationCards"
 import { evaluationSubjects, impactState } from "@/lib/lms-evaluations"
-import { GroupCard, MaterialsList, type StudentGroup } from "@/components/lms/groups/StudentCoursePanels"
+import { GroupCard, MaterialsList, ItemFiles, type StudentGroup } from "@/components/lms/groups/StudentCoursePanels"
 
 // ── Icons & labels ────────────────────────────────────────────
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
@@ -354,6 +354,8 @@ export default async function StudentCoursePage({
   const groupPending = course.delivery_mode !== "online" && !studentGroup
   // Everything they can download: course, module slides and files, their group's.
   const materialSections = await materialsFor(current).catch(() => [])
+  // An exercise's sheet is also shown on its own card.
+  const filesOf = (moduleId: string) => materialSections.flatMap(s => s.items).filter(i => i.moduleId === moduleId)
   // A course with a pass rule shows where they stand on it.
   const passResult = (await courseRules(courseId)) ? await evaluatePassRule(current).catch(() => null) : null
   // The evaluation set (after the course / the group) and, months later, the impact questionnaire.
@@ -630,6 +632,9 @@ export default async function StudentCoursePage({
                     </div>
                     {mod.description && (
                       <p className="text-xs text-slate-500 mt-0.5 truncate">{mod.description}</p>
+                    )}
+                    {isExercise && !isLocked && (
+                      <div className="mt-2"><ItemFiles courseId={courseId} items={filesOf(mod.id)} label="Exercise sheet" /></div>
                     )}
                     {mod.exercise?.comment && (
                       <p className="text-xs text-slate-600 mt-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">Instructor: {mod.exercise.comment}</p>

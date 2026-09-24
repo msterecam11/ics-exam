@@ -1,4 +1,6 @@
-﻿import { getStudentSession } from "@/lib/lms-auth"
+﻿import { materialsFor } from "@/lib/lms-materials"
+import { ItemFiles } from "@/components/lms/groups/StudentCoursePanels"
+import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
@@ -29,7 +31,7 @@ export default async function AssignmentPage({
     .select(`
       id, title, description, module_type,
       assignment_brief_html, assignment_rubric,
-      assignment_submission_types, assignment_due_date, assignment_max_attempts
+      assignment_submission_types, assignment_due_date, assignment_max_attempts, activity_settings
     `)
     .eq("id", moduleId)
     .eq("course_id", courseId)
@@ -53,7 +55,18 @@ export default async function AssignmentPage({
     .order("attempt_no", { ascending: false })
     .limit(1)
 
-  const existing = (attempts?.[0] ?? null) as Submission | null
+  // What the participant may see of their mark: a released result always; a
+  // mark that is only "graded" (by the AI, or confirmed but not released) only
+  // when the assignment releases automatically.
+  const latest = (attempts?.[0] ?? null) as any
+  const manualRelease = (module as any).activity_settings?.manual_release !== false
+  const existing = (!latest ? null
+    : latest.status === "released" ? { ...latest, status: "graded" }
+    : latest.status === "graded" && manualRelease ? { ...latest, status: "submitted", score: null, max_score: null, passed: null, ai_feedback: null }
+    : latest) as Submission | null
+
+  // The assignment's own files (template, form, data) — download, complete, upload below.
+  const templates = (await materialsFor(enrollment).catch(() => [])).flatMap(s => s.items).filter(i => i.moduleId === moduleId)
 
   const rubric           = (module.assignment_rubric as RubricCriterion[] | null) ?? []
   const submissionTypes  = (module.assignment_submission_types as string[] | null) ?? ["pdf", "docx"]
@@ -86,6 +99,12 @@ export default async function AssignmentPage({
               <p className="text-slate-500 mt-1 text-sm">{module.description}</p>
             )}
           </div>
+
+          {templates.length > 0 && (
+            <div className="mb-6">
+              <ItemFiles courseId={courseId} items={templates} label="Template / files for this assignment — download, complete, then upload below" />
+            </div>
+          )}
 
           <AssignmentClient
             moduleId={moduleId}

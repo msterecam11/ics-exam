@@ -77,7 +77,7 @@ export async function GET(req: Request) {
   if (!student) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   // Submissions of the student's current enrollment in the module's course.
-  const { data: mod } = await db.from("lms_modules").select("course_id").eq("id", moduleId).maybeSingle()
+  const { data: mod } = await db.from("lms_modules").select("course_id, activity_settings").eq("id", moduleId).maybeSingle()
   const enrollment = await getCurrentEnrollment(student.id, (mod as any)?.course_id)
   if (!enrollment || enrollment.access === "none") return NextResponse.json([])
 
@@ -89,7 +89,12 @@ export async function GET(req: Request) {
     .order("attempt_no", { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(await signAnswerFiles((data ?? []) as any[]))
+  // A mark reaches the participant once released — or at once when the
+  // assignment releases automatically.
+  const manualRelease = (mod as any)?.activity_settings?.manual_release !== false
+  const visible = ((data ?? []) as any[]).map(a =>
+    a.status === "graded" && manualRelease ? { ...a, status: "submitted", score: null, max_score: null, passed: null, ai_feedback: null } : a)
+  return NextResponse.json(await signAnswerFiles(visible))
 }
 
 // POST — student submits an assignment

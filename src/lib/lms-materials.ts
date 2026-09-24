@@ -28,6 +28,8 @@ export type MaterialItem = {
   /** "m:<material id>" or "s:<package item id>" — what the download link names */
   key: string
   kind: "file" | "slides"
+  /** The module / exercise / assignment an uploaded file belongs to. */
+  moduleId?: string | null
   title: string
   fileName: string
   sizeBytes: number | null
@@ -68,7 +70,7 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   }
 
   const fileItem = (f: any): MaterialItem => ({
-    key: `m:${f.id}`, kind: "file", title: f.title, fileName: f.file_name, sizeBytes: Number(f.size_bytes) || null,
+    key: `m:${f.id}`, kind: "file", moduleId: f.module_id ?? null, title: f.title, fileName: f.file_name, sizeBytes: Number(f.size_bytes) || null,
     ...gate(f.available_from as AvailableFrom),
   })
   const mine = ((files ?? []) as any[]).filter(f => !f.group_id || (group && f.group_id === group.id))
