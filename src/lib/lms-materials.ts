@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { todayISO, type EnrollmentContext } from "@/lib/lms-enrollment"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
+import { isItemOpen, availabilityNote } from "@/lib/lms-groups"
 
 // ── Course materials ───────────────────────────────────────────────────────
 //
@@ -50,12 +51,12 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   const courseId = enrollment.course_id
 
   const [{ data: modules }, { data: files }, { data: pkgs }, groupRes] = await Promise.all([
-    db.from("lms_modules").select("id, title, order_index, parent_module_id").eq("course_id", courseId).order("order_index"),
+    db.from("lms_modules").select("id, title, order_index, parent_module_id, module_type, activity_settings, available_from, available_until").eq("course_id", courseId).order("order_index"),
     db.from("lms_materials").select("id, module_id, group_id, title, file_name, size_bytes, available_from, order_index, created_at")
       .eq("course_id", courseId).order("order_index").order("created_at"),
     db.from("lms_packages").select("id, module_id, slides_downloadable, lms_package_items(id, type, order_index, config)").eq("course_id", courseId),
     enrollment.group_id
-      ? db.from("lms_course_groups").select("id, status, start_date").eq("id", enrollment.group_id).maybeSingle()
+      ? db.from("lms_course_groups").select("id, status, start_date, item_access").eq("id", enrollment.group_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ])
   const group = groupRes.data && VISIBLE_GROUP_STATUSES.includes((groupRes.data as any).status) ? groupRes.data as any : null
@@ -84,7 +85,11 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   const allMods = (modules ?? []) as any[]
   const ids = new Set(allMods.map(m => m.id))
   const nested = (m: any) => m.parent_module_id && ids.has(m.parent_module_id)
-  for (const m of allMods.filter(x => !nested(x))) {
+  // A module outside its dates, or not opened yet by the group's instructor,
+  // shares nothing — its slides, files and the sheets of the items inside it.
+  const access = enrollment.group_id ? (groupRes.data as any)?.item_access ?? {} : null
+  const closed = (m: any) => !!availabilityNote(m) || (access !== null && !isItemOpen(access, m))
+  for (const m of allMods.filter(x => !nested(x) && !closed(x))) {
     const items: MaterialItem[] = []
     const pkg = pkgByModule.get(m.id)
     if (pkg && pkg.slides_downloadable !== false) {
@@ -104,7 +109,7 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
       }
     }
     items.push(...mine.filter(f => f.module_id === m.id).map(fileItem))
-    for (const c of allMods.filter(x => x.parent_module_id === m.id))
+    for (const c of allMods.filter(x => x.parent_module_id === m.id && !closed(x)))
       items.push(...mine.filter(f => f.module_id === c.id).map(f => ({ ...fileItem(f), title: `${c.title} — ${f.title}` })))
     if (items.length) sections.push({ key: `module:${m.id}`, title: m.title, items })
   }

@@ -28,7 +28,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { id } = await params
   const a = await access(id)
   if (!a.ok) return a.res
-  const { data: mods } = await db.from("lms_modules").select("id, title, module_type, order_index")
+  const { data: mods } = await db.from("lms_modules").select("id, title, module_type, order_index, activity_settings, parent_module_id")
     .eq("course_id", a.group.course_id).in("module_type", [...GATED_TYPES]).order("order_index")
   const acc = a.group.item_access ?? {}
   const byIds = [...new Set(Object.values(acc).map(e => e.by).filter(Boolean))] as string[]
@@ -37,6 +37,7 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json({
     items: ((mods ?? []) as any[]).map(m => ({
       id: m.id, title: m.title, module_type: m.module_type, open: isItemOpen(acc, m),
+      release_in_class: m.module_type === "package" && m.activity_settings?.release_in_class === true,
       changed_by: acc[m.id]?.by ? nameOf.get(acc[m.id].by!) ?? null : null, changed_at: acc[m.id]?.at ?? null,
     })),
   })
@@ -50,7 +51,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!isUuid(body.module_id) || typeof body.open !== "boolean") return NextResponse.json({ error: "module_id and open required" }, { status: 400 })
   const { data: mod } = await db.from("lms_modules").select("id, title, module_type, course_id").eq("id", body.module_id).maybeSingle()
   if (!mod || (mod as any).course_id !== a.group.course_id || !(GATED_TYPES as readonly string[]).includes((mod as any).module_type))
-    return NextResponse.json({ error: "Only the final exam or an assignment of this course" }, { status: 400 })
+    return NextResponse.json({ error: "Only a module, the final exam or an assignment of this course" }, { status: 400 })
 
   // Re-read and merge so two quick toggles don't overwrite each other.
   const { data: fresh } = await db.from("lms_course_groups").select("item_access").eq("id", id).single()

@@ -1,3 +1,4 @@
+import { availabilityNote, itemGate } from "@/lib/lms-groups"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
@@ -29,11 +30,14 @@ export default async function PackagePlayerPage({
   // Verify module belongs to course and is package type
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, title, module_type, course_id")
+    .select("id, title, module_type, course_id, activity_settings, available_from, available_until")
     .eq("id", moduleId)
     .single()
 
   if (!module || module.course_id !== courseId || module.module_type !== "package") notFound()
+  // Outside its dates, or not opened yet by the group's instructor: the course page explains.
+  if (availabilityNote(module as any)) redirect(`/lms/courses/${courseId}`)
+  if (!(await itemGate(enrollment.group_id, module as any)).open) redirect(`/lms/courses/${courseId}`)
 
   // Fetch course
   const { data: course } = await db

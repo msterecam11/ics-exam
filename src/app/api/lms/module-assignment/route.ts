@@ -10,7 +10,7 @@ import { getCurrentEnrollment, getWritableEnrollment } from "@/lib/lms-enrollmen
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
 import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
-import { itemGate } from "@/lib/lms-groups"
+import { itemGate, availabilityNote } from "@/lib/lms-groups"
 
 const BUCKET = "lms-submissions"
 const SIGNED_URL_SECONDS = 60 * 60
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
   // Verify module + check max attempts
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, title, assignment_max_attempts, assignment_due_date, assignment_rubric, activity_settings")
+    .select("id, title, assignment_max_attempts, assignment_due_date, assignment_rubric, activity_settings, available_from, available_until")
     .eq("id", module_id)
     .eq("course_id", course_id)
     .single()
@@ -139,8 +139,11 @@ export async function POST(req: Request) {
   if (!writable.ok) return NextResponse.json({ error: writable.error }, { status: writable.status })
   const enrollment = writable.enrollment
 
+  const closed = availabilityNote(module as any)
+  if (closed) return NextResponse.json({ error: `This assignment isn't open: ${closed.toLowerCase()}`, locked: true }, { status: 403 })
+
   // The group's instructor may have locked it.
-  const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "assignment" })
+  const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "assignment", activity_settings: (module as any).activity_settings ?? {} })
   if (!gate.open) return NextResponse.json({ error: gate.message, locked: true }, { status: 403 })
 
   // Due date check

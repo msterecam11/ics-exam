@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils"
 // The group screen's Final exam tab, and the Open / lock switches it shares
 // with the Assignments tab.
 
-type AccessItem = { id: string; title: string; module_type: string; open: boolean; changed_by: string | null; changed_at: string | null }
+type AccessItem = { id: string; title: string; module_type: string; open: boolean; release_in_class?: boolean; changed_by: string | null; changed_at: string | null }
 
-/** Open or lock the final exam / assignments for this group. */
-export function AccessPanel({ groupId, type }: { groupId: string; type: "final_exam" | "assignment" }) {
+/** Open or lock the modules / final exam / assignments for this group. */
+export function AccessPanel({ groupId, type }: { groupId: string; type: "package" | "final_exam" | "assignment" }) {
   const [items, setItems] = useState<AccessItem[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const load = useCallback(async () => {
@@ -48,7 +48,9 @@ export function AccessPanel({ groupId, type }: { groupId: string; type: "final_e
             <p className="text-sm font-medium text-slate-800">{i.title} · <span className={i.open ? "text-emerald-700" : "text-slate-500"}>{i.open ? "Open" : "Locked"}</span></p>
             <p className="text-xs text-slate-400">
               {i.changed_at ? `${i.open ? "Opened" : "Locked"} by ${i.changed_by ?? "staff"} · ${new Date(i.changed_at).toLocaleString("en-GB")}`
-                : type === "final_exam" ? "Locked until you open it — no access code needed." : "Open by default."}
+                : type === "final_exam" ? "Locked until you open it — no access code needed."
+                : type === "package" && i.release_in_class ? "Released in class — locked until you open it."
+                : "Open by default."}
             </p>
           </div>
           <Button size="sm" variant={i.open ? "outline" : "default"} onClick={() => toggle(i)} disabled={busy === i.id}

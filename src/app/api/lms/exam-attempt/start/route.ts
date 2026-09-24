@@ -7,7 +7,7 @@ import { sanitizeQuestionsForClient, paperFor, type ExamQuestion } from "@/lib/l
 import { examSections, buildPaper } from "@/lib/lms-exam-bank"
 import { scorePaper, type PaperQuestion } from "@/lib/lms-exam-bank"
 import { syncEnrollmentProgress } from "@/lib/lms-completion"
-import { itemGate } from "@/lib/lms-groups"
+import { itemGate, availabilityNote } from "@/lib/lms-groups"
 
 // POST /api/lms/exam-attempt/start
 // Body: { module_id, course_id }
@@ -30,13 +30,15 @@ export async function POST(req: Request) {
 
   const { data: module } = await db
     .from("lms_modules")
-    .select("id, module_type, activity_settings, questions, exam_sections")
+    .select("id, module_type, activity_settings, questions, exam_sections, available_from, available_until")
     .eq("id", module_id)
     .eq("course_id", course_id)
     .single()
 
   if (!module || (module as any).module_type !== "final_exam")
     return NextResponse.json({ error: "Module not found" }, { status: 404 })
+  const closed = availabilityNote(module as any)
+  if (closed) return NextResponse.json({ error: `The exam isn't open: ${closed.toLowerCase()}`, locked: true }, { status: 403 })
 
   // The enrollment the exam is taken under (its program's rules apply). A
   // withdrawn student, or a program that has ended, can't start an exam.
@@ -70,7 +72,7 @@ export async function POST(req: Request) {
   // In a group, the exam opens when the instructor releases it. A paper
   // already under way can still be finished.
   if (!open) {
-    const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "final_exam" })
+    const gate = await itemGate(enrollment.group_id, { id: module_id, module_type: "final_exam", activity_settings: (module as any).activity_settings ?? {} })
     if (!gate.open) return NextResponse.json({ error: gate.message, locked: true }, { status: 403 })
   }
 

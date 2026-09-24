@@ -887,6 +887,8 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
     available_until:     mod.available_until     ?? "",
     estimated_duration:  mod.estimated_duration  ?? "",
   })
+  // Onsite: the module stays locked for a group until its instructor opens it.
+  const [releaseInClass, setReleaseInClass] = useState<boolean>((mod.activity_settings as any)?.release_in_class === true)
   // Whether participants may download this module's slide PDFs (kept on the
   // module's package; viewing them in the LMS is unaffected).
   const [pkg, setPkg] = useState<{ id: string; slides_downloadable: boolean } | null>(null)
@@ -912,6 +914,7 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
         available_from:      fields.available_from  || null,
         available_until:     fields.available_until || null,
         estimated_duration:  fields.estimated_duration ? Number(fields.estimated_duration) : null,
+        activity_settings:   { ...((mod.activity_settings as any) ?? {}), release_in_class: releaseInClass },
       }),
     })
     setSaving(false); setSaved(true)
@@ -963,6 +966,16 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
           label="Lock until previous module is done"
           hint="Students cannot open this package until the module above is completed"
         />
+        <div className="flex items-start justify-between gap-4 py-4 border-b border-slate-100 last:border-0">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-800">Released in class (onsite groups)</p>
+            <p className="text-xs text-slate-500 mt-0.5">Locked for each group until its instructor opens it on the group&apos;s Content tab — e.g. Day 2 opens on Day 2. Off: visible from the start.</p>
+          </div>
+          <button type="button" onClick={() => setReleaseInClass(v => !v)}
+            className={cn("relative w-10 h-6 rounded-full transition-colors shrink-0 mt-0.5", releaseInClass ? "bg-[#1B4F8A]" : "bg-slate-200")}>
+            <span className={cn("absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform", releaseInClass ? "left-5" : "left-1")} />
+          </button>
+        </div>
         {pkg && (
           <div className="flex items-start justify-between gap-4 py-4 border-b border-slate-100 last:border-0">
             <div className="flex-1">

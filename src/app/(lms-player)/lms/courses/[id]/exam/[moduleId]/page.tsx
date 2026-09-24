@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { availabilityNote } from "@/lib/lms-groups"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
 import { redirect, notFound } from "next/navigation"
@@ -32,12 +33,13 @@ export default async function StudentExamPage({
     .from("lms_modules")
     // lock_until_previous was not selected, so the server-side lock below never
     // ran and the exam could be opened by URL before the previous module was done.
-    .select("id, title, module_type, questions, activity_settings, lock_until_previous")
+    .select("id, title, module_type, questions, activity_settings, lock_until_previous, available_from, available_until")
     .eq("id", moduleId)
     .eq("course_id", courseId)
     .single()
 
   if (!module || module.module_type !== "final_exam") notFound()
+  if (availabilityNote(module as any)) redirect(`/lms/courses/${courseId}`)
 
   // ── Server-side lock enforcement ────────────────────────────────────────
   // Mirror the course page: if this exam has lock_until_previous, the closest

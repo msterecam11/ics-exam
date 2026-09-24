@@ -16,7 +16,7 @@ import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enr
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 import { getFeedbackState } from "@/lib/lms-feedback"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
-import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen } from "@/lib/lms-groups"
+import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen, availabilityNote } from "@/lib/lms-groups"
 import { materialsFor } from "@/lib/lms-materials"
 import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import { PassResultCard } from "@/components/lms/course/PassResultView"
@@ -117,7 +117,7 @@ export default async function StudentCoursePage({
   // Fetch modules
   const { data: modules } = await db
     .from("lms_modules")
-    .select("id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings, parent_module_id")
+    .select("id, title, description, delivery_type, order_index, estimated_duration, module_type, lock_until_previous, is_mandatory, activity_settings, parent_module_id, available_from, available_until")
     .eq("course_id", courseId)
     .order("order_index", { ascending: true })
 
@@ -253,9 +253,14 @@ export default async function StudentCoursePage({
   const { data: accessRow } = current.group_id
     ? await db.from("lms_course_groups").select("item_access").eq("id", current.group_id).maybeSingle()
     : { data: null }
-  const gateOf = (m: any) => current.group_id && !isItemOpen((accessRow as any)?.item_access, m)
-    ? (m.module_type === "final_exam" ? "Opens when your instructor releases it" : "Locked by your instructor for now")
-    : null
+  // A module's own dates (Options → Available from / until) apply to everyone;
+  // then, in a group, what the instructor has opened or locked.
+  const gateOf = (m: any) => availabilityNote(m)
+    ?? (current.group_id && !isItemOpen((accessRow as any)?.item_access, m)
+      ? (m.module_type === "final_exam" ? "Opens when your instructor releases it"
+        : m.module_type === "package" ? "Your instructor opens this module in class"
+        : "Locked by your instructor for now")
+      : null)
 
   const mods = (modules ?? []).map((m: any) => {
     if (m.module_type === "package") {

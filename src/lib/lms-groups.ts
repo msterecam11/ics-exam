@@ -300,32 +300,58 @@ export async function syncGroupDayDetails(group: CourseGroup) {
 }
 
 // ─── Open / lock per group ────────────────────────────────────────────────────
-// The group's instructor opens the final exam when the class is ready for it
-// (no access code), and can lock or reopen assignments. Stored on the group as
-// item_access { module_id: { open, by, at } }. Participants without a group
-// (online) are never gated here.
+// The group's instructor opens content when the class is ready for it: the
+// final exam (no access code), assignments, and — for modules set to be
+// "released in class" — the teaching modules themselves. Stored on the group
+// as item_access { module_id: { open, by, at } }. Participants without a
+// group (online) are never gated here.
 
-export const GATED_TYPES = ["final_exam", "assignment"] as const
+export const GATED_TYPES = ["package", "final_exam", "assignment"] as const
 export type ItemAccess = Record<string, { open: boolean; by?: string | null; at?: string | null }>
+export type GateModule = { id: string; module_type: string; activity_settings?: any }
 
-/** Before the instructor decides: the exam waits, assignments are open. */
-export const defaultOpen = (moduleType: string) => moduleType !== "final_exam"
+/**
+ * Before the instructor decides: the exam waits; a module set to be released
+ * in class waits; everything else is open.
+ */
+export const defaultOpen = (mod: GateModule) =>
+  mod.module_type === "final_exam" ? false : mod.activity_settings?.release_in_class === true ? false : true
 
-export function isItemOpen(access: ItemAccess | null | undefined, mod: { id: string; module_type: string }): boolean {
+export function isItemOpen(access: ItemAccess | null | undefined, mod: GateModule): boolean {
   if (!(GATED_TYPES as readonly string[]).includes(mod.module_type)) return true
   const e = access?.[mod.id]
-  return e ? e.open === true : defaultOpen(mod.module_type)
+  return e ? e.open === true : defaultOpen(mod)
 }
 
-/** Can this participant start / submit this item now? */
-export async function itemGate(groupId: string | null | undefined, mod: { id: string; module_type: string }):
+export function gateMessage(moduleType: string): string {
+  return moduleType === "final_exam" ? "The final exam opens when your instructor releases it."
+    : moduleType === "assignment" ? "Your instructor has locked this assignment for now."
+    : "Your instructor opens this module in class."
+}
+
+/** Can this participant open / start / submit this item now? */
+export async function itemGate(groupId: string | null | undefined, mod: GateModule):
   Promise<{ open: true } | { open: false; message: string }> {
   if (!groupId || !(GATED_TYPES as readonly string[]).includes(mod.module_type)) return { open: true }
+  let m = mod
+  if (m.activity_settings === undefined) {
+    const { data } = await db.from("lms_modules").select("activity_settings").eq("id", mod.id).maybeSingle()
+    m = { ...mod, activity_settings: (data as any)?.activity_settings ?? {} }
+  }
   const { data } = await db.from("lms_course_groups").select("item_access").eq("id", groupId).maybeSingle()
-  if (isItemOpen((data as any)?.item_access, mod)) return { open: true }
-  return { open: false, message: mod.module_type === "final_exam"
-    ? "The final exam opens when your instructor releases it."
-    : "Your instructor has locked this assignment for now." }
+  if (isItemOpen((data as any)?.item_access, m)) return { open: true }
+  return { open: false, message: gateMessage(m.module_type) }
+}
+
+/**
+ * A module's own availability window (Options → Available from / until),
+ * for every participant. Returns why it's closed, or null when open.
+ */
+export function availabilityNote(mod: { available_from?: string | null; available_until?: string | null }, now = new Date()): string | null {
+  const fmt = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" })
+  if (mod.available_from && now < new Date(mod.available_from)) return `Opens on ${fmt(mod.available_from)}`
+  if (mod.available_until && now > new Date(mod.available_until)) return `Closed on ${fmt(mod.available_until)}`
+  return null
 }
 
 // ── A program's groups ───────────────────────────────────────────────────────

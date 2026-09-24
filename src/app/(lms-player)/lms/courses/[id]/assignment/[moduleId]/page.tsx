@@ -1,4 +1,5 @@
-﻿import { materialsFor } from "@/lib/lms-materials"
+﻿import { availabilityNote } from "@/lib/lms-groups"
+import { materialsFor } from "@/lib/lms-materials"
 import { ItemFiles } from "@/components/lms/groups/StudentCoursePanels"
 import { getStudentSession } from "@/lib/lms-auth"
 import { db } from "@/lib/db"
@@ -31,13 +32,15 @@ export default async function AssignmentPage({
     .select(`
       id, title, description, module_type,
       assignment_brief_html, assignment_rubric,
-      assignment_submission_types, assignment_due_date, assignment_max_attempts, activity_settings
+      assignment_submission_types, assignment_due_date, assignment_max_attempts, activity_settings,
+      available_from, available_until
     `)
     .eq("id", moduleId)
     .eq("course_id", courseId)
     .single()
 
   if (!module || module.module_type !== "assignment") notFound()
+  if (availabilityNote(module as any)) redirect(`/lms/courses/${courseId}`)
 
   // Fetch course for header
   const { data: course } = await db
