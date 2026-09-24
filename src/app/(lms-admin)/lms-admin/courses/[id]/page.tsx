@@ -1058,6 +1058,7 @@ function AssignmentSettingsPanel({ mod }: { mod: Module }) {
 
   // Grading
   const [passMark,        setPassMark]        = useState<number>(as.pass_mark ?? 70)
+  const [itemWeight,      setItemWeight]      = useState<string>(as.weight ? String(as.weight) : "1")
 
   // Access
   const [isMandatory,     setIsMandatory]     = useState(mod.is_mandatory ?? false)
@@ -1396,6 +1397,16 @@ function AssignmentSettingsPanel({ mod }: { mod: Module }) {
             <p className="text-xs text-slate-400">
               Student passes if score ÷ total rubric points ≥ {passMark}%
             </p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Weight among assignments</label>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} max={100} value={itemWeight}
+                onChange={e => setItemWeight(e.target.value)}
+                onBlur={() => { const v = Math.max(1, Math.min(100, parseInt(itemWeight) || 1)); setItemWeight(String(v)); saveAs({ weight: v }) }}
+                className="w-20 h-9 rounded-lg border border-slate-200 px-3 text-sm" />
+              <p className="text-xs text-slate-400">Used by the course&apos;s pass rule when assignments count differently — e.g. three portfolios at 20 and a capstone at 45. All 1 = equal.</p>
+            </div>
           </div>
         </div>
       </div>

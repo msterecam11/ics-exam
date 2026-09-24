@@ -219,7 +219,8 @@ function StatusChip({ s }: { s: Submission }) {
 }
 
 function MarkAssignment({ s, a, p, onClose, onSaved }: { s: Submission; a: Assignment; p: Participant; onClose: () => void; onSaved: () => void }) {
-  const max = s.max_score ?? (a.rubric.length ? a.rubric.reduce((t, c) => t + c.maxScore, 0) : 100)
+  // Assignment rubrics store { points } (exercises use { maxScore }).
+  const max = s.max_score ?? (a.rubric.length ? a.rubric.reduce((t, c: any) => t + (Number(c.points ?? c.maxScore) || 0), 0) || 100 : 100)
   const [score, setScore] = useState(s.score !== null ? String(s.score) : "")
   const [feedback, setFeedback] = useState(s.ai?.comment ?? "")
   const [reason, setReason] = useState("")

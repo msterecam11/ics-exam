@@ -108,6 +108,12 @@ export type PassResult = {
 
 const pct = (score: unknown, max: unknown) => (Number(max) > 0 ? Math.round((Number(score) / Number(max)) * 100) : null)
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null)
+/** An assignment's / exercise's share within its component (activity_settings.weight, default 1). */
+const itemWeight = (m: any) => { const w = Number(m?.activity_settings?.weight); return Number.isFinite(w) && w > 0 ? w : 1 }
+const wavg = (xs: { score: number; w: number }[]) => {
+  const tw = xs.reduce((t, x) => t + x.w, 0)
+  return tw > 0 ? Math.round(xs.reduce((t, x) => t + x.score * x.w, 0) / tw) : null
+}
 
 /** The course's rule, or null when it keeps "pass the final exam". */
 export async function courseRules(courseId: string): Promise<CompletionRules | null> {
@@ -165,18 +171,23 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
   if (want("exam") && examMods.length) {
     const r = want("exam")!
     const x = await examOf()
-    const pending = !x.passed && x.left > 0
+    // A required exam waits while a retake could still pass it. An exam that
+    // only adds to the score waits only until it has been taken: its best
+    // result counts, and a possible retake doesn't hold the decision open.
+    const pending = r.required ? !x.passed && x.left > 0 : x.taken === 0 && x.left > 0
     out.push({ key: "exam", label: COMPONENT_LABEL.exam, weight: r.weight, required: r.required,
       score: x.best ?? (pending ? null : 0), met: x.passed ? true : pending ? null : false, pending,
       requirement: `Pass (${x.passMark}%)`, detail: x.taken ? `Best ${x.best ?? 0}% · ${x.taken} attempt${x.taken === 1 ? "" : "s"}` : "Not taken yet" })
     if (r.required && !x.passed) reasons.push(pending ? (x.taken ? `Final exam not passed yet (${x.left} attempt${x.left === 1 ? "" : "s"} left)` : "Final exam not taken yet") : "Final exam not passed and no attempts left")
+    // A component that only adds to the score still says what it's waiting for.
+    else if (!r.required && pending) reasons.push("Final exam not taken yet")
   }
 
   const assignMods = modules.filter(m => m.module_type === "assignment")
   if (want("assignments") && assignMods.length) {
     const r = want("assignments")!
     let pending = false, allMet = true
-    const scores: number[] = []
+    const scores: { score: number; w: number }[] = []
     const notes: string[] = []
     for (const m of assignMods) {
       const mine = atts.filter(a => a.module_id === m.id)
@@ -188,12 +199,12 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
       const due = m.assignment_due_date ? String(m.assignment_due_date).slice(0, 10) : null
       const required = m.is_mandatory !== false
       if (best !== null) {
-        scores.push(best)
+        scores.push({ score: best, w: itemWeight(m) })
         if (required && best < passMark) { allMet = false; notes.push(`${m.title}: ${best}% (needs ${passMark}%)`) }
       } else if (mine.length) {
         pending = true; notes.push(`${m.title}: waiting to be marked`)
       } else if (due && due < today) {
-        scores.push(0)
+        scores.push({ score: 0, w: itemWeight(m) })
         if (required) { allMet = false; notes.push(`${m.title}: not submitted`) }
       } else {
         pending = true; notes.push(`${m.title}: not submitted yet`)
@@ -201,29 +212,31 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
     }
     const met = !allMet ? false : pending ? null : true
     out.push({ key: "assignments", label: COMPONENT_LABEL.assignments, weight: r.weight, required: r.required,
-      score: pending ? avg(scores) : avg(scores) ?? 0, met, pending: pending && met !== false,
-      requirement: "Each required assignment passed", detail: notes.length ? notes.join(" · ") : `${scores.length} marked · average ${avg(scores) ?? 0}%` })
+      score: pending ? wavg(scores) : wavg(scores) ?? 0, met, pending: pending && met !== false,
+      requirement: "Each required assignment passed", detail: notes.length ? notes.join(" · ") : `${scores.length} marked · average ${wavg(scores) ?? 0}%` })
     if (r.required && met !== true) reasons.push(...notes)
+    else if (!r.required && pending) reasons.push(...notes.filter(n => /waiting to be marked|not submitted yet/.test(n)))
   }
 
   const exMods = modules.filter(m => m.module_type === "exercise")
   if (want("exercises") && exMods.length) {
     const r = want("exercises")!
     const byMod = new Map(((exResults ?? []) as any[]).map(x => [x.module_id, x]))
-    const scores: number[] = []
+    const scores: { score: number; w: number }[] = []
     const notes: string[] = []
     let pending = false, allMet = true
     for (const m of exMods) {
       const x = byMod.get(m.id)
       if (!x) { pending = true; notes.push(`${m.title}: not marked yet`); continue }
-      scores.push(x.score_pct !== null && x.score_pct !== undefined ? Number(x.score_pct) : x.passed ? 100 : 0)
+      scores.push({ score: x.score_pct !== null && x.score_pct !== undefined ? Number(x.score_pct) : x.passed ? 100 : 0, w: itemWeight(m) })
       if (m.is_mandatory !== false && !x.passed) { allMet = false; notes.push(`${m.title}: not passed`) }
     }
     const met = !allMet ? false : pending ? null : true
     out.push({ key: "exercises", label: COMPONENT_LABEL.exercises, weight: r.weight, required: r.required,
-      score: avg(scores), met, pending: pending && met !== false,
+      score: wavg(scores), met, pending: pending && met !== false,
       requirement: "Every required exercise passed", detail: notes.length ? notes.join(" · ") : `${scores.length} passed` })
     if (r.required && met !== true) reasons.push(...notes)
+    else if (!r.required && pending) reasons.push(...notes.filter(n => /not marked yet/.test(n)))
   }
 
   if (want("attendance")) {

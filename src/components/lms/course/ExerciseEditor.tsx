@@ -14,7 +14,7 @@ import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 // download is uploaded here too.
 
 export type ExerciseCriterion = { id: string; title: string; maxScore: number }
-export type ExerciseSettings = { marking: "pass_fail" | "rubric"; pass_pct: number }
+export type ExerciseSettings = { marking: "pass_fail" | "rubric"; pass_pct: number; weight?: number }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -25,6 +25,7 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
   const [instructions, setInstructions] = useState(initial.instructions ?? "")
   const [marking, setMarking] = useState<ExerciseSettings["marking"]>(initial.settings?.marking ?? (initial.rubric?.length ? "rubric" : "pass_fail"))
   const [passPct, setPassPct] = useState(initial.settings?.pass_pct ?? 60)
+  const [weight, setWeight] = useState(initial.settings?.weight ?? 1)
   const [criteria, setCriteria] = useState<ExerciseCriterion[]>(initial.rubric?.length ? initial.rubric : [{ id: uid(), title: "", maxScore: 5 }])
   const [saving, setSaving] = useState(false)
 
@@ -40,7 +41,7 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
         id: moduleId,
         assignment_brief_html: instructions.trim() || null,
         assignment_rubric: marking === "rubric" ? clean : null,
-        activity_settings: { marking, pass_pct: passPct },
+        activity_settings: { marking, pass_pct: passPct, weight },
       }),
     })
     setSaving(false)
@@ -90,6 +91,14 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="space-y-2">
+        <label className="text-sm font-semibold text-slate-800">Weight among exercises</label>
+        <div className="flex items-center gap-3">
+          <Input type="number" min={1} max={100} value={weight} onChange={e => setWeight(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))} className="w-20" />
+          <p className="text-xs text-slate-500">Used by the course&apos;s pass rule when exercises count differently. All 1 = equal.</p>
+        </div>
       </section>
 
       <section className="space-y-2">
