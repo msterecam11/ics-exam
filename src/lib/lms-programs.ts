@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { coursesForTrack } from "@/lib/lms-program-courses"
 import { syncEnrollmentProgress } from "@/lib/lms-completion"
+import { autoPlaceInProgramGroup } from "@/lib/lms-groups"
 import { sendEmail, buildEnrollmentEmail } from "@/lib/email"
 
 // ── Program Manager core ────────────────────────────────────────────────
@@ -142,6 +143,14 @@ export async function syncMemberEnrollments(memberId: string, actorId: string | 
   for (const courseId of newlyEnrolled) {
     const e = byCourse.get(courseId)
     if (e) await syncEnrollmentProgress(m.student_id, courseId, e.id)
+  }
+
+  // An onsite course with exactly one group scheduled for this program: they go straight into it.
+  if (newlyEnrolled.length) {
+    const { data: fresh } = await db.from("lms_enrollments").select("id, course_id")
+      .eq("member_id", memberId).in("course_id", newlyEnrolled).eq("status", "active").is("group_id", null)
+    for (const e of (fresh ?? []) as any[])
+      await autoPlaceInProgramGroup(m.program_id, e.course_id, [e.id]).catch(() => {})
   }
 
   // Tell the student, only when the program is live.

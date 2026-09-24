@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { type ProgramDetail, postJson } from "./shared"
+import ProgramGroupsSection from "./ProgramGroupsSection"
 
 export type ProgramSession = {
   id: string; title: string; session_date: string; start_time: string; duration_minutes: number
@@ -223,6 +224,12 @@ export default function ProgramSessionsTab({ detail, isAdmin }: { detail: Progra
 
   return (
     <div className="space-y-5 max-w-4xl">
+      <ProgramGroupsSection programId={program.id} canEdit={canEdit && isAdmin} />
+
+      <div className="pt-1">
+        <h3 className="text-sm font-semibold text-slate-800">Other sessions</h3>
+        <p className="text-xs text-slate-500 mt-0.5">One-off classes — online meetings, a briefing, a make-up day. Onsite group days are managed inside each group.</p>
+      </div>
       <div className="flex items-center gap-2 flex-wrap">
         {program.structure === "tracks" && (
           <select value={trackFilter} onChange={e => setTrackFilter(e.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm bg-white">

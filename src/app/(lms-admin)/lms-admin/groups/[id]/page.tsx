@@ -24,6 +24,7 @@ type Person = {
   enrollment_id: string; status: string
   student: { id: string; name: string; email: string; company: string | null } | null
   program: { id: string; name: string; client: string | null } | null
+  track?: string | null
   current_group?: { id: string; label: string } | null
 }
 type Day = {
@@ -33,6 +34,8 @@ type Day = {
 }
 type Detail = {
   group: any
+  /** The client program this group belongs to; null = an open date (catalogue). */
+  program: { id: string; name: string; client: string | null } | null
   course: { id: string; title: string; course_code: string | null; delivery_mode: string } | null
   provider: { id: string; name: string } | null
   staff: { user_id: string; name: string; email: string; role: "instructor" | "facilitator" }[]
@@ -135,8 +138,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="max-w-5xl space-y-5 pb-16">
-      <Link href={manage ? `/lms-admin/courses/${d.course?.id}` : "/lms-admin"} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#1B4F8A]">
-        <ArrowLeft className="h-3.5 w-3.5" /> {d.course?.title}
+      <Link href={d.program ? `/lms-admin/programs/${d.program.id}?tab=sessions` : manage ? `/lms-admin/courses/${d.course?.id}` : "/lms-admin"} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#1B4F8A]">
+        <ArrowLeft className="h-3.5 w-3.5" /> {d.program ? `${d.program.name} · Schedule` : d.course?.title}
       </Link>
 
       {/* Header */}
@@ -149,6 +152,9 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
               <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", STATUS_STYLE[g.status])}>{g.status[0].toUpperCase() + g.status.slice(1)}</span>
             </div>
             <p className="text-sm text-slate-500 mt-0.5">{d.course?.title}{d.course?.course_code ? ` · ${d.course.course_code}` : ""}</p>
+            <p className="text-xs mt-1">{d.program
+              ? <span className="text-slate-500">Group of <b className="text-slate-700">{d.program.name}</b>{d.program.client ? ` (${d.program.client})` : ""} — only its participants</span>
+              : <span className="text-violet-700">Open date — shown in the catalogue for anyone to request</span>}</p>
           </div>
           {manage && <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
@@ -246,14 +252,14 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {formValue && d.course && (
         <GroupFormDialog open={editing} onClose={() => setEditing(false)} courseId={d.course.id} initial={formValue} onSaved={() => load()} />
       )}
-      <AddParticipants open={adding} onClose={() => setAdding(false)} groupId={id} candidates={d.candidates}
+      <AddParticipants open={adding} onClose={() => setAdding(false)} groupId={id} candidates={d.candidates} programOnly={!!d.program}
         seatsLeft={g.seats ? Math.max(0, g.seats - d.seats_taken) : null} onDone={() => { setAdding(false); load() }} />
     </div>
   )
 }
 
-function AddParticipants({ open, onClose, groupId, candidates, seatsLeft, onDone }: {
-  open: boolean; onClose: () => void; groupId: string; candidates: Person[]; seatsLeft: number | null; onDone: () => void
+function AddParticipants({ open, onClose, groupId, candidates, programOnly, seatsLeft, onDone }: {
+  open: boolean; onClose: () => void; groupId: string; candidates: Person[]; programOnly: boolean; seatsLeft: number | null; onDone: () => void
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [q, setQ] = useState("")
@@ -283,8 +289,18 @@ function AddParticipants({ open, onClose, groupId, candidates, seatsLeft, onDone
     <Dialog open={open} onOpenChange={o => !o && !busy && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>Add participants</DialogTitle></DialogHeader>
-        <p className="text-sm text-slate-500 -mt-1">People enrolled in this course — through a program, or individually. Someone already in another group is moved.</p>
+        <p className="text-sm text-slate-500 -mt-1">People enrolled in this course{programOnly ? " through this group's program" : " — through a program, or individually"}. Someone already in another group is moved.</p>
         <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name, email or program…" className="pl-9" /></div>
+        {[...new Set(candidates.map(c => c.track).filter(Boolean))].length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-slate-500">Pick a whole track:</span>
+            {[...new Set(candidates.map(c => c.track).filter(Boolean))].map(t => (
+              <button key={t} type="button" onClick={() => setPicked(p => { const n = new Set(p); candidates.filter(c => c.track === t).forEach(c => n.add(c.enrollment_id)); return n })}
+                className="text-xs px-2 py-0.5 rounded-full border border-slate-200 hover:border-[#1B4F8A] hover:text-[#1B4F8A]">{t}</button>
+            ))}
+            <button type="button" onClick={() => setPicked(new Set(candidates.map(c => c.enrollment_id)))} className="text-xs px-2 py-0.5 rounded-full border border-slate-200 hover:border-[#1B4F8A] hover:text-[#1B4F8A]">Everyone</button>
+          </div>
+        )}
         <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-[50vh] overflow-y-auto">
           {shown.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">{candidates.length ? "No match" : "Everyone enrolled in this course is already in this group. Enrol people through a program (or approve a catalogue request) first."}</p>
             : shown.map(c => (
@@ -292,7 +308,7 @@ function AddParticipants({ open, onClose, groupId, candidates, seatsLeft, onDone
                 <input type="checkbox" checked={picked.has(c.enrollment_id)} onChange={() => toggle(c.enrollment_id)} className="accent-[#1B4F8A]" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{c.student?.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{[c.student?.email, c.program ? c.program.name : "Individual"].filter(Boolean).join(" · ")}</p>
+                  <p className="text-xs text-slate-400 truncate">{[c.student?.email, c.program ? c.program.name : "Individual", c.track].filter(Boolean).join(" · ")}</p>
                 </div>
                 {c.current_group && <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full shrink-0">In {c.current_group.label}</span>}
               </label>

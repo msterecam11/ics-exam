@@ -22,6 +22,8 @@ type Row = {
   seats: number | null; seats_taken: number; days: number
   provider: { id: string; name: string } | null
   staff: { id: string; name: string; role: string }[]
+  /** The client program it belongs to; null = an open date for the catalogue. */
+  program: { id: string; name: string } | null
 }
 
 export default function GroupsPanel({ courseId, providerId, deliveryMode }: { courseId: string; providerId: string | null; deliveryMode: string }) {
@@ -48,10 +50,10 @@ export default function GroupsPanel({ courseId, providerId, deliveryMode }: { co
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Groups</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Each group is one delivery of this course — its dates, venue, staff and seats. Participants join a group; they see it once it&apos;s <b>confirmed</b>.</p>
+          <p className="text-sm text-slate-500 mt-0.5">Every delivery of this course. A client&apos;s groups are scheduled from its program (Program Manager → the program → <b>Schedule</b>). Here you add <b>open dates</b>: shown in the catalogue for individuals to request.</p>
         </div>
         <Button onClick={() => setCreating(true)} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-1.5 shrink-0">
-          <Plus className="h-4 w-4" /> New group
+          <Plus className="h-4 w-4" /> New open date
         </Button>
       </div>
 
@@ -61,7 +63,7 @@ export default function GroupsPanel({ courseId, providerId, deliveryMode }: { co
         <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-14 text-center">
           <CalendarDays className="h-9 w-9 text-slate-300 mx-auto" />
           <p className="font-semibold text-slate-600 mt-3">No groups yet</p>
-          <p className="text-sm text-slate-400 mt-1">Create the first delivery: dates, venue, instructor, seats.</p>
+          <p className="text-sm text-slate-400 mt-1">Schedule a client&apos;s group from its program, or add an open date here for the catalogue.</p>
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -76,6 +78,9 @@ export default function GroupsPanel({ courseId, providerId, deliveryMode }: { co
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-slate-900">{g.label}</p>
+                    {g.program
+                      ? <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{g.program.name}</span>
+                      : <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">Open date</span>}
                     <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full", running ? "bg-amber-50 text-amber-700" : STATUS_STYLE[g.status])}>
                       {running ? "Running now" : g.status[0].toUpperCase() + g.status.slice(1)}
                     </span>

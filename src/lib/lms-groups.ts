@@ -19,7 +19,7 @@ export const GROUP_STATUS_LABEL: Record<GroupStatus, string> = {
 }
 
 export const GROUP_COLUMNS = `id, course_id, name, provider_id, start_date, end_date, daily_start, daily_end,
-  city, country, venue_name, venue_address, map_url, seats, language, status, notes, joining_instructions, created_at, updated_at`
+  city, country, venue_name, venue_address, map_url, seats, language, status, notes, joining_instructions, program_id, created_at, updated_at`
 
 export type CourseGroup = {
   id: string; course_id: string; name: string | null; provider_id: string | null
@@ -28,6 +28,8 @@ export type CourseGroup = {
   seats: number | null; language: string | null; status: GroupStatus; notes: string | null
   /** Shown to participants and e-mailed before the start (EM-22). */
   joining_instructions?: string | null
+  /** The client program this group is scheduled for (private to it). Null = an open date in the catalogue. */
+  program_id?: string | null
   created_at: string; updated_at: string
 }
 
@@ -187,7 +189,7 @@ export async function placeInGroup(group: CourseGroup, enrollmentIds: string[], 
   if (!ids.length) return { ok: false, status: 400, error: "Choose at least one participant" }
 
   const { data: rows } = await db.from("lms_enrollments")
-    .select("id, course_id, status, group_id, lms_students(name)").in("id", ids)
+    .select("id, course_id, status, group_id, program_id, lms_students(name)").in("id", ids)
   const byId = new Map(((rows ?? []) as any[]).map(r => [r.id, r]))
 
   const results: PlaceResult[] = []
@@ -199,6 +201,8 @@ export async function placeInGroup(group: CourseGroup, enrollmentIds: string[], 
     if (r.course_id !== group.course_id) { results.push({ enrollment_id: id, name, status: "error", message: "Enrolled in a different course" }); continue }
     if (!SEAT_STATUSES.includes(r.status)) { results.push({ enrollment_id: id, name, status: "error", message: "Withdrawn from the course" }); continue }
     if (r.group_id === group.id) { results.push({ enrollment_id: id, name, status: "already" }); continue }
+    // A program's group is private to that program's participants.
+    if (group.program_id && r.program_id !== group.program_id) { results.push({ enrollment_id: id, name, status: "error", message: "Not in this group's program" }); continue }
     toPlace.push(r)
   }
 
@@ -228,11 +232,11 @@ export type OpenGroup = {
   seats_left: number | null; full: boolean
 }
 
-/** Confirmed groups of a course that haven't finished — what a student can ask to join. */
+/** Open dates of a course (not a client program's own group), confirmed and not finished — what a student can ask to join. */
 export async function openGroups(courseId: string, today: string): Promise<OpenGroup[]> {
   const { data } = await db.from("lms_course_groups")
     .select(`${GROUP_COLUMNS}, lms_service_providers(name)`)
-    .eq("course_id", courseId).eq("status", "confirmed").gte("end_date", today)
+    .eq("course_id", courseId).eq("status", "confirmed").gte("end_date", today).is("program_id", null)
     .order("start_date")
   const rows = (data ?? []) as any[]
   const taken = await seatsTaken(rows.map(r => r.id))
@@ -322,4 +326,35 @@ export async function itemGate(groupId: string | null | undefined, mod: { id: st
   return { open: false, message: mod.module_type === "final_exam"
     ? "The final exam opens when your instructor releases it."
     : "Your instructor has locked this assignment for now." }
+}
+
+// ── A program's groups ───────────────────────────────────────────────────────
+
+/** A program's groups of a course that people can still be placed in. */
+export async function upcomingProgramGroups(programId: string, courseId: string): Promise<CourseGroup[]> {
+  const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10)
+  const { data } = await db.from("lms_course_groups").select(GROUP_COLUMNS)
+    .eq("program_id", programId).eq("course_id", courseId).in("status", ["planned", "confirmed"]).gte("end_date", today)
+    .order("start_date")
+  return (data ?? []) as unknown as CourseGroup[]
+}
+
+/**
+ * When a program has exactly ONE upcoming group for a course, its members go
+ * straight into it — nobody has to place them. With several groups the admin
+ * splits people (by hand or by track) from the program's Schedule.
+ * `enrollmentIds` limits it to some enrolments; otherwise every unplaced one.
+ */
+export async function autoPlaceInProgramGroup(programId: string, courseId: string, enrollmentIds?: string[]):
+  Promise<{ placed: number; groups: number }> {
+  const groups = await upcomingProgramGroups(programId, courseId)
+  if (groups.length !== 1) return { placed: 0, groups: groups.length }
+  let q = db.from("lms_enrollments").select("id").eq("program_id", programId).eq("course_id", courseId)
+    .eq("status", "active").is("group_id", null)
+  if (enrollmentIds?.length) q = q.in("id", enrollmentIds)
+  const { data } = await q
+  const ids = ((data ?? []) as any[]).map(r => r.id)
+  if (!ids.length) return { placed: 0, groups: 1 }
+  const r = await placeInGroup(groups[0], ids, { override: false })
+  return { placed: r.ok ? r.results.filter(x => x.status === "placed" || x.status === "moved").length : 0, groups: 1 }
 }

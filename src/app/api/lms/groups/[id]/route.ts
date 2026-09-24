@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: Params) {
     db.from("lms_group_staff").select("role, admin_users(id, name, email, role)").eq("group_id", id),
     db.from("admin_users").select("id, name, email, role").in("role", ["admin", "instructor", "facilitator"]).eq("is_active", true).order("name"),
     db.from("lms_enrollments")
-      .select("id, status, group_id, enrolled_at, program_id, lms_students(id, name, email, company), lms_programs(id, name, is_individual, lms_companies(name))")
+      .select("id, status, group_id, enrolled_at, program_id, lms_students(id, name, email, company), lms_programs(id, name, is_individual, lms_companies(name)), lms_program_members(track_id, lms_program_tracks(name))")
       .eq("course_id", group.course_id).in("status", SEAT_STATUSES),
     db.from("lms_sessions").select("id, title, session_date, start_time, duration_minutes, location, closed_at").eq("group_id", id).order("session_date"),
   ])
@@ -63,16 +63,23 @@ export async function GET(_req: Request, { params }: Params) {
   const person = (e: any) => ({
     enrollment_id: e.id, status: e.status, enrolled_at: e.enrolled_at,
     student: e.lms_students ?? null,
+    track: e.lms_program_members?.lms_program_tracks?.name ?? null,
     program: e.lms_programs && !e.lms_programs.is_individual ? { id: e.lms_programs.id, name: e.lms_programs.name, client: e.lms_programs.lms_companies?.name ?? null } : null,
   })
   const participants = enrolments.filter(e => e.group_id === id).map(person)
     .sort((a, b) => (a.student?.name ?? "").localeCompare(b.student?.name ?? ""))
-  const candidates = enrolments.filter(e => e.group_id !== id && e.status === "active")
+  // A program's group only takes that program's people; an open date takes anyone.
+  const candidates = enrolments.filter(e => e.group_id !== id && e.status === "active" && (!group.program_id || e.program_id === group.program_id))
     .map(e => ({ ...person(e), current_group: e.group_id ? { id: e.group_id, label: labelOf.get(e.group_id) ?? "Another group" } : null }))
     .sort((a, b) => (a.student?.name ?? "").localeCompare(b.student?.name ?? ""))
 
+  const { data: owner } = group.program_id
+    ? await db.from("lms_programs").select("id, name, lms_companies(name)").eq("id", group.program_id).maybeSingle()
+    : { data: null }
+
   return NextResponse.json({
     group: { ...group, label: groupLabel(group) },
+    program: owner ? { id: (owner as any).id, name: (owner as any).name, client: (owner as any).lms_companies?.name ?? null } : null,
     course: courseRes.data,
     provider: providerRes.data ?? null,
     staff: ((staffRes.data ?? []) as any[]).filter(s => s.admin_users).map(s => ({ user_id: s.admin_users.id, name: s.admin_users.name, email: s.admin_users.email, role: s.role })),

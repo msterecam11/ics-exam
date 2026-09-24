@@ -28,8 +28,10 @@ export const emptyGroup = (providerId: string | null): GroupFormValue => ({
   seats: "", language: "English", provider_id: providerId, notes: "", joining_instructions: "", staff: [],
 })
 
-export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
+export function GroupFormDialog({ open, onClose, courseId, programId, initial, onSaved }: {
   open: boolean; onClose: () => void; courseId: string
+  /** Scheduling it for a client program (private to it); none = an open date. */
+  programId?: string | null
   initial: GroupFormValue; onSaved: (id: string) => void
 }) {
   const [f, setF] = useState<GroupFormValue>(initial)
@@ -56,7 +58,7 @@ export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
     if (!f.start_date || !f.end_date) { toast.error("Choose the start and end dates"); return }
     setBusy(true)
     const body = {
-      ...(editing ? {} : { course_id: courseId, generate_days: makeDays }),
+      ...(editing ? {} : { course_id: courseId, generate_days: makeDays, ...(programId ? { program_id: programId } : {}) }),
       name: f.name, start_date: f.start_date, end_date: f.end_date,
       daily_start: f.daily_start || null, daily_end: f.daily_end || null,
       city: f.city, country: f.country, venue_name: f.venue_name, venue_address: f.venue_address, map_url: f.map_url,
@@ -69,7 +71,7 @@ export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
     const data = await res.json().catch(() => ({}))
     setBusy(false)
     if (!res.ok) { toast.error(data.error ?? "Could not save the group"); return }
-    toast.success(editing ? "Group saved" : `Group created${data.days ? ` with ${data.days} day${data.days === 1 ? "" : "s"}` : ""}`)
+    toast.success(editing ? "Group saved" : `Group created${data.days ? ` with ${data.days} day${data.days === 1 ? "" : "s"}` : ""}${data.placed ? ` · ${data.placed} participant${data.placed === 1 ? "" : "s"} placed in it` : ""}`)
     onSaved(data.id ?? initial.id)
     onClose()
   }

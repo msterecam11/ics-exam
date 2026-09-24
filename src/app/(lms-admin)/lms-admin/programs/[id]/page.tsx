@@ -22,7 +22,7 @@ const TABS = [
   { key: "overview",  label: "Overview",  icon: LayoutDashboard },
   { key: "structure", label: "Structure", icon: Layers },
   { key: "students",  label: "Students",  icon: Users },
-  { key: "sessions",  label: "Sessions",  icon: CalendarDays },
+  { key: "sessions",  label: "Schedule",  icon: CalendarDays },
   { key: "progress",  label: "Progress",  icon: TrendingUp },
   { key: "exams",     label: "Exams",     icon: GraduationCap },
   { key: "reports",   label: "Reports",   icon: BarChart3 },
