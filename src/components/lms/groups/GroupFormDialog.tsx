@@ -18,14 +18,14 @@ export type GroupFormValue = {
   id?: string
   name: string; start_date: string; end_date: string; daily_start: string; daily_end: string
   city: string; country: string; venue_name: string; venue_address: string; map_url: string
-  seats: string; language: string; provider_id: string | null; notes: string
+  seats: string; language: string; provider_id: string | null; notes: string; joining_instructions: string
   staff: { user_id: string; role: "instructor" | "facilitator" }[]
 }
 
 export const emptyGroup = (providerId: string | null): GroupFormValue => ({
   name: "", start_date: "", end_date: "", daily_start: "08:30", daily_end: "15:30",
   city: "", country: "", venue_name: "", venue_address: "", map_url: "",
-  seats: "", language: "English", provider_id: providerId, notes: "", staff: [],
+  seats: "", language: "English", provider_id: providerId, notes: "", joining_instructions: "", staff: [],
 })
 
 export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
@@ -60,7 +60,7 @@ export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
       name: f.name, start_date: f.start_date, end_date: f.end_date,
       daily_start: f.daily_start || null, daily_end: f.daily_end || null,
       city: f.city, country: f.country, venue_name: f.venue_name, venue_address: f.venue_address, map_url: f.map_url,
-      seats: f.seats === "" ? null : Number(f.seats), language: f.language, provider_id: f.provider_id, notes: f.notes,
+      seats: f.seats === "" ? null : Number(f.seats), language: f.language, provider_id: f.provider_id, notes: f.notes, joining_instructions: f.joining_instructions,
       staff: f.staff,
     }
     const res = await fetch(editing ? `/api/lms/groups/${initial.id}` : "/api/lms/groups", {
@@ -122,6 +122,13 @@ export function GroupFormDialog({ open, onClose, courseId, initial, onSaved }: {
             )}
             <p className="text-[11px] text-slate-400">Instructors teach and grade; facilitators take attendance. One person can be both.</p>
           </section>
+
+          <div className={field}><Label>Joining instructions <span className="text-slate-400 font-normal">(participants see these)</span></Label>
+            <textarea value={f.joining_instructions} onChange={e => set("joining_instructions", e.target.value)} rows={3}
+              placeholder="e.g. Bring your airport ID for airside access. Business attire. Parking at P3, report to reception by 08:15."
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1B4F8A]/20" />
+            <p className="text-[11px] text-slate-400">Shown on the participant&apos;s course page and e-mailed some days before the first day.</p>
+          </div>
 
           <div className={field}><Label>Internal notes</Label>
             <textarea value={f.notes} onChange={e => set("notes", e.target.value)} rows={2}

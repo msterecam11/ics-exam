@@ -24,7 +24,8 @@ export async function GET(req: Request) {
     .select(`
       id, title, description, overview_html, course_code, category, category_id, tags,
       thumbnail_url, language, delivery_mode,
-      status, progress_enforcement, certificate_enabled, certificate_auto_release, feedback_enabled,
+      status, progress_enforcement, certificate_enabled, certificate_auto_release, feedback_enabled, feedback_anonymous,
+      evaluate_modules, evaluate_instructors, impact_enabled,
       ics_certificate_visible, partner_certificate, partner_certificate_visible, certificate_validity_months,
       start_date, end_date, capacity, final_exam_pass_mark, created_at, updated_at, created_by,
       catalogue_visibility, catalogue_companies, short_description, level, duration_hours, learning_outcomes, prerequisites, audience, provider_id,
@@ -162,6 +163,7 @@ export async function PATCH(req: Request) {
     "progress_enforcement","progress_test_every_x","min_attendance_pct",
     "certificate_enabled","certificate_auto_release","ics_certificate_visible","partner_certificate","partner_certificate_visible","certificate_validity_months",
     "feedback_enabled","feedback_mandatory","feedback_anonymous",
+    "evaluate_modules","evaluate_instructors","impact_enabled",
     "start_date","end_date","capacity","drip_days","final_exam_pass_mark",
   ]
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }

@@ -16,6 +16,7 @@ import { GroupFormDialog, type GroupFormValue } from "@/components/lms/groups/Gr
 import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 import { GroupExercises, GroupAssignments } from "@/components/lms/groups/GroupMarking"
 import { GroupExam } from "@/components/lms/groups/GroupExam"
+import { GroupFeedback } from "@/components/lms/groups/GroupFeedback"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
@@ -58,7 +59,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter()
   const [d, setD] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<"participants" | "days" | "exercises" | "assignments" | "exam" | "results" | "materials">("participants")
+  const [tab, setTab] = useState<"participants" | "days" | "exercises" | "assignments" | "exam" | "feedback" | "results" | "materials">("participants")
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [modules, setModules] = useState<{ id: string; title: string }[]>([])
@@ -81,7 +82,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     city: d.group.city ?? "", country: d.group.country ?? "", venue_name: d.group.venue_name ?? "",
     venue_address: d.group.venue_address ?? "", map_url: d.group.map_url ?? "",
     seats: d.group.seats ? String(d.group.seats) : "", language: d.group.language ?? "", provider_id: d.group.provider_id,
-    notes: d.group.notes ?? "", staff: d.staff.map(s => ({ user_id: s.user_id, role: s.role })),
+    notes: d.group.notes ?? "", joining_instructions: d.group.joining_instructions ?? "", staff: d.staff.map(s => ({ user_id: s.user_id, role: s.role })),
   }), [d])
 
   async function setStatus(status: string, confirmText?: string) {
@@ -174,7 +175,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["materials", "Materials"]] as const).filter(([k]) => manage || k !== "materials").map(([k, label]) => (
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const).filter(([k]) => manage || (k !== "materials" && k !== "feedback")).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
@@ -236,6 +237,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {tab === "assignments" && <GroupAssignments groupId={id} />}
       {tab === "exam" && <GroupExam groupId={id} />}
       {tab === "results" && <GroupResults groupId={id} />}
+      {tab === "feedback" && manage && <GroupFeedback groupId={id} />}
 
       {tab === "materials" && d.course && (
         <MaterialsManager courseId={d.course.id} groupId={id} modules={modules} />

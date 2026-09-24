@@ -283,3 +283,47 @@ export function buildCatalogueAdminEmail(o: {
     ${o.message ? `<p style="margin:16px 0 0;color:#475569;font-size:14px;line-height:1.6;border-left:3px solid #e2e8f0;padding-left:12px;">${o.message}</p>` : ""}`
   return { subject: `Catalogue request: ${o.courseTitle} — ${o.name}`, html: baseTemplate(body) }
 }
+
+// Staff-written free text goes into the HTML escaped, line breaks kept.
+const escText = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/\n/g, "<br>")
+
+// ── EM-21 Impact questionnaire ───────────────────────────────────────────────
+export function buildImpactSurveyEmail(o: { studentName: string; courseTitle: string; courseId: string; months: number }) {
+  const body = `
+    ${badge("Three quick questions", BLUE)}
+    <h2 style="margin:0 0 6px;color:#1e293b;font-size:22px;">Has it made a difference, ${o.studentName}?</h2>
+    <p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.6;">
+      It's been about ${o.months} month${o.months === 1 ? "" : "s"} since you completed <strong>${o.courseTitle}</strong>.
+      We'd like to know whether you've been able to use it in your work — it takes a minute and helps us make the
+      training more useful. It has no effect on your result or your certificate.
+    </p>
+    ${closing("Answer the questions →", `${APP}/lms/courses/${o.courseId}#impact`)}`
+  return { subject: `How is "${o.courseTitle}" working out for you? — ICS Aviation LMS`, html: baseTemplate(body) }
+}
+
+// ── EM-22 Joining instructions ───────────────────────────────────────────────
+export function buildJoiningInstructionsEmail(o: {
+  studentName: string; courseTitle: string; courseId: string; daysBefore: number
+  dates: string; dailyTimes: string | null; venue: string | null; address: string | null; mapUrl: string | null
+  instructors: string[]; instructions: string | null
+}) {
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px;vertical-align:top;white-space:nowrap;">${label}</td>
+         <td style="padding:6px 0;color:#1e293b;font-size:14px;">${value}</td></tr>`
+  const where = [o.venue, o.address].filter(Boolean).map(s => escText(s!)).join("<br>")
+  const body = `
+    ${badge(o.daysBefore <= 1 ? "Starting tomorrow" : `Starting in ${o.daysBefore} days`, BLUE)}
+    <h2 style="margin:0 0 6px;color:#1e293b;font-size:22px;">Joining instructions, ${o.studentName}</h2>
+    <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.6;">Everything you need for <strong>${o.courseTitle}</strong>.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:14px 18px;width:100%;box-sizing:border-box;margin-bottom:20px;">
+      ${row("Dates", o.dates)}
+      ${o.dailyTimes ? row("Each day", o.dailyTimes) : ""}
+      ${where ? row("Venue", where + (o.mapUrl ? `<br><a href="${o.mapUrl.replace(/"/g, "%22")}" style="color:${BLUE};">Open the map</a>` : "")) : ""}
+      ${o.instructors.length ? row(o.instructors.length === 1 ? "Instructor" : "Instructors", o.instructors.map(escText).join(", ")) : ""}
+    </table>
+    ${o.instructions ? `<p style="margin:0 0 8px;color:${BLUE};font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Before you come</p>
+    <p style="margin:0 0 24px;color:#334155;font-size:14px;line-height:1.6;">${escText(o.instructions)}</p>` : ""}
+    ${closing("Open the course →", `${APP}/lms/courses/${o.courseId}`)}`
+  return { subject: `Joining instructions: ${o.courseTitle} — ICS Aviation LMS`, html: baseTemplate(body) }
+}

@@ -2,7 +2,7 @@
  * GET /api/cron/lms-daily  — EM-20
  *
  * The one scheduled job the LMS needs. A single daily run evaluates every dated
- * email rule (EM-2, 3, 4, 5, 9, 10 and the weekly EM-13) and sends what is due.
+ * email rule (EM-2, 3, 4, 5, 9, 10, 21, 22 and the weekly EM-13) and sends what is due.
  * (The older course-reminders and session-reminders endpoints were removed:
  * the first ignored each program's email settings.)
  *

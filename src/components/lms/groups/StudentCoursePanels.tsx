@@ -10,6 +10,7 @@ export type StudentGroup = {
   label: string; dates: string; daily_start: string | null; daily_end: string | null
   venue_name: string | null; venue_address: string | null; city: string | null; country: string | null; map_url: string | null
   provider: string | null; instructors: string[]; days: number; language: string | null
+  joining_instructions?: string | null
 }
 
 export function GroupCard({ group, pending }: { group: StudentGroup | null; pending: boolean }) {
@@ -43,6 +44,12 @@ export function GroupCard({ group, pending }: { group: StudentGroup | null; pend
         {group.provider && <p className="flex items-start gap-2 text-slate-700"><Globe className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" /><span>Delivered by {group.provider}</span></p>}
         {group.instructors.length > 0 && <p className="flex items-start gap-2 text-slate-700"><UserCheck className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" /><span>Instructor{group.instructors.length > 1 ? "s" : ""}: {group.instructors.join(", ")}</span></p>}
       </div>
+      {group.joining_instructions && (
+        <div className="mx-5 mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider mb-1">Before you come</p>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{group.joining_instructions}</p>
+        </div>
+      )}
     </div>
   )
 }

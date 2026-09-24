@@ -98,6 +98,7 @@ interface Course {
   capacity: number | null; enrollment_count: number
   updated_at: string | null
   feedback_enabled: boolean; feedback_anonymous: boolean
+  evaluate_modules?: boolean; evaluate_instructors?: boolean; impact_enabled?: boolean
 }
 interface LibraryFile {
   id: string; name: string; original_name: string
@@ -601,6 +602,9 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
     ...course,
     feedback_enabled:    !!course.feedback_enabled,
     feedback_anonymous:  !!course.feedback_anonymous,
+    evaluate_modules:     !!course.evaluate_modules,
+    evaluate_instructors: !!course.evaluate_instructors,
+    impact_enabled:       !!course.impact_enabled,
     progress_enforcement: !!course.progress_enforcement,
     certificate_enabled:  !!course.certificate_enabled,
     certificate_auto_release: !!(course as any).certificate_auto_release,
@@ -637,7 +641,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         learning_outcomes: form.learning_outcomes ?? [], progress_enforcement: form.progress_enforcement, certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release,
         ics_certificate_visible: form.ics_certificate_visible, partner_certificate: form.partner_certificate,
         partner_certificate_visible: form.partner_certificate_visible,
-        certificate_validity_months: form.certificate_validity_months, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous }),
+        certificate_validity_months: form.certificate_validity_months, final_exam_pass_mark: form.final_exam_pass_mark, start_date: form.start_date || null, end_date: form.end_date || null, capacity: form.capacity, feedback_enabled: form.feedback_enabled, feedback_anonymous: form.feedback_anonymous, evaluate_modules: form.evaluate_modules, evaluate_instructors: form.evaluate_instructors, impact_enabled: form.impact_enabled }),
     })
     const data = await res.json(); setSaving(false)
     if (!res.ok) { toast.error(data.error ?? "Failed"); return }
@@ -753,6 +757,20 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
             </p>
           </div>
         )}
+      </div>
+      <div className="bg-white rounded-xl border p-5 space-y-3">
+        <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1B4F8A]" /> Evaluation &amp; impact</h3>
+        <p className="text-xs text-slate-500">Optional for participants and never holds back a certificate. Asked on their course page once they complete the course or their group is completed.</p>
+        {([
+          ["evaluate_modules", "Evaluate each module", "Relevance, clarity and materials, 1–5, for every teaching module."],
+          ["evaluate_instructors", "Evaluate the instructors", "Knowledge, clarity, engagement and time, 1–5, for each instructor of the participant's group (onsite)."],
+          ["impact_enabled", "Impact questionnaire", "Some months after completing (90 days by default — see Settings → Emails, “Impact questionnaire”): did it change their work? Gives a separate impact score."],
+        ] as const).map(([k, t, d]) => (
+          <label key={k} className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
+            <input type="checkbox" checked={!!form[k]} onChange={e => set(k, e.target.checked)} className="mt-0.5" />
+            <div><p className="text-sm font-medium">{t}</p><p className="text-xs text-slate-500 mt-0.5">{d}</p></div>
+          </label>
+        ))}
       </div>
       <Button onClick={save} disabled={saving || !form.title?.trim()} className="bg-[#1B4F8A] hover:bg-[#163f6e] text-white gap-2">
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="h-4 w-4" /> Save Settings</>}

@@ -20,6 +20,8 @@ import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen } from "@/lib/lms-gro
 import { materialsFor } from "@/lib/lms-materials"
 import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import { PassResultCard } from "@/components/lms/course/PassResultView"
+import { EvaluationCard, ImpactCard } from "@/components/lms/course/EvaluationCards"
+import { evaluationSubjects, impactState } from "@/lib/lms-evaluations"
 import { GroupCard, MaterialsList, type StudentGroup } from "@/components/lms/groups/StudentCoursePanels"
 
 // ── Icons & labels ────────────────────────────────────────────
@@ -59,7 +61,7 @@ export default async function StudentCoursePage({
   // Fetch course
   const { data: course } = await db
     .from("lms_courses")
-    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites, status")
+    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites, status, evaluate_modules, evaluate_instructors, impact_enabled")
     .eq("id", courseId)
     .single()
 
@@ -345,6 +347,7 @@ export default async function StudentCoursePage({
         provider: grp.lms_service_providers?.name ?? null, language: grp.language,
         instructors: ((staff ?? []) as any[]).map(s => s.admin_users?.name).filter(Boolean),
         days: dayCount ?? 0,
+        joining_instructions: grp.joining_instructions ?? null,
       }
     }
   }
@@ -353,6 +356,11 @@ export default async function StudentCoursePage({
   const materialSections = await materialsFor(current).catch(() => [])
   // A course with a pass rule shows where they stand on it.
   const passResult = (await courseRules(courseId)) ? await evaluatePassRule(current).catch(() => null) : null
+  // The evaluation set (after the course / the group) and, months later, the impact questionnaire.
+  const [evalSubjects, impact] = await Promise.all([
+    evaluationSubjects(current, course as any).catch(() => null),
+    impactState(current, course as any).catch(() => ({ due: false as const })),
+  ])
 
   const DeliveryIcon  = DELIVERY_ICONS[course.delivery_mode] ?? Globe
 
@@ -536,6 +544,8 @@ export default async function StudentCoursePage({
         <GroupCard group={studentGroup} pending={groupPending} />
         <MaterialsList courseId={courseId} sections={materialSections} />
         {passResult && passResult.mode === "rule" && <PassResultCard r={passResult} />}
+        {impact.due && <ImpactCard courseId={courseId} answered={impact.answered} score={impact.score} />}
+        {evalSubjects && <EvaluationCard courseId={courseId} subjects={evalSubjects} />}
 
         {/* Modules — an assignment / exercise inside a module sits indented under it */}
         <div className="space-y-3">

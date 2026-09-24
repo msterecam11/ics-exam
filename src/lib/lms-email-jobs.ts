@@ -15,9 +15,10 @@ import {
   type EmailSettings, type RuleSendResult,
 } from "@/lib/lms-email-settings"
 import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
+import { groupDates } from "@/lib/lms-groups"
 import {
   buildProgramStartedEmail, buildNotStartedEmail, buildInactiveEmail, buildDeadlineEmail,
-  buildFeedbackReminderEmail, buildInstructorDigestEmail,
+  buildFeedbackReminderEmail, buildInstructorDigestEmail, buildImpactSurveyEmail, buildJoiningInstructionsEmail,
 } from "@/lib/lms-email-templates"
 import { buildSessionReminderEmail } from "@/lib/email"
 
@@ -186,6 +187,10 @@ export async function runDailyEmails(opts: DailyRunOptions = {}): Promise<DailyR
   if (wants("class_reminder")) {
     results.push(...await classReminders(programs, settings, now, dryRun, capUsed, history))
   }
+
+  // ── EM-22 Joining instructions / EM-21 Impact questionnaire ───────────────
+  if (wants("joining_instructions")) results.push(...await joiningInstructions(settings, now, dryRun, capUsed))
+  if (wants("impact_survey")) results.push(...await impactSurveys(settings, now, dryRun, capUsed))
 
   // ── EM-13 Weekly instructor digest ────────────────────────────────────────
   if (wants("instructor_digest")) {
@@ -472,6 +477,102 @@ async function groupSessionReminders(
       settings, dryRun, capUsed, rule: "class_reminder", effective: eff,
       to: r.email, studentId: r.student_id, programId,
       courseId: s.course_id, sessionId: s.id, ...t,
+    }))
+  }
+  return out
+}
+
+// ── Onsite participants: their own program's settings ───────────────────────
+// A group's participants come through different programs (or none). Each
+// person's own program decides the switch and timing; a draft or archived
+// program stays silent. Unlike the daily program chasers these also run after
+// a program has ended — an impact questionnaire is due months later.
+async function programSettingsFor(programIds: string[]): Promise<Map<string, { status: string; emailSettings: Record<string, any> }>> {
+  const ids = [...new Set(programIds.filter(Boolean))]
+  if (!ids.length) return new Map()
+  const { data } = await db.from("lms_programs").select("id, status, email_settings").in("id", ids)
+  return new Map(((data ?? []) as any[]).map(p => [p.id, { status: p.status, emailSettings: p.email_settings ?? {} }]))
+}
+const programSilent = (p: { status: string } | undefined) => !p || p.status === "draft" || p.status === "archived"
+
+// ── EM-22 Joining instructions ───────────────────────────────────────────────
+async function joiningInstructions(
+  settings: EmailSettings, now: Date, dryRun: boolean, capUsed: Map<string, number>,
+): Promise<RuleSendResult[]> {
+  const out: RuleSendResult[] = []
+  const today = iso(now)
+  // 30 days is the longest lead the setting allows.
+  const { data: groups } = await db.from("lms_course_groups")
+    .select("id, course_id, name, start_date, end_date, daily_start, daily_end, city, venue_name, venue_address, map_url, joining_instructions, lms_courses(title)")
+    .eq("status", "confirmed").gte("start_date", today).lte("start_date", iso(new Date(now.getTime() + 30 * DAY_MS)))
+  for (const g of (groups ?? []) as any[]) {
+    const [{ data: people }, { data: staff }] = await Promise.all([
+      db.from("lms_enrollments").select("id, student_id, program_id, lms_students(name, email)").eq("group_id", g.id).eq("status", "active"),
+      db.from("lms_group_staff").select("admin_users(name)").eq("group_id", g.id).eq("role", "instructor"),
+    ])
+    const rows = (people ?? []) as any[]
+    if (!rows.length) continue
+    const history = await loadHistory(rows.map(r => r.student_id))
+    const progs = await programSettingsFor(rows.map(r => r.program_id))
+    const left = daysBetween(today, g.start_date)
+    for (const r of rows) {
+      const p = r.program_id ? progs.get(r.program_id) : undefined
+      if (r.program_id && programSilent(p)) continue
+      const eff = effectiveRule(settings, "joining_instructions", p?.emailSettings)
+      if (left > num(eff.config.days, 7)) continue
+      if (history.has(key("joining_instructions", r.student_id, g.course_id))) continue
+      const t = buildJoiningInstructionsEmail({
+        studentName: r.lms_students?.name ?? "there", courseTitle: g.lms_courses?.title ?? "your course", courseId: g.course_id,
+        daysBefore: left, dates: groupDates(g),
+        dailyTimes: g.daily_start ? `${String(g.daily_start).slice(0, 5)}–${String(g.daily_end ?? "").slice(0, 5)}` : null,
+        venue: g.venue_name ?? g.city ?? null, address: g.venue_address ?? null, mapUrl: g.map_url ?? null,
+        instructors: ((staff ?? []) as any[]).map(s => s.admin_users?.name).filter(Boolean),
+        instructions: g.joining_instructions ?? null,
+      })
+      out.push(await sendRuleEmail({
+        settings, dryRun, capUsed, rule: "joining_instructions", effective: eff,
+        to: r.lms_students?.email ?? null, studentId: r.student_id, programId: r.program_id ?? null, courseId: g.course_id, ...t,
+      }))
+    }
+  }
+  return out
+}
+
+// ── EM-21 Impact questionnaire ───────────────────────────────────────────────
+async function impactSurveys(
+  settings: EmailSettings, now: Date, dryRun: boolean, capUsed: Map<string, number>,
+): Promise<RuleSendResult[]> {
+  const out: RuleSendResult[] = []
+  const { data: courses } = await db.from("lms_courses").select("id, title").eq("impact_enabled", true)
+  if (!courses?.length) return out
+  const titleOf = new Map((courses as any[]).map(c => [c.id, c.title]))
+  // Completed at least 14 days ago (the shortest delay allowed); the exact
+  // delay is each person's program setting.
+  const { data: enr } = await db.from("lms_enrollments")
+    .select("id, student_id, course_id, program_id, completed_at, lms_students(name, email)")
+    .in("course_id", [...titleOf.keys()]).eq("status", "completed")
+    .lte("completed_at", new Date(now.getTime() - 14 * DAY_MS).toISOString())
+  const rows = (enr ?? []) as any[]
+  if (!rows.length) return out
+  const { data: answered } = await db.from("lms_impact_responses").select("enrollment_id").in("enrollment_id", rows.map(r => r.id))
+  const done = new Set(((answered ?? []) as any[]).map(a => a.enrollment_id))
+  const history = await loadHistory(rows.map(r => r.student_id))
+  const progs = await programSettingsFor(rows.map(r => r.program_id))
+  for (const r of rows) {
+    if (done.has(r.id)) continue
+    const p = r.program_id ? progs.get(r.program_id) : undefined
+    if (r.program_id && programSilent(p)) continue
+    const eff = effectiveRule(settings, "impact_survey", p?.emailSettings)
+    const days = num(eff.config.days, 90)
+    if (now.getTime() - new Date(r.completed_at).getTime() < days * DAY_MS) continue
+    if (history.has(key("impact_survey", r.student_id, r.course_id))) continue      // asked once, ever
+    const t = buildImpactSurveyEmail({
+      studentName: r.lms_students?.name ?? "there", courseTitle: titleOf.get(r.course_id) ?? "your course",
+      courseId: r.course_id, months: Math.max(1, Math.round(days / 30)),
+    })
+    out.push(await sendRuleEmail({
+      settings, dryRun, capUsed, rule: "impact_survey", effective: eff,
+      to: r.lms_students?.email ?? null, studentId: r.student_id, programId: r.program_id ?? null, courseId: r.course_id, ...t,
     }))
   }
   return out

@@ -1,4 +1,4 @@
-// Registry of every automatic LMS email (EM-1 … EM-20).
+// Registry of every automatic LMS email (EM-1 … EM-22).
 //
 // Browser-safe on purpose: the admin screens import this for labels, hints and
 // the shape of each rule's timing numbers. Nothing here touches the database —
@@ -13,6 +13,7 @@ export type EmailRuleCode =
   | "course_completed" | "certificate" | "last_attempt" | "feedback_reminder"
   | "class_reminder" | "catalogue_ack" | "password_reset"
   | "instructor_digest" | "catalogue_admin" | "grading_due"
+  | "impact_survey" | "joining_instructions"
 
 export interface RuleKnob {
   key: string
@@ -107,6 +108,16 @@ export const EMAIL_RULES: EmailRuleDef[] = [
     description: "The link a student uses to choose a new password after asking to reset it.",
     warning: "With this off, a student who forgets their password cannot get back in without an admin resetting it by hand.",
     knobs: [{ key: "expiry_minutes", label: "Link expires after", kind: "number", unit: "minutes", min: 5, max: 1440, default: 30 }],
+  },
+  {
+    code: "impact_survey", em: "EM-21", label: "Impact questionnaire", audience: "student", scope: "program", scheduled: true,
+    description: "Some months after a course is completed: did it change the way they work? Only for courses with the impact questionnaire switched on. Sent once.",
+    knobs: [{ key: "days", label: "Days after completing the course", kind: "number", unit: "days", min: 14, max: 365, default: 90 }],
+  },
+  {
+    code: "joining_instructions", em: "EM-22", label: "Joining instructions", audience: "student", scope: "program", scheduled: true,
+    description: "Before an onsite group starts: dates, daily times, venue and map, instructors, and the group's joining instructions. Confirmed groups only. Sent once.",
+    knobs: [{ key: "days", label: "Days before the first day", kind: "number", unit: "days", min: 1, max: 30, default: 7 }],
   },
 
   // ── Staff ──────────────────────────────────────────────────────────────────

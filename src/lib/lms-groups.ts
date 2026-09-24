@@ -19,13 +19,15 @@ export const GROUP_STATUS_LABEL: Record<GroupStatus, string> = {
 }
 
 export const GROUP_COLUMNS = `id, course_id, name, provider_id, start_date, end_date, daily_start, daily_end,
-  city, country, venue_name, venue_address, map_url, seats, language, status, notes, created_at, updated_at`
+  city, country, venue_name, venue_address, map_url, seats, language, status, notes, joining_instructions, created_at, updated_at`
 
 export type CourseGroup = {
   id: string; course_id: string; name: string | null; provider_id: string | null
   start_date: string; end_date: string; daily_start: string | null; daily_end: string | null
   city: string | null; country: string | null; venue_name: string | null; venue_address: string | null; map_url: string | null
   seats: number | null; language: string | null; status: GroupStatus; notes: string | null
+  /** Shown to participants and e-mailed before the start (EM-22). */
+  joining_instructions?: string | null
   created_at: string; updated_at: string
 }
 
@@ -83,7 +85,7 @@ export async function seatsTaken(groupIds: string[]): Promise<Map<string, number
 
 export type GroupInput = Partial<Pick<CourseGroup,
   "name" | "provider_id" | "start_date" | "end_date" | "daily_start" | "daily_end" | "city" | "country"
-  | "venue_name" | "venue_address" | "map_url" | "seats" | "language" | "notes">>
+  | "venue_name" | "venue_address" | "map_url" | "seats" | "language" | "notes" | "joining_instructions">>
 
 const text = (v: unknown, max: number) => {
   if (v === null) return null
@@ -102,7 +104,7 @@ export function readGroupInput(body: any, opts: { partial: boolean; current?: Co
   const has = (k: string) => body && Object.prototype.hasOwnProperty.call(body, k)
   const want = (k: string) => !opts.partial || has(k)
 
-  for (const [k, max] of [["name", 120], ["city", 80], ["country", 80], ["venue_name", 160], ["venue_address", 300], ["language", 40], ["notes", 2000]] as const)
+  for (const [k, max] of [["name", 120], ["city", 80], ["country", 80], ["venue_name", 160], ["venue_address", 300], ["language", 40], ["notes", 2000], ["joining_instructions", 4000]] as const)
     if (want(k)) out[k] = text(body?.[k], max)
 
   if (want("map_url")) {
