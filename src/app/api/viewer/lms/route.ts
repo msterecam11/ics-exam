@@ -123,7 +123,8 @@ async function courseBreakdown(programId: string, p: Record<string, boolean>) {
         status: f.status,
         completed_at: f.completedAt,
         progress_pct: p.progress ? Math.round(f.progress) : null,
-        quiz_avg_score: p.scores ? f.exam.bestPct : null,
+        // The course result's score: the pass rule's weighted score where the course has one.
+        quiz_avg_score: p.scores ? f.outcome.pct : null,
         attendance_pct: p.attendance && att.counted > 0 ? Math.round((att.present / att.counted) * 100) : null,
         certificate: p.certificates ? (f.certificate ? { issued: true, released: f.certificate.status === "released" } : { issued: false, released: false }) : null,
         last_login: p.last_login ? (m?.lms_students?.last_login ?? null) : null,
@@ -131,7 +132,7 @@ async function courseBreakdown(programId: string, p: Record<string, boolean>) {
     }).sort((a, b) => a.name.localeCompare(b.name))
 
     const done = mine.filter(f => f.status === "completed").length
-    const scored = mine.map(f => f.exam.bestPct).filter((n): n is number => typeof n === "number")
+    const scored = mine.map(f => f.outcome.pct).filter((n): n is number => typeof n === "number")
     return {
       course_id: courseId,
       title: titles.get(courseId) ?? "Untitled course",

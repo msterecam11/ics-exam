@@ -1,5 +1,7 @@
 import { db } from "@/lib/db"
 import { attendanceCredit } from "@/lib/lms-sessions"
+import { evaluatePassRule } from "@/lib/lms-pass-rule"
+import { groupLabel } from "@/lib/lms-groups"
 import { coursesForTrack } from "@/lib/lms-program-courses"
 import { completionRate, passRate, averageScore, atRiskReasons } from "@/lib/lms-metrics"
 import { selectAll } from "@/lib/lms-report-cache"
@@ -29,6 +31,15 @@ export type EnrollmentFacts = {
   enrolledAt: string
   completedAt: string | null
   exam: { exists: boolean; sat: boolean; passed: boolean; bestPct: number | null; attempts: number; maxAttempts: number }
+  /** The onsite group this enrolment is placed in. */
+  group_id: string | null
+  /**
+   * The course result. With a pass rule (onsite): the rule's decision and
+   * weighted score — `sat` once it's decided (passed, or can no longer pass).
+   * Otherwise: the final exam, as before.
+   */
+  outcome: { mode: "rule" | "exam"; sat: boolean; passed: boolean; pct: number | null;
+    components?: { key: string; label: string; weight: number; score: number | null; met: boolean | null }[] }
   lastActivity: string | null
   attendance: { counted: number; present: number }
   certificate: { status: "released" | "held"; code: string } | null
@@ -97,7 +108,7 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
   }
   const attBySessionStudent = new Map<string, any>(attendance.map(a => [`${a.session_id}:${a.student_id}`, a]))
 
-  return enrollments.map(e => {
+  const facts: EnrollmentFacts[] = enrollments.map(e => {
     const examMod = examByCourse.get(e.course_id)
     const mine = (attemptsBy.get(e.id) ?? []).filter(a => examMod && a.module_id === examMod.id)
     const pcts = mine.map(a => (Number(a.max_score) > 0 ? round((Number(a.score) / Number(a.max_score)) * 100) : null)).filter((v): v is number => v !== null)
@@ -134,12 +145,31 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
       status: e.status, progress: Math.min(100, Math.round(Number(e.progress_pct ?? 0))),
       timeS: Number(e.time_spent_s ?? 0), enrolledAt: e.enrolled_at, completedAt: e.completed_at,
       exam: { exists: !!examMod, sat: mine.length > 0, passed, bestPct: pcts.length ? Math.max(...pcts) : null, attempts: mine.length, maxAttempts },
+      group_id: e.group_id ?? null,
+      outcome: { mode: "exam" as const, sat: mine.length > 0, passed, pct: pcts.length ? Math.max(...pcts) : null },
       lastActivity,
       attendance: { counted, present },
       certificate: cert ? { status: cert.released_at ? "released" : "held", code: cert.verification_code } : null,
       feedbackAsked: e.status === "completed" || exhausted,
     } satisfies EnrollmentFacts
   })
+
+  // Courses with a pass rule (onsite): the result is the rule's, not the exam's.
+  const { data: ruled } = await db.from("lms_courses").select("id").in("id", courseIds).not("completion_rules", "is", null)
+  const ruleCourses = new Set(((ruled ?? []) as any[]).map(c => c.id))
+  const toEvaluate = facts.filter(f => ruleCourses.has(f.course_id) && f.status !== "dropped")
+  for (let i = 0; i < toEvaluate.length; i += 8) {
+    await Promise.all(toEvaluate.slice(i, i + 8).map(async f => {
+      const r = await evaluatePassRule(f.enrollment_id).catch(() => null)
+      if (!r || r.mode !== "rule") return
+      const passed = r.passed || f.status === "completed"
+      f.outcome = {
+        mode: "rule", sat: passed || !r.pending, passed, pct: r.score,
+        components: r.components.map(c => ({ key: c.key, label: c.label, weight: c.weight, score: c.score, met: c.met })),
+      }
+    }))
+  }
+  return facts
 }
 
 // ── Feedback summary (FB-7) ──────────────────────────────────────────────
@@ -249,6 +279,8 @@ export type ProgramReport = {
     overdue: number; dueSoon: number; atRisk: number
   }
   trackComparison: { trackId: string | null; name: string; students: number; avgProgress: number | null; completionRate: number | null; passRate: number | null; avgScore: number | null }[]
+  /** Onsite groups (deliveries) of this program's courses, side by side. */
+  groupComparison: { groupId: string; name: string; course: string; status: string; students: number; completionRate: number | null; passRate: number | null; avgScore: number | null; attendancePct: number | null }[]
   courses: CourseRow[]
   atRisk: { student_id: string; name: string; track: string | null; reasons: { course: string; reason: string }[] }[]
   feedback: FeedbackSummary
@@ -294,7 +326,7 @@ function courseRows(facts: EnrollmentFacts[], titles: Map<string, string>, order
   const ids = [...new Set(facts.map(f => f.course_id))].sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9))
   return ids.map(course_id => {
     const list = facts.filter(f => f.course_id === course_id && f.status !== "dropped")
-    const c = completionRate(list), p = passRate(list.map(f => f.exam)), s = averageScore(list.map(f => f.exam.bestPct))
+    const c = completionRate(list), p = passRate(list.map(f => f.outcome)), s = averageScore(list.map(f => f.outcome.pct))
     const summary = fb.get(course_id)
     const overall = summary?.ratings.find(r => r.key === "overall")
     return {
@@ -350,7 +382,7 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
       startDate: program.start_date, endDate, exam: f.exam.exists ? f.exam : null,
     }).map(reason => `${titles.get(f.course_id) ?? "Course"}: ${reason}`)) : []
     const att = live.reduce((a, f) => ({ c: a.c + f.attendance.counted, p: a.p + f.attendance.present }), { c: 0, p: 0 })
-    const score = averageScore(live.map(f => f.exam.bestPct))
+    const score = averageScore(live.map(f => f.outcome.pct))
     return {
       student_id: m.student_id, member_id: m.id,
       name: m.lms_students?.name ?? "Student", email: m.lms_students?.email ?? "",
@@ -370,7 +402,7 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
   }).sort((a, b) => a.name.localeCompare(b.name))
 
   const live = facts.filter(f => f.status !== "dropped")
-  const comp = completionRate(live), pr = passRate(live.map(f => f.exam)), sc = averageScore(live.map(f => f.exam.bestPct))
+  const comp = completionRate(live), pr = passRate(live.map(f => f.outcome)), sc = averageScore(live.map(f => f.outcome.pct))
   const att = live.reduce((a, f) => ({ c: a.c + f.attendance.counted, p: a.p + f.attendance.present }), { c: 0, p: 0 })
   const notWithdrawn = roster.filter(r => r.status !== "withdrawn")
   const unfinished = notWithdrawn.filter(r => r.coursesTotal > r.coursesDone)
@@ -384,10 +416,24 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
         return {
           trackId: t.id, name: t.name, students: students.length,
           avgProgress: students.length ? round(students.reduce((a, r) => a + r.progress, 0) / students.length) : null,
-          completionRate: completionRate(tf).rate, passRate: passRate(tf.map(f => f.exam)).rate, avgScore: averageScore(tf.map(f => f.exam.bestPct)).avg,
+          completionRate: completionRate(tf).rate, passRate: passRate(tf.map(f => f.outcome)).rate, avgScore: averageScore(tf.map(f => f.outcome.pct)).avg,
         }
       })
     : []
+
+  const groupIds = [...new Set(live.map(f => f.group_id).filter(Boolean))] as string[]
+  const { data: groupRows } = groupIds.length
+    ? await db.from("lms_course_groups").select("id, name, start_date, end_date, city, status, course_id").in("id", groupIds).order("start_date")
+    : { data: [] as any[] }
+  const groupComparison = ((groupRows ?? []) as any[]).map(gr => {
+    const gf = live.filter(f => f.group_id === gr.id)
+    const ga = gf.reduce((a, f) => ({ c: a.c + f.attendance.counted, p: a.p + f.attendance.present }), { c: 0, p: 0 })
+    return {
+      groupId: gr.id, name: groupLabel(gr), course: titles.get(gr.course_id) ?? "Course", status: gr.status,
+      students: gf.length, completionRate: completionRate(gf).rate, passRate: passRate(gf.map(f => f.outcome)).rate,
+      avgScore: averageScore(gf.map(f => f.outcome.pct)).avg, attendancePct: ga.c ? round((ga.p / ga.c) * 100) : null,
+    }
+  })
 
   const surveyEligible = notWithdrawn.filter(r => r.coursesTotal > 0 && r.coursesDone === r.coursesTotal).length
   const scopedSurvey = ((surveyRows ?? []) as any[]).filter(s => memberIds.has(s.member_id))
@@ -424,6 +470,7 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
       atRisk: roster.filter(r => r.atRisk.length).length,
     },
     trackComparison,
+    groupComparison,
     courses: courseRows(live, titles, order, courseFeedback),
     atRisk: roster.filter(r => r.atRisk.length).map(r => ({
       student_id: r.student_id, name: r.name, track: r.track,
@@ -433,7 +480,7 @@ export async function buildProgramReport(programId: string, opts: { trackId?: st
     survey,
     roster,
     timeline: progressTimeline(live, program.start_date, program.end_date),
-    scoreBands: scoreBandsOf(live.filter(f => f.exam.sat).map(f => f.exam.bestPct)),
+    scoreBands: scoreBandsOf(live.filter(f => f.outcome.sat).map(f => f.outcome.pct)),
     byJobTitle: (() => {
       const groups = new Map<string, ProgramRosterRow[]>()
       for (const r of notWithdrawn) {
@@ -609,8 +656,8 @@ export async function buildCourseComparison(courseId: string): Promise<CourseCom
     return {
       program_id: pid, name: p?.name ?? "Outside programs", company: p?.lms_companies?.name ?? null, status: p?.status ?? null,
       enrolled: list.length, completionRate: completionRate(list).rate,
-      sat: passRate(list.map(f => f.exam)).sat, passRate: passRate(list.map(f => f.exam)).rate,
-      avgScore: averageScore(list.map(f => f.exam.bestPct)).avg,
+      sat: passRate(list.map(f => f.outcome)).sat, passRate: passRate(list.map(f => f.outcome)).rate,
+      avgScore: averageScore(list.map(f => f.outcome.pct)).avg,
       avgTimeS: list.length ? round(list.reduce((a, f) => a + f.timeS, 0) / list.length) : 0,
     }
   }).sort((a, b) => b.enrolled - a.enrolled)

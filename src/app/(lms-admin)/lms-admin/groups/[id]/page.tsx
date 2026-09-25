@@ -349,6 +349,12 @@ function GroupResults({ groupId }: { groupId: string }) {
   const examOnly = rows.every(r => r.result?.mode !== "rule")
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span className="text-xs text-slate-500 mr-auto">Group report — participants, attendance by day, each part of the result, certificates, evaluation.</span>
+        <a href={`/api/lms/reports/delivery/${groupId}/pdf`} className="inline-flex items-center gap-1.5 text-xs font-medium border border-slate-200 rounded-lg px-3 py-1.5 hover:border-[#1B4F8A] hover:text-[#1B4F8A]">PDF (internal)</a>
+        <a href={`/api/lms/reports/delivery/${groupId}/pdf?audience=client`} className="inline-flex items-center gap-1.5 text-xs font-medium border border-slate-200 rounded-lg px-3 py-1.5 hover:border-[#1B4F8A] hover:text-[#1B4F8A]" title="Leaves out instructor ratings, comments and e-mail addresses">PDF for the client</a>
+        <a href={`/api/lms/reports/delivery/${groupId}/xlsx`} className="inline-flex items-center gap-1.5 text-xs font-medium border border-slate-200 rounded-lg px-3 py-1.5 hover:border-[#1B4F8A] hover:text-[#1B4F8A]">Excel</a>
+      </div>
       {examOnly && <p className="text-xs text-slate-500">This course completes by passing the final exam. Set a pass rule in the course&apos;s Settings → Completion &amp; grading to weigh in assignments, exercises and attendance.</p>}
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">

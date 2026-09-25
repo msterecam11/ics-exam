@@ -36,6 +36,8 @@ export default function ProgramReportView({ data, audience = "internal", include
   const surveyFb = client ? clientSafeFeedback(data.survey, includeComments) : { ...data.survey, suppressed: false }
   const hasFeedback = data.feedback.responses > 0 || data.survey.responses > 0
   const hasTracks = trackComparison.length > 1
+  const groupComparison = data.groupComparison ?? []
+  const hasGroups = groupComparison.length > 0
   const hasAtRisk = showInternal && atRisk.length > 0
   const hasExpert = showInternal && !!assessment?.executive_summary
 
@@ -48,7 +50,7 @@ export default function ProgramReportView({ data, audience = "internal", include
   const hasJobs = jobs.length >= 2
   const hasCharts = hasTimeline || hasBands || hasJobs
 
-  const order = ["cover", "overview", ...(hasCharts ? ["charts"] : []), ...(hasTracks ? ["tracks"] : []), "courses", ...(hasAtRisk ? ["atrisk"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "roster"]
+  const order = ["cover", "overview", ...(hasCharts ? ["charts"] : []), ...(hasTracks ? ["tracks"] : []), ...(hasGroups ? ["groups"] : []), "courses", ...(hasAtRisk ? ["atrisk"] : []), ...(hasFeedback ? ["feedback"] : []), ...(hasExpert ? ["expert"] : []), "roster"]
   const pageNo = (k: string) => order.indexOf(k) + 1
   const total = order.length
   const studentHref = (id: string) => viewer
@@ -211,6 +213,46 @@ export default function ProgramReportView({ data, audience = "internal", include
               <p className="text-[10px] text-slate-400">{METRIC_NOTE}</p>
             </div>
             <PageFooter page={pageNo("tracks")} total={total} confidential={!client} />
+          </Page>
+        )}
+
+        {/* ONSITE GROUPS */}
+        {hasGroups && (
+          <Page>
+            <PageHeader title="Onsite Groups" subtitle={subtitle} today={today} logoUrl={logo} />
+            <div className="px-12 py-7 space-y-5">
+              {groupComparison.length > 1 && (
+                <div className="avoid-break">
+                  <GroupedBars
+                    series={[{ name: "Completion", color: CHART_COLORS.brand }, { name: "Pass rate", color: CHART_COLORS.teal }, { name: "Attendance", color: CHART_COLORS.amber ?? "#d97706" }]}
+                    rows={groupComparison.map(g => ({ label: `${g.name} (${g.students})`, values: [g.completionRate, g.passRate, g.attendancePct] }))}
+                  />
+                </div>
+              )}
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b-2 border-slate-200 text-left text-slate-400 uppercase tracking-wider text-[9px]">
+                    <th className="py-2 font-semibold">Group</th><th className="py-2 font-semibold">Course</th><th className="py-2 font-semibold">Participants</th>
+                    <th className="py-2 font-semibold">Attendance</th><th className="py-2 font-semibold">Completion</th><th className="py-2 font-semibold">Pass rate</th><th className="py-2 font-semibold">Avg score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {groupComparison.map(g => (
+                    <tr key={g.groupId} className="avoid-break">
+                      <td className="py-2.5 font-medium text-slate-800">{links && !viewer ? <Link href={`/lms-admin/groups/${g.groupId}`} className="hover:text-[#1B4F8A] hover:underline">{g.name}</Link> : g.name}</td>
+                      <td className="py-2.5 text-slate-600">{g.course}</td>
+                      <td className="py-2.5 text-slate-700">{g.students}</td>
+                      <td className="py-2.5 font-medium" style={{ color: sc(g.attendancePct).t }}>{fmtPct(g.attendancePct)}</td>
+                      <td className="py-2.5 text-slate-700">{fmtPct(g.completionRate)}</td>
+                      <td className="py-2.5 font-medium" style={{ color: sc(g.passRate).t }}>{fmtPct(g.passRate)}</td>
+                      <td className="py-2.5 font-medium" style={{ color: sc(g.avgScore).t }}>{fmtPct(g.avgScore)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[10px] text-slate-400">Onsite courses with a pass rule use its weighted score and decision (exam, exercises, assignments, attendance); pending results are not counted in the pass rate. {METRIC_NOTE}</p>
+            </div>
+            <PageFooter page={pageNo("groups")} total={total} confidential={!client} />
           </Page>
         )}
 

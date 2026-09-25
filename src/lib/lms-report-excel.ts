@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs"
 import type { ProgramReport, ClientReport, StudentProgramReport } from "@/lib/lms-program-report"
+import type { DeliveryReport } from "@/lib/lms-delivery-report"
 
 // RP-15: Excel exports — raw rows, one sheet per table, numbers as numbers.
 // Internal notes (students needing support) only in the internal version, and
@@ -65,7 +66,7 @@ export async function programWorkbook(r: ProgramReport, opts: { internal: boolea
   })))
   sheet(wb, "Courses", [
     { header: "Course", key: "title", width: 40 }, { header: "Enrolled", key: "enrolled" }, { header: "Completed", key: "completed" }, { header: "Completion", key: "cr", pct: true },
-    { header: "Sat exam", key: "sat" }, { header: "Passed", key: "passed" }, { header: "Pass rate", key: "pr", pct: true }, { header: "Avg score", key: "score", pct: true },
+    { header: "Decided (exam sat or pass rule decided)", key: "sat" }, { header: "Passed", key: "passed" }, { header: "Pass rate", key: "pr", pct: true }, { header: "Avg score", key: "score", pct: true },
     { header: "Avg progress", key: "prog", pct: true }, { header: "Avg time (h)", key: "time" }, { header: "Certificates", key: "certs" },
     { header: "Feedback avg (of 5)", key: "fb" }, { header: "Feedback responses", key: "fbn" },
   ], r.courses.map(c => ({
@@ -76,6 +77,11 @@ export async function programWorkbook(r: ProgramReport, opts: { internal: boolea
     { header: "Track", key: "name", width: 24 }, { header: "Students", key: "n" }, { header: "Avg progress", key: "p", pct: true },
     { header: "Completion", key: "c", pct: true }, { header: "Pass rate", key: "pr", pct: true }, { header: "Avg score", key: "s", pct: true },
   ], r.trackComparison.map(t => ({ name: t.name, n: t.students, p: t.avgProgress, c: t.completionRate, pr: t.passRate, s: t.avgScore })))
+  if (r.groupComparison?.length) sheet(wb, "Groups", [
+    { header: "Group", key: "name", width: 34 }, { header: "Course", key: "course", width: 30 }, { header: "Status", key: "status" },
+    { header: "Participants", key: "n" }, { header: "Completion", key: "c", pct: true }, { header: "Pass rate", key: "pr", pct: true },
+    { header: "Avg score", key: "s", pct: true }, { header: "Attendance", key: "a", pct: true },
+  ], r.groupComparison.map(g => ({ name: g.name, course: g.course, status: g.status, n: g.students, c: g.completionRate, pr: g.passRate, s: g.avgScore, a: g.attendancePct })))
   feedbackSheet(wb, "Course feedback", r.feedback)
   if (r.survey.responses) feedbackSheet(wb, "Program survey", r.survey)
   return done(wb)
@@ -130,3 +136,33 @@ export async function studentWorkbook(r: StudentProgramReport, opts: { internal:
 }
 
 export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+// One onsite group's report: results, attendance by day, evaluation.
+export async function deliveryWorkbook(r: DeliveryReport) {
+  const wb = new ExcelJS.Workbook()
+  const parts = r.components.filter(c => c.key !== "attendance")
+  const res = { passed: "passed", not_passed: "not passed", pending: "in progress" } as const
+  sheet(wb, "Results", [
+    { header: "Participant", key: "name", width: 28 }, ...(r.audience === "internal" ? [{ header: "Email", key: "email", width: 30 }] : []),
+    { header: "Company", key: "company", width: 24 }, { header: "Attendance", key: "att", pct: true },
+    ...parts.map(c => ({ header: c.label, key: `c_${c.key}`, pct: true })),
+    { header: "Score", key: "score", pct: true }, { header: "Result", key: "result" }, { header: "Why not (yet)", key: "why", width: 50 }, { header: "Certificate", key: "cert" },
+  ], r.participants.map(p => ({
+    name: p.name, email: p.email, company: p.company, att: p.attendancePct,
+    ...Object.fromEntries(parts.map(c => [`c_${c.key}`, p.components[c.key] ?? null])),
+    score: p.score, result: res[p.result], why: p.reasons.join(" · "), cert: p.certificate ?? "",
+  })))
+  if (r.days.length) sheet(wb, "Attendance", [
+    { header: "Participant", key: "name", width: 28 }, ...r.days.map((d, i) => ({ header: d.date, key: `d${i}`, width: 12 })), { header: "Attendance", key: "att", pct: true },
+  ], r.participants.map(p => ({ name: p.name, ...Object.fromEntries(p.days.map((m, i) => [`d${i}`, m])), att: p.attendancePct })))
+  const evalRows: Record<string, unknown>[] = [
+    ...r.evaluations.modules.map(m => ({ what: "Module", name: m.title, n: m.responses, avg: m.avg, detail: m.criteria.map(c => `${c.label} ${c.avg ?? "—"}`).join(" · ") })),
+    ...(r.evaluations.instructors ?? []).map(m => ({ what: "Instructor", name: m.name, n: m.responses, avg: m.avg, detail: m.criteria.map(c => `${c.label} ${c.avg ?? "—"}`).join(" · ") })),
+    ...(r.impact.enabled ? [{ what: "Impact score %", name: "", n: r.impact.responses, avg: r.impact.avgScore, detail: "" }] : []),
+  ]
+  if (evalRows.length) sheet(wb, "Evaluation", [
+    { header: "What", key: "what", width: 14 }, { header: "Name", key: "name", width: 40 }, { header: "Responses", key: "n" },
+    { header: "Average (of 5)", key: "avg" }, { header: "Detail", key: "detail", width: 80 },
+  ], evalRows)
+  return done(wb)
+}

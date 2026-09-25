@@ -81,7 +81,7 @@ export function Bar({ pct, color }: { pct: number | null; color?: string }) {
   )
 }
 
-export const METRIC_NOTE = "Completion = completed ÷ enrolled (withdrawn excluded) · Pass rate = passed ÷ sat the final exam · Average score = each student's best exam attempt."
+export const METRIC_NOTE = "Completion = completed ÷ enrolled (withdrawn excluded) · Pass rate = passed ÷ decided — the course's pass rule where it has one (onsite), otherwise the final exam · Average score = the pass rule's weighted score, or each student's best exam attempt."
 
 /** FB-7 block: response rate, averages with distribution, recommend %, comments. */
 export function FeedbackBlock({ title, summary, note, showComments = true, suppressed = false }: {
