@@ -11,16 +11,19 @@ import { isItemOpen, availabilityNote } from "@/lib/lms-groups"
 //   • each module's slide PDFs, unless the module turns downloading off
 //     (viewing them in the LMS is unaffected).
 //
-// A file can open from enrolment, from the first day, or after completion.
+// A file can open from enrolment, from the first day, after completion — or
+// stay hidden until a trainer releases it in class (for their group, or for
+// everyone), e.g. case exhibits handed out one at a time.
 
 export const MATERIAL_BUCKET = "lms-materials"
 export const MATERIAL_MAX_BYTES = 50 * 1024 * 1024          // the storage plan's limit per file
 export const ZIP_MAX_BYTES = 150 * 1024 * 1024              // one "Download all" at most
 export const MATERIAL_EXTENSIONS = ["pdf", "ppt", "pptx", "doc", "docx", "xls", "xlsx", "csv", "txt", "zip", "png", "jpg", "jpeg", "mp4"]
-export const AVAILABLE_FROM = ["enrolment", "start", "completion"] as const
+export const AVAILABLE_FROM = ["enrolment", "start", "completion", "release"] as const
 export type AvailableFrom = typeof AVAILABLE_FROM[number]
 export const AVAILABLE_LABEL: Record<AvailableFrom, string> = {
   enrolment: "From enrolment", start: "From the first day", completion: "After completion",
+  release: "Hidden until a trainer releases it",
 }
 
 export const extOf = (name: string) => (name.split(".").pop() ?? "").toLowerCase()
@@ -52,11 +55,11 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
 
   const [{ data: modules }, { data: files }, { data: pkgs }, groupRes] = await Promise.all([
     db.from("lms_modules").select("id, title, order_index, parent_module_id, module_type, activity_settings, available_from, available_until").eq("course_id", courseId).order("order_index"),
-    db.from("lms_materials").select("id, module_id, group_id, title, file_name, size_bytes, available_from, order_index, created_at")
+    db.from("lms_materials").select("id, module_id, group_id, title, file_name, size_bytes, available_from, released_at, order_index, created_at")
       .eq("course_id", courseId).order("order_index").order("created_at"),
     db.from("lms_packages").select("id, module_id, slides_downloadable, lms_package_items(id, type, order_index, config)").eq("course_id", courseId),
     enrollment.group_id
-      ? db.from("lms_course_groups").select("id, status, start_date, item_access").eq("id", enrollment.group_id).maybeSingle()
+      ? db.from("lms_course_groups").select("id, status, start_date, item_access, released_files").eq("id", enrollment.group_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ])
   const group = groupRes.data && VISIBLE_GROUP_STATUSES.includes((groupRes.data as any).status) ? groupRes.data as any : null
@@ -74,7 +77,10 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
     key: `m:${f.id}`, kind: "file", moduleId: f.module_id ?? null, title: f.title, fileName: f.file_name, sizeBytes: Number(f.size_bytes) || null,
     ...gate(f.available_from as AvailableFrom),
   })
-  const mine = ((files ?? []) as any[]).filter(f => !f.group_id || (group && f.group_id === group.id))
+  // A "hidden until released" file shows only once released — for everyone, or for their group.
+  const releasedForGroup = ((groupRes.data as any)?.released_files ?? {}) as Record<string, unknown>
+  const released = (f: any) => f.available_from !== "release" || !!f.released_at || !!releasedForGroup[f.id]
+  const mine = ((files ?? []) as any[]).filter(f => (!f.group_id || (group && f.group_id === group.id)) && released(f))
 
   const sections: MaterialSection[] = []
   const courseWide = mine.filter(f => !f.module_id && !f.group_id).map(fileItem)

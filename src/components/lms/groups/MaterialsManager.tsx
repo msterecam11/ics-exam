@@ -14,10 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 type Material = {
   id: string; module_id: string | null; title: string; description: string | null
-  file_name: string; size_bytes: number; available_from: "enrolment" | "start" | "completion"
+  file_name: string; size_bytes: number; available_from: "enrolment" | "start" | "completion" | "release"; released_at?: string | null
   created_at: string; downloaded_by: number
 }
-const FROM_LABEL = { enrolment: "From enrolment", start: "From the first day", completion: "After completion" } as const
+const FROM_LABEL = { enrolment: "From enrolment", start: "From the first day", completion: "After completion", release: "Hidden until a trainer releases it" } as const
 const ACCEPT = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.png,.jpg,.jpeg,.mp4"
 const MAX = 50 * 1024 * 1024
 
@@ -125,7 +125,7 @@ export default function MaterialsManager({ courseId, groupId, modules, onlyModul
                 <FileIcon name={m.file_name} className="h-5 w-5 text-[#1B4F8A] shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{m.title}</p>
-                  <p className="text-xs text-slate-400 truncate">{m.file_name} · {fmtSize(m.size_bytes)} · downloaded by {m.downloaded_by}</p>
+                  <p className="text-xs text-slate-400 truncate">{m.file_name} · {fmtSize(m.size_bytes)} · downloaded by {m.downloaded_by}{m.available_from === "release" ? (m.released_at ? " · released for everyone" : " · handed out per group (group → Materials, or a day's attendance screen)") : ""}</p>
                 </div>
                 {!groupId && !onlyModuleId && (
                   <select value={m.module_id ?? ""} onChange={e => patch(m.id, { module_id: e.target.value || null })}

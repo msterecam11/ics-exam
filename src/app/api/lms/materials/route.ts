@@ -21,7 +21,7 @@ import {
 export const dynamic = "force-dynamic"
 export const maxDuration = 120
 
-const COLUMNS = "id, course_id, module_id, group_id, title, description, file_name, mime_type, size_bytes, available_from, order_index, created_at"
+const COLUMNS = "id, course_id, module_id, group_id, title, description, file_name, mime_type, size_bytes, available_from, released_at, order_index, created_at"
 
 export async function GET(req: Request) {
   const g = await guardStaff({ admin: true })

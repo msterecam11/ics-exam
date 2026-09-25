@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import ReleasePanel from "@/components/lms/groups/ReleasePanel"
 
 type AttendStatus = "present" | "late" | "absent" | "excused"
 
@@ -414,6 +415,7 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
         </div>
       )}
 
+      {session.group_id && <div className="max-w-4xl"><ReleasePanel groupId={session.group_id} compact /></div>}
       <ImportReportDialog open={importOpen} onClose={() => setImportOpen(false)} sessionId={sessionId} onDone={() => { setImportOpen(false); load() }} />
 
       {/* Close with wrap-up */}

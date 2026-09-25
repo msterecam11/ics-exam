@@ -18,6 +18,7 @@ import { GroupExercises, GroupAssignments } from "@/components/lms/groups/GroupM
 import { GroupExam, AccessPanel } from "@/components/lms/groups/GroupExam"
 import { GroupFeedback } from "@/components/lms/groups/GroupFeedback"
 import GroupTeams from "@/components/lms/groups/GroupTeams"
+import ReleasePanel from "@/components/lms/groups/ReleasePanel"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
@@ -182,7 +183,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const).filter(([k]) => manage || (k !== "materials" && k !== "feedback")).map(([k, label]) => (
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const).filter(([k]) => manage || k !== "feedback").map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
@@ -254,7 +255,10 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {tab === "feedback" && manage && <GroupFeedback groupId={id} />}
 
       {tab === "materials" && d.course && (
-        <MaterialsManager courseId={d.course.id} groupId={id} modules={modules} />
+        <div className="space-y-5">
+          <ReleasePanel groupId={id} />
+          {manage && <MaterialsManager courseId={d.course.id} groupId={id} modules={modules} />}
+        </div>
       )}
 
       {formValue && d.course && (
