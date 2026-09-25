@@ -680,7 +680,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
           <div className="space-y-1"><Label>Delivery Mode</Label><select value={form.delivery_mode} onChange={e => set("delivery_mode", e.target.value)} className="w-full h-9 rounded-lg border bg-transparent px-3 text-sm"><option value="online">Online</option><option value="onsite">On-site</option><option value="external">External (delivered for another body, e.g. ICAO)</option>{form.delivery_mode === "hybrid" && <option value="hybrid">Hybrid</option>}</select></div>
         </div>
         <p className="text-xs text-slate-500">Dates, venue, instructors and seats are set per group, in the program&apos;s Schedule.</p>
-        {form.delivery_mode === "external" && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">An <b>external</b> course holds only its general information (Overview) — no modules or exams. The result is entered by hand per participant in the group&apos;s <b>Results</b> tab, where the provider&apos;s certificate is uploaded too. Set the provider on the Overview.</p>}
+        {form.delivery_mode === "external" && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">An <b>external</b> course holds only its general information (Overview) — no modules or exams. Schedule it in a program (<b>Schedule</b> tab); the result is entered by hand per participant in the group&apos;s <b>Results</b> tab, where the provider&apos;s certificate is uploaded too. Set the provider on the Overview.</p>}
         <details className="rounded-lg border border-slate-200 px-3 py-2">
           <summary className="text-sm font-medium text-slate-700 cursor-pointer">Individual enrolments only (outside a program)</summary>
           <p className="text-xs text-slate-500 mt-2">These apply only to someone enrolled straight into the course, not through a program or a group: they can&apos;t start before the start date, the course turns read-only after the end date, and direct enrolment stops at the capacity. Leave empty normally.</p>
@@ -2441,8 +2441,9 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
             {/* Users + Settings */}
             {[
-              { key: "materials", icon: FolderDown, label: "Materials" },
-              ...(course && course.delivery_mode !== "online" ? [{ key: "groups", icon: CalendarDays, label: "Groups" }] : []),
+              // An external course is scheduled in the program and has no files of ours.
+              ...(course?.delivery_mode !== "external" ? [{ key: "materials", icon: FolderDown, label: "Materials" }] : []),
+              ...(course && course.delivery_mode !== "online" && course.delivery_mode !== "external" ? [{ key: "groups", icon: CalendarDays, label: "Groups" }] : []),
               { key: "settings",  icon: Settings,  label: "Settings" },
               ...(course?.delivery_mode !== "external" ? [{ key: "ai-report", icon: Sparkles,  label: "Expert Report" }] : []),
             ].map(({ key, icon: Icon, label }) => (
