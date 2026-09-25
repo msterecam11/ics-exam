@@ -187,8 +187,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       <div className="flex gap-1 border-b border-slate-200">
         {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const)
           .filter(([k]) => manage || k !== "feedback")
-          // An external course has no content of ours: people, optional attendance, the result, files.
-          .filter(([k]) => !external || ["participants", "days", "results", "materials"].includes(k)).map(([k, label]) => (
+          // An external course has no content of ours: people, optional attendance, the result.
+          .filter(([k]) => !external || ["participants", "days", "results"].includes(k)).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>

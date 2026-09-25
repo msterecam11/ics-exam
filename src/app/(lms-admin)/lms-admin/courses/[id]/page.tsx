@@ -2345,6 +2345,8 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* An external course has no content to preview or analyse. */}
+          {course?.delivery_mode !== "external" && <>
           <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs hidden sm:flex"
             onClick={() => {
               const moduleParam = activeModule ? `?module=${activeModule.id}` : ""
@@ -2360,6 +2362,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
             {aiAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             {aiAnalyzing ? "Analyzing…" : "Expert Analyze"}
           </Button>
+          </>}
           {course && course.status !== "archived" && (
             <Button size="sm" disabled={toggling}
               className={cn("gap-1.5 h-8 text-xs", course.status === "published" ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white")}
