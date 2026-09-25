@@ -34,7 +34,7 @@ export function GroupCard({ group, pending }: { group: StudentGroup | null; pend
       <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 px-5 py-4 text-sm">
         {group.daily_start && (
           <p className="flex items-start gap-2 text-slate-700"><Clock className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-            <span>{group.daily_start.slice(0, 5)}–{group.daily_end?.slice(0, 5)} daily · {group.days} day{group.days === 1 ? "" : "s"}</span></p>
+            <span>{group.daily_start.slice(0, 5)}–{group.daily_end?.slice(0, 5)} daily{group.days > 0 ? ` · ${group.days} day${group.days === 1 ? "" : "s"}` : ""}</span></p>
         )}
         {where && (
           <p className="flex items-start gap-2 text-slate-700"><MapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />

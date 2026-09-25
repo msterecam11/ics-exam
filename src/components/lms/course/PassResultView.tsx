@@ -35,7 +35,7 @@ export function PassResultCard({ r }: { r: PassResult }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-800">{c.label}
                 <span className="text-xs font-normal text-slate-400"> · {c.weight > 0 ? `${c.weight}% of the score` : "not scored"}{c.required ? " · required" : ""}</span></p>
-              <p className="text-xs text-slate-500 truncate">{c.detail}{c.required && c.requirement ? ` — needs: ${c.requirement}` : ""}</p>
+              <p className="text-xs text-slate-500 truncate">{c.detail}{c.required && c.requirement && c.key !== "result" ? ` — needs: ${c.requirement}` : ""}</p>
             </div>
             <p className="text-sm font-semibold text-slate-700 shrink-0">{c.score !== null ? `${c.score}%` : "—"}</p>
           </div>
