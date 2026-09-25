@@ -170,7 +170,8 @@ export default function NewCoursePage() {
           <h2 className="text-base font-semibold text-slate-900">Learning Settings</h2>
 
           <p className="text-xs text-slate-500 -mt-2">Defaults for participants enrolled outside a program — a program keeps its own copy.</p>
-          <div className="grid grid-cols-2 gap-4">
+          {/* An external course has no exam: its result is entered by hand. */}
+          {deliveryMode !== "external" && <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="pass">Final Exam Pass Mark %</Label>
               <Input
@@ -181,7 +182,7 @@ export default function NewCoursePage() {
                 onChange={e => setFinalExamPassMark(Number(e.target.value))}
               />
             </div>
-          </div>
+          </div>}
 
           {/* Toggle settings */}
           <div className="space-y-3 pt-1">
