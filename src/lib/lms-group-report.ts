@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { buildCourseReport, gradeQuestion } from "@/lib/lms-course-report"
+import { evaluatePassRule } from "@/lib/lms-pass-rule"
 import { readFeedbackRatings, readFeedbackComments, COURSE_RATING_LABELS, FEEDBACK_ROW_COLUMNS } from "@/lib/lms-feedback"
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
     .eq("course_id", courseId).neq("status", "dropped")
   if (programId) enrollQuery = enrollQuery.eq("program_id", programId)
   const [courseRes, enrollRes, modulesRes, programRes, trackRes] = await Promise.all([
-    db.from("lms_courses").select("id, title, delivery_mode").eq("id", courseId).single(),
+    db.from("lms_courses").select("id, title, delivery_mode, completion_rules").eq("id", courseId).single(),
     enrollQuery,
     db.from("lms_modules").select("id, title, module_type, order_index, questions").eq("course_id", courseId).order("order_index"),
     programId ? db.from("lms_programs").select("name").eq("id", programId).maybeSingle() : Promise.resolve({ data: null }),
@@ -104,13 +105,31 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   const avgMastery = masteries.length ? round(masteries.reduce((a, b) => a + b, 0) / masteries.length) : null
   const avgTimeS   = rows.length ? round(rows.reduce((a, x) => a + x.r.overall.timeSpent, 0) / rows.length) : 0
 
+  // With a pass rule (onsite) the course result is the rule's decision, not the
+  // exam's: "sat" = decided (passed, or can no longer pass), pending left out.
+  const ruleMode = !!course.completion_rules?.components
+  const ruleResult = new Map<string, { decided: boolean; passed: boolean }>()
+  if (ruleMode) {
+    for (let i = 0; i < rows.length; i += 8)
+      await Promise.all(rows.slice(i, i + 8).map(async x => {
+        const r = await evaluatePassRule(x.e.id).catch(() => null)
+        const passed = !!r?.passed || x.e.status === "completed"
+        ruleResult.set(x.e.id, { decided: passed || (!!r && !r.pending), passed })
+      }))
+  }
+  // null = not attempted / not decided yet
+  const resultOf = (x: { e: any; r: any }): boolean | null => {
+    if (ruleMode) { const r = ruleResult.get(x.e.id); return r && r.decided ? r.passed : null }
+    return x.r.exam ? !!x.r.exam.passed : null
+  }
+
   let examPassed = 0, examAttempted = 0
-  for (const x of rows) if (x.r.exam) { examAttempted++; if (x.r.exam.passed) examPassed++ }
+  for (const x of rows) { const p = resultOf(x); if (p !== null) { examAttempted++; if (p) examPassed++ } }
   // Rate is over learners who actually SAT the exam, not everyone enrolled —
   // counting a no-show as a failure understates the rate and penalises them for
   // something they didn't do. Non-attempters are reported separately, in the
   // pass/fail breakdown ("Not attempted") and the roster. Null when nobody sat it.
-  const examPassRate = examMod && examAttempted > 0 ? round((examPassed / examAttempted) * 100) : null
+  const examPassRate = (ruleMode || examMod) && examAttempted > 0 ? round((examPassed / examAttempted) * 100) : null
 
   // Mastery distribution
   const band = (p: number) => (p < 40 ? 0 : p < 60 ? 1 : p < 80 ? 2 : 3)
@@ -121,9 +140,9 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
     { label: "60–80%", count: dc[2] }, { label: "80–100%", count: dc[3] },
   ]
   const passFail = {
-    passed:       rows.filter(x => x.r.exam?.passed).length,
-    failed:       rows.filter(x => x.r.exam && !x.r.exam.passed).length,
-    notAttempted: rows.filter(x => !x.r.exam).length,
+    passed:       rows.filter(x => resultOf(x) === true).length,
+    failed:       rows.filter(x => resultOf(x) === false).length,
+    notAttempted: rows.filter(x => resultOf(x) === null).length,
   }
 
   // Per-module cohort mastery
@@ -241,13 +260,13 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   // roster already shows "—" for them, and ranking them as a 0 implies they sat
   // the exam and scored nothing. Nulls sort last without claiming a score.
   const ranking = rows
-    .map(x => ({ id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name, mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null, completion: x.r.overall.completionPct }))
+    .map(x => ({ id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name, mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: resultOf(x), completion: x.r.overall.completionPct }))
     .sort((a, b) => (b.mastery ?? -1) - (a.mastery ?? -1))
   const atRisk = rows.map(x => {
     const reasons: string[] = []
     const m = x.r.overall.score
     if (m !== null && m < 40) reasons.push("Low mastery")
-    if (x.r.exam && !x.r.exam.passed) reasons.push("Failed exam")
+    if (resultOf(x) === false) reasons.push(ruleMode ? "Not passed" : "Failed exam")
     if (x.r.overall.attendancePct !== null && x.r.overall.attendancePct < 50) reasons.push("Low attendance")
     if (x.r.overall.completionPct < 50) reasons.push("Low completion")
     return { id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name, mastery: m, reasons }
@@ -287,7 +306,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
   const roster = rows.map(x => ({
     id: x.r.student.id, enrollmentId: x.e.id, program: x.e.lms_programs?.name ?? null, name: x.r.student.name,
     company: x.r.student.company ?? null, jobTitle: (x.r.student as any).job_title ?? null,
-    mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: x.r.exam ? x.r.exam.passed : null,
+    mastery: x.r.overall.score, examPct: x.r.exam?.pct ?? null, passed: resultOf(x),
     completion: x.r.overall.completionPct, timeS: x.r.overall.timeSpent, attendancePct: x.r.overall.attendancePct,
     atRisk: atRiskIds.has(x.e.id),
   })).sort((a, b) => (b.mastery ?? -1) - (a.mastery ?? -1))

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { selectAll } from "@/lib/lms-report-cache"
 import { completionRate, passRate, atRiskReasons } from "@/lib/lms-metrics"
+import { evaluatePassRule } from "@/lib/lms-pass-rule"
 import { canSeeTrack, type StaffScope } from "@/lib/staff-access"
 
 // Reports home: headline numbers, "needs attention" lists and the browse
@@ -100,6 +101,21 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
     return { exists: !!mod, sat: mine.length > 0, passed: mine.some(a => a.passed), attempts: mine.length, maxAttempts }
   }
 
+  // Courses with a pass rule (onsite): the result is the rule's decision —
+  // counted once decided — not the final exam's.
+  const { data: ruledCourses } = await db.from("lms_courses").select("id").not("completion_rules", "is", null)
+  const ruleCourses = new Set(((ruledCourses ?? []) as any[]).map(c => c.id))
+  const ruleOutcome = new Map<string, { sat: boolean; passed: boolean }>()
+  const toEvaluate = enrollments.filter(e => ruleCourses.has(e.course_id) && e.status !== "dropped")
+  for (let i = 0; i < toEvaluate.length; i += 8)
+    await Promise.all(toEvaluate.slice(i, i + 8).map(async e => {
+      const r = await evaluatePassRule(e.id).catch(() => null)
+      if (!r || r.mode !== "rule") return
+      const passed = r.passed || e.status === "completed"
+      ruleOutcome.set(e.id, { sat: passed || !r.pending, passed })
+    }))
+  const resultOf = (e: any) => ruleOutcome.get(e.id) ?? examOf(e)
+
   // Last activity for enrollments still in progress.
   const active = enrollments.filter(e => e.status === "active")
   const activeIds = active.map(e => e.id)
@@ -143,7 +159,9 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
       const end = member?.end_date_override ?? p?.end_date ?? null
       const reasons = atRiskReasons({
         status: e.status, progress: Number(e.progress_pct ?? 0), lastActivity: anyActivity.get(e.id) ?? null,
-        enrolledAt: e.enrolled_at, startDate: p?.start_date ?? null, endDate: end, exam: examOf(e),
+        enrolledAt: e.enrolled_at, startDate: p?.start_date ?? null, endDate: end,
+        // Exam-retake warnings don't apply where the exam only adds to a pass-rule score.
+        exam: ruleCourses.has(e.course_id) ? null : examOf(e),
       })
       const idle = reasons.filter(r => r.startsWith("No activity") || r.startsWith("Not started"))
       const behind = reasons.filter(r => !idle.includes(r))
@@ -162,8 +180,9 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
   // ── Headline numbers ───────────────────────────────────────────────────────
   const inPeriod = (iso: string | null) => !!iso && (!since || iso >= since)
   const periodExam = enrollments
-    .filter(e => (examAttempts.get(e.id) ?? []).some(a => inPeriod(a.submitted_at ?? a.graded_at)))
-    .map(e => examOf(e))
+    .filter(e => (examAttempts.get(e.id) ?? []).some(a => inPeriod(a.submitted_at ?? a.graded_at))
+      || (ruleCourses.has(e.course_id) && e.status === "completed" && inPeriod(e.completed_at)))
+    .map(e => resultOf(e))
   const kpis = {
     activePrograms: [...new Set(enrollments.map(e => e.program_id).filter(Boolean))]
       .filter(id => { const p = programs.get(id); return p?.status === "active" && !p.is_individual }).length,
@@ -177,7 +196,7 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
   const summarize = (rows: any[]) => ({
     learners: new Set(rows.filter(e => e.status !== "dropped").map(e => e.student_id)).size,
     completion: completionRate(rows).rate,
-    pass: passRate(rows.map(examOf)).rate,
+    pass: passRate(rows.map(resultOf)).rate,
   })
   const byKey = <K,>(key: (e: any) => K | null) => {
     const m = new Map<K, any[]>()

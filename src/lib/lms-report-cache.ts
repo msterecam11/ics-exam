@@ -10,7 +10,7 @@ import { db } from "@/lib/db"
 // Bump REPORT_BUILD_VERSION whenever a builder's output changes shape, so old
 // cached copies aren't served.
 
-export const REPORT_BUILD_VERSION = 5
+export const REPORT_BUILD_VERSION = 6
 
 export type ReportScope = { programId?: string | null; courseId?: string | null; companyId?: string | null }
 export type Cached<T> = { data: T; builtAt: string; fromCache: boolean }
