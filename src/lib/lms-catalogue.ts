@@ -29,7 +29,7 @@ export const LEVELS = [
 export const DELIVERY_MODES = [
   { value: "onsite", label: "Onsite" },
   { value: "online", label: "Online" },
-  { value: "hybrid", label: "Hybrid" },
+  { value: "external", label: "External" },
 ] as const
 
 export interface CatalogueViewer {

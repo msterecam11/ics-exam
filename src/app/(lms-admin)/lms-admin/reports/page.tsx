@@ -179,7 +179,7 @@ export default async function ReportsHomePage({ searchParams }: { searchParams: 
           </select>
           {(tab === "courses" || tab === "individuals") && (
             <select name="delivery" defaultValue={delivery} className="h-9 rounded-lg border border-slate-200 px-2 text-sm bg-white">
-              <option value="">Any delivery</option><option value="onsite">Onsite</option><option value="online">Online</option><option value="hybrid">Hybrid</option>
+              <option value="">Any delivery</option><option value="onsite">Onsite</option><option value="online">Online</option><option value="external">External</option>
             </select>
           )}
           <button className="h-9 px-3 rounded-lg bg-[#1B4F8A] text-white text-sm font-medium hover:bg-[#163f6f]">Apply</button>

@@ -255,14 +255,15 @@ async function gatherFacts(today: string) {
       .select("id, program_id, student_id, track_id, status, end_date_override, lms_students(id, name, email)")
       .in("program_id", programIds).neq("status", "withdrawn"),
     db.from("lms_enrollments")
-      .select("id, student_id, program_id, course_id, status, progress_pct, completed_at, lms_courses(id, title)")
+      .select("id, student_id, program_id, course_id, status, progress_pct, completed_at, lms_courses(id, title, delivery_mode)")
       .in("program_id", programIds),
     db.from("lms_program_items").select("program_id, track_id, course_id, order_index").in("program_id", programIds),
     db.from("lms_program_tracks").select("id, name").in("program_id", programIds),
   ])
 
   const trackName = new Map((tracksRes.data ?? []).map((t: any) => [t.id, t.name]))
-  const enrollments = (enrRes.data ?? []) as any[]
+  // External courses (delivered by another body) never drive our reminders.
+  const enrollments = ((enrRes.data ?? []) as any[]).filter(e => e.lms_courses?.delivery_mode !== "external")
   const studentIds = [...new Set((membersRes.data ?? []).map((m: any) => m.student_id))]
   const lastActivity = await lastActivityByStudent(studentIds)
 

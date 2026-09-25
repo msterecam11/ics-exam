@@ -145,6 +145,8 @@ export function buildCourseCompletedEmail(o: {
 // ── EM-7 Certificate released ────────────────────────────────────────────────
 export function buildCertificateEmail(o: {
   studentName: string; courseTitle: string; certificateCode: string; issuedAt: string; programName?: string | null
+  /** A provider's certificate (e.g. ICAO): named instead of our number. */
+  issuedBy?: string | null
 }) {
   const body = `
     <div style="text-align:center;padding:10px 0 20px;">
@@ -158,7 +160,7 @@ export function buildCertificateEmail(o: {
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px 20px;width:100%;box-sizing:border-box;">
       ${chip("Course", o.courseTitle)}
       ${o.programName ? chip("Program", o.programName) : ""}
-      ${chip("Certificate no.", `<code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:13px;">${o.certificateCode}</code>`)}
+      ${o.issuedBy ? chip("Issued by", o.issuedBy) : chip("Certificate no.", `<code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:13px;">${o.certificateCode}</code>`)}
       ${chip("Issued", fmtDay(o.issuedAt))}
     </table>
     ${closing("Download Certificate →", `${APP}/lms/certificates`)}`

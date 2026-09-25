@@ -19,6 +19,7 @@ import { GroupExam, AccessPanel } from "@/components/lms/groups/GroupExam"
 import { GroupFeedback } from "@/components/lms/groups/GroupFeedback"
 import GroupTeams from "@/components/lms/groups/GroupTeams"
 import ReleasePanel from "@/components/lms/groups/ReleasePanel"
+import ExternalResults from "@/components/lms/groups/ExternalResults"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
@@ -135,6 +136,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
   const g = d.group
   const manage = d.can_manage
+  const external = d.course?.delivery_mode === "external"
   const full = !!g.seats && d.seats_taken >= g.seats
   const instructors = d.staff.filter(s => s.role === "instructor"), facilitators = d.staff.filter(s => s.role === "facilitator")
 
@@ -183,14 +185,17 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const).filter(([k]) => manage || k !== "feedback").map(([k, label]) => (
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const)
+          .filter(([k]) => manage || k !== "feedback")
+          // An external course has no content of ours: people, optional attendance, the result, files.
+          .filter(([k]) => !external || ["participants", "days", "results", "materials"].includes(k)).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={cn("px-4 py-2.5 text-sm font-medium border-b-2 -mb-px", tab === k ? "border-[#1B4F8A] text-[#1B4F8A]" : "border-transparent text-slate-500 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
 
       {tab === "participants" && (
         <div className="space-y-3">
-          {d.participants.length > 1 && <GroupTeams groupId={id} participants={d.participants} />}
+          {d.participants.length > 1 && !external && <GroupTeams groupId={id} participants={d.participants} />}
           {manage && <div className="flex justify-end">
             <Button size="sm" onClick={() => setAdding(true)} disabled={g.status === "cancelled" || g.status === "completed"} className="gap-1.5 bg-[#1B4F8A] hover:bg-[#163f6e] text-white"><Plus className="h-3.5 w-3.5" /> Add participants</Button>
           </div>}
@@ -217,7 +222,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {tab === "days" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-500">Attendance is taken per day. Open a day to mark present, late, absent or excused.</p>
+            <p className="text-sm text-slate-500">{external ? "Optional for an external course — create the days only if you want to track attendance. " : ""}Attendance is taken per day. Open a day to mark present, late, absent or excused.</p>
             {manage && <Button size="sm" variant="outline" onClick={makeDays} className="gap-1.5 shrink-0"><Plus className="h-3.5 w-3.5" /> Create missing days</Button>}
           </div>
           {d.days.length === 0 ? (
@@ -251,7 +256,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {tab === "exercises" && <GroupExercises groupId={id} />}
       {tab === "assignments" && <GroupAssignments groupId={id} />}
       {tab === "exam" && <GroupExam groupId={id} />}
-      {tab === "results" && <GroupResults groupId={id} />}
+      {tab === "results" && (external ? <ExternalResults groupId={id} /> : <GroupResults groupId={id} />)}
       {tab === "feedback" && manage && <GroupFeedback groupId={id} />}
 
       {tab === "materials" && d.course && (

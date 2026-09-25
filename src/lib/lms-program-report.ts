@@ -155,7 +155,7 @@ export async function loadEnrollmentFacts(filter: FactsFilter): Promise<Enrollme
   })
 
   // Courses with a pass rule (onsite): the result is the rule's, not the exam's.
-  const { data: ruled } = await db.from("lms_courses").select("id").in("id", courseIds).not("completion_rules", "is", null)
+  const { data: ruled } = await db.from("lms_courses").select("id").in("id", courseIds).or("completion_rules.not.is.null,delivery_mode.eq.external")
   const ruleCourses = new Set(((ruled ?? []) as any[]).map(c => c.id))
   const toEvaluate = facts.filter(f => ruleCourses.has(f.course_id) && f.status !== "dropped")
   for (let i = 0; i < toEvaluate.length; i += 8) {

@@ -8,7 +8,7 @@ import {
   Monitor, Layers, Loader2, CheckCircle2, Send, Archive, Smartphone,
   Settings, MoreVertical, X, GraduationCap, FlaskConical, BookOpen,
   Camera, Clock, RefreshCw, Award, FileText, ClipboardList,
-  MessageSquare, GripVertical, ChevronUp, Sparkles, FolderDown, CalendarDays,
+  MessageSquare, GripVertical, ChevronUp, Sparkles, FolderDown, CalendarDays, Landmark,
 } from "lucide-react"
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -138,7 +138,7 @@ interface Module {
 }
 // ── Constants ──────────────────────────────────────────────────
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
-  online: Globe, onsite: Monitor, hybrid: Layers,
+  online: Globe, onsite: Monitor, hybrid: Layers, external: Landmark,
 }
 type ActiveView = "overview" | "users" | "settings" | "ai-report" | "materials" | "groups" | string // string = module id
 type SaveStatus = "saved" | "saving" | "unsaved"
@@ -354,7 +354,7 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes,
                     className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm">
                     <option value="online">Online</option>
                     <option value="onsite">On-site</option>
-                    <option value="hybrid">Hybrid</option>
+                    {delivery === "hybrid" && <option value="hybrid">Hybrid</option>}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -501,7 +501,7 @@ function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }:
         </div>
         <div className="flex items-center gap-1.5 text-sm text-slate-500 bg-slate-100 rounded-full px-3 py-1.5">
           {(() => { const Icon = DELIVERY_ICONS[course.delivery_mode] ?? Globe; return <Icon className="h-3.5 w-3.5" /> })()}
-          <span className="capitalize">{course.delivery_mode}</span>
+          <span className="capitalize">{course.delivery_mode === "onsite" ? "On-site" : course.delivery_mode}</span>
         </div>
         {course.certificate_enabled && (
           <div className="flex items-center gap-1.5 text-sm text-amber-700 bg-amber-50 rounded-full px-3 py-1.5">
@@ -540,7 +540,7 @@ function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }:
         items={course.learning_outcomes ?? []}
         onChange={items => { onCourseChange({ learning_outcomes: items }); scheduleAutoSave({ learning_outcomes: items }) }} />
 
-      <div className="mb-7">
+      {course.delivery_mode !== "external" && <div className="mb-7">
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Course Modules</label>
         <p className="text-xs text-slate-400 mb-2">Listed automatically from the course — edit them in the sidebar.</p>
         {modules.length === 0 ? <p className="text-sm text-slate-400 bg-white border border-dashed border-slate-200 rounded-xl px-4 py-3">No modules yet.</p> : (
@@ -554,7 +554,7 @@ function CourseOverviewEditor({ course, modules, onCourseChange, onSaveStatus }:
             ))}
           </ol>
         )}
-      </div>
+      </div>}
 
       <OverviewList label="Prerequisites" hint="What students should know or have done before starting"
         placeholder="e.g. At least one year in airside operations"
@@ -677,9 +677,10 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><Globe className="h-4 w-4 text-[#1B4F8A]" /> Delivery & Access</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1"><Label>Delivery Mode</Label><select value={form.delivery_mode} onChange={e => set("delivery_mode", e.target.value)} className="w-full h-9 rounded-lg border bg-transparent px-3 text-sm"><option value="online">Online</option><option value="onsite">On-site</option><option value="hybrid">Hybrid</option></select></div>
+          <div className="space-y-1"><Label>Delivery Mode</Label><select value={form.delivery_mode} onChange={e => set("delivery_mode", e.target.value)} className="w-full h-9 rounded-lg border bg-transparent px-3 text-sm"><option value="online">Online</option><option value="onsite">On-site</option><option value="external">External (delivered for another body, e.g. ICAO)</option>{form.delivery_mode === "hybrid" && <option value="hybrid">Hybrid</option>}</select></div>
         </div>
-        <p className="text-xs text-slate-500">Dates, venue and seats are set per group (onsite / hybrid) or per program.</p>
+        <p className="text-xs text-slate-500">Dates, venue, instructors and seats are set per group, in the program&apos;s Schedule.</p>
+        {form.delivery_mode === "external" && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">An <b>external</b> course holds only its general information (Overview) — no modules or exams. The result is entered by hand per participant in the group&apos;s <b>Results</b> tab, where the provider&apos;s certificate is uploaded too. Set the provider on the Overview.</p>}
         <details className="rounded-lg border border-slate-200 px-3 py-2">
           <summary className="text-sm font-medium text-slate-700 cursor-pointer">Individual enrolments only (outside a program)</summary>
           <p className="text-xs text-slate-500 mt-2">These apply only to someone enrolled straight into the course, not through a program or a group: they can&apos;t start before the start date, the course turns read-only after the end date, and direct enrolment stops at the capacity. Leave empty normally.</p>
@@ -709,7 +710,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
         )}
 
         {/* A partner-delivered course: their certificate, our record. */}
-        <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
+        {form.delivery_mode !== "external" && <><label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
           <input type="checkbox" checked={form.partner_certificate} onChange={e => set("partner_certificate", e.target.checked)} className="mt-0.5" />
           <div>
             <p className="text-sm font-medium">The service provider also issues a certificate</p>
@@ -724,7 +725,7 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
               <p className="text-xs text-slate-500 mt-0.5">Only worth ticking once we hold their PDF — upload it under Certificates.</p>
             </div>
           </label>
-        )}
+        )}</>}
 
         <div className="space-y-1"><Label>Certificate valid for (months)</Label>
           <Input type="number" min={1} max={600} className="w-32"
@@ -733,9 +734,9 @@ function SettingsTab({ course, onSaved }: { course: Course; onSaved: (c: Course)
           <p className="text-xs text-slate-500">Leave empty if it never expires. Expiring certificates show up in the reports attention list.</p>
         </div>
 
-        <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Default for new programs, and the mark for students outside programs (their existing results are re-checked). Programs keep their own copy.</p></div>
+        {form.delivery_mode !== "external" && <div className="space-y-1"><Label>Final Exam Pass Mark (%)</Label><Input type="number" min={0} max={100} value={Number.isFinite(form.final_exam_pass_mark) ? form.final_exam_pass_mark! : ""} onChange={e => set("final_exam_pass_mark", parseInt(e.target.value))} className="w-32" /><p className="text-xs text-slate-500">Default for new programs, and the mark for students outside programs (their existing results are re-checked). Programs keep their own copy.</p></div>}
       </div>
-      <CompletionRulesPanel courseId={course.id} />
+      {form.delivery_mode !== "external" && course.delivery_mode !== "external" && <CompletionRulesPanel courseId={course.id} />}
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2"><MessageSquare className="h-4 w-4 text-[#1B4F8A]" /> Course Feedback</h3>
         <label className="flex items-start gap-3 cursor-pointer bg-slate-50 rounded-lg p-3">
@@ -2388,6 +2389,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               <BookOpen className="h-4 w-4 shrink-0" /> Overview
             </button>
 
+            {course?.delivery_mode !== "external" && <>
             {/* Modules header */}
             <div className="px-4 pt-4 pb-1.5 flex items-center justify-between">
               <p className="text-white/40 text-xs font-semibold uppercase tracking-wider">Modules</p>
@@ -2432,6 +2434,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
                 </SortableContext>
               </DndContext>
             )}
+            </>}
 
             {/* Divider */}
             <div className="mx-4 my-3 border-t border-white/10" />
@@ -2441,7 +2444,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               { key: "materials", icon: FolderDown, label: "Materials" },
               ...(course && course.delivery_mode !== "online" ? [{ key: "groups", icon: CalendarDays, label: "Groups" }] : []),
               { key: "settings",  icon: Settings,  label: "Settings" },
-              { key: "ai-report", icon: Sparkles,  label: "Expert Report" },
+              ...(course?.delivery_mode !== "external" ? [{ key: "ai-report", icon: Sparkles,  label: "Expert Report" }] : []),
             ].map(({ key, icon: Icon, label }) => (
               <button key={key}
                 onClick={() => {

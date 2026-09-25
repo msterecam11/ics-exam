@@ -3,8 +3,9 @@
 // it only through the signed link the file route hands out.
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { guardStaff } from "@/lib/staff-access"
+import { notifyProviderCertificate } from "@/lib/lms-completion"
 import { auditLog } from "@/lib/audit"
 
 export const dynamic = "force-dynamic"
@@ -19,16 +20,20 @@ const TYPES: Record<string, string> = {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session || session.user.role !== "admin")
-    return NextResponse.json({ error: "Admin only" }, { status: 403 })
+  const g = await guardStaff()
+  if (!g.ok) return g.res
+  const session = { user: { id: g.session.id, name: g.session.name, role: g.session.role } } as any
 
   const { id } = await params
   if (!UUID_RE.test(id)) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const { data: cert } = await db.from("lms_certificates")
-    .select("id, verification_code, pdf_url").eq("id", id).maybeSingle()
+    .select("id, verification_code, pdf_url, issuer, lms_enrollments(group_id), lms_courses(delivery_mode)").eq("id", id).maybeSingle()
   if (!cert) return NextResponse.json({ error: "Certificate not found" }, { status: 404 })
+  // Admins; an instructor only for a participant in a group they teach.
+  const groupId = (cert as any).lms_enrollments?.group_id ?? null
+  if (!g.scope.isAdmin && !(groupId && g.scope.instructorGroupIds.includes(groupId)))
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 })
 
   const form = await req.formData().catch(() => null)
   const file = form?.get("file")
@@ -45,7 +50,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // Replacing one leaves no orphan behind.
   const previous = (cert as any).pdf_url
-  await db.from("lms_certificates").update({ pdf_url: path }).eq("id", id)
+  // An external course's provider certificate shows to the participant once
+  // we hold the document.
+  const showNow = (cert as any).issuer === "provider" && (cert as any).lms_courses?.delivery_mode === "external"
+  await db.from("lms_certificates").update({ pdf_url: path, ...(showNow ? { visible_to_student: true } : {}) }).eq("id", id)
   if (previous) await db.storage.from(BUCKET).remove([previous]).catch(() => {})
 
   await db.from("lms_certificate_events").insert({
@@ -54,5 +62,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     detail: { name: file.name, bytes: file.size },
   })
   await auditLog(session, "lms.certificate.file", "lms_certificate", id, (cert as any).verification_code, { name: file.name })
+  // First upload of an external course's provider certificate: tell them it's ready.
+  if (showNow && !previous) await notifyProviderCertificate(id)
   return NextResponse.json({ ok: true })
 }

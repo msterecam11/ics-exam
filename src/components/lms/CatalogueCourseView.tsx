@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeft, Clock, BarChart3, Globe, Monitor, Layers, CheckCircle2, Hourglass,
   Loader2, Check, BookOpen, Send, X, Users, Award, Languages, ListChecks, CalendarDays, MapPin,
+  Landmark,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -36,8 +37,8 @@ interface Detail {
   }[]
 }
 
-const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers }
-const MODE_LABEL: Record<string, string> = { online: "Online", onsite: "Onsite", hybrid: "Online + onsite" }
+const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers, external: Landmark }
+const MODE_LABEL: Record<string, string> = { online: "Online", onsite: "Onsite", hybrid: "Online + onsite", external: "External" }
 
 export default function CatalogueCourseView({ courseId }: { courseId: string }) {
   const router = useRouter()

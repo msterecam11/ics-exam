@@ -5,6 +5,7 @@ import Link from "next/link"
 import {
   Search, Loader2, Clock, BarChart3, Globe, Monitor, Layers, FolderOpen,
   ChevronLeft, ChevronRight, CheckCircle2, Hourglass, X,
+  Landmark,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -33,9 +34,9 @@ const MODES = [
   { key: "", label: "All" },
   { key: "onsite", label: "Onsite" },
   { key: "online", label: "Online" },
-  { key: "hybrid", label: "Hybrid" },
+  { key: "external", label: "External" },
 ]
-const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers }
+const MODE_ICON: Record<string, any> = { online: Globe, onsite: Monitor, hybrid: Layers, external: Landmark }
 const NONE = "__none__"
 
 export default function CatalogueBrowser() {

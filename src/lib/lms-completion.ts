@@ -152,7 +152,7 @@ async function passedFinalExam(enrollment: Pick<EnrollmentContext, "id" | "cours
 async function enrollmentProgram(enrollmentId: string): Promise<{ program_id: string | null; program: EnrollmentContext["program"] }> {
   const { data } = await db
     .from("lms_enrollments")
-    .select("program_id, lms_programs(id, name, status, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement)")
+    .select("program_id, lms_programs(id, name, status, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate)")
     .eq("id", enrollmentId)
     .maybeSingle()
   return { program_id: (data as any)?.program_id ?? null, program: (data as any)?.lms_programs ?? null }
@@ -210,7 +210,7 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
     // Fetch course
     const { data: course } = await db
       .from("lms_courses")
-      .select(`title, certificate_enabled, certificate_auto_release, provider_id,
+      .select(`title, delivery_mode, certificate_enabled, certificate_auto_release, provider_id,
                partner_certificate, partner_certificate_visible, ics_certificate_visible,
                certificate_validity_months`)
       .eq("id", courseId)
@@ -225,12 +225,33 @@ export async function checkCourseCompletion(studentId: string, courseId: string,
     // A program's certificate settings govern its enrollments (PM-4); outside a
     // program the course settings apply as before.
     const program = enrollment.program
-    const certEnabled = program ? program.certificate_enabled : (course as any).certificate_enabled !== false
-    if (!certEnabled) return
-
     const c = course as any
     const autoRelease = program ? program.certificate_auto_release : c.certificate_auto_release === true
     const validity = c.certificate_validity_months ?? null
+
+    // An external course (e.g. ICAO): the provider's certificate is theirs — we
+    // keep the record, and it shows once its PDF is uploaded. Our own
+    // certificate only when the program asks for it (outside a program, the
+    // course's own setting).
+    if (c.delivery_mode === "external") {
+      const { data: grp } = await db.from("lms_enrollments").select("lms_course_groups(provider_id)").eq("id", enrollment.id).maybeSingle()
+      const providerId = (grp as any)?.lms_course_groups?.provider_id ?? c.provider_id ?? null
+      if (providerId) await issueCertificate({
+        studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
+        autoRelease, issuer: "provider", providerId, visibleToStudent: false, validityMonths: validity,
+      })
+      const ics = program ? program.certificate_enabled && (program as any).external_ics_certificate === true : c.certificate_enabled === true
+      if (!ics) return
+      const code = await issueCertificate({
+        studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
+        autoRelease, issuer: "ics", visibleToStudent: true, validityMonths: validity,
+      })
+      if (code) await notifyCertificateIssued(studentId, courseId, enrollment.id)
+      return
+    }
+
+    const certEnabled = program ? program.certificate_enabled : c.certificate_enabled !== false
+    if (!certEnabled) return
 
     const certNumber = await issueCertificate({
       studentId, courseId, enrollmentId: enrollment.id, title: course.title, type: "course",
@@ -437,13 +458,43 @@ async function notifyCourseCompleted(studentId: string, courseId: string, course
   }
 }
 
+/** EM-7 for a provider's certificate (external course): sent once its document
+ *  is uploaded and it is released and visible to the participant. */
+export async function notifyProviderCertificate(certificateId: string) {
+  try {
+    const { data: c } = await db.from("lms_certificates")
+      .select("id, student_id, course_id, enrollment_id, issuer, pdf_url, released_at, revoked_at, visible_to_student, issued_at, verification_code, lms_service_providers(name), lms_courses(title, delivery_mode)")
+      .eq("id", certificateId).maybeSingle()
+    const cert = c as any
+    if (!cert || cert.issuer !== "provider" || !cert.pdf_url || !cert.released_at || cert.revoked_at || !cert.visible_to_student) return
+    if (cert.lms_courses?.delivery_mode !== "external") return
+    const [{ data: student }, { data: enr }] = await Promise.all([
+      db.from("lms_students").select("name, email").eq("id", cert.student_id).single(),
+      db.from("lms_enrollments").select("program_id, lms_programs(name)").eq("id", cert.enrollment_id ?? "").maybeSingle(),
+    ])
+    if (!student) return
+    const programId = (enr as any)?.program_id ?? null
+    const t = buildCertificateEmail({
+      studentName: (student as any).name, courseTitle: cert.lms_courses?.title ?? "your course",
+      certificateCode: cert.verification_code, issuedAt: cert.issued_at,
+      programName: (enr as any)?.lms_programs?.name ?? null, issuedBy: cert.lms_service_providers?.name ?? "the provider",
+    })
+    await sendRuleEmail({
+      rule: "certificate", to: (student as any).email, studentId: cert.student_id, courseId: cert.course_id, programId,
+      programSettings: await programEmailOverrides(programId), ...t,
+    })
+  } catch (err) {
+    console.error("[email] provider certificate notification failed", { certificateId, err })
+  }
+}
+
 /** EM-7 — a certificate became available to the student. */
 export async function notifyCertificateIssued(studentId: string, courseId: string, enrollmentId?: string | null) {
   try {
     const { data: cert } = await db
       .from("lms_certificates")
       .select("verification_code, issued_at, released_at, source_title, enrollment_id")
-      .eq("student_id", studentId).eq("course_id", courseId)
+      .eq("student_id", studentId).eq("course_id", courseId).eq("issuer", "ics")
       .order("issued_at", { ascending: false })
       .limit(1).maybeSingle()
     if (!cert || !(cert as any).released_at) return   // still held — EM-7 waits for release

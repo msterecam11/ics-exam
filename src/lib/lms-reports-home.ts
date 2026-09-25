@@ -103,7 +103,7 @@ export async function loadReportsHome(scope: StaffScope, period: Period) {
 
   // Courses with a pass rule (onsite): the result is the rule's decision —
   // counted once decided — not the final exam's.
-  const { data: ruledCourses } = await db.from("lms_courses").select("id").not("completion_rules", "is", null)
+  const { data: ruledCourses } = await db.from("lms_courses").select("id").or("completion_rules.not.is.null,delivery_mode.eq.external")
   const ruleCourses = new Set(((ruledCourses ?? []) as any[]).map(c => c.id))
   const ruleOutcome = new Map<string, { sat: boolean; passed: boolean }>()
   const toEvaluate = enrollments.filter(e => ruleCourses.has(e.course_id) && e.status !== "dropped")

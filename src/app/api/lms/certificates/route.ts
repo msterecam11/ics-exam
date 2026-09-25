@@ -10,7 +10,7 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
 import { selectAll } from "@/lib/lms-report-cache"
 import { pageScope, type StaffScope } from "@/lib/staff-access"
-import { generateCertificateNumber } from "@/lib/lms-completion"
+import { generateCertificateNumber, notifyProviderCertificate } from "@/lib/lms-completion"
 
 export const dynamic = "force-dynamic"
 
@@ -149,6 +149,8 @@ export async function PATCH(req: Request) {
 
   await record(g.session, id, action, updates)
   await auditLog(g.session, `lms.certificate.${action}`, "lms_certificate", id, (existing as any).verification_code, updates)
+  // A held provider certificate (external course) released now: tell them.
+  if (action === "release" && !(existing as any).released_at) await notifyProviderCertificate(id)
   return NextResponse.json({ ok: true })
 }
 

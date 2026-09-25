@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  ArrowLeft, BookOpen, Globe, Monitor, Layers,
+  ArrowLeft, BookOpen, Globe, Monitor, Landmark,
   Loader2, CheckCircle2, Info,
 } from "lucide-react"
 import Link from "next/link"
@@ -18,12 +18,12 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
-type DeliveryMode = "online" | "onsite" | "hybrid"
+type DeliveryMode = "online" | "onsite" | "external"
 
 const DELIVERY_OPTIONS: { value: DeliveryMode; label: string; icon: React.ElementType; desc: string }[] = [
   { value: "online",  icon: Globe,    label: "Online",  desc: "Fully virtual — videos, PDFs, quizzes" },
   { value: "onsite",  icon: Monitor,  label: "On-site", desc: "Classroom — live sessions, attendance" },
-  { value: "hybrid",  icon: Layers,   label: "Hybrid",  desc: "Mix of online and on-site modules" },
+  { value: "external", icon: Landmark, label: "External", desc: "Another body's course (e.g. ICAO) we deliver — general info only, result entered by hand" },
 ]
 
 export default function NewCoursePage() {
@@ -240,7 +240,7 @@ export default function NewCoursePage() {
 
         <p className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>Dates, venue and seats are set per <b>group</b> (onsite / hybrid) or per <b>program</b>. After creating, the course&apos;s Settings hold the pass rule, evaluation &amp; impact, and the catalogue.</span>
+          <span>Dates, venue and seats are set per <b>group</b>, in the <b>program</b>&apos;s Schedule. After creating, the course&apos;s Settings hold the pass rule, evaluation &amp; impact, and the catalogue.</span>
         </p>
 
         {/* ─── Actions ────────────────────────────────────────── */}

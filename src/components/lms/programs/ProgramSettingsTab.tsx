@@ -21,7 +21,7 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
     name: p.name, client: p.is_individual ? "individual" : (p.company_id ?? ""), reference: p.reference ?? "",
     description: p.description ?? "", start_date: p.start_date ?? "", end_date: p.end_date ?? "",
     capacity: p.capacity ? String(p.capacity) : "", after_end_access: p.after_end_access,
-    certificate_enabled: p.certificate_enabled, certificate_auto_release: p.certificate_auto_release,
+    certificate_enabled: p.certificate_enabled, certificate_auto_release: p.certificate_auto_release, external_ics_certificate: !!p.external_ics_certificate,
     feedback_enabled: p.feedback_enabled, feedback_mandatory: p.feedback_mandatory, feedback_anonymous: p.feedback_anonymous, progress_enforcement: p.progress_enforcement,
   })
   const [instructorIds, setInstructorIds] = useState<Set<string>>(new Set(detail.instructors.map(i => i.id)))
@@ -43,7 +43,7 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
       name: form.name, reference: form.reference || null, description: form.description || null,
       start_date: form.start_date || null, end_date: form.end_date || null,
       capacity: form.capacity ? Number(form.capacity) : null, after_end_access: form.after_end_access,
-      certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release,
+      certificate_enabled: form.certificate_enabled, certificate_auto_release: form.certificate_auto_release, external_ics_certificate: form.external_ics_certificate,
       feedback_enabled: form.feedback_enabled, feedback_mandatory: form.feedback_mandatory, feedback_anonymous: form.feedback_anonymous, progress_enforcement: form.progress_enforcement,
       ...(form.client === "individual" ? { is_individual: true } : { company_id: form.client }),
     })
@@ -121,8 +121,10 @@ export default function ProgramSettingsTab({ detail, onChanged }: { detail: Prog
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
         <p className="text-sm font-semibold text-slate-800">Learning &amp; completion</p>
         <Toggle k="progress_enforcement" label="Sequential courses" hint="Students complete each course before the next one opens (in the order set on the Structure tab)" />
-        <Toggle k="certificate_enabled" label="Issue course certificates" hint="When a student passes a course's final exam in this program" />
+        <Toggle k="certificate_enabled" label="Issue course certificates" hint="When a student passes a course in this program" />
         {form.certificate_enabled && <Toggle k="certificate_auto_release" indent label="Release certificates automatically" hint="Unchecked = held until an admin releases them" />}
+        {form.certificate_enabled && <Toggle k="external_ics_certificate" indent label="Also issue our certificate for external courses"
+          hint="External courses (e.g. ICAO) come with the provider's own certificate, which you upload per participant. Tick to add an ICS certificate as well." />}
       </section>
 
       <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">

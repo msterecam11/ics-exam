@@ -84,7 +84,7 @@ export function defaultRules(deliveryMode: string): CompletionRules {
 // ── Evaluating one enrolment ─────────────────────────────────────────────────
 
 export type ComponentResult = {
-  key: ComponentKey
+  key: ComponentKey | "result"
   label: string
   weight: number            // after scaling to the components that exist
   required: boolean
@@ -115,19 +115,40 @@ const wavg = (xs: { score: number; w: number }[]) => {
   return tw > 0 ? Math.round(xs.reduce((t, x) => t + x.score * x.w, 0) / tw) : null
 }
 
-/** The course's rule, or null when it keeps "pass the final exam". */
+/** The course's rule, or null when it keeps "pass the final exam". An
+ *  external course always has one: the result an instructor enters. */
 export async function courseRules(courseId: string): Promise<CompletionRules | null> {
-  const { data } = await db.from("lms_courses").select("completion_rules").eq("id", courseId).maybeSingle()
+  const { data } = await db.from("lms_courses").select("completion_rules, delivery_mode").eq("id", courseId).maybeSingle()
+  if ((data as any)?.delivery_mode === "external") return { pass_mark: 0, components: {} }
   const r = (data as any)?.completion_rules
   return r && typeof r === "object" && r.components ? r as CompletionRules : null
+}
+
+/** What an admin or instructor entered for an external course. */
+export type ManualResult = { passed: boolean | null; score: number | null; date: string | null; note: string | null; by?: string | null; by_name?: string | null; at?: string }
+
+function manualOutcome(m: ManualResult | null): PassResult {
+  const decided = m?.passed === true || m?.passed === false
+  const score = m?.score ?? null
+  return {
+    mode: "rule",
+    components: [{ key: "result", label: "Result", weight: 100, required: true, score, met: decided ? m!.passed : null, pending: !decided,
+      requirement: "Entered by the instructor", detail: decided ? `${m!.passed ? "Passed" : "Not passed"}${score !== null ? ` · ${score}%` : ""}${m!.date ? ` · ${m!.date}` : ""}` : "Not entered yet" }],
+    score, passMark: null, passed: m?.passed === true, pending: !decided,
+    reasons: decided ? (m!.passed ? [] : ["Not passed"]) : ["Result not entered yet"],
+  }
 }
 
 export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContext): Promise<PassResult | null> {
   const e = typeof enrollmentOrId === "string" ? await getEnrollmentById(enrollmentOrId) : enrollmentOrId
   if (!e) return null
-  const { data: courseRow } = await db.from("lms_courses").select("id, final_exam_pass_mark, completion_rules").eq("id", e.course_id).maybeSingle()
+  const { data: courseRow } = await db.from("lms_courses").select("id, final_exam_pass_mark, completion_rules, delivery_mode").eq("id", e.course_id).maybeSingle()
   const course = courseRow as any
   if (!course) return null
+  if (course.delivery_mode === "external") {
+    const { data: row } = await db.from("lms_enrollments").select("manual_result").eq("id", e.id).maybeSingle()
+    return manualOutcome(((row as any)?.manual_result ?? null) as ManualResult | null)
+  }
   const rules: CompletionRules | null = course.completion_rules?.components ? course.completion_rules : null
 
   const [{ data: mods }, { data: attempts }, { data: exResults }] = await Promise.all([

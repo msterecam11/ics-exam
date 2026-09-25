@@ -8,6 +8,7 @@ import {
   Loader2, Eye, Edit, Trash2, Copy, BarChart2,
   Smartphone, ChevronDown, X, Filter, ArrowUpDown,
   CheckCircle2, Archive, FileText, Send, ChevronLeft, FolderCog, Store, FolderInput,
+  Landmark,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +22,7 @@ const CATALOGUE_LABEL: Record<string, string> = {
   company: "In the catalogue for company participants", specific: "In the catalogue for chosen companies",
 }
 
-type DeliveryMode = "online" | "onsite" | "hybrid"
+type DeliveryMode = "online" | "onsite" | "hybrid" | "external"
 type CourseStatus  = "draft" | "published" | "archived"
 
 interface Course {
@@ -50,7 +51,7 @@ const STATUS_STYLES: Record<CourseStatus, string> = {
   archived:  "bg-slate-100 text-slate-500 border-slate-200",
 }
 const DELIVERY_ICONS: Record<DeliveryMode, React.ElementType> = {
-  online: Globe, onsite: Monitor, hybrid: Layers,
+  online: Globe, onsite: Monitor, hybrid: Layers, external: Landmark,
 }
 const STATUS_TABS = [
   { key: "all",       label: "All Courses" },
@@ -62,7 +63,7 @@ const DELIVERY_FILTERS = [
   { key: "",        label: "All Modes" },
   { key: "online",  label: "Online" },
   { key: "onsite",  label: "On-site" },
-  { key: "hybrid",  label: "Hybrid" },
+  { key: "external", label: "External" },
 ]
 
 function fmt(dateStr: string | null) {

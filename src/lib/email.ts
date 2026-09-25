@@ -71,6 +71,19 @@ async function emailConfig(): Promise<EmailConfigRow> {
 /** Call this to drop the cache after the settings change. */
 export function forgetEmailConfig() { configCache = null }
 
+// External courses (e.g. ICAO) are delivered by another body: we don't email
+// their participants about enrolment, joining or completion. Still sent: class
+// day reminders, the certificate (the provider's once uploaded, and ours when
+// the program issues one), feedback and the impact questionnaire.
+const EXTERNAL_ALLOWED = new Set(["certificate", "class_reminder", "feedback_reminder", "impact_survey"])
+let externalCache: { at: number; ids: Set<string> } | null = null
+async function externalCourseIds(): Promise<Set<string>> {
+  if (externalCache && Date.now() - externalCache.at < 60_000) return externalCache.ids
+  const { data } = await db.from("lms_courses").select("id").eq("delivery_mode", "external")
+  externalCache = { at: Date.now(), ids: new Set(((data ?? []) as any[]).map(c => c.id)) }
+  return externalCache.ids
+}
+
 export async function sendEmail(opts: SendOptions) {
   const { type, to, subject, html, studentId, courseId, sessionId } = opts
 
@@ -85,12 +98,14 @@ export async function sendEmail(opts: SendOptions) {
   // addresses. It exists so a live client cannot be reached while we test.
   const allow = (cfg.allowed_recipients ?? []).map(a => a.trim().toLowerCase()).filter(Boolean)
   const blocked = allow.length > 0 && !allow.includes(recipient.trim().toLowerCase())
+  const externalCourse = !!courseId && !EXTERNAL_ALLOWED.has(String(opts.rule ?? type)) && (await externalCourseIds().catch(() => new Set<string>())).has(courseId)
 
   let status   = "sent"
   let errorMsg: string | null = null
 
   try {
-    if (off) status = "skipped"                              // sending is switched off
+    if (externalCourse) status = "skipped"                   // delivered by another body
+    else if (off) status = "skipped"                         // sending is switched off
     else if (needsSink) status = "skipped"                   // test mode with nowhere to send
     else if (blocked) status = "skipped"                     // not on the allow-list
     else if (isReservedTestAddress(recipient)) status = "skipped"  // reserved test domain — never deliverable
@@ -113,7 +128,8 @@ export async function sendEmail(opts: SendOptions) {
     rule:           opts.rule ?? null,
     program_id:     opts.programId ?? null,
     intended_email: opts.intendedEmail ?? (redirected ? to : null),
-    reason:         off ? "Email sending is off"
+    reason:         externalCourse ? "External course — delivered by the provider"
+                    : off ? "Email sending is off"
                     : needsSink ? "Test mode is on but no test address is set"
                     : blocked ? "Not on the allow-list"
                     : opts.reason ?? (redirected ? "Test mode — redirected" : null),

@@ -37,6 +37,7 @@ export type EnrollmentProgram = {
   after_end_access: "read_only" | "full" | "locked"
   certificate_enabled: boolean
   certificate_auto_release: boolean
+  external_ics_certificate?: boolean
   progress_enforcement: boolean
 }
 
@@ -61,7 +62,7 @@ export type EnrollmentContext = {
 
 const ENROLLMENT_SELECT = `
   id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id, group_id,
-  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
+  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
 export function todayISO(now = new Date()) {
@@ -143,7 +144,7 @@ export async function getCurrentEnrollments(studentId: string): Promise<Enrollme
 /** Columns to add to an lms_enrollments select (which must also include
  *  course_id, status and enrolled_at) so rows can go through currentVisible(). */
 export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id, group_id,
-  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement),
+  lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
 /**

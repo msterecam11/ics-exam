@@ -40,7 +40,7 @@ export default function GroupsPanel({ courseId, providerId, deliveryMode }: { co
   if (deliveryMode === "online") return (
     <div className="max-w-3xl">
       <h2 className="text-lg font-bold text-slate-900">Groups</h2>
-      <p className="text-sm text-slate-500 mt-2">Groups are scheduled deliveries (dates, venue, instructors) for <b>onsite</b> and <b>hybrid</b> courses. Change this course&apos;s delivery mode in Settings to use them.</p>
+      <p className="text-sm text-slate-500 mt-2">Groups are scheduled deliveries (dates, venue, instructors) for <b>onsite</b> and <b>external</b> courses. Change this course&apos;s delivery mode in Settings to use them.</p>
     </div>
   )
 

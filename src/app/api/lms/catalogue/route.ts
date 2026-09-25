@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   q = catalogueFilter(q, viewer)
 
   const mode = sp.get("mode")
-  if (mode && ["online", "onsite", "hybrid"].includes(mode)) q = q.eq("delivery_mode", mode)
+  if (mode && ["online", "onsite", "hybrid", "external"].includes(mode)) q = q.eq("delivery_mode", mode)
   const category = sp.get("category")
   if (category === "none") q = q.is("category_id", null)
   else if (category) q = q.eq("category_id", category)

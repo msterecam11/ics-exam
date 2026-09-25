@@ -8,6 +8,7 @@ import Image from "next/image"
 import {
   CheckCircle2, Lock, Globe, Monitor, Layers, Clock, ChevronRight,
   CalendarDays, MapPin, Video, History, Award, Star,
+  Landmark,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -26,7 +27,7 @@ import { GroupCard, MaterialsList, ItemFiles, type StudentGroup } from "@/compon
 
 // ── Icons & labels ────────────────────────────────────────────
 const DELIVERY_ICONS: Record<string, React.ElementType> = {
-  online: Globe, onsite: Monitor, hybrid: Layers,
+  online: Globe, onsite: Monitor, hybrid: Layers, external: Landmark,
 }
 
 function formatDuration(mins: number | null) {
@@ -61,7 +62,7 @@ export default async function StudentCoursePage({
   // Fetch course
   const { data: course } = await db
     .from("lms_courses")
-    .select("id, title, description, delivery_mode, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites, status, evaluate_modules, evaluate_instructors, impact_enabled")
+    .select("id, title, description, delivery_mode, provider_id, thumbnail_url, progress_enforcement, feedback_enabled, feedback_anonymous, start_date, end_date, learning_outcomes, prerequisites, status, evaluate_modules, evaluate_instructors, impact_enabled")
     .eq("id", courseId)
     .single()
 
@@ -370,6 +371,20 @@ export default async function StudentCoursePage({
   ])
 
   const DeliveryIcon  = DELIVERY_ICONS[course.delivery_mode] ?? Globe
+  // External (e.g. ICAO): general information, the result entered by the
+  // instructor, and the certificates — the provider's and, if the program
+  // issues one, ours.
+  const external = course.delivery_mode === "external"
+  const [extProvider, extCerts] = external
+    ? await Promise.all([
+        (course as any).provider_id
+          ? db.from("lms_service_providers").select("name").eq("id", (course as any).provider_id).maybeSingle().then(r => (r.data as any)?.name ?? null)
+          : Promise.resolve(null),
+        db.from("lms_certificates").select("id, issuer, pdf_url, lms_service_providers(name)")
+          .eq("enrollment_id", current.id).eq("visible_to_student", true).not("released_at", "is", null).is("revoked_at", null)
+          .then(r => (r.data ?? []) as any[]),
+      ])
+    : [null, [] as any[]]
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
 
@@ -459,6 +474,7 @@ export default async function StudentCoursePage({
                   <Badge variant="outline" className="text-xs gap-1">
                     <DeliveryIcon className="h-3 w-3" /> {course.delivery_mode}
                   </Badge>
+                  {extProvider && <Badge variant="outline" className="text-xs">By {extProvider}</Badge>}
                   {enrollment.status === "completed" && (
                     <Badge className="text-xs border-0 bg-emerald-100 text-emerald-700 gap-1">
                       <CheckCircle2 className="h-3 w-3" /> Completed
@@ -467,7 +483,7 @@ export default async function StudentCoursePage({
                 </div>
               </div>
               {/* Overall progress ring */}
-              <div className="text-center shrink-0">
+              {!external && <div className="text-center shrink-0">
                 <div className="relative w-16 h-16">
                   <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
                     <circle cx="32" cy="32" r="26" fill="none" stroke="#e2e8f0" strokeWidth="5" />
@@ -491,7 +507,7 @@ export default async function StudentCoursePage({
                     {(() => { const s = (enrollment as any).time_spent_s ?? 0; const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return h > 0 ? `${h}h${m>0?` ${m}m`:""}` : `${m}m` })()}
                   </p>
                 )}
-              </div>
+              </div>}
             </div>
           </div>
         </div>
@@ -504,7 +520,7 @@ export default async function StudentCoursePage({
           if (!course.description && !objectives.length && !prereqs.length && !modList.length) return null
           const H = ({ children }: { children: React.ReactNode }) => <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{children}</h3>
           return (
-            <details open={overallPct === 0} className="bg-white rounded-2xl border border-slate-200 group">
+            <details open={overallPct === 0 || external} className="bg-white rounded-2xl border border-slate-200 group">
               <summary className="px-6 py-4 cursor-pointer select-none flex items-center justify-between list-none">
                 <span className="text-base font-bold text-slate-800">About this course</span>
                 <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
@@ -551,6 +567,19 @@ export default async function StudentCoursePage({
         <GroupCard group={studentGroup} pending={groupPending} />
         <MaterialsList courseId={courseId} sections={materialSections} />
         {passResult && passResult.mode === "rule" && <PassResultCard r={passResult} />}
+        {external && extCerts.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-5">
+            <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2"><Award className="h-4 w-4 text-[#1B4F8A]" /> Your certificates</h2>
+            <ul className="space-y-2">
+              {extCerts.map((c: any) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-slate-700">{c.issuer === "provider" ? `${c.lms_service_providers?.name ?? "Provider"} certificate` : "ICS Aviation certificate"}</span>
+                  <Link href="/lms/certificates" className="text-xs font-medium text-[#1B4F8A] hover:underline">View / download</Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {impact.due && <ImpactCard courseId={courseId} answered={impact.answered} score={impact.score} />}
         {evalSubjects && <EvaluationCard courseId={courseId} subjects={evalSubjects} />}
 

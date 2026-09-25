@@ -107,7 +107,7 @@ export async function buildGroupReport(courseId: string, opts?: { programId?: st
 
   // With a pass rule (onsite) the course result is the rule's decision, not the
   // exam's: "sat" = decided (passed, or can no longer pass), pending left out.
-  const ruleMode = !!course.completion_rules?.components
+  const ruleMode = !!course.completion_rules?.components || course.delivery_mode === "external"
   const ruleResult = new Map<string, { decided: boolean; passed: boolean }>()
   if (ruleMode) {
     for (let i = 0; i < rows.length; i += 8)
