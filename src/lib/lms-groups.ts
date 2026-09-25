@@ -216,7 +216,7 @@ export async function placeInGroup(group: CourseGroup, enrollmentIds: string[], 
   }
 
   for (const r of toPlace) {
-    const { error } = await db.from("lms_enrollments").update({ group_id: group.id }).eq("id", r.id)
+    const { error } = await db.from("lms_enrollments").update({ group_id: group.id, ...(r.group_id && r.group_id !== group.id ? { team_id: null } : {}) }).eq("id", r.id)
     results.push(error
       ? { enrollment_id: r.id, name: r.lms_students?.name, status: "error", message: "Could not save" }
       : { enrollment_id: r.id, name: r.lms_students?.name, status: r.group_id ? "moved" : "placed" })

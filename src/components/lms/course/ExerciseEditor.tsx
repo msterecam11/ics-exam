@@ -14,7 +14,7 @@ import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 // download is uploaded here too.
 
 export type ExerciseCriterion = { id: string; title: string; maxScore: number }
-export type ExerciseSettings = { marking: "pass_fail" | "rubric"; pass_pct: number; weight?: number }
+export type ExerciseSettings = { marking: "pass_fail" | "rubric"; pass_pct: number; weight?: number; team_work?: boolean }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -26,6 +26,7 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
   const [marking, setMarking] = useState<ExerciseSettings["marking"]>(initial.settings?.marking ?? (initial.rubric?.length ? "rubric" : "pass_fail"))
   const [passPct, setPassPct] = useState(initial.settings?.pass_pct ?? 60)
   const [weight, setWeight] = useState(initial.settings?.weight ?? 1)
+  const [teamWork, setTeamWork] = useState(initial.settings?.team_work === true)
   const [criteria, setCriteria] = useState<ExerciseCriterion[]>(initial.rubric?.length ? initial.rubric : [{ id: uid(), title: "", maxScore: 5 }])
   const [saving, setSaving] = useState(false)
 
@@ -41,7 +42,7 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
         id: moduleId,
         assignment_brief_html: instructions.trim() || null,
         assignment_rubric: marking === "rubric" ? clean : null,
-        activity_settings: { marking, pass_pct: passPct, weight },
+        activity_settings: { marking, pass_pct: passPct, weight, team_work: teamWork },
       }),
     })
     setSaving(false)
@@ -92,6 +93,12 @@ export default function ExerciseEditor({ moduleId, courseId, initial }: {
           </div>
         )}
       </section>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" checked={teamWork} onChange={e => setTeamWork(e.target.checked)} className="mt-0.5" />
+        <span><span className="text-sm font-semibold text-slate-800 block">Marked per team</span>
+          <span className="text-xs text-slate-500">The instructor marks it once for the whole team (teams are set on the group&apos;s Participants tab). Off: each participant is marked individually.</span></span>
+      </label>
 
       <section className="space-y-2">
         <label className="text-sm font-semibold text-slate-800">Weight among exercises</label>

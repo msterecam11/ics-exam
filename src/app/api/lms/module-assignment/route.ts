@@ -11,6 +11,7 @@ import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-complet
 import { guardStaff, canSeeStudent, forbidden, staffScope, visibleEnrollmentIdsForCourse } from "@/lib/staff-access"
 import { isMgr } from "@/lib/staff-roles"
 import { itemGate, availabilityNote } from "@/lib/lms-groups"
+import { isTeamWork, teamOf, teamCopies } from "@/lib/lms-teams"
 
 const BUCKET = "lms-submissions"
 const SIGNED_URL_SECONDS = 60 * 60
@@ -215,6 +216,27 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Team work: the submission is the team's — every teammate's record gets the
+  // same one (marked once, released to all).
+  if (isTeamWork(module)) {
+    const team = await teamOf(enrollment.id)
+    if (team) {
+      const teamAnswers = { ...(attempt as any).answers, team_submission: (attempt as any).id, team_id: team.id, team_name: team.name, submitted_by: student.name ?? null }
+      await db.from("lms_module_attempts").update({ answers: teamAnswers }).eq("id", (attempt as any).id)
+      ;(attempt as any).answers = teamAnswers
+      for (const m of team.members.filter(x => x.enrollment_id !== enrollment.id)) {
+        const { count: theirs } = await db.from("lms_module_attempts").select("id", { count: "exact", head: true })
+          .eq("module_id", module_id).eq("enrollment_id", m.enrollment_id)
+        await db.from("lms_module_attempts").insert({
+          module_id, student_id: m.student_id, enrollment_id: m.enrollment_id, course_id,
+          attempt_no: (theirs ?? 0) + 1, status, score: (attempt as any).score, max_score: (attempt as any).max_score,
+          passed: (attempt as any).passed, answers: teamAnswers, ai_feedback: (attempt as any).ai_feedback,
+          started_at: now, submitted_at: now,
+        })
+      }
+    }
+  }
+
   // EM-15 — work that still needs a human mark. An AI-graded submission is
   // already scored, so nobody is asked to look at it.
   if (status === "submitted")
@@ -244,7 +266,7 @@ export async function PATCH(req: Request) {
   // of any attempt — including a Final Exam attempt — by id.
   const { data: target } = await db
     .from("lms_module_attempts")
-    .select("id, student_id, enrollment_id, course_id, score, status, ai_feedback, lms_modules!inner(module_type)")
+    .select("id, student_id, enrollment_id, course_id, score, status, ai_feedback, answers, lms_modules!inner(module_type)")
     .eq("id", attempt_id)
     .maybeSingle()
   if (!target) return NextResponse.json({ error: "Attempt not found" }, { status: 404 })
@@ -253,6 +275,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Only assignment submissions can be graded here" }, { status: 400 })
 
   // Release action — make result visible to student
+  // A team submission is marked / released once for every member.
+  const copies = await teamCopies(target as any)
+  const others = copies.filter(id => id !== attempt_id)
+
   if (release) {
     const { data, error } = await db
       .from("lms_module_attempts")
@@ -261,8 +287,10 @@ export async function PATCH(req: Request) {
       .select("id, status")
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (others.length) await db.from("lms_module_attempts").update({ status: "released" }).in("id", others)
     await recheck(target)
-    return NextResponse.json(data)
+    await recheckCopies(others)
+    return NextResponse.json({ ...data, team_members: copies.length })
   }
 
   // Grade action. Re-marking a result the instructor already gave needs a reason.
@@ -292,8 +320,19 @@ export async function PATCH(req: Request) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (others.length) {
+    const { data: full } = await db.from("lms_module_attempts").select("score, max_score, passed, status, ai_feedback, graded_at").eq("id", attempt_id).single()
+    await db.from("lms_module_attempts").update(full as any).in("id", others)
+  }
   await recheck(target)
-  return NextResponse.json(data)
+  await recheckCopies(others)
+  return NextResponse.json({ ...data, team_members: copies.length })
+}
+
+async function recheckCopies(ids: string[]) {
+  if (!ids.length) return
+  const { data } = await db.from("lms_module_attempts").select("student_id, enrollment_id, course_id").in("id", ids)
+  for (const t of (data ?? []) as any[]) await recheck(t)
 }
 
 // A marked assignment can be what completes the course under its pass rule.

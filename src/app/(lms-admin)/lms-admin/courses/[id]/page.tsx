@@ -1072,6 +1072,7 @@ function AssignmentSettingsPanel({ mod }: { mod: Module }) {
   // Grading
   const [passMark,        setPassMark]        = useState<number>(as.pass_mark ?? 70)
   const [itemWeight,      setItemWeight]      = useState<string>(as.weight ? String(as.weight) : "1")
+  const [teamWork,        setTeamWork]        = useState<boolean>(as.team_work === true)
 
   // Access
   const [isMandatory,     setIsMandatory]     = useState(mod.is_mandatory ?? false)
@@ -1412,6 +1413,11 @@ function AssignmentSettingsPanel({ mod }: { mod: Module }) {
             </p>
           </div>
           <div className="space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer pb-3 border-b border-slate-100">
+              <input type="checkbox" checked={teamWork} onChange={e => { setTeamWork(e.target.checked); saveAs({ team_work: e.target.checked }) }} className="mt-0.5" />
+              <span><span className="text-sm font-medium text-slate-800 block">Team work (onsite groups)</span>
+                <span className="text-xs text-slate-500">One member submits for the team; the instructor marks it once and the mark, feedback and release go to every member. Teams are set on the group&apos;s Participants tab.</span></span>
+            </label>
             <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Weight among assignments</label>
             <div className="flex items-center gap-3">
               <input type="number" min={1} max={100} value={itemWeight}

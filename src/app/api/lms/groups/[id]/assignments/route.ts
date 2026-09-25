@@ -23,7 +23,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [{ data: mods }, { data: people }] = await Promise.all([
     db.from("lms_modules").select("id, title, order_index, is_mandatory, assignment_rubric, activity_settings, assignment_due_date")
       .eq("course_id", group.course_id).eq("module_type", "assignment").order("order_index"),
-    db.from("lms_enrollments").select("id, student_id, lms_students(id, name, email)").eq("group_id", id).in("status", SEAT_STATUSES),
+    db.from("lms_enrollments").select("id, student_id, team_id, lms_students(id, name, email), lms_group_teams(name)").eq("group_id", id).in("status", SEAT_STATUSES),
   ])
   const enrIds = ((people ?? []) as any[]).map(p => p.id)
   const modIds = ((mods ?? []) as any[]).map(m => m.id)
@@ -48,8 +48,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       id: m.id, title: m.title, required: m.is_mandatory !== false,
       pass_mark: Number(m.activity_settings?.pass_mark ?? 60), due: m.assignment_due_date,
       rubric: Array.isArray(m.assignment_rubric) ? m.assignment_rubric : [],
+      team_work: m.activity_settings?.team_work === true,
     })),
-    participants: ((people ?? []) as any[]).map(p => ({ enrollment_id: p.id, student: p.lms_students }))
+    participants: ((people ?? []) as any[]).map(p => ({ enrollment_id: p.id, student: p.lms_students, team: p.team_id ? { id: p.team_id, name: p.lms_group_teams?.name ?? "Team" } : null }))
       .sort((x, y) => (x.student?.name ?? "").localeCompare(y.student?.name ?? "")),
     submissions: [...latest.values()].map(a => ({
       id: a.id, enrollment_id: a.enrollment_id, module_id: a.module_id, attempt_no: a.attempt_no,
@@ -59,6 +60,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       confirmed: a.status === "released" || a.ai_feedback?.graded_by === "instructor",
       ai: a.ai_feedback ? { comment: a.ai_feedback.overall_comment ?? null, criteria: a.ai_feedback.criteria ?? null } : null,
       rescores: a.ai_feedback?.rescores ?? [],
+      submitted_by: a.answers?.submitted_by ?? null, team_name: a.answers?.team_name ?? null,
     })),
   })
 }

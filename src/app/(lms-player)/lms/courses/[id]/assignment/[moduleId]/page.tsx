@@ -1,4 +1,5 @@
-﻿import { availabilityNote } from "@/lib/lms-groups"
+﻿import { isTeamWork, teamOf } from "@/lib/lms-teams"
+import { availabilityNote } from "@/lib/lms-groups"
 import { materialsFor } from "@/lib/lms-materials"
 import { ItemFiles } from "@/components/lms/groups/StudentCoursePanels"
 import { getStudentSession } from "@/lib/lms-auth"
@@ -71,6 +72,9 @@ export default async function AssignmentPage({
   // The assignment's own files (template, form, data) — download, complete, upload below.
   const templates = (await materialsFor(enrollment).catch(() => [])).flatMap(s => s.items).filter(i => i.moduleId === moduleId)
 
+  // Team work: who's in their team, and who submitted for it.
+  const team = isTeamWork(module as any) ? await teamOf(enrollment.id) : null
+
   const rubric           = (module.assignment_rubric as RubricCriterion[] | null) ?? []
   const submissionTypes  = (module.assignment_submission_types as string[] | null) ?? ["pdf", "docx"]
   const maxAttempts      = (module.assignment_max_attempts as number | null) ?? 99
@@ -103,6 +107,13 @@ export default async function AssignmentPage({
             )}
           </div>
 
+          {team && (
+            <div className="mb-6 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+              <p className="font-semibold">Team assignment — {team.name}</p>
+              <p className="text-xs mt-0.5">{team.members.map(m => m.name).join(", ")}. One of you submits for the team; the mark and feedback come to everyone.
+                {(latest as any)?.answers?.submitted_by ? ` Submitted by ${(latest as any).answers.submitted_by}.` : ""}</p>
+            </div>
+          )}
           {templates.length > 0 && (
             <div className="mb-6">
               <ItemFiles courseId={courseId} items={templates} label="Template / files for this assignment — download, complete, then upload below" />

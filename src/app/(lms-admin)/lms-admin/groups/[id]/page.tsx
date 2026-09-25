@@ -17,6 +17,7 @@ import MaterialsManager from "@/components/lms/groups/MaterialsManager"
 import { GroupExercises, GroupAssignments } from "@/components/lms/groups/GroupMarking"
 import { GroupExam, AccessPanel } from "@/components/lms/groups/GroupExam"
 import { GroupFeedback } from "@/components/lms/groups/GroupFeedback"
+import GroupTeams from "@/components/lms/groups/GroupTeams"
 import ViewAsStudentButton from "@/components/lms/ViewAsStudentButton"
 import { ComponentBadge, ResultPill } from "@/components/lms/course/PassResultView"
 
@@ -188,6 +189,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {tab === "participants" && (
         <div className="space-y-3">
+          {d.participants.length > 1 && <GroupTeams groupId={id} participants={d.participants} />}
           {manage && <div className="flex justify-end">
             <Button size="sm" onClick={() => setAdding(true)} disabled={g.status === "cancelled" || g.status === "completed"} className="gap-1.5 bg-[#1B4F8A] hover:bg-[#163f6e] text-white"><Plus className="h-3.5 w-3.5" /> Add participants</Button>
           </div>}

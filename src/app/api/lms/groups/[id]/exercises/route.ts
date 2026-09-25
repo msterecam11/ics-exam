@@ -15,6 +15,7 @@ import { auditLog } from "@/lib/audit"
 import { guardStaff, forbidden } from "@/lib/staff-access"
 import { loadGroup, isUuid, SEAT_STATUSES, groupLabel } from "@/lib/lms-groups"
 import { checkCourseCompletion, syncEnrollmentProgress } from "@/lib/lms-completion"
+import { isTeamWork, teamOf } from "@/lib/lms-teams"
 
 export const dynamic = "force-dynamic"
 type Params = { params: Promise<{ id: string }> }
@@ -36,7 +37,7 @@ export async function GET(_req: Request, { params }: Params) {
   const [{ data: mods }, { data: people }] = await Promise.all([
     db.from("lms_modules").select("id, title, order_index, is_mandatory, parent_module_id, assignment_brief_html, assignment_rubric, activity_settings")
       .eq("course_id", a.group.course_id).eq("module_type", "exercise").order("order_index"),
-    db.from("lms_enrollments").select("id, student_id, lms_students(id, name, email)").eq("group_id", id).in("status", SEAT_STATUSES),
+    db.from("lms_enrollments").select("id, student_id, team_id, lms_students(id, name, email), lms_group_teams(name)").eq("group_id", id).in("status", SEAT_STATUSES),
   ])
   const enrIds = ((people ?? []) as any[]).map(p => p.id)
   const { data: marks } = enrIds.length
@@ -54,8 +55,9 @@ export async function GET(_req: Request, { params }: Params) {
       marking: m.activity_settings?.marking === "rubric" && Array.isArray(m.assignment_rubric) && m.assignment_rubric.length ? "rubric" : "pass_fail",
       rubric: Array.isArray(m.assignment_rubric) ? m.assignment_rubric : [],
       pass_pct: Number(m.activity_settings?.pass_pct ?? 60),
+      team_work: m.activity_settings?.team_work === true,
     })),
-    participants: ((people ?? []) as any[]).map(p => ({ enrollment_id: p.id, student: p.lms_students }))
+    participants: ((people ?? []) as any[]).map(p => ({ enrollment_id: p.id, student: p.lms_students, team: p.team_id ? { id: p.team_id, name: p.lms_group_teams?.name ?? "Team" } : null }))
       .sort((x, y) => (x.student?.name ?? "").localeCompare(y.student?.name ?? "")),
     marks: ((marks ?? []) as any[]).map(m => ({ ...m, marked_by: markerName.get(m.marked_by) ?? null })),
   })
@@ -99,16 +101,24 @@ export async function POST(req: Request, { params }: Params) {
   }
   const comment = typeof body.comment === "string" && body.comment.trim() ? body.comment.trim().slice(0, 2000) : null
 
-  const { error } = await db.from("lms_exercise_results").upsert({
-    enrollment_id: (enr as any).id, student_id: (enr as any).student_id, module_id: m.id,
-    passed, score_pct: scorePct, ratings, comment, marked_by: a.g.session.id, marked_at: new Date().toISOString(),
-  }, { onConflict: "enrollment_id,module_id" })
+  // A team exercise is marked once for every member of the team.
+  const team = isTeamWork(m) ? await teamOf((enr as any).id) : null
+  const targets = team
+    ? team.members.map(x => ({ id: x.enrollment_id, student_id: x.student_id }))
+    : [{ id: (enr as any).id, student_id: (enr as any).student_id }]
+  const at = new Date().toISOString()
+  const { error } = await db.from("lms_exercise_results").upsert(targets.map(t => ({
+    enrollment_id: t.id, student_id: t.student_id, module_id: m.id,
+    passed, score_pct: scorePct, ratings, comment, marked_by: a.g.session.id, marked_at: at,
+  })), { onConflict: "enrollment_id,module_id" })
   if (error) return NextResponse.json({ error: "Could not save the mark" }, { status: 500 })
 
-  await auditLog(actor, "lms.exercise.mark", "lms_module", m.id, m.title, { enrollment_id: (enr as any).id, passed, score_pct: scorePct })
-  await syncEnrollmentProgress((enr as any).student_id, (enr as any).course_id, (enr as any).id)
-  await checkCourseCompletion((enr as any).student_id, (enr as any).course_id, (enr as any).id).catch(() => {})
-  return NextResponse.json({ ok: true, passed, score_pct: scorePct })
+  await auditLog(actor, "lms.exercise.mark", "lms_module", m.id, m.title, { enrollment_id: (enr as any).id, team: team?.name ?? null, members: targets.length, passed, score_pct: scorePct })
+  for (const t of targets) {
+    await syncEnrollmentProgress(t.student_id, (enr as any).course_id, t.id)
+    await checkCourseCompletion(t.student_id, (enr as any).course_id, t.id).catch(() => {})
+  }
+  return NextResponse.json({ ok: true, passed, score_pct: scorePct, team: team ? { name: team.name, members: targets.length } : null })
 }
 
 export async function DELETE(req: Request, { params }: Params) {

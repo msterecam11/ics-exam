@@ -14,12 +14,12 @@ import { AccessPanel } from "@/components/lms/groups/GroupExam"
 //   GroupAssignments — per assignment, who submitted; open one to mark / release
 
 type Student = { id: string; name: string; email: string } | null
-type Participant = { enrollment_id: string; student: Student }
+type Participant = { enrollment_id: string; student: Student; team?: { id: string; name: string } | null }
 type Criterion = { id: string; title: string; maxScore: number }
 
 // ─── Exercises ────────────────────────────────────────────────────────────────
 
-type Exercise = { id: string; title: string; required: boolean; instructions: string | null; marking: "pass_fail" | "rubric"; rubric: Criterion[]; pass_pct: number }
+type Exercise = { id: string; title: string; required: boolean; instructions: string | null; marking: "pass_fail" | "rubric"; rubric: Criterion[]; pass_pct: number; team_work?: boolean }
 type Mark = { enrollment_id: string; module_id: string; passed: boolean; score_pct: number | null; ratings: Record<string, number> | null; comment: string | null; marked_at: string; marked_by: string | null }
 
 export function GroupExercises({ groupId }: { groupId: string }) {
@@ -48,13 +48,13 @@ export function GroupExercises({ groupId }: { groupId: string }) {
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-500">
               <th className="text-left font-medium px-4 py-2.5 sticky left-0 bg-white">Participant</th>
-              {d.exercises.map(e => <th key={e.id} className="font-medium px-3 py-2.5 text-center min-w-[110px]">{e.title}{!e.required && <span className="block text-[10px] text-slate-400">optional</span>}</th>)}
+              {d.exercises.map(e => <th key={e.id} className="font-medium px-3 py-2.5 text-center min-w-[110px]">{e.title}{!e.required && <span className="block text-[10px] text-slate-400">optional</span>}{e.team_work && <span className="block text-[10px] text-violet-600">marked per team</span>}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {d.participants.map(p => (
               <tr key={p.enrollment_id}>
-                <td className="px-4 py-2.5 sticky left-0 bg-white"><p className="font-medium text-slate-800">{p.student?.name}</p><p className="text-xs text-slate-400">{p.student?.email}</p></td>
+                <td className="px-4 py-2.5 sticky left-0 bg-white"><p className="font-medium text-slate-800">{p.student?.name}</p><p className="text-xs text-slate-400">{p.team ? `${p.team.name} · ` : ""}{p.student?.email}</p></td>
                 {d.exercises.map(e => {
                   const m = markOf(p.enrollment_id, e.id)
                   return (
@@ -100,7 +100,7 @@ function MarkExercise({ groupId, p, e, mark, onClose, onSaved }: { groupId: stri
     setBusy(false)
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { toast.error(j.error ?? "Could not save"); return }
-    toast.success("Marked"); onSaved()
+    toast.success(j.team ? `Marked for ${j.team.name} (${j.team.members} people)` : "Marked"); onSaved()
   }
   async function clear() {
     if (!confirm("Clear this mark?")) return
@@ -112,8 +112,11 @@ function MarkExercise({ groupId, p, e, mark, onClose, onSaved }: { groupId: stri
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>{e.title} — {p.student?.name}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{e.title} — {e.team_work && p.team ? p.team.name : p.student?.name}</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          {e.team_work && (p.team
+            ? <p className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">Team exercise — this mark goes to everyone in {p.team.name}.</p>
+            : <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Team exercise, but {p.student?.name} isn&apos;t in a team yet — this mark is for them only. Set teams on the Participants tab.</p>)}
           {e.instructions && <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{e.instructions}</p>}
           {rubric ? (
             <div className="space-y-2">
@@ -149,13 +152,14 @@ function MarkExercise({ groupId, p, e, mark, onClose, onSaved }: { groupId: stri
 
 // ─── Assignments ──────────────────────────────────────────────────────────────
 
-type Assignment = { id: string; title: string; required: boolean; pass_mark: number; due: string | null; rubric: Criterion[] }
+type Assignment = { id: string; title: string; required: boolean; pass_mark: number; due: string | null; rubric: Criterion[]; team_work?: boolean }
 type Submission = {
   id: string; enrollment_id: string; module_id: string; attempt_no: number; status: string
   score: number | null; max_score: number | null; passed: boolean | null; submitted_at: string | null
   text: string | null; file_name: string | null; file_url: string | null; confirmed: boolean
   ai: { comment: string | null; criteria: { id: string; title: string; max: number; score: number; comment: string }[] | null } | null
   rescores: { from: number; to: number; reason: string; by: string; at: string }[]
+  submitted_by?: string | null; team_name?: string | null
 }
 
 export function GroupAssignments({ groupId }: { groupId: string }) {
@@ -184,18 +188,21 @@ export function GroupAssignments({ groupId }: { groupId: string }) {
           <div key={a.id} className="bg-white border border-slate-200 rounded-xl">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
               <p className="flex-1 font-semibold text-slate-800">{a.title}{!a.required && <span className="ml-2 text-[10px] text-slate-400 font-normal">optional</span>}</p>
-              <p className="text-xs text-slate-500">{subs.length}/{d.participants.length} submitted{toMark ? ` · ${toMark} to confirm` : ""} · pass {a.pass_mark}%</p>
+              <p className="text-xs text-slate-500">{a.team_work ? "Team work · " : ""}{subs.length}/{d.participants.length} submitted{toMark ? ` · ${toMark} to confirm` : ""} · pass {a.pass_mark}%</p>
             </div>
             <div className="divide-y divide-slate-100">
-              {d.participants.map(p => {
-                const s = subs.find(x => x.enrollment_id === p.enrollment_id)
+              {rowsFor(a, d.participants).map(({ key, label, members, p }) => {
+                const s = members.map(m => subs.find(x => x.enrollment_id === m.enrollment_id)).find(Boolean)
                 return (
-                  <div key={p.enrollment_id} className="flex items-center gap-3 px-4 py-2.5">
-                    <p className="flex-1 min-w-0 text-sm text-slate-800 truncate">{p.student?.name}</p>
+                  <div key={key} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-800 truncate">{label}</p>
+                      {members.length > 1 && <p className="text-xs text-slate-400 truncate">{members.map(m => m.student?.name).join(", ")}{s?.submitted_by ? ` · submitted by ${s.submitted_by}` : ""}</p>}
+                    </div>
                     {!s ? <span className="text-xs text-slate-400">Not submitted</span> : (
                       <>
                         <StatusChip s={s} />
-                        <Button size="sm" variant="outline" onClick={() => setOpen({ s, a, p })} className="h-7 text-xs">{s.confirmed ? "View" : "Mark"}</Button>
+                        <Button size="sm" variant="outline" onClick={() => setOpen({ s, a, p: members.find(m => m.enrollment_id === s.enrollment_id) ?? p })} className="h-7 text-xs">{s.confirmed ? "View" : "Mark"}</Button>
                       </>
                     )}
                   </div>
@@ -208,6 +215,18 @@ export function GroupAssignments({ groupId }: { groupId: string }) {
       {open && <MarkAssignment {...open} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load() }} />}
     </div>
   )
+}
+
+/** Team work: one row per team (and anyone not in a team); otherwise one per person. */
+function rowsFor(a: Assignment, people: Participant[]) {
+  if (!a.team_work) return people.map(p => ({ key: p.enrollment_id, label: p.student?.name ?? "", members: [p], p }))
+  const teams = new Map<string, Participant[]>()
+  const solo: Participant[] = []
+  for (const p of people) { if (p.team) { if (!teams.has(p.team.id)) teams.set(p.team.id, []); teams.get(p.team.id)!.push(p) } else solo.push(p) }
+  return [
+    ...[...teams.entries()].map(([id, ms]) => ({ key: id, label: ms[0].team!.name, members: ms, p: ms[0] })),
+    ...solo.map(p => ({ key: p.enrollment_id, label: `${p.student?.name ?? ""} (no team)`, members: [p], p })),
+  ]
 }
 
 function StatusChip({ s }: { s: Submission }) {
@@ -260,8 +279,9 @@ function MarkAssignment({ s, a, p, onClose, onSaved }: { s: Submission; a: Assig
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{a.title} — {p.student?.name}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{a.title} — {s.team_name ?? p.student?.name}</DialogTitle></DialogHeader>
         <div className="space-y-4">
+          {s.team_name && <p className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">Team submission{s.submitted_by ? ` by ${s.submitted_by}` : ""} — the mark, feedback and release go to everyone in {s.team_name}.</p>}
           <p className="text-xs text-slate-400">Attempt {s.attempt_no}{s.submitted_at ? ` · submitted ${new Date(s.submitted_at).toLocaleString("en-GB")}` : ""}</p>
           {s.file_url && <a href={s.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-medium text-[#1B4F8A] hover:underline"><FileText className="h-4 w-4" />{s.file_name ?? "Submitted file"}</a>}
           {s.text && <div className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap max-h-60 overflow-y-auto">{s.text}</div>}

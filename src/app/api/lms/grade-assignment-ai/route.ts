@@ -5,6 +5,7 @@ import { res429 } from "@/lib/apiUtils"
 import { extractPdfPageTexts } from "@/lib/pdf-extract"
 import Groq from "groq-sdk"
 import { guardStaff, canSeeStudent, forbidden } from "@/lib/staff-access"
+import { teamCopies } from "@/lib/lms-teams"
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY_LMS ?? process.env.GROQ_API_KEY ?? "placeholder",
@@ -232,6 +233,11 @@ Grade each rubric criterion fairly and objectively. Respond ONLY with valid JSON
 
   if (updateErr)
     return NextResponse.json({ error: "Could not save the grade" }, { status: 500 })
+
+  // A team submission: the same mark on every member's copy.
+  const siblings = (await teamCopies(attempt as any)).filter(id => id !== attempt_id)
+  if (siblings.length)
+    await db.from("lms_module_attempts").update({ score: (updated as any).score, max_score: (updated as any).max_score, passed: (updated as any).passed, status: (updated as any).status, ai_feedback: (updated as any).ai_feedback }).in("id", siblings)
 
   return NextResponse.json(updated)
 }

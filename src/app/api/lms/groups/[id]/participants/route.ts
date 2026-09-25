@@ -45,7 +45,7 @@ export async function DELETE(req: Request, { params }: Params) {
   const ids = (Array.isArray(body.enrollment_ids) ? body.enrollment_ids : []).filter(isUuid)
   if (!ids.length) return NextResponse.json({ error: "Choose at least one participant" }, { status: 400 })
 
-  const { data, error } = await db.from("lms_enrollments").update({ group_id: null })
+  const { data, error } = await db.from("lms_enrollments").update({ group_id: null, team_id: null })
     .eq("group_id", id).in("id", ids).select("id")
   if (error) return NextResponse.json({ error: "Could not update" }, { status: 500 })
 
