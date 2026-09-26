@@ -66,13 +66,21 @@ export default async function MyCoursesPage() {
     const totalMins  = totalMinutesByCourse[cid] ?? 0
     const pct        = Math.min(100, Math.round(e.progress_pct ?? 0))
 
-    // Inside a program its dates apply (the student's extension wins); outside
-    // one, the course's own dates.
+    // The course's own dates: an onsite / external course runs with its class
+    // (until its due date); an online course by its Opens / Due in the program,
+    // else the program's; a personal extension wins. Outside a program, the
+    // course's own dates.
     const prog      = e.program_id ? e.lms_programs : null
-    const startDate = prog ? (prog.start_date ?? null) : (e.lms_courses?.start_date ? String(e.lms_courses.start_date).slice(0, 10) : null)
-    const endDate   = prog
-      ? (e.lms_program_members?.end_date_override ?? prog.end_date ?? null)
-      : (e.lms_courses?.end_date ? String(e.lms_courses.end_date).slice(0, 10) : null)
+    const mode      = e.lms_courses?.delivery_mode ?? "online"
+    const cls       = mode !== "online" ? e.enr_class : null
+    const classSet  = !!cls && ["confirmed", "completed"].includes(cls.status)
+    const startDate = mode !== "online"
+      ? (classSet ? cls.start_date : null)
+      : prog ? (e.opens_on ?? prog.start_date ?? null) : (e.lms_courses?.start_date ? String(e.lms_courses.start_date).slice(0, 10) : null)
+    const endDate   = e.due_override ?? e.due_on ?? (mode !== "online"
+      ? (classSet ? cls.end_date : null)
+      : prog ? (e.lms_program_members?.end_date_override ?? prog.end_date ?? null)
+      : (e.lms_courses?.end_date ? String(e.lms_courses.end_date).slice(0, 10) : null))
     const daysLeft  = e.status === "active" && e.access === "full" && endDate ? daysUntil(endDate) : null
     const lock      = locks.get(cid)
 
@@ -90,7 +98,7 @@ export default async function MyCoursesPage() {
       endDate,
       daysLeft:      daysLeft !== null && daysLeft >= 0 ? daysLeft : null,
       deadline:      deadlineLevel(daysLeft),
-      extended:      !!prog && !!e.lms_program_members?.end_date_override && e.lms_program_members.end_date_override !== prog.end_date,
+      extended:      !!e.due_override || (mode === "online" && !e.due_on && !!prog && !!e.lms_program_members?.end_date_override && e.lms_program_members.end_date_override !== prog.end_date),
       readOnly:      e.access === "read_only",
       accessNote:    e.accessNote ?? null,
       lockReason:    lock?.locked ? lock.reason : null,

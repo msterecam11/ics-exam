@@ -95,7 +95,9 @@ function CourseCard({ row }: { row: CourseRow }) {
   const locked = !done && !!row.lockReason
 
   const ctaHref  = `/lms/courses/${course.id}`
-  const ctaLabel = done || row.readOnly ? "Review" : progress > 0 ? "Continue" : "Start"
+  // An external course has nothing to work through here: its page shows the class, the result and certificates.
+  const external = course.delivery_mode === "external"
+  const ctaLabel = external ? "View" : done || row.readOnly ? "Review" : progress > 0 ? "Continue" : "Start"
 
   const accessedLabel = relativeAccessed(lastAccessed)
   const totalLabel    = fmtMins(totalMinutes)
@@ -174,7 +176,7 @@ function CourseCard({ row }: { row: CourseRow }) {
 
         <div className="flex-1" />
 
-        <div className="mt-3">
+        {!external && <div className="mt-3">
           {done ? (
             <div className="h-1.5 bg-emerald-100 rounded-full"><div className="h-full bg-emerald-500 rounded-full w-full" /></div>
           ) : (
@@ -188,7 +190,7 @@ function CourseCard({ row }: { row: CourseRow }) {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {locked ? (
           <div className="mt-3 w-full flex items-start justify-center gap-1.5 py-2 px-2 rounded-lg text-[11px] font-medium bg-amber-50 text-amber-700 text-center">

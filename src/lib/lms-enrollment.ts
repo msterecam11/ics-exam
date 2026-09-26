@@ -68,7 +68,7 @@ export type EnrollmentContext = {
 
 const ENROLLMENT_SELECT = `
   id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id, group_id, opens_on, due_on, due_override,
-  enr_class:lms_course_groups(end_date),
+  enr_class:lms_course_groups(start_date, end_date, status),
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
@@ -160,7 +160,7 @@ export async function getCurrentEnrollments(studentId: string): Promise<Enrollme
 /** Columns to add to an lms_enrollments select (which must also include
  *  course_id, status and enrolled_at) so rows can go through currentVisible(). */
 export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id, group_id, opens_on, due_on, due_override,
-  enr_class:lms_course_groups(end_date),
+  enr_class:lms_course_groups(start_date, end_date, status),
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
@@ -217,13 +217,13 @@ export async function getCourseLocks(items: LockInput[], now = new Date()): Prom
   const today = todayISO(now)
   const sequential: LockInput[] = []
 
-  // An onsite course opens with its class: until the participant's class is
+  // An onsite (or external) course opens with its class: until the participant's class is
   // confirmed and its first day comes, the course is locked (the class details
   // still show on the course page).
   const live = items.filter(e => e.access === "full" && e.status === "active")
   const courseIds = [...new Set(live.map(e => e.course_id))]
   const { data: modeRows } = courseIds.length ? await db.from("lms_courses").select("id, delivery_mode").in("id", courseIds) : { data: [] as any[] }
-  const onsite = new Set(((modeRows ?? []) as any[]).filter(c => c.delivery_mode === "onsite").map(c => c.id))
+  const onsite = new Set(((modeRows ?? []) as any[]).filter(c => c.delivery_mode === "onsite" || c.delivery_mode === "external").map(c => c.id))
   const groupIds = [...new Set(live.filter(e => onsite.has(e.course_id) && e.group_id).map(e => e.group_id!))]
   const { data: groupRows } = groupIds.length ? await db.from("lms_course_groups").select("id, status, start_date").in("id", groupIds) : { data: [] as any[] }
   const groupOf = new Map(((groupRows ?? []) as any[]).map(g => [g.id, g]))
