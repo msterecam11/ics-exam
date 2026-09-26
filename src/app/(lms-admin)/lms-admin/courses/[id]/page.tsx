@@ -1892,7 +1892,7 @@ function ModuleCanvas({ module: mod, courseId, classroom = false }: { module: Mo
           <h2 className="text-lg font-bold text-slate-900">{mod.title}</h2>
           <p className="text-sm text-slate-500 mt-1">Taught in class. Upload this module&apos;s slides and hand-outs here — participants download them from <b>Course Material</b> (or, for a file set to be released in class, once the instructor releases it). Add its exercises and assignments as their own items placed inside this module.</p>
         </div>
-        <MaterialsManager courseId={courseId} modules={[]} onlyModuleId={mod.id} />
+        <MaterialsManager courseId={courseId} modules={[]} onlyModuleId={mod.id} defaultFrom="start" />
       </div>
     </div>
   )
@@ -2522,7 +2522,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
               {activeView === "materials" && course && (
                 <div className="max-w-4xl pb-20 space-y-4">
                   <h2 className="text-lg font-bold text-slate-900">Materials</h2>
-                  <MaterialsManager courseId={courseId} modules={modules.map(m => ({ id: m.id, title: m.title }))} />
+                  <MaterialsManager courseId={courseId} modules={modules.map(m => ({ id: m.id, title: m.title }))} defaultFrom={course.delivery_mode === "onsite" ? "start" : "enrolment"} />
                 </div>
               )}
 

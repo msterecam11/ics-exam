@@ -318,13 +318,29 @@ export type GateModule = { id: string; module_type: string; activity_settings?: 
 export const defaultOpen = (mod: GateModule) =>
   mod.module_type === "final_exam" ? false : mod.activity_settings?.release_in_class === true ? false : true
 
-export function isItemOpen(access: ItemAccess | null | undefined, mod: GateModule): boolean {
-  if (!(GATED_TYPES as readonly string[]).includes(mod.module_type)) return true
-  const e = access?.[mod.id]
-  return e ? e.open === true : defaultOpen(mod)
+/** Before the class's first day (the group's start date, in the institute's day). */
+export function beforeClass(classStart: string | null | undefined, now = new Date()): boolean {
+  return !!classStart && new Date(now.getTime() + 3 * 3600_000).toISOString().slice(0, 10) < classStart
 }
 
-export function gateMessage(moduleType: string): string {
+/**
+ * Open for this group? The instructor's own choice wins; before the class's
+ * first day assignments and exercises wait (the exam always waits for its
+ * release); otherwise the default.
+ */
+export function isItemOpen(access: ItemAccess | null | undefined, mod: GateModule, classStart?: string | null): boolean {
+  const early = beforeClass(classStart)
+  if (!(GATED_TYPES as readonly string[]).includes(mod.module_type) && !(early && mod.module_type === "exercise")) return true
+  const e = access?.[mod.id]
+  if (e) return e.open === true
+  if (early) return false
+  return defaultOpen(mod)
+}
+
+const dayLabel = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+
+export function gateMessage(moduleType: string, classStart?: string | null): string {
+  if (moduleType !== "final_exam" && beforeClass(classStart)) return `Opens on the first day of your class (${dayLabel(classStart!)}).`
   return moduleType === "final_exam" ? "The final exam opens when your instructor releases it."
     : moduleType === "assignment" ? "Your instructor has locked this assignment for now."
     : "Your instructor opens this module in class."
@@ -339,9 +355,10 @@ export async function itemGate(groupId: string | null | undefined, mod: GateModu
     const { data } = await db.from("lms_modules").select("activity_settings").eq("id", mod.id).maybeSingle()
     m = { ...mod, activity_settings: (data as any)?.activity_settings ?? {} }
   }
-  const { data } = await db.from("lms_course_groups").select("item_access").eq("id", groupId).maybeSingle()
-  if (isItemOpen((data as any)?.item_access, m)) return { open: true }
-  return { open: false, message: gateMessage(m.module_type) }
+  const { data } = await db.from("lms_course_groups").select("item_access, start_date").eq("id", groupId).maybeSingle()
+  const start = (data as any)?.start_date ?? null
+  if (isItemOpen((data as any)?.item_access, m, start)) return { open: true }
+  return { open: false, message: gateMessage(m.module_type, start) }
 }
 
 /**

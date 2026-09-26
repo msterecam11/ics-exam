@@ -157,7 +157,32 @@ export async function syncMemberEnrollments(memberId: string, actorId: string | 
   if (opts?.notify && newlyEnrolled.length && m.lms_programs?.status === "active") {
     await notifyEnrolled(m.student_id, newlyEnrolled)
   }
+  await applyCourseDates(m.program_id, memberId).catch(() => {})
   return result
+}
+
+/**
+ * Copies each course's dates in the program (Structure → Opens / Due) onto the
+ * members' enrolments — a track's own row wins over the "all tracks" row.
+ * A personal extension (due_override) is never touched.
+ */
+export async function applyCourseDates(programId: string, memberId?: string) {
+  const [{ data: items }, { data: members }] = await Promise.all([
+    db.from("lms_program_items").select("track_id, course_id, opens_on, due_on").eq("program_id", programId).not("course_id", "is", null),
+    memberId
+      ? db.from("lms_program_members").select("id, track_id").eq("id", memberId)
+      : db.from("lms_program_members").select("id, track_id").eq("program_id", programId),
+  ])
+  const list = (items ?? []) as any[]
+  for (const mem of (members ?? []) as any[]) {
+    const { data: enr } = await db.from("lms_enrollments").select("id, course_id, opens_on, due_on").eq("member_id", mem.id)
+    for (const e of (enr ?? []) as any[]) {
+      const it = list.find(i => i.course_id === e.course_id && i.track_id === mem.track_id) ?? list.find(i => i.course_id === e.course_id && i.track_id === null)
+      const opens = it?.opens_on ?? null, due = it?.due_on ?? null
+      if (opens !== (e.opens_on ?? null) || due !== (e.due_on ?? null))
+        await db.from("lms_enrollments").update({ opens_on: opens, due_on: due }).eq("id", e.id)
+    }
+  }
 }
 
 export async function notifyEnrolled(studentId: string, courseIds: string[]) {

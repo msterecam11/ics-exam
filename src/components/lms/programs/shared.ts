@@ -23,7 +23,8 @@ export type ProgramDetail = {
   tracks: { id: string; name: string; order_index: number }[]
   items: {
     id: string; track_id: string | null; course_id: string | null; path_id: string | null; order_index: number
-    lms_courses: { id: string; title: string; status: string } | null
+    opens_on?: string | null; due_on?: string | null
+    lms_courses: { id: string; title: string; status: string; delivery_mode?: string } | null
     lms_learning_paths: { id: string; title: string } | null
   }[]
   path_courses: { path_id: string; order_index: number; lms_courses: { id: string; title: string } | null }[]
@@ -40,6 +41,7 @@ export type ProgramDetail = {
     lms_students: { id: string; name: string; email: string; company: string | null; job_title: string | null; employee_number: string | null } | null
     enrollments: {
       id: string; course_id: string; status: string; progress_pct: number | null; completed_at: string | null
+      due_on?: string | null; due_override?: string | null
       /** Best final-exam attempt on this enrollment, when they have sat it. */
       exam?: { pct: number; passed: boolean; attempts: number } | null
     }[]

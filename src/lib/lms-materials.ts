@@ -94,7 +94,7 @@ export async function materialsFor(enrollment: EnrollmentContext): Promise<Mater
   // A module outside its dates, or not opened yet by the group's instructor,
   // shares nothing — its slides, files and the sheets of the items inside it.
   const access = enrollment.group_id ? (groupRes.data as any)?.item_access ?? {} : null
-  const closed = (m: any) => !!availabilityNote(m) || (access !== null && !isItemOpen(access, m))
+  const closed = (m: any) => !!availabilityNote(m) || (access !== null && !isItemOpen(access, m, group?.start_date ?? null))
   for (const m of allMods.filter(x => !nested(x) && !closed(x))) {
     const items: MaterialItem[] = []
     const pkg = pkgByModule.get(m.id)

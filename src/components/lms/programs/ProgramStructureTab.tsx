@@ -83,6 +83,12 @@ function ScopeItems({ detail, trackId, canEdit, single, onChanged }: {
                 <p className="text-xs text-amber-600">Students are enrolled but can&apos;t open it until it is published.</p>
               )}
               {isPath && <p className="text-xs text-slate-400">{inPath(i.path_id!).join(" → ") || "No courses"}</p>}
+              {!isPath && i.lms_courses?.delivery_mode === "online" && (
+                <CourseDates programId={programId} item={i} canEdit={canEdit} programStart={detail.program.start_date} programEnd={detail.program.end_date} onChanged={onChanged} />
+              )}
+              {!isPath && i.lms_courses && i.lms_courses.delivery_mode !== "online" && (
+                <p className="text-xs text-slate-400 mt-0.5">{i.lms_courses.delivery_mode === "external" ? "External" : "Onsite"} — dates are set per class in the <b>Schedule</b> tab.</p>
+              )}
             </div>
             {canEdit && (
               <button onClick={() => remove(i.id, title)} className="text-slate-300 hover:text-red-500 shrink-0" aria-label="Remove">
@@ -109,6 +115,34 @@ function ScopeItems({ detail, trackId, canEdit, single, onChanged }: {
 }
 
 // ── Rules (pass mark / attempts per course) ─────────────────────────────
+// An online course's own window inside the program. Empty = the program's dates.
+function CourseDates({ programId, item, canEdit, programStart, programEnd, onChanged }: {
+  programId: string; item: ProgramDetail["items"][number]; canEdit: boolean
+  programStart: string | null; programEnd: string | null; onChanged: () => void
+}) {
+  const [opens, setOpens] = useState(item.opens_on ?? "")
+  const [due, setDue] = useState(item.due_on ?? "")
+  const [busy, setBusy] = useState(false)
+  const dirty = opens !== (item.opens_on ?? "") || due !== (item.due_on ?? "")
+  async function save() {
+    setBusy(true)
+    const { ok, data } = await postJson(`/api/lms/programs/${programId}/structure`, "POST", { action: "set_dates", item_id: item.id, opens_on: opens || null, due_on: due || null })
+    setBusy(false)
+    if (!ok) { toast.error(data.error ?? "Could not save the dates"); return }
+    toast.success("Dates saved"); onChanged()
+  }
+  const fmt = (d: string | null) => d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "—"
+  if (!canEdit) return <p className="text-xs text-slate-500 mt-0.5">Opens {item.opens_on ? fmt(item.opens_on) : "with the program"} · Due {item.due_on ? fmt(item.due_on) : "at the program's end"}</p>
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-500">
+      <label className="flex items-center gap-1">Opens <input type="date" value={opens} min={programStart ?? undefined} max={programEnd ?? undefined} onChange={e => setOpens(e.target.value)} className="h-7 rounded border border-slate-200 px-1.5 bg-white text-slate-700" /></label>
+      <label className="flex items-center gap-1">Due <input type="date" value={due} min={opens || programStart || undefined} max={programEnd ?? undefined} onChange={e => setDue(e.target.value)} className="h-7 rounded border border-slate-200 px-1.5 bg-white text-slate-700" /></label>
+      {dirty && <button onClick={save} disabled={busy} className="h-7 px-2.5 rounded bg-[#1B4F8A] text-white font-medium disabled:opacity-50">{busy ? "Saving…" : "Save"}</button>}
+      {!opens && !due && <span className="text-slate-400">Empty = open for the whole program</span>}
+    </div>
+  )
+}
+
 function RulesTable({ detail, canEdit, onChanged }: { detail: ProgramDetail; canEdit: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState<string | null>(null)
   const [pass, setPass] = useState("")

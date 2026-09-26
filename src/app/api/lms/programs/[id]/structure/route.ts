@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { auditLog } from "@/lib/audit"
-import { ensureProgramRules, syncMemberEnrollments } from "@/lib/lms-programs"
+import { ensureProgramRules, syncMemberEnrollments, applyCourseDates } from "@/lib/lms-programs"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -14,6 +14,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 //   add_item      { track_id|null, course_id | path_id }
 //   remove_item   { item_id }
 //   reorder       { item_ids: string[] }             (within one scope)
+//   set_dates     { item_id, opens_on|null, due_on|null }  (a course's own dates)
 //
 // After a change that alters what members take, every active member's
 // enrollments are brought in line (new courses enrolled; removed ones
@@ -153,6 +154,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       for (let i = 0; i < ids.length; i++) {
         await db.from("lms_program_items").update({ order_index: i }).eq("id", ids[i]).eq("program_id", id)
       }
+      break
+    }
+    case "set_dates": {
+      const itemId = typeof body.item_id === "string" && UUID_RE.test(body.item_id) ? body.item_id : null
+      const day = (v: unknown) => v === null || v === "" || v === undefined ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined
+      const opens = day(body.opens_on), due = day(body.due_on)
+      if (!itemId || opens === undefined || due === undefined) return NextResponse.json({ error: "Invalid dates" }, { status: 400 })
+      if (opens && due && opens > due) return NextResponse.json({ error: "The course can't be due before it opens" }, { status: 400 })
+      const { data: item } = await db.from("lms_program_items").update({ opens_on: opens, due_on: due }).eq("id", itemId).eq("program_id", id).select("id").maybeSingle()
+      if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 })
+      await applyCourseDates(id)
       break
     }
     default:

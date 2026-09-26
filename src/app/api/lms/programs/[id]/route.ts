@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [tracks, items, rules, instructors, members, enrollments] = await Promise.all([
     db.from("lms_program_tracks").select("id, name, order_index").eq("program_id", id).order("order_index"),
     db.from("lms_program_items")
-      .select("id, track_id, course_id, path_id, order_index, lms_courses(id, title, status), lms_learning_paths(id, title)")
+      .select("id, track_id, course_id, path_id, order_index, opens_on, due_on, lms_courses(id, title, status, delivery_mode), lms_learning_paths(id, title)")
       .eq("program_id", id).order("order_index"),
     db.from("lms_program_course_rules").select("course_id, pass_mark, max_attempts, lms_courses(id, title)").eq("program_id", id),
     db.from("lms_program_instructors").select("user_id, track_ids, admin_users(id, name, email, role)").eq("program_id", id),
@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .select("id, student_id, track_id, status, end_date_override, added_at, withdrawn_at, lms_students(id, name, email, company, job_title, employee_number)")
       .eq("program_id", id).order("added_at", { ascending: true }),
     db.from("lms_enrollments")
-      .select("id, member_id, course_id, status, progress_pct, completed_at")
+      .select("id, member_id, course_id, status, progress_pct, completed_at, due_on, due_override")
       .eq("program_id", id),
   ])
   if ([tracks, items, rules, instructors, members, enrollments].some(r => r.error))

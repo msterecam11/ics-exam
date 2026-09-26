@@ -110,6 +110,50 @@ function AddStudentsDialog({ detail, open, onClose, onDone }: { detail: ProgramD
   )
 }
 
+// More time on one online course for one participant: a personal due date.
+function ExtendCourseDialog({ programId, member, courseTitle, courseMode, onClose, onDone }: {
+  programId: string; member: Member | null; courseTitle: (id: string) => string; courseMode: (id: string) => string
+  onClose: () => void; onDone: () => void
+}) {
+  const [dates, setDates] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => { setDates(Object.fromEntries((member?.enrollments ?? []).map(e => [e.id, e.due_override ?? ""]))) }, [member])
+  const rows = (member?.enrollments ?? []).filter(e => e.status === "active" && courseMode(e.course_id) === "online")
+  async function save(enrollmentId: string, value: string | null) {
+    if (!member) return
+    setBusy(enrollmentId)
+    const { ok, data } = await postJson(`/api/lms/programs/${programId}/members`, "PATCH", { member_id: member.id, action: "extend_course", enrollment_id: enrollmentId, due_date: value })
+    setBusy(null)
+    if (!ok) { toast.error(data.error ?? "Could not save"); return }
+    toast.success(value ? "Due date extended" : "Extension removed"); onDone()
+  }
+  return (
+    <Dialog open={!!member} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Extend a course — {member?.lms_students?.name}</DialogTitle></DialogHeader>
+        <p className="text-sm text-slate-500 -mt-1">A personal due date for this participant only. The course&apos;s own dates are set in Structure.</p>
+        <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+          {rows.map(e => (
+            <div key={e.id} className="px-3 py-2.5 space-y-1.5">
+              <p className="text-sm font-medium text-slate-800">{courseTitle(e.course_id)}</p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>Due {e.due_on ? fmtDate(e.due_on) : "at the program's end"}</span>
+                <span>→ personal date</span>
+                <input type="date" value={dates[e.id] ?? ""} min={e.due_on ?? undefined} onChange={ev => setDates(d => ({ ...d, [e.id]: ev.target.value }))}
+                  className="h-7 rounded border border-slate-200 px-1.5 bg-white text-slate-700" />
+                <Button size="sm" className="h-7 bg-[#1B4F8A] hover:bg-[#163f6e] text-white" disabled={busy === e.id || !dates[e.id] || dates[e.id] === (e.due_override ?? "")}
+                  onClick={() => save(e.id, dates[e.id])}>Save</Button>
+                {e.due_override && <button className="text-red-600 hover:underline" disabled={busy === e.id} onClick={() => save(e.id, null)}>Remove extension</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-400">The whole program&apos;s end date for this person is under <b>Extend end date</b>.</p>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function MoveDialog({ detail, member, open, onClose, onDone }: { detail: ProgramDetail; member: Member | null; open: boolean; onClose: () => void; onDone: () => void }) {
   const [programs, setPrograms] = useState<{ id: string; name: string; status: string; structure: string }[]>([])
   const [toId, setToId] = useState("")
@@ -191,12 +235,14 @@ export default function ProgramStudentsTab({ detail, isAdmin, onChanged }: { det
   const canEdit = isAdmin && program.status !== "archived"
   const [addOpen, setAddOpen] = useState(false)
   const [moveMember, setMoveMember] = useState<Member | null>(null)
+  const [extendMember, setExtendMember] = useState<Member | null>(null)
   const [search, setSearch] = useState("")
   const [trackFilter, setTrackFilter] = useState("")
   const [showWithdrawn, setShowWithdrawn] = useState(false)
   const trackName = (id: string | null) => tracks.find(t => t.id === id)?.name ?? "—"
   const courseTitle = (courseId: string) =>
     detail.rules.find(r => r.course_id === courseId)?.lms_courses?.title ?? "Course"
+  const courseMode = (courseId: string) => detail.items.find(i => i.course_id === courseId)?.lms_courses?.delivery_mode ?? "online"
 
   async function act(member: Member, body: Record<string, unknown>, okMsg: string) {
     const { ok, data } = await postJson(`/api/lms/programs/${program.id}/members`, "PATCH", { member_id: member.id, ...body })
@@ -300,6 +346,11 @@ export default function ProgramStudentsTab({ detail, isAdmin, onChanged }: { det
                             <CalendarPlus className="h-4 w-4" /> Extend end date
                           </DropdownMenuItem>
                         )}
+                        {canEdit && m.status !== "withdrawn" && m.enrollments.some(e => e.status === "active" && courseMode(e.course_id) === "online") && (
+                          <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setExtendMember(m)}>
+                            <CalendarPlus className="h-4 w-4" /> Extend a course&apos;s due date
+                          </DropdownMenuItem>
+                        )}
                         {canEdit && m.status !== "withdrawn" && (
                           <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setMoveMember(m)}>
                             <ArrowRightLeft className="h-4 w-4" /> Move to another program
@@ -330,6 +381,8 @@ export default function ProgramStudentsTab({ detail, isAdmin, onChanged }: { det
 
       <AddStudentsDialog detail={detail} open={addOpen} onClose={() => setAddOpen(false)} onDone={onChanged} />
       <MoveDialog detail={detail} member={moveMember} open={!!moveMember} onClose={() => setMoveMember(null)} onDone={onChanged} />
+      <ExtendCourseDialog programId={program.id} member={extendMember} courseTitle={courseTitle} courseMode={courseMode}
+        onClose={() => setExtendMember(null)} onDone={onChanged} />
       <p className="text-xs text-slate-400">
         Tip: to import new students straight into this program, use Students → Import CSV. <Link href="/lms-admin/students" className="text-[#1B4F8A] hover:underline">Open Students</Link>
       </p>

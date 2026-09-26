@@ -19,9 +19,9 @@ async function access(id: string) {
   const g = await guardStaff()
   if (!g.ok) return { ok: false as const, res: g.res }
   if (!g.scope.isAdmin && !g.scope.instructorGroupIds.includes(id)) return { ok: false as const, res: forbidden() }
-  const { data: group } = await db.from("lms_course_groups").select("id, course_id, item_access").eq("id", id).maybeSingle()
+  const { data: group } = await db.from("lms_course_groups").select("id, course_id, item_access, start_date").eq("id", id).maybeSingle()
   if (!group) return { ok: false as const, res: NextResponse.json({ error: "Group not found" }, { status: 404 }) }
-  return { ok: true as const, g, group: group as { id: string; course_id: string; item_access: ItemAccess } }
+  return { ok: true as const, g, group: group as { id: string; course_id: string; item_access: ItemAccess; start_date: string | null } }
 }
 
 export async function GET(_req: Request, { params }: Params) {
@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: Params) {
   const nameOf = new Map(((users ?? []) as any[]).map(u => [u.id, u.name]))
   return NextResponse.json({
     items: ((mods ?? []) as any[]).map(m => ({
-      id: m.id, title: m.title, module_type: m.module_type, open: isItemOpen(acc, m),
+      id: m.id, title: m.title, module_type: m.module_type, open: isItemOpen(acc, m, a.group.start_date ?? null),
       release_in_class: m.module_type === "package" && m.activity_settings?.release_in_class === true,
       changed_by: acc[m.id]?.by ? nameOf.get(acc[m.id].by!) ?? null : null, changed_at: acc[m.id]?.at ?? null,
     })),

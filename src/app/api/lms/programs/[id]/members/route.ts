@@ -154,6 +154,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ ok: true })
     }
 
+    // More time for one course (its due date in the program), for this person only.
+    case "extend_course": {
+      const d = body.due_date
+      if (d !== null && (typeof d !== "string" || !DATE_RE.test(d))) return NextResponse.json({ error: "Invalid date" }, { status: 400 })
+      if (typeof body.enrollment_id !== "string" || !UUID_RE.test(body.enrollment_id)) return NextResponse.json({ error: "Choose a course" }, { status: 400 })
+      const { data: row } = await db.from("lms_enrollments").update({ due_override: d }).eq("id", body.enrollment_id).eq("member_id", memberId).select("id, course_id").maybeSingle()
+      if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 })
+      await auditLog(session, "lms.program.members.extend_course", "lms_program", id, who, { member_id: memberId, enrollment_id: body.enrollment_id, due_date: d })
+      return NextResponse.json({ ok: true })
+    }
+
     case "transfer":
     case "retake": {
       const toId = body.to_program_id

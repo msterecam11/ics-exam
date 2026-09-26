@@ -21,15 +21,17 @@ const FROM_LABEL = { enrolment: "From enrolment", start: "From the first day", c
 const ACCEPT = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.png,.jpg,.jpeg,.mp4"
 const MAX = 50 * 1024 * 1024
 
-export default function MaterialsManager({ courseId, groupId, modules, onlyModuleId }: {
+export default function MaterialsManager({ courseId, groupId, modules, onlyModuleId, defaultFrom = "enrolment" }: {
   courseId: string; groupId?: string | null; modules: { id: string; title: string }[]
   /** Just the files of one item (an exercise sheet, an assignment template). */
   onlyModuleId?: string
+  /** When a new file opens by default — a classroom course: from the first day. */
+  defaultFrom?: Material["available_from"]
 }) {
   const [rows, setRows] = useState<Material[] | null>(null)
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
-  const [form, setForm] = useState({ title: "", module_id: "", available_from: "enrolment" as Material["available_from"] })
+  const [form, setForm] = useState({ title: "", module_id: "", available_from: defaultFrom })
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -63,7 +65,7 @@ export default function MaterialsManager({ courseId, groupId, modules, onlyModul
     setBusy(false)
     if (!res.ok) { toast.error(d.error ?? "Upload failed"); return }
     toast.success("Uploaded")
-    setOpen(false); setFile(null); setForm({ title: "", module_id: "", available_from: "enrolment" })
+    setOpen(false); setFile(null); setForm({ title: "", module_id: "", available_from: defaultFrom })
     load()
   }
 

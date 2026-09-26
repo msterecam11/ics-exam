@@ -17,7 +17,7 @@ import { getCurrentEnrollment, getExamRules, getCourseLock } from "@/lib/lms-enr
 import { sessionsForViewers, sessionToday } from "@/lib/lms-sessions"
 import { getFeedbackState } from "@/lib/lms-feedback"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
-import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen, availabilityNote } from "@/lib/lms-groups"
+import { GROUP_COLUMNS, groupDates, groupLabel, isItemOpen, availabilityNote, beforeClass, gateMessage } from "@/lib/lms-groups"
 import { materialsFor } from "@/lib/lms-materials"
 import { courseRules, evaluatePassRule } from "@/lib/lms-pass-rule"
 import { PassResultCard } from "@/components/lms/course/PassResultView"
@@ -252,13 +252,14 @@ export default async function StudentCoursePage({
   // Onsite / hybrid: the final exam opens when the group's instructor releases
   // it; an assignment can be locked by them.
   const { data: accessRow } = current.group_id
-    ? await db.from("lms_course_groups").select("item_access").eq("id", current.group_id).maybeSingle()
+    ? await db.from("lms_course_groups").select("item_access, start_date").eq("id", current.group_id).maybeSingle()
     : { data: null }
   // A module's own dates (Options → Available from / until) apply to everyone;
   // then, in a group, what the instructor has opened or locked.
   const gateOf = (m: any) => availabilityNote(m)
-    ?? (current.group_id && !isItemOpen((accessRow as any)?.item_access, m)
-      ? (m.module_type === "final_exam" ? "Opens when your instructor releases it"
+    ?? (current.group_id && !isItemOpen((accessRow as any)?.item_access, m, (accessRow as any)?.start_date)
+      ? (m.module_type !== "final_exam" && beforeClass((accessRow as any)?.start_date) ? gateMessage(m.module_type, (accessRow as any)?.start_date)
+        : m.module_type === "final_exam" ? "Opens when your instructor releases it"
         : m.module_type === "package" ? "Your instructor opens this module in class"
         : "Locked by your instructor for now")
       : null)

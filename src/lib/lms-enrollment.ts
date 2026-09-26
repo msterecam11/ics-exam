@@ -52,6 +52,10 @@ export type EnrollmentContext = {
   member_id: string | null
   /** The onsite group (scheduled delivery) this enrolment is placed in. */
   group_id: string | null
+  /** The course's own dates in the program (Structure), and a personal extension. */
+  opens_on?: string | null
+  due_on?: string | null
+  due_override?: string | null
   program: EnrollmentProgram | null
   member: { status: "active" | "withdrawn" | "completed"; end_date_override: string | null; track_id: string | null } | null
   /** full = learn and submit · read_only = review only · none = no access */
@@ -61,7 +65,7 @@ export type EnrollmentContext = {
 }
 
 const ENROLLMENT_SELECT = `
-  id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id, group_id,
+  id, student_id, course_id, status, enrolled_at, completed_at, program_id, member_id, group_id, opens_on, due_on, due_override,
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
@@ -71,7 +75,7 @@ export function todayISO(now = new Date()) {
 }
 
 /** Access rules for one enrollment (PM-6/7/8). */
-export function computeAccess(e: Pick<EnrollmentContext, "status" | "program" | "member">, now = new Date()): { access: CourseAccess; note: string | null } {
+export function computeAccess(e: Pick<EnrollmentContext, "status" | "program" | "member"> & { due_on?: string | null; due_override?: string | null }, now = new Date()): { access: CourseAccess; note: string | null } {
   if (e.status === "dropped") return { access: "none", note: "You have been withdrawn from this course." }
   const p = e.program
   if (!p) return { access: "full", note: null }                       // enrollment from before programs
@@ -80,7 +84,13 @@ export function computeAccess(e: Pick<EnrollmentContext, "status" | "program" | 
 
   const end = e.member?.end_date_override ?? p.end_date
   const ended = p.status === "completed" || p.status === "archived" || (!!end && todayISO(now) > end)
-  if (!ended) return { access: "full", note: null }
+  if (!ended) {
+    // The course's own due date (program Structure), or the participant's extension.
+    const due = e.due_override ?? e.due_on ?? null
+    if (due && e.status === "active" && todayISO(now) > due)
+      return { access: "read_only", note: `This course was due on ${fmtDay(due)} — you can review the material and your results. Ask your coordinator if you need more time.` }
+    return { access: "full", note: null }
+  }
 
   if (p.after_end_access === "full")   return { access: "full", note: null }
   if (p.after_end_access === "locked") return { access: "none", note: "This program has ended." }
@@ -95,6 +105,7 @@ function toContext(row: any, now = new Date()): EnrollmentContext {
     enrolled_at: row.enrolled_at, completed_at: row.completed_at,
     program_id: row.program_id ?? null, member_id: row.member_id ?? null,
     group_id: row.group_id ?? null,
+    opens_on: row.opens_on ?? null, due_on: row.due_on ?? null, due_override: row.due_override ?? null,
     program, member,
   }
   const { access, note } = computeAccess(base, now)
@@ -143,7 +154,7 @@ export async function getCurrentEnrollments(studentId: string): Promise<Enrollme
 
 /** Columns to add to an lms_enrollments select (which must also include
  *  course_id, status and enrolled_at) so rows can go through currentVisible(). */
-export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id, group_id,
+export const ENROLLMENT_ACCESS_COLUMNS = `program_id, member_id, group_id, opens_on, due_on, due_override,
   lms_programs(id, name, status, is_individual, start_date, end_date, after_end_access, certificate_enabled, certificate_auto_release, progress_enforcement, external_ics_certificate),
   lms_program_members(status, end_date_override, track_id)`
 
@@ -163,7 +174,7 @@ export function currentVisible<T extends Record<string, any>>(rows: T[] | null |
     const courseId = r.course_id ?? r.lms_courses?.id
     if (!courseId || seen.has(courseId)) continue
     seen.add(courseId)
-    const { access, note } = computeAccess({ status: r.status, program: r.lms_programs ?? null, member: r.lms_program_members ?? null })
+    const { access, note } = computeAccess({ status: r.status, program: r.lms_programs ?? null, member: r.lms_program_members ?? null, due_on: r.due_on ?? null, due_override: r.due_override ?? null })
     if (access !== "none") out.push({ ...r, access, accessNote: note })
   }
   return out
@@ -188,7 +199,7 @@ export type CourseLock =
   // enrolled. They keep their place; the course simply isn't open.
   | { locked: true; kind: "not_published"; reason: string }
 
-type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access">
+type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access"> & { opens_on?: string | null }
 
 function fmtDay(iso: string) {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
@@ -207,6 +218,14 @@ export async function getCourseLocks(items: LockInput[], now = new Date()): Prom
       out.set(e.course_id, {
         locked: true, kind: "not_started", opensOn: e.program.start_date,
         reason: `This program opens on ${fmtDay(e.program.start_date)}.`,
+      })
+      continue
+    }
+    // The course's own opening date (program Structure).
+    if (e.opens_on && today < e.opens_on && e.status === "active") {
+      out.set(e.course_id, {
+        locked: true, kind: "not_started", opensOn: e.opens_on,
+        reason: `This course opens on ${fmtDay(e.opens_on)}.`,
       })
       continue
     }
