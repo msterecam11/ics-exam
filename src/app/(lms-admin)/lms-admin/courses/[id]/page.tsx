@@ -981,7 +981,7 @@ function PackageOptionsPanel({ mod }: { mod: Module }) {
           <div className="flex items-start justify-between gap-4 py-4 border-b border-slate-100 last:border-0">
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-800">Participants can download the slides</p>
-              <p className="text-xs text-slate-500 mt-0.5">The module&apos;s PDF slides appear in Course Material with a Download button. Off: they can still view them in the LMS.</p>
+              <p className="text-xs text-slate-500 mt-0.5">The module&apos;s PDF slides appear in Course Material with a Download button. Off: they can only view them in the LMS. Off by default for online courses, on for onsite.</p>
             </div>
             <button type="button" onClick={() => setPkg(p => p && { ...p, slides_downloadable: !p.slides_downloadable })}
               className={cn("relative w-10 h-6 rounded-full transition-colors shrink-0 mt-0.5", pkg.slides_downloadable ? "bg-[#1B4F8A]" : "bg-slate-200")}>

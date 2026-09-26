@@ -71,9 +71,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This module already has a package. Reload the editor to continue.", id: already.id }, { status: 409 })
   }
 
+  // Slides are downloadable by default only in an onsite course (handed out in
+  // class); online content stays view-only unless an admin allows it.
+  const { data: owner } = await db.from("lms_courses").select("delivery_mode").eq("id", course_id).maybeSingle()
   const { data: pkg, error: pkgErr } = await db
     .from("lms_packages")
     .insert({
+      slides_downloadable: (owner as any)?.delivery_mode === "onsite",
       module_id:           module_id ?? null,
       course_id,
       title:               title ?? "",
