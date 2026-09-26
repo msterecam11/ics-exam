@@ -13,7 +13,7 @@ import { todayISO } from "@/lib/lms-enrollment"
 import { checkCourseCompletion } from "@/lib/lms-completion"
 import {
   GROUP_COLUMNS, GROUP_STATUSES, SEAT_STATUSES, loadGroup, readGroupInput, readStaff, seatsTaken, groupLabel,
-  syncGroupDayDetails, type CourseGroup, type GroupStatus,
+  syncGroupDayDetails, groupDays, generateGroupDays, type CourseGroup, type GroupStatus,
 } from "@/lib/lms-groups"
 
 export const dynamic = "force-dynamic"
@@ -123,8 +123,12 @@ export async function PATCH(req: Request, { params }: Params) {
   // taken on one, which is history and stops the change.
   const newStart = updates.start_date ?? group.start_date, newEnd = updates.end_date ?? group.end_date
   let dropDays: string[] = []
+  // A group that uses days also gets the days its new dates add.
+  let addDates: string[] = []
   if (newStart !== group.start_date || newEnd !== group.end_date) {
     const { data: days } = await db.from("lms_sessions").select("id, session_date").eq("group_id", id)
+    if ((days ?? []).length)
+      addDates = groupDays({ start_date: newStart, end_date: newEnd }).filter(d => d < group.start_date || d > group.end_date)
     const outside = ((days ?? []) as any[]).filter(d => d.session_date < newStart || d.session_date > newEnd)
     if (outside.length) {
       const { count } = await db.from("lms_attendance").select("id", { count: "exact", head: true }).in("session_id", outside.map(d => d.id))
@@ -154,6 +158,11 @@ export async function PATCH(req: Request, { params }: Params) {
     updated = data as unknown as CourseGroup
   }
   if (dropDays.length) await db.from("lms_sessions").delete().in("id", dropDays)
+  let addedDays = 0
+  if (addDates.length) {
+    const { data: c } = await db.from("lms_courses").select("title").eq("id", updated.course_id).maybeSingle()
+    addedDays = await generateGroupDays(updated, (c as any)?.title ?? "Course", session.user.id, addDates).catch(() => 0)
+  }
   if (["daily_start", "daily_end", "venue_name", "city"].some(k => k in updates)) await syncGroupDayDetails(updated)
   if (staffList) {
     await db.from("lms_group_staff").delete().eq("group_id", id)
@@ -168,7 +177,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   await auditLog(session, "lms.group.update", "lms_course_group", id, groupLabel(updated), {
-    fields: Object.keys(updates), ...(updates.status ? { status: updates.status } : {}), ...(staffList ? { staff: staffList.length } : {}), dropped_days: dropDays.length,
+    fields: Object.keys(updates), ...(updates.status ? { status: updates.status } : {}), ...(staffList ? { staff: staffList.length } : {}), dropped_days: dropDays.length, added_days: addedDays,
   })
   return NextResponse.json({ ...updated, label: groupLabel(updated) })
 }
