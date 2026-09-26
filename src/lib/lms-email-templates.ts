@@ -117,6 +117,24 @@ export function buildDeadlineEmail(o: {
   return { subject: `${o.daysLeft} day${o.daysLeft === 1 ? "" : "s"} left on "${o.programName}" — ICS Aviation LMS`, html: baseTemplate(body) }
 }
 
+// EM-5 for one course with its own due date (program Structure) or a personal extension.
+export function buildCourseDeadlineEmail(o: {
+  studentName: string; courseTitle: string; courseId: string; programName: string
+  daysLeft: number; dueDate: string; progressPct: number; extended?: boolean
+}) {
+  const urgent = o.daysLeft <= 3
+  const body = `
+    ${badge(urgent ? `${o.daysLeft} day${o.daysLeft === 1 ? "" : "s"} left` : "Deadline approaching", urgent ? "#DC2626" : GOLD, urgent ? "#ffffff" : "#1e293b")}
+    <h2 style="margin:0 0 6px;color:#1e293b;font-size:22px;">${o.courseTitle} is due soon, ${o.studentName}</h2>
+    <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6;">
+      <strong>${o.courseTitle}</strong> (${o.programName}) is due on <strong>${fmtDay(o.dueDate)}</strong>${o.extended ? " (your extended date)" : ""},
+      which is ${o.daysLeft} day${o.daysLeft === 1 ? "" : "s"} away. After that date you can still review it, but no longer submit work or take its exam.
+    </p>
+    ${bar(o.progressPct)}
+    ${closing("Continue the Course →", `${APP}/lms/courses/${o.courseId}`)}`
+  return { subject: `${o.daysLeft} day${o.daysLeft === 1 ? "" : "s"} left on "${o.courseTitle}" — ICS Aviation LMS`, html: baseTemplate(body) }
+}
+
 // ── EM-6 Course completed (program-aware) ────────────────────────────────────
 export function buildCourseCompletedEmail(o: {
   studentName: string; courseTitle: string; programName?: string | null; programId?: string | null

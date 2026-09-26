@@ -17,7 +17,7 @@ import {
 import { sessionRoster, sessionEndTime } from "@/lib/lms-sessions"
 import { groupDates } from "@/lib/lms-groups"
 import {
-  buildProgramStartedEmail, buildNotStartedEmail, buildInactiveEmail, buildDeadlineEmail,
+  buildProgramStartedEmail, buildNotStartedEmail, buildInactiveEmail, buildDeadlineEmail, buildCourseDeadlineEmail,
   buildFeedbackReminderEmail, buildInstructorDigestEmail, buildImpactSurveyEmail, buildJoiningInstructionsEmail,
 } from "@/lib/lms-email-templates"
 import { buildSessionReminderEmail } from "@/lib/email"
@@ -64,6 +64,8 @@ interface MemberFact {
   started: boolean
   lastActivity: string | null
   nextCourse: string | null
+  /** Courses with their own due date (program Structure) or a personal extension, not yet completed. */
+  dueCourses: { courseId: string; title: string; due: string; extended: boolean; progress: number }[]
 }
 
 interface ProgramFact {
@@ -163,6 +165,22 @@ export async function runDailyEmails(opts: DailyRunOptions = {}): Promise<DailyR
         })
         await push(sendRuleEmail({ ...common, rule: "deadline", effective: eff, to: m.email, studentId: m.studentId, ...t }))
       }
+      // A course's own due date (Structure) or a personal extension: the same
+      // reminders, for that course. Skipped when it's simply the program's end.
+      for (const m of p.members) {
+        for (const c of m.dueCourses) {
+          if (c.due === m.endDate) continue
+          const left = daysBetween(today, c.due)
+          if (!list.includes(left)) continue
+          const already = history.get(key("deadline", m.studentId, c.courseId))
+          if (already && already.slice(0, 10) === today) continue
+          const t = buildCourseDeadlineEmail({
+            studentName: m.name, courseTitle: c.title, courseId: c.courseId, programName: p.name,
+            daysLeft: left, dueDate: c.due, progressPct: c.progress, extended: c.extended,
+          })
+          await push(sendRuleEmail({ ...common, rule: "deadline", effective: eff, to: m.email, studentId: m.studentId, courseId: c.courseId, ...t }))
+        }
+      }
     }
   }
 
@@ -255,7 +273,7 @@ async function gatherFacts(today: string) {
       .select("id, program_id, student_id, track_id, status, end_date_override, lms_students(id, name, email)")
       .in("program_id", programIds).neq("status", "withdrawn"),
     db.from("lms_enrollments")
-      .select("id, student_id, program_id, course_id, status, progress_pct, completed_at, lms_courses(id, title, delivery_mode)")
+      .select("id, student_id, program_id, course_id, status, progress_pct, completed_at, due_on, due_override, lms_courses(id, title, delivery_mode)")
       .in("program_id", programIds),
     db.from("lms_program_items").select("program_id, track_id, course_id, order_index").in("program_id", programIds),
     db.from("lms_program_tracks").select("id, name").in("program_id", programIds),
@@ -296,6 +314,10 @@ async function gatherFacts(today: string) {
         started: (lastActivity.get(mm.student_id) ?? null) !== null || mine.some(e => Number(e.progress_pct ?? 0) > 0),
         lastActivity: lastActivity.get(mm.student_id) ?? null,
         nextCourse: next?.lms_courses?.title ?? null,
+        dueCourses: mine.filter(e => e.status === "active" && (e.due_override || e.due_on)).map(e => ({
+          courseId: e.course_id, title: e.lms_courses?.title ?? "your course", due: e.due_override ?? e.due_on,
+          extended: !!e.due_override, progress: Math.round(Number(e.progress_pct ?? 0)),
+        })),
       }
       pf.members.push(fact)
       memberIndex.set(`${pf.id}|${mm.student_id}`, fact)
