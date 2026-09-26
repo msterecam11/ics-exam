@@ -118,7 +118,7 @@ function ExtendCourseDialog({ programId, member, courseTitle, courseMode, onClos
   const [dates, setDates] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   useEffect(() => { setDates(Object.fromEntries((member?.enrollments ?? []).map(e => [e.id, e.due_override ?? ""]))) }, [member])
-  const rows = (member?.enrollments ?? []).filter(e => e.status === "active" && courseMode(e.course_id) === "online")
+  const rows = (member?.enrollments ?? []).filter(e => e.status === "active" && courseMode(e.course_id) !== "external")
   async function save(enrollmentId: string, value: string | null) {
     if (!member) return
     setBusy(enrollmentId)
@@ -137,7 +137,7 @@ function ExtendCourseDialog({ programId, member, courseTitle, courseMode, onClos
             <div key={e.id} className="px-3 py-2.5 space-y-1.5">
               <p className="text-sm font-medium text-slate-800">{courseTitle(e.course_id)}</p>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span>Due {e.due_on ? fmtDate(e.due_on) : "at the program's end"}</span>
+                <span>Due {e.due_on ? fmtDate(e.due_on) : courseMode(e.course_id) === "onsite" ? "on the class's last day" : "at the program's end"}</span>
                 <span>→ personal date</span>
                 <input type="date" value={dates[e.id] ?? ""} min={e.due_on ?? undefined} onChange={ev => setDates(d => ({ ...d, [e.id]: ev.target.value }))}
                   className="h-7 rounded border border-slate-200 px-1.5 bg-white text-slate-700" />
@@ -346,7 +346,7 @@ export default function ProgramStudentsTab({ detail, isAdmin, onChanged }: { det
                             <CalendarPlus className="h-4 w-4" /> Extend end date
                           </DropdownMenuItem>
                         )}
-                        {canEdit && m.status !== "withdrawn" && m.enrollments.some(e => e.status === "active" && courseMode(e.course_id) === "online") && (
+                        {canEdit && m.status !== "withdrawn" && m.enrollments.some(e => e.status === "active" && courseMode(e.course_id) !== "external") && (
                           <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setExtendMember(m)}>
                             <CalendarPlus className="h-4 w-4" /> Extend a course&apos;s due date
                           </DropdownMenuItem>
