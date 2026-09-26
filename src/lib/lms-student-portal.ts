@@ -94,7 +94,7 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
   const memberIds = (members as any[]).map(m => m.id)
   const { data: enrollmentRows } = await db
     .from("lms_enrollments")
-    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, group_id, lms_courses(id, title, description, thumbnail_url, delivery_mode, status)")
+    .select("id, course_id, status, completed_at, progress_pct, member_id, program_id, group_id, opens_on, lms_courses(id, title, description, thumbnail_url, delivery_mode, status)")
     .in("member_id", memberIds)
     .neq("status", "dropped")
 
@@ -135,7 +135,7 @@ export async function getStudentPrograms(studentId: string, opts: { programId?: 
       })
 
     const locks = await getCourseLocks(
-      mine.map(e => ({ course_id: e.course_id, status: e.status, program_id: p.id, member_id: m.id, program, member, access })),
+      mine.map(e => ({ course_id: e.course_id, status: e.status, program_id: p.id, member_id: m.id, program, member, access, opens_on: e.opens_on ?? null, group_id: e.group_id ?? null })),
       now,
     )
     const courses: PortalCourse[] = mine.map(e => ({

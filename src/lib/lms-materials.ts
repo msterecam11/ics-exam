@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { todayISO, type EnrollmentContext } from "@/lib/lms-enrollment"
+import { todayISO, getCourseLock, type EnrollmentContext } from "@/lib/lms-enrollment"
 import { VISIBLE_GROUP_STATUSES } from "@/lib/lms-sessions"
 import { isItemOpen, availabilityNote } from "@/lib/lms-groups"
 
@@ -52,6 +52,8 @@ const fmtDate = (iso: string) => new Date(iso + "T00:00:00Z").toLocaleDateString
  */
 export async function materialsFor(enrollment: EnrollmentContext): Promise<MaterialSection[]> {
   const courseId = enrollment.course_id
+  // A locked course (not open yet — e.g. an onsite class that hasn't started) shares nothing.
+  if ((await getCourseLock(enrollment)).locked) return []
 
   const [{ data: modules }, { data: files }, { data: pkgs }, groupRes] = await Promise.all([
     db.from("lms_modules").select("id, title, order_index, parent_module_id, module_type, activity_settings, available_from, available_until").eq("course_id", courseId).order("order_index"),

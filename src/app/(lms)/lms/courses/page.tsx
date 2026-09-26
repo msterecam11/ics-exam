@@ -41,6 +41,7 @@ export default async function MyCoursesPage() {
     getCourseLocks(rawEnrollments.map((e: any) => ({
       course_id: e.course_id, status: e.status, program_id: e.program_id ?? null, member_id: e.member_id ?? null,
       program: e.lms_programs ?? null, member: e.lms_program_members ?? null, access: e.access,
+      opens_on: e.opens_on ?? null, group_id: e.group_id ?? null,
     }))),
   ])
 

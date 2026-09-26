@@ -199,7 +199,7 @@ export type CourseLock =
   // enrolled. They keep their place; the course simply isn't open.
   | { locked: true; kind: "not_published"; reason: string }
 
-type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access"> & { opens_on?: string | null }
+type LockInput = Pick<EnrollmentContext, "course_id" | "status" | "program_id" | "member_id" | "program" | "member" | "access"> & { opens_on?: string | null; group_id?: string | null }
 
 function fmtDay(iso: string) {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
@@ -211,6 +211,17 @@ export async function getCourseLocks(items: LockInput[], now = new Date()): Prom
   const today = todayISO(now)
   const sequential: LockInput[] = []
 
+  // An onsite course opens with its class: until the participant's class is
+  // confirmed and its first day comes, the course is locked (the class details
+  // still show on the course page).
+  const live = items.filter(e => e.access === "full" && e.status === "active")
+  const courseIds = [...new Set(live.map(e => e.course_id))]
+  const { data: modeRows } = courseIds.length ? await db.from("lms_courses").select("id, delivery_mode").in("id", courseIds) : { data: [] as any[] }
+  const onsite = new Set(((modeRows ?? []) as any[]).filter(c => c.delivery_mode === "onsite").map(c => c.id))
+  const groupIds = [...new Set(live.filter(e => onsite.has(e.course_id) && e.group_id).map(e => e.group_id!))]
+  const { data: groupRows } = groupIds.length ? await db.from("lms_course_groups").select("id, status, start_date").in("id", groupIds) : { data: [] as any[] }
+  const groupOf = new Map(((groupRows ?? []) as any[]).map(g => [g.id, g]))
+
   for (const e of items) {
     out.set(e.course_id, { locked: false })
     if (e.access !== "full" || !e.program || e.status === "dropped") continue
@@ -220,6 +231,17 @@ export async function getCourseLocks(items: LockInput[], now = new Date()): Prom
         reason: `This program opens on ${fmtDay(e.program.start_date)}.`,
       })
       continue
+    }
+    if (onsite.has(e.course_id) && e.status === "active") {
+      const g = e.group_id ? groupOf.get(e.group_id) : null
+      if (!g || !["confirmed", "completed"].includes(g.status)) {
+        out.set(e.course_id, { locked: true, kind: "not_started", opensOn: g?.start_date ?? "", reason: "This course opens with your class — its dates will be confirmed soon." })
+        continue
+      }
+      if (g.start_date && today < g.start_date) {
+        out.set(e.course_id, { locked: true, kind: "not_started", opensOn: g.start_date, reason: `This course opens on the first day of your class, ${fmtDay(g.start_date)}.` })
+        continue
+      }
     }
     // The course's own opening date (program Structure).
     if (e.opens_on && today < e.opens_on && e.status === "active") {
