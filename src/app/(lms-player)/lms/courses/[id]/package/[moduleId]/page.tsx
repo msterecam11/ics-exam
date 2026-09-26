@@ -26,6 +26,10 @@ export default async function PackagePlayerPage({
   if (!enrollment || enrollment.access === "none") redirect(`/lms/courses/${courseId}`)
   // Program not open yet / earlier course unfinished: back to the course page, which explains.
   if ((await getCourseLock(enrollment)).locked) redirect(`/lms/courses/${courseId}`)
+  // A classroom (onsite) course has no module player: its modules are headings
+  // with files to download.
+  const { data: mode } = await db.from("lms_courses").select("delivery_mode").eq("id", courseId).maybeSingle()
+  if ((mode as any)?.delivery_mode === "onsite") redirect(`/lms/courses/${courseId}`)
 
   // Verify module belongs to course and is package type
   const { data: module } = await db

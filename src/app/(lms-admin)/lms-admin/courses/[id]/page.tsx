@@ -184,8 +184,10 @@ export function getModuleTypeMeta(type: string) {
 // ──────────────────────────────────────────────────────────────
 // MODULE MODAL  (2-step: pick type → fill details)
 // ──────────────────────────────────────────────────────────────
-function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes, parents }: {
+function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes, parents, classroom = false }: {
   open: boolean; onClose: () => void; courseId: string
+  /** Onsite: a "package" is just a module heading with its files. */
+  classroom?: boolean
   editing: Module | null; onSaved: (m: Module) => void
   existingTypes: string[]
   /** Modules an assignment or exercise can sit inside. */
@@ -280,8 +282,8 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes,
                           )}
                         >
                           <span className="text-xl mb-2 block">{t.icon}</span>
-                          <p className="font-semibold text-slate-800 text-sm">{t.label}</p>
-                          {"desc" in t && <p className="text-xs text-slate-500 mt-0.5 leading-snug">{t.desc}</p>}
+                          <p className="font-semibold text-slate-800 text-sm">{classroom && t.value === "package" ? "Module" : t.label}</p>
+                          {"desc" in t && <p className="text-xs text-slate-500 mt-0.5 leading-snug">{classroom && t.value === "package" ? "Taught in class — its slides and hand-outs to download; exercises and assignments sit inside it" : t.desc}</p>}
                           {disabled && <p className="text-xs text-slate-400 mt-1 font-medium">Already added</p>}
                         </button>
                       )
@@ -311,10 +313,10 @@ function ModuleModal({ open, onClose, courseId, editing, onSaved, existingTypes,
                 <div className="flex items-center gap-2">
                   <span className="text-base">{typeMeta.icon}</span>
                   <h2 className="text-lg font-bold text-slate-900">
-                    {editing ? "Edit Module" : typeMeta.label}
+                    {editing ? "Edit Module" : classroom && moduleType === "package" ? "Module" : typeMeta.label}
                   </h2>
                   <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", typeMeta.badgeColor)}>
-                    {typeMeta.label}
+                    {classroom && moduleType === "package" ? "Module" : typeMeta.label}
                   </span>
                 </div>
                 <p className="text-sm text-slate-500 mt-0.5">
@@ -1878,8 +1880,22 @@ function AssignmentSubmissionsPanel({ mod }: { mod: Module }) {
   )
 }
 
-function ModuleCanvas({ module: mod, courseId }: { module: Module; courseId: string }) {
+function ModuleCanvas({ module: mod, courseId, classroom = false }: { module: Module; courseId: string; classroom?: boolean }) {
   const [tab, setTab] = useState<"content" | "settings" | "submissions">("content")
+
+  // A classroom (onsite) course: a module is a heading taught in class, with the
+  // files participants download — no player, nothing to configure.
+  if (classroom && mod.module_type === "package") return (
+    <div className="h-full overflow-y-auto px-6 pt-6 pb-16">
+      <div className="max-w-3xl space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">{mod.title}</h2>
+          <p className="text-sm text-slate-500 mt-1">Taught in class. Upload this module&apos;s slides and hand-outs here — participants download them from <b>Course Material</b> (or, for a file set to be released in class, once the instructor releases it). Add its exercises and assignments as their own items placed inside this module.</p>
+        </div>
+        <MaterialsManager courseId={courseId} modules={[]} onlyModuleId={mod.id} />
+      </div>
+    </div>
+  )
 
   return (
     <div className="h-full flex flex-col">
@@ -2485,7 +2501,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
 
           {/* Module canvas fills full height with its own tab bar + scroll */}
           {activeModule && (
-            <ModuleCanvas key={activeModule.id} module={activeModule} courseId={courseId} />
+            <ModuleCanvas key={activeModule.id} module={activeModule} courseId={courseId} classroom={course?.delivery_mode === "onsite"} />
           )}
 
           {/* Non-module views get normal padding */}
@@ -2541,6 +2557,7 @@ export default function CourseBuilderPage({ params }: { params: Promise<{ id: st
         courseId={courseId}
         editing={editingModule}
         existingTypes={modules.map(m => m.module_type ?? "")}
+        classroom={course?.delivery_mode === "onsite"}
         parents={modules.filter(m => !["assignment", "exercise", "final_exam"].includes(m.module_type)).map(m => ({ id: m.id, title: m.title }))}
         onSaved={m => {
           // Reload: an item placed inside a module moves the ones after it down.

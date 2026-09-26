@@ -263,7 +263,12 @@ export default async function StudentCoursePage({
         : "Locked by your instructor for now")
       : null)
 
+  // A classroom (onsite) course: modules are headings — taught in class, their
+  // files downloaded from Course Material; no module player.
+  const classroom = course.delivery_mode === "onsite"
   const mods = (modules ?? []).map((m: any) => {
+    if (m.module_type === "package" && classroom)
+      return { ...m, heading: true, items: [], mandatory: [], doneCount: 0, pct: 0, pkgStatus: null, pkgScore: null, examAttempt: null }
     if (m.module_type === "package") {
       const pkgProg = pkgProgressMap.get(m.id)
       const done    = pkgProg?.status === "passed" || pkgProg?.status === "completed"
@@ -311,13 +316,14 @@ export default async function StudentCoursePage({
   // Compute locked state per module based on lock_until_previous
   // A module is locked when: lock_until_previous=true AND the previous mandatory module is not 100% done
   const modsWithLock = mods.map((mod: any, idx: number) => {
+    if (mod.heading) return { ...mod, isModuleLocked: false }
     // Not gated once done (a passed exam, a passed assignment).
     const gateNote = mod.pct >= 100 ? null : gateOf(mod)
     if (gateNote) return { ...mod, isModuleLocked: true, gateNote }
     if (!mod.lock_until_previous || idx === 0) return { ...mod, isModuleLocked: false }
     // Find the closest previous mandatory module
     // Exercises (marked in class) and live sessions never hold the next module.
-    const prevMandatory = mods.slice(0, idx).reverse().find((m: any) => m.is_mandatory !== false && m.module_type !== "exercise" && m.module_type !== "live_session")
+    const prevMandatory = mods.slice(0, idx).reverse().find((m: any) => m.is_mandatory !== false && !m.heading && m.module_type !== "exercise" && m.module_type !== "live_session")
     const prevDone = prevMandatory ? prevMandatory.pct >= 100 : true
     return { ...mod, isModuleLocked: !prevDone }
   })
@@ -586,6 +592,24 @@ export default async function StudentCoursePage({
         {/* Modules — an assignment / exercise inside a module sits indented under it */}
         <div className="space-y-3">
           {modsWithLock.map((mod: any, mi: number) => {
+            if (mod.heading) {
+              const n = modsWithLock.slice(0, mi + 1).filter((x: any) => !x.parent_module_id).length
+              const files = filesOf(mod.id).length
+              return (
+                <div key={mod.id} className="flex items-center gap-4 px-5 py-4 bg-white rounded-xl border border-slate-200">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 bg-[#1B4F8A]/10 text-[#1B4F8A]">{n}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-900 text-sm">{mod.title}</p>
+                    {mod.description && <p className="text-xs text-slate-500 mt-0.5">{mod.description}</p>}
+                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-3">
+                      <span>Taught in class</span>
+                      {mod.estimated_duration && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatDuration(mod.estimated_duration)}</span>}
+                      {files > 0 && <a href="#materials" className="text-[#1B4F8A] hover:underline">{files} file{files === 1 ? "" : "s"} to download</a>}
+                    </p>
+                  </div>
+                </div>
+              )
+            }
             const isPackage = mod.module_type === "package"
             const isExam    = mod.module_type === "final_exam"
             const isAssign  = mod.module_type === "assignment"

@@ -306,7 +306,8 @@ export async function syncGroupDayDetails(group: CourseGroup) {
 // as item_access { module_id: { open, by, at } }. Participants without a
 // group (online) are never gated here.
 
-export const GATED_TYPES = ["package", "final_exam", "assignment"] as const
+// A classroom course has no module player, so only the exam and assignments are opened / locked per group.
+export const GATED_TYPES = ["final_exam", "assignment"] as const
 export type ItemAccess = Record<string, { open: boolean; by?: string | null; at?: string | null }>
 export type GateModule = { id: string; module_type: string; activity_settings?: any }
 

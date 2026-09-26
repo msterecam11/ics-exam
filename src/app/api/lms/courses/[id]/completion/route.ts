@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: Params) {
     exam_pass_mark: c.final_exam_pass_mark ?? 70,
     contains: {
       exam: count("final_exam"), assignments: count("assignment"), exercises: count("exercise"),
-      modules: count("package"), attendance: c.delivery_mode !== "online" || (sessions ?? 0) > 0,
+      modules: c.delivery_mode === "onsite" ? 0 : count("package"), attendance: c.delivery_mode !== "online" || (sessions ?? 0) > 0,
     },
   })
 }

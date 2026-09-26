@@ -185,7 +185,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["content", "Content"], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const)
+        {([["participants", `Participants (${d.participants.length})`], ["days", `Days (${d.days.length})`], ["exercises", "Exercises"], ["assignments", "Assignments"], ["exam", "Final exam"], ["results", "Results"], ["feedback", "Feedback"], ["materials", "Materials"]] as const)
           .filter(([k]) => manage || k !== "feedback")
           // An external course has no content of ours: people, optional attendance, the result.
           .filter(([k]) => !external || ["participants", "days", "results"].includes(k)).map(([k, label]) => (

@@ -58,7 +58,7 @@ export function MaterialsList({ courseId, sections }: { courseId: string; sectio
   if (!sections.length) return null
   const openCount = sections.reduce((n, s) => n + s.items.filter(i => i.available).length, 0)
   return (
-    <div className="space-y-3">
+    <div id="materials" className="space-y-3 scroll-mt-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-bold text-slate-800 flex items-center gap-2"><FolderDown className="h-5 w-5 text-[#1B4F8A]" /> Course Material</h2>
         {openCount > 1 && (

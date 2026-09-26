@@ -279,7 +279,7 @@ export async function evaluatePassRule(enrollmentOrId: string | EnrollmentContex
     }
   }
 
-  const pkgMods = modules.filter(m => m.module_type === "package")
+  const pkgMods = course.delivery_mode === "onsite" ? [] : modules.filter(m => m.module_type === "package")
   if (want("modules") && pkgMods.length) {
     const r = want("modules")!
     const { data: progress } = await db.from("lms_package_progress").select("module_id, status").eq("enrollment_id", e.id)

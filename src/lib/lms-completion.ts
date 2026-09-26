@@ -311,6 +311,14 @@ export async function syncEnrollmentProgress(studentId: string, courseId: string
       modules = allRes.data as any
     }
 
+    // A classroom course has no module player: its modules are headings.
+    const { data: modeRow } = await db.from("lms_courses").select("delivery_mode").eq("id", courseId).maybeSingle()
+    if ((modeRow as any)?.delivery_mode === "onsite") {
+      modules = (modules as any[]).filter((m: any) => m.module_type !== "package")
+      if (!modules.length) modules = (((await db.from("lms_modules").select("id, module_type").eq("course_id", courseId)).data ?? []) as any[])
+        .filter((m: any) => m.module_type !== "package")
+    }
+
     if (!modules?.length) return
 
     const pkgModIds  = (modules as any[]).filter((m: any) => m.module_type === "package").map((m: any) => m.id)
